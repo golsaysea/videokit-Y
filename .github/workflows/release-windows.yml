@@ -122,7 +122,7 @@ jobs:
       
       - name: Include release notes
         shell: pwsh
-        run: Copy-Item docs/RELEASE_4.4.41.md dist-electron/RELEASE_NOTES.md
+        run: Copy-Item docs/RELEASE_4.4.42.md dist-electron/RELEASE_NOTES.md
       - name: 📤 上传 Windows 产物
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
