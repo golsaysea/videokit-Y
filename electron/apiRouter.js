@@ -1,3 +1,4 @@
+const { assertTrustedRenderer } = require('./services/trustedRenderer');
 /**
  * IPC API 路由器
  * 将所有前端 API 调用路由到对应的 Node.js 服务
@@ -364,6 +365,7 @@ function calibrateSrtTimingFromWordTimeline(sourceSrtPath, srtPaths, generationS
 function registerAPIHandlers() {
     // ==================== 通用 API 调用接口 ====================
     ipcMain.handle('api-call', async (event, endpoint, data) => {
+        assertTrustedRenderer(event);
         const requestId = String(data?.request_id || '');
         try {
             if (endpoint === 'media/auto-edit-cancel') {
@@ -411,6 +413,7 @@ function registerAPIHandlers() {
 
     // ==================== 文件上传（需要特殊处理 Buffer） ====================
     ipcMain.handle('api-upload', async (event, endpoint, fileBuffer, fileName, formData) => {
+        assertTrustedRenderer(event);
         try {
             const result = await routeUpload(endpoint, fileBuffer, fileName, formData || {});
             return { success: true, data: result };

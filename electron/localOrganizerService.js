@@ -1,3 +1,4 @@
+const { assertTrustedRenderer } = require('./services/trustedRenderer');
 const { app, dialog, shell, clipboard, nativeImage } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -290,7 +291,8 @@ function getSafeWindow(getMainWindow) {
     }
 }
 
-function registerLocalOrganizer(ipcMain, getMainWindow) {
+function registerLocalOrganizer(rawIpcMain, getMainWindow) {
+    const ipcMain = { handle: (channel, listener) => rawIpcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return listener(event, ...args); }) };
     // 1. 本地选择文件夹
     ipcMain.handle('local:pick-folder', async (_event, options = {}) => {
         const win = getSafeWindow(getMainWindow);

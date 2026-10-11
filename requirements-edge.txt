@@ -1,1 +1,2 @@
+-c constraints-security.txt
 edge-tts==7.2.8

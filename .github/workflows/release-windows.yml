@@ -1,11 +1,11 @@
-name: Release Windows
+name: Release macOS and Windows
 on:
   push:
     tags: ['v*']
 permissions:
   contents: read
 concurrency:
-  group: windows-release-${{ github.ref }}
+  group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 env:
   PYTHON_EMBED_VERSION: '3.11.9'
@@ -16,10 +16,10 @@ jobs:
     
     steps:
       - name: 📥 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       
       - name: 📦 设置 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -104,6 +104,14 @@ jobs:
       - name: 🔧 安装 Node 依赖
         run: npm ci
       
+      - name: Test compatibility and security
+        run: |
+          node scripts/check-security-boundaries.cjs
+          node scripts/check-safe-extract.cjs
+          node scripts/check-batch-preview-follow.cjs
+          node scripts/check-scroll-preset-duration.cjs
+          node scripts/check-queue-features.cjs
+          node scripts/check-edge-tts.cjs
       - name: 🏗️ 构建前端
         run: npm run build
       
@@ -112,20 +120,70 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
+      - name: Include release notes
+        shell: pwsh
+        run: Copy-Item docs/RELEASE_4.4.41.md dist-electron/RELEASE_NOTES.md
       - name: 📤 上传 Windows 产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-builds
           path: |
             dist-electron/*.zip
             dist-electron/*.exe
             dist-electron/latest.yml
+            dist-electron/RELEASE_NOTES.md
             dist-electron/*.blockmap
+          retention-days: 30
+
+  build-mac:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Prepare verified native Python and FFmpeg
+        run: node scripts/prepare-macos-runtime.cjs ${{ matrix.arch }}
+      - name: Build and test
+        run: |
+          node scripts/check-security-boundaries.cjs
+          node scripts/check-safe-extract.cjs
+          node scripts/check-batch-preview-follow.cjs
+          node scripts/check-scroll-preset-duration.cjs
+          npm run build
+      - name: Package macOS
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preserve architecture-specific update metadata
+        run: node -e "const fs=require('fs'),yaml=require('js-yaml'); fs.writeFileSync('dist-electron/latest-mac-${{ matrix.arch }}.json',JSON.stringify(yaml.load(fs.readFileSync('dist-electron/latest-mac.yml','utf8'))))"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-${{ matrix.arch }}-builds
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/*.blockmap
+            dist-electron/latest-mac-*.json
+          if-no-files-found: error
           retention-days: 30
 
   create-release:
     name: 📢 创建 GitHub Release
-    needs: [build-windows]
+    needs: [build-windows, build-mac]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -136,7 +194,7 @@ jobs:
     
     steps:
       - name: 📥 下载所有产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: all-builds
           merge-multiple: true
@@ -148,6 +206,23 @@ jobs:
         run: |
           rm -f all-builds/builder-debug.yml
 
+      - name: Merge macOS update metadata
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('all-builds')
+          intel = json.loads((root / 'latest-mac-x64.json').read_text())
+          arm = json.loads((root / 'latest-mac-arm64.json').read_text())
+          assert intel['version'] == arm['version']
+          intel['files'] += arm['files']
+          for entry in intel['files']:
+              assert (root / entry['url']).is_file(), entry['url']
+          (root / 'latest-mac.yml').write_text(json.dumps(intel, indent=2) + '\n')
+          for file in root.glob('latest-mac-*.json'):
+              file.unlink()
+          PY
+
       - name: Generate SHA256 checksums
         run: |
           cd all-builds
@@ -155,13 +230,14 @@ jobs:
           mv ../checksums.sha256 .
 
       - name: Attest Build Provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: 'all-builds/*'
       
       - name: 🎉 创建 Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: all-builds/*
           draft: false
           generate_release_notes: true
+          body_path: all-builds/RELEASE_NOTES.md

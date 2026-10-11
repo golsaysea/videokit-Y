@@ -17,7 +17,9 @@ try {
 } catch (e) {
     console.warn('[Updater] electron-updater not available in dev mode:', e.message);
 }
-const { app, ipcMain, dialog } = require('electron');
+const { app, ipcMain: rawIpcMain, dialog } = require('electron');
+const { assertTrustedRenderer } = require('./services/trustedRenderer');
+const ipcMain = { handle: (channel, listener) => rawIpcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return listener(event, ...args); }) };
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -205,15 +207,23 @@ function compareVersions(a, b) {
 /**
  * 下载文件到本地
  */
-function downloadFile(url, destPath, onProgress) {
+function downloadFile(url, destPath, onProgress, redirects = 0) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return Promise.reject(new Error('更新下载地址无效')); }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || redirects > 10) {
+        return Promise.reject(new Error('更新下载必须使用 HTTPS，且重定向不能超过 10 次'));
+    }
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(destPath);
-        const request = (url.startsWith('https') ? https : http).get(url, { headers: { 'User-Agent': 'VideoKit-Updater' } }, (response) => {
+        const request = https.get(url, { headers: { 'User-Agent': 'VideoKit-Updater' } }, (response) => {
             // 处理重定向
             if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
                 file.close();
                 fs.unlinkSync(destPath);
-                return downloadFile(response.headers.location, destPath, onProgress).then(resolve).catch(reject);
+                response.resume();
+                let nextUrl;
+                try { nextUrl = new URL(response.headers.location, url).href; } catch { return reject(new Error('更新重定向地址无效')); }
+                return downloadFile(nextUrl, destPath, onProgress, redirects + 1).then(resolve).catch(reject);
             }
 
             if (response.statusCode !== 200) {
@@ -239,6 +249,7 @@ function downloadFile(url, destPath, onProgress) {
             });
         });
 
+        file.on('error', (err) => { request.destroy(); reject(err); });
         request.on('error', (err) => {
             file.close();
             try { fs.unlinkSync(destPath); } catch (_) {}

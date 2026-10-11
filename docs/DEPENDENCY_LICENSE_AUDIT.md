@@ -26,3 +26,11 @@ Compatible npm security patches retain upstream licenses (Axios and electron-bui
 Bundled font license presence checked, including restored Noto Serif italic OFL notice. Personal fonts excluded. Python retains LICENSE.txt and installed package dist-info. FFmpeg is an external GPL build from https://github.com/BtbN/FFmpeg-Builds with original LICENSE.txt; build scripts/source acquisition instructions: https://github.com/BtbN/FFmpeg-Builds .
 
 The original VideoKit snapshot has no top-level LICENSE; this audit records dependency notices only and does not grant additional rights to upstream source.
+
+## 2026-10-11 compatible security maintenance
+
+Direct runtime dependency counts and licenses are unchanged. PyInstaller build declaration is now 6.22.1 (GPL-2.0-or-later with bootloader exception; https://pyinstaller.org/en/stable/license.html). Transitive fixes: urllib3 2.8.0 (MIT), multidict 6.9.1 (Apache-2.0), http-cache-semantics 4.3.0 (BSD-2-Clause), source-map-js 1.2.2 (BSD-3-Clause). Installed dist-info and npm package license metadata were retained; no bundled font/license changes. See the 2026-10-11 security report for remaining major-version risks.
+
+## 4.4.41 macOS release runtime
+
+Mac bundles architecture-matched Python 3.11.17 from astral-sh/python-build-standalone release 20261009, preserving the runtime license files. FFmpeg/FFprobe from eugeneware/ffmpeg-static b6.1.1 preserve each architecture's LICENSE and README, including upstream build/source provenance (https://github.com/eugeneware/ffmpeg-static/releases/tag/b6.1.1). Downloaded artifacts are checked against recorded SHA256 digests in scripts/macos-runtime-assets.json. Edge TTS remains an externally replaceable LGPL Python dependency. No change to the upstream project's license is asserted.

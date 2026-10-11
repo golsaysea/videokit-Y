@@ -39,6 +39,8 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: 'localhost',
+    cors: false,
     port: Number(process.env.VITE_PORT) || 5173,
     strictPort: true,
   },

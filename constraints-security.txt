@@ -1,0 +1,2 @@
+# Security floor for edge-tts/aiohttp; avoid an unreviewed major migration.
+multidict>=6.9.1,<7

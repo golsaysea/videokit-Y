@@ -6,6 +6,10 @@ const { Readable } = require('stream');
 const ffmpegService = require('./services/ffmpeg');
 const { initAutoUpdater } = require('./updater');
 
+const { assertTrustedRenderer, isTrustedRendererUrl } = require('./services/trustedRenderer');
+function handleTrusted(channel, listener) {
+    return ipcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return listener(event, ...args); });
+}
 const DEV_SERVER_PORT = Number(process.env.VITE_PORT) || 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
@@ -673,6 +677,13 @@ function createWindow() {
     }
 
     mainWindow = new BrowserWindow(windowOptions);
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (!isTrustedRendererUrl(url, { packaged: app.isPackaged, port: DEV_SERVER_PORT })) event.preventDefault();
+    });
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+        return { action: 'deny' };
+    });
     // renderer 异常退出时，beforeunload 不一定会运行；由主进程记录原因。
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
         // 忽略正常退出以及开发者热重启/系统 SIGTERM(15) 终止，不作为异常崩溃记录
@@ -887,33 +898,33 @@ app.whenReady().then(async () => {
     // 预设先在 preload 同步恢复，确保页面脚本读取 localStorage 前已经拿到
     // 免安装包之间共用的用户目录副本。
     ipcMain.on('persistent-presets:hydrate', (event, values) => {
-        try { event.returnValue = { ok: true, values: persistentPresetStore.hydrate(values) }; }
+        try { assertTrustedRenderer(event); event.returnValue = { ok: true, values: persistentPresetStore.hydrate(values) }; }
         catch (error) { event.returnValue = { ok: false, error: error.message, values: {} }; }
     });
-    ipcMain.handle('persistent-presets:save', async (_event, values) => {
+    handleTrusted('persistent-presets:save', async (_event, values) => {
         try { return { ok: true, ...persistentPresetStore.writeSnapshot(values) }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
-    ipcMain.handle('export-overlay-preset-package', async (_event, presets) => {
+    handleTrusted('export-overlay-preset-package', async (_event, presets) => {
         const result = await dialog.showSaveDialog(mainWindow, { title: '导出含媒体的覆层预设包', defaultPath: `overlay_presets_${Date.now()}.zip`, filters: [{ name: 'VideoKit 预设包', extensions: ['zip'] }] });
         if (result.canceled || !result.filePath) return { ok: false, canceled: true };
         try { return { ok: true, ...(await overlayPresetPackage.exportPackage({ presets, outputPath: result.filePath })), path: result.filePath }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
-    ipcMain.handle('import-overlay-preset-package', async (_event, packagePath) => {
+    handleTrusted('import-overlay-preset-package', async (_event, packagePath) => {
         try { return { ok: true, ...(await overlayPresetPackage.importPackage({ packagePath, destinationDir: path.join(app.getPath('userData'), 'videokit-presets', 'imported-overlay-assets') })) }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
-    ipcMain.handle('save-overlay-preset-assets', async (_event, preset) => {
+    handleTrusted('save-overlay-preset-assets', async (_event, preset) => {
         try { return { ok: true, ...(await overlayPresetPackage.savePresetAssets({ preset, destinationDir: path.join(app.getPath('userData'), 'videokit-presets', 'saved-overlay-assets') })) }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
 
-    ipcMain.handle('get-app-version', () => {
+    handleTrusted('get-app-version', () => {
         return app.getVersion();
     });
 
-    ipcMain.handle('select-directory', async () => {
+    handleTrusted('select-directory', async () => {
         const result = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory', 'createDirectory'],
             title: '选择输出目录'
@@ -924,7 +935,7 @@ app.whenReady().then(async () => {
         return null;
     });
 
-    ipcMain.handle('select-directories', async () => {
+    handleTrusted('select-directories', async () => {
         const result = await dialog.showOpenDialog(mainWindow, {
             properties: ['openDirectory', 'multiSelections'],
             title: '选择多个视频文件夹（每个文件夹创建一个任务）'
@@ -932,7 +943,7 @@ app.whenReady().then(async () => {
         return !result.canceled ? result.filePaths : [];
     });
 
-    ipcMain.handle('select-files', async (event, options = {}) => {
+    handleTrusted('select-files', async (event, options = {}) => {
         const props = options.properties || ['openFile'];
         if (options.multiple !== false && !props.includes('multiSelections')) props.push('multiSelections');
         const dialogOpts = {
@@ -948,7 +959,7 @@ app.whenReady().then(async () => {
         return null;
     });
 
-    ipcMain.handle('save-file', async (_event, options = {}) => {
+    handleTrusted('save-file', async (_event, options = {}) => {
         const dialogOpts = {
             title: options.title || '保存文件',
         };
@@ -965,7 +976,7 @@ app.whenReady().then(async () => {
         return { success: true, filePath: result.filePath };
     });
 
-    ipcMain.handle('scan-directory', async (event, dirPath) => {
+    handleTrusted('scan-directory', async (event, dirPath) => {
         const fs = require('fs');
         const pathModule = require('path');
         try {
@@ -1006,7 +1017,7 @@ app.whenReady().then(async () => {
     // Recursively scan source media while keeping every descendant attached to
     // the selected top-level task folder. Generated output/backup directories
     // are excluded so a later rescan cannot import finished videos as sources.
-    ipcMain.handle('scan-directory-recursive', async (event, dirPath, options = {}) => {
+    handleTrusted('scan-directory-recursive', async (event, dirPath, options = {}) => {
         const fs = require('fs');
         const pathModule = require('path');
         const maxDepth = Math.max(0, Math.min(50, Number(options.maxDepth) || 20));
@@ -1049,7 +1060,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 递归搜索指定文件名（查找素材功能）
-    ipcMain.handle('search-files-recursive', async (event, searchDir, fileNames, maxDepth = 5) => {
+    handleTrusted('search-files-recursive', async (event, searchDir, fileNames, maxDepth = 5) => {
         const result = new Map();
         const targetSet = new Set(fileNames.map(n => n.toLowerCase()));
 
@@ -1080,7 +1091,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 批量检查文件是否存在
-    ipcMain.handle('check-files-exist', async (event, filePaths) => {
+    handleTrusted('check-files-exist', async (event, filePaths) => {
         const results = {};
         for (const p of filePaths) {
             try { results[p] = fs.existsSync(p); } catch (_) { results[p] = false; }
@@ -1088,7 +1099,7 @@ app.whenReady().then(async () => {
         return results;
     });
 
-    ipcMain.handle('get-downloads-path', async () => {
+    handleTrusted('get-downloads-path', async () => {
         try {
             return app.getPath('downloads');
         } catch (e) {
@@ -1097,7 +1108,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 批量Reels - 烧录字幕到视频
-    ipcMain.handle('burn-subtitles', async (event, { videoPath, assContent, outputPath, crf, useGPU }) => {
+    handleTrusted('burn-subtitles', async (event, { videoPath, assContent, outputPath, crf, useGPU }) => {
         const { execFile, spawnSync } = require('child_process');
         const settingsService = require('./services/settings');
         const assPath = settingsService.secureTmpFile('reels_sub', '.ass');
@@ -1167,7 +1178,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 批量Reels - 合成背景+配音+字幕（直连通道，避免依赖 apiRouter 路由版本）
-    ipcMain.handle('reels-compose', async (event, payload) => {
+    handleTrusted('reels-compose', async (event, payload) => {
         const data = payload || {};
         if (!data.background_path) throw new Error('缺少背景素材路径');
         if (!data.voice_path) throw new Error('缺少配音音频路径');
@@ -1193,7 +1204,7 @@ app.whenReady().then(async () => {
 
     // IPC: WYSIWYG 逐帧渲染导出（与 Canvas 预览 100% 一致）
     const { handleWysiwygIPC, attachFramePipeline, parallelExport } = require('./services/ffmpeg-rawvideo');
-    ipcMain.handle('reels-compose-wysiwyg', async (event, action, data) => {
+    handleTrusted('reels-compose-wysiwyg', async (event, action, data) => {
         const result = await handleWysiwygIPC(action, data);
         // 隐藏 renderer 若被系统终止，确保它启动的 FFmpeg 会话也被回收。
         if (action === 'start' && typeof result === 'string') {
@@ -1205,11 +1216,12 @@ app.whenReady().then(async () => {
         return result;
     });
     // Reels 插入素材：只分析本地音轨停顿，不调用外部 AI 服务。
-    ipcMain.handle('reels-detect-silence', async (event, data = {}) => {
+    handleTrusted('reels-detect-silence', async (event, data = {}) => {
         if (!data.filePath) throw new Error('缺少待检测的音视频文件');
         return ffmpegService.detectSilence(data.filePath, Number(data.noiseDb ?? -35), Number(data.minDuration ?? .35));
     });
     ipcMain.on('reels-frame-pipeline-open', (event, data = {}) => {
+        try { assertTrustedRenderer(event); } catch { return; }
         const { port1, port2 } = new MessageChannelMain();
         const result = attachFramePipeline(data.sessionId, port1);
         try {
@@ -1224,14 +1236,14 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 并行影子窗口导出（V3 多切片渲染）
-    ipcMain.handle('parallel-wysiwyg-export', async (event, opts) => {
+    handleTrusted('parallel-wysiwyg-export', async (event, opts) => {
         return parallelExport(opts, mainWindow);
     });
-    ipcMain.handle('get-latest-crash-diagnostic', () => getLatestRendererCrashReport());
+    handleTrusted('get-latest-crash-diagnostic', () => getLatestRendererCrashReport());
 
     // 每个队列任务使用一次性隐藏 renderer。任务完成后销毁窗口，Chromium 会把
     // 该任务的 Canvas、图片与媒体解码缓存整体归还，不再累积到主界面进程。
-    ipcMain.handle('isolated-wysiwyg-export', async (event, opts = {}) => {
+    handleTrusted('isolated-wysiwyg-export', async (event, opts = {}) => {
         const requestId = String(opts.requestId || `isolated-${Date.now()}`);
         if (isolatedReelsRenderers.has(requestId)) throw new Error('后台渲染任务 ID 重复');
         const owner = event.sender;
@@ -1322,17 +1334,18 @@ app.whenReady().then(async () => {
         });
     });
     ipcMain.on('cancel-isolated-wysiwyg-export', (_event, requestId) => {
+        try { assertTrustedRenderer(_event); } catch { return; }
         const win = isolatedReelsRenderers.get(String(requestId || ''));
         if (win && !win.isDestroyed()) win.webContents.send('isolated-wysiwyg-cancel');
     });
 
     // IPC: 视频首尾拼接 (Hook -> Main)
-    ipcMain.handle('concat-video', async (event, payload) => {
+    handleTrusted('concat-video', async (event, payload) => {
         return ffmpegService.concatVideo(payload);
     });
 
     // IPC: 保存 Web Audio 离线渲染的音频（WYSIWYG 混音）
-    ipcMain.handle('save-rendered-audio', async (event, wavData) => {
+    handleTrusted('save-rendered-audio', async (event, wavData) => {
         const settingsService = require('./services/settings');
         const tmpPath = settingsService.secureTmpFile('reels_rendered_audio', '.wav');
         const buffer = Buffer.from(wavData);
@@ -1342,7 +1355,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 保存 PNG 帧（分层 PNG 序列导出用）
-    ipcMain.handle('save-png-frame', async (event, { outputPath: pngPath, rawRGBA, width, height, isPng }) => {
+    handleTrusted('save-png-frame', async (event, { outputPath: pngPath, rawRGBA, width, height, isPng }) => {
         try {
             // 已经是 PNG 数据，直接写入
             if (isPng) {
@@ -1391,7 +1404,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 导出音频为 MP3（分层 PNG 序列导出用）
-    ipcMain.handle('export-audio-mp3', async (event, { inputPath, outputPath: mp3Path, volume, startTime = 0 }) => {
+    handleTrusted('export-audio-mp3', async (event, { inputPath, outputPath: mp3Path, volume, startTime = 0 }) => {
         if (!inputPath || !fs.existsSync(inputPath)) {
             return { ok: false, error: `音频文件不存在或已被移动，请重新选择：${inputPath || '未选择文件'}` };
         }
@@ -1422,7 +1435,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 确保目录存在
-    ipcMain.handle('ensure-directory', async (event, dirPath) => {
+    handleTrusted('ensure-directory', async (event, dirPath) => {
         try {
             if (!fs.existsSync(dirPath)) {
                 fs.mkdirSync(dirPath, { recursive: true });
@@ -1435,7 +1448,7 @@ app.whenReady().then(async () => {
 
     // 将文案自动剪辑的“可二剪工程”整理到成片旁。只复制，不移动或删除原文件；
     // 重复执行会更新同名工程文件夹，避免用户在多个目录里找素材。
-    ipcMain.handle('collect-reels-project-assets', async (event, payload = {}) => {
+    handleTrusted('collect-reels-project-assets', async (event, payload = {}) => {
         const outputPath = String(payload.outputPath || '');
         if (!outputPath || !path.isAbsolute(outputPath)) return { ok: false, error: '缺少有效的成片路径' };
         const outputDir = path.dirname(outputPath);
@@ -1492,7 +1505,7 @@ app.whenReady().then(async () => {
 
     // Reels 最终导出可选择在最终成片旁再复制一份工程包。只复制，不移动源工程；
     // 这样既保留自动剪辑输出处的原工程，也方便把成片和二剪资料一起交付或归档。
-    ipcMain.handle('copy-reels-project-package', async (event, payload = {}) => {
+    handleTrusted('copy-reels-project-package', async (event, payload = {}) => {
         const sourceProjectDir = String(payload.sourceProjectDir || '');
         const outputPath = String(payload.outputPath || '');
         if (!sourceProjectDir || !path.isAbsolute(sourceProjectDir) || !fs.existsSync(sourceProjectDir) || !fs.statSync(sourceProjectDir).isDirectory()) {
@@ -1620,16 +1633,16 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 获取媒体时长
-    ipcMain.handle('get-media-duration', async (event, filePath) => {
+    handleTrusted('get-media-duration', async (event, filePath) => {
         return ffmpegService.getDuration(filePath);
     });
-    ipcMain.handle('get-media-duration-detail', async (event, filePath) => {
+    handleTrusted('get-media-duration-detail', async (event, filePath) => {
         return ffmpegService.getDurationDetailed(filePath);
     });
 
     // IPC: 读取音频文件为 WAV Buffer（供渲染进程的 Web Audio decodeAudioData 使用）
     // 先用 FFmpeg 转成 WAV（支持 mp4/mp3 等任何格式）
-    ipcMain.handle('read-file-buffer', async (event, filePath) => {
+    handleTrusted('read-file-buffer', async (event, filePath) => {
         if (!filePath || !fs.existsSync(filePath)) {
             throw new Error(`文件不存在: ${filePath}`);
         }
@@ -1658,19 +1671,19 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 在 Finder/Explorer 中高亮文件
-    ipcMain.handle('show-item-in-folder', (event, fullPath) => {
+    handleTrusted('show-item-in-folder', (event, fullPath) => {
         if (fullPath && typeof fullPath === 'string') shell.showItemInFolder(fullPath);
     });
 
     // IPC: 用系统默认浏览器打开链接
-    ipcMain.handle('open-external-url', (event, url) => {
+    handleTrusted('open-external-url', (event, url) => {
         if (url && typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
             shell.openExternal(url);
         }
     });
 
     // IPC: 获取 Google Fonts 目录，绕过 CORS
-    ipcMain.handle('fetch-google-fonts', async () => {
+    handleTrusted('fetch-google-fonts', async () => {
         try {
             const { net } = require('electron');
             const response = await net.fetch('https://fonts.google.com/metadata/fonts', {
@@ -1686,7 +1699,7 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 扫描本地字体目录 + 系统字体
-    ipcMain.handle('scan-fonts', async () => {
+    handleTrusted('scan-fonts', async () => {
         try {
             const os = require('os');
             const fontExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc', '.dfont']);
@@ -1834,7 +1847,7 @@ app.whenReady().then(async () => {
     });
 
     // ==================== IPC 处理 - 缓存管理 ====================
-    ipcMain.handle('get-cache-info', async () => {
+    handleTrusted('get-cache-info', async () => {
         const userDataPath = app.getPath('userData');
         const cacheDirs = ['Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'blob_storage'];
         let totalSize = 0;
@@ -1856,7 +1869,7 @@ app.whenReady().then(async () => {
         return { path: userDataPath, totalSize, details };
     });
 
-    ipcMain.handle('clear-cache', async () => {
+    handleTrusted('clear-cache', async () => {
         const userDataPath = app.getPath('userData');
         const cacheDirs = ['Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'blob_storage'];
         let freedSize = 0;
@@ -1887,12 +1900,12 @@ app.whenReady().then(async () => {
         return { ok: true, freedSize };
     });
 
-    ipcMain.handle('open-cache-folder', () => {
+    handleTrusted('open-cache-folder', () => {
         const userDataPath = app.getPath('userData');
         shell.openPath(userDataPath);
     });
 
-    ipcMain.handle('set-cache-path', async (event, newPath) => {
+    handleTrusted('set-cache-path', async (event, newPath) => {
         if (!newPath) {
             // 清除自定义路径，恢复默认
             try { fs.unlinkSync(_cacheConfigPath); } catch (_) {}
@@ -1937,7 +1950,7 @@ app.whenReady().then(async () => {
     log('API handlers registered - no Python backend needed');
 
     // ==================== 屏幕取色器（解决 Windows 吸管无法吸取窗口外颜色） ====================
-    ipcMain.handle('screen-pick-color', async () => {
+    handleTrusted('screen-pick-color', async () => {
         try {
             // 获取主显示器信息
             const primaryDisplay = screen.getPrimaryDisplay();
@@ -2118,7 +2131,7 @@ app.whenReady().then(async () => {
     });
 
     // ==================== 模板多窗口支持 ====================
-    ipcMain.handle('open-template-window', (event, templateId, templateName) => {
+    handleTrusted('open-template-window', (event, templateId, templateName) => {
         // 如果已有该模板的窗口，聚焦它
         if (templateWindows.has(templateId)) {
             const existingWin = templateWindows.get(templateId);
@@ -2151,6 +2164,13 @@ app.whenReady().then(async () => {
         }
 
         const win = new BrowserWindow(winOpts);
+        win.webContents.on('will-navigate', (event, url) => {
+            if (!isTrustedRendererUrl(url, { packaged: app.isPackaged, port: DEV_SERVER_PORT })) event.preventDefault();
+        });
+        win.webContents.setWindowOpenHandler(({ url }) => {
+            if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+            return { action: 'deny' };
+        });
 
         // 通过 URL hash 传递模板 ID，前端启动时读取
         if (!app.isPackaged) {
@@ -2186,10 +2206,10 @@ app.whenReady().then(async () => {
     } else {
         log('[Updater] 开发模式，跳过自动更新初始化');
         // 开发模式下注册 fallback handler，避免前端报错
-        ipcMain.handle('get-update-channel', () => ({
+        handleTrusted('get-update-channel', () => ({
             channel: 'stable', currentVersion: app.getVersion(), isBeta: false,
         }));
-        ipcMain.handle('set-update-channel', () => ({ success: true, channel: 'stable' }));
+        handleTrusted('set-update-channel', () => ({ success: true, channel: 'stable' }));
     }
 });
 

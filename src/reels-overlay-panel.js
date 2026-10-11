@@ -3588,7 +3588,7 @@ class ReelsOverlayPanel {
             const bindSelect = this.container.querySelector('#rop-bind-scroll-target');
             if (bindSelect) {
                 const curVal = ov.bind_scroll_overlay_id || '';
-                let opts = '<option value="">— 不绑定 —</option>';
+                bindSelect.replaceChildren(new Option('— 不绑定 —', ''));
                 const mgr = this.videoCanvas && this.videoCanvas.overlayMgr;
                 if (mgr && mgr.overlays) {
                     mgr.overlays.forEach(o => {
@@ -3597,12 +3597,11 @@ class ReelsOverlayPanel {
                         }
                         if (o.type === 'scroll') {
                             const label = o.name || o.scroll_title || o.content?.slice(0, 20) || o.id;
-                            const sel = o.id === curVal ? ' selected' : '';
-                            opts += `<option value="${o.id}"${sel}>${label}</option>`;
+                            bindSelect.add(new Option(String(label), String(o.id), false, o.id === curVal));
                         }
                     });
                 }
-                bindSelect.innerHTML = opts;
+
             }
         }
 

@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.4.40",
+  "version": "4.4.41",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -95,8 +95,20 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "vendor/darwin/python",
+          "to": "vendor/python",
+          "filter": [
+            "**/*",
+            "!**/__pycache__/**",
+            "!**/test/**",
+            "!**/tests/**"
+          ]
         }
-      ]
+      ],
+      "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
+      "identity": "-"
     },
     "win": {
       "target": [
