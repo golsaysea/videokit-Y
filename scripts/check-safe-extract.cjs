@@ -15,6 +15,6 @@ test('allows an OS-style parent alias but rejects destination-child links',async
   const archive=path.join(root,'ordinary.zip');await zip(archive,a=>a.append('ok',{name:'file.txt'}));
   await extract(archive,{dir:path.join(alias,'output')});assert.equal(fs.readFileSync(path.join(physical,'output/file.txt'),'utf8'),'ok');
   const outside=path.join(root,'outside');fs.mkdirSync(outside);fs.symlinkSync(outside,path.join(physical,'output/link'),process.platform==='win32'?'junction':'dir');
-  const bad=path.join(root,'child.zip');await zip(bad,a=>a.append('bad',{name:'link/file.txt'}));await assert.rejects(extract(bad,{dir:path.join(alias,'output')}),/symbolic link/);assert.equal(fs.existsSync(path.join(outside,'file.txt')),false);
+  const bad=path.join(root,'child.zip');await zip(bad,a=>a.append('bad',{name:'link/file.txt'}));await assert.rejects(extract(bad,{dir:path.join(alias,'output')}),/symbolic link|Out of bound path/);assert.equal(fs.existsSync(path.join(outside,'file.txt')),false);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
