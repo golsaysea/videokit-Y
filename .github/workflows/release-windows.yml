@@ -124,7 +124,7 @@ jobs:
         shell: pwsh
         run: Copy-Item docs/RELEASE_4.4.41.md dist-electron/RELEASE_NOTES.md
       - name: 📤 上传 Windows 产物
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-builds
           path: |
@@ -170,7 +170,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Preserve architecture-specific update metadata
         run: node -e "const fs=require('fs'),yaml=require('js-yaml'); fs.writeFileSync('dist-electron/latest-mac-${{ matrix.arch }}.json',JSON.stringify(yaml.load(fs.readFileSync('dist-electron/latest-mac.yml','utf8'))))"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: macos-${{ matrix.arch }}-builds
           path: |
