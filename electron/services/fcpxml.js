@@ -792,7 +792,7 @@ def main():
 `;
 
     for (const entry of colorEntries) {
-        script += `        ${entry.index}: ("${entry.color}", "${entry.name.replace(/"/g, "'")}"),\n`;
+        script += `        ${Number(entry.index) || 0}: (${JSON.stringify(String(entry.color || ''))}, ${JSON.stringify(String(entry.name || ''))}),\n`;
     }
 
     script += `    }

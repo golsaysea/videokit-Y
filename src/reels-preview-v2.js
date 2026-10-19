@@ -306,7 +306,7 @@
                     <input class="rpv2-seek" data-role="seek" type="range" min="0" max="1000" value="0" step="1">
                     <label class="rpv2-check" title="循环播放"><input data-role="loop" type="checkbox" checked>循环</label>
                     <label class="rpv2-check" title="预览与导出字幕总开关：关闭后，导出的视频也不会带字幕"><input data-role="subs" type="checkbox" checked>字幕(关闭=导出不带)</label>
-                    <label class="rpv2-check" title="仅在预览中显示/隐藏覆层，不改变导出设置"><input data-role="overlays" type="checkbox" checked>覆层(预览)</label>
+                    <label class="rpv2-check" title="预览与导出覆层总开关：关闭后，导出的视频也不会带覆层"><input data-role="overlays" type="checkbox" checked>覆层(关闭=导出不带)</label>
                     <button class="rpv2-icon-btn" data-action="fit" title="适应窗口">适</button>
                     <button class="rpv2-icon-btn" data-action="zoom-out" title="缩小">−</button>
                     <span class="rpv2-zoom-label" data-role="zoom-label">100%</span>
@@ -345,6 +345,16 @@
             if (exportSubtitleToggle) exportSubtitleToggle.checked = subtitleToggle.checked;
             if (typeof window.reelsOnSubtitleToggleChange === 'function') {
                 window.reelsOnSubtitleToggleChange(exportSubtitleToggle || subtitleToggle);
+            }
+            render();
+        });
+        const overlayToggle = root.querySelector('[data-role="overlays"]');
+        const exportOverlayToggle = document.getElementById('reels-overlay-toggle');
+        if (overlayToggle && exportOverlayToggle) overlayToggle.checked = exportOverlayToggle.checked;
+        overlayToggle?.addEventListener('change', () => {
+            if (exportOverlayToggle) exportOverlayToggle.checked = overlayToggle.checked;
+            if (typeof window.reelsOnOverlayToggleChange === 'function') {
+                window.reelsOnOverlayToggleChange(exportOverlayToggle || overlayToggle);
             }
             render();
         });
@@ -1525,7 +1535,7 @@
             const segment = findActiveSegment(task, time, style);
             if (!segment) return;
             if (typeof state.renderer.setContextSegments === 'function') {
-                state.renderer.setContextSegments(task.segments || [segment]);
+                state.renderer.setContextSegments(task.segments || [segment], task.ttsText || task.aiScript || '');
             }
             state.renderer.renderSubtitle(style, segment, time, w, h);
         } catch (err) {
@@ -1579,7 +1589,7 @@
             try {
                 // Preview must never inherit a stale/concurrent export marker,
                 // otherwise ReelsOverlay intentionally suppresses guide boxes.
-                const previewOv = { ...ov, _allOverlays: drawable, _exporting: false };
+                const previewOv = { ...ov, _allOverlays: drawable, _taskSegments: task.segments, _exporting: false };
                 window.ReelsOverlay.drawOverlay(ctx, previewOv, time, w, h);
                 // Keep computed bounds available to hit-testing/property UI.
                 for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX']) {

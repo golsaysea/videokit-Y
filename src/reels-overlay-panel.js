@@ -41,6 +41,7 @@ class ReelsOverlayPanel {
         this._renderRaf = requestAnimationFrame(() => {
             this._renderRaf = null;
             if (this.videoCanvas) this.videoCanvas.render();
+            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
         });
     }
 
@@ -81,6 +82,14 @@ class ReelsOverlayPanel {
             <!-- 覆层组预设 (多层) -->
             <div class="rop-section">
                 <div class="rop-group">
+                    <div class="rop-scope-row" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">
+                        <label for="rop-style-scope" style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;margin:0;">样式作用:</label>
+                        <select id="rop-style-scope" class="rop-select" style="flex:1;min-width:120px;font-size:11px;" title="选择覆层组预设加载与样式修改的作用范围（默认作用于当前任务队列）">
+                            <option value="folder" selected>当前队列</option>
+                            <option value="all">所有队列</option>
+                            <option value="task">仅当前任务</option>
+                        </select>
+                    </div>
                     <div class="rop-group-title">覆层组预设</div>
                     <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
                         <select id="rop-group-preset-select" class="rop-select" style="flex:1;min-width:110px;"></select>
@@ -145,8 +154,8 @@ class ReelsOverlayPanel {
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                         <div class="rop-group-title" style="margin:0;">卡片模板</div>
                         <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--text-primary); margin:0;">
-                            <input type="checkbox" id="rop-card-apply-all">
-                            <span title="批量生成的任务会限制在当前任务组内">应用到当前任务组</span>
+                            <input type="checkbox" id="rop-card-apply-all" checked>
+                            <span title="按顶部【样式作用】范围同步样式">同步到作用范围</span>
                         </label>
                     </div>
                     <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
@@ -507,8 +516,8 @@ class ReelsOverlayPanel {
                     <div style="display:flex;justify-content:space-between;align-items:center;">
                         <div class="rop-group-title" style="margin:0;">滚动字幕</div>
                         <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--text-primary); margin:0;">
-                            <input type="checkbox" id="rop-scroll-apply-all">
-                            <span title="批量生成的任务会限制在当前任务组内">应用到当前任务组</span>
+                            <input type="checkbox" id="rop-scroll-apply-all" checked>
+                            <span title="按顶部【样式作用】范围同步样式">同步到作用范围</span>
                         </label>
                     </div>
 
@@ -654,6 +663,134 @@ class ReelsOverlayPanel {
                         <label>背景水平内边距</label><input type="number" id="rop-scroll-body-bg-pad-h" class="rop-input" min="0" max="200" value="0">
                         <label>背景上边距</label><input type="number" id="rop-scroll-body-bg-pad-top" class="rop-input" min="0" max="200" value="0">
                         <label>背景下边距</label><input type="number" id="rop-scroll-body-bg-pad-bottom" class="rop-input" min="0" max="200" value="0">
+                    </div>
+
+                    <!-- ②-b 出字效果（朗诵打字机 / 手写跟读） -->
+                    <div class="rop-group-title" style="margin-top:8px;">✍️ 出字效果</div>
+                    <div class="rop-grid">
+                        <label style="font-weight:700;color:#fde68a;">开启出字效果</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-enabled">
+                            <span style="font-size:11px;color:var(--text-muted);">关闭则保持原版正常滚动</span>
+                        </div>
+
+                        <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="quill" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.12);color:#fde68a;cursor:pointer;">🪶 羽毛笔朗诵写出</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rose" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🌹 玫瑰花朗诵写出</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="image" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.12);color:#bae6fd;cursor:pointer;">🖼 上传图片朗诵写出</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="readfollow" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#bbf7d0;cursor:pointer;">📖 原文不透明跟读高亮</button>
+                        </div>
+
+                        <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-speech-sync" checked>
+                            <span style="font-size:11px;color:var(--text-muted);">按语音对齐时间出字(含停顿)</span>
+                        </div>
+
+                        <label>出字粒度</label>
+                        <select id="rop-scroll-tw-reveal-type" class="rop-select">
+                            <option value="char">逐字写出 (字母/单字，如手写)</option>
+                            <option value="word">逐词出现/跟读 (按单词高亮)</option>
+                            <option value="sentence">逐句出现 (按句子)</option>
+                        </select>
+
+                        <label title="0%=未读的字完全透明（像写出来一样）；100%=未读的字完全不透明（正常显示全文，读到哪个词触发效果）">未读字透明度%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-unrevealed-opacity" class="rop-range" min="0" max="100" step="5" value="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-unrevealed-opacity" min="0" max="100" step="5" value="0">
+                        </div>
+                        <div style="grid-column: span 2; display:flex; gap:4px; margin-bottom:2px;">
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="0" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">0% 全透明写出</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="35" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">35% 半透明底字</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="100" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">100% 不透明跟读</button>
+                        </div>
+
+                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">读到当前词效果</div>
+                        <label>当前词高亮色</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-active-highlight" checked title="读到该字/词时变色高亮">
+                            <input type="color" id="rop-scroll-tw-active-color" class="rop-color" value="#FFD700" style="flex:1;">
+                        </div>
+                        <label title="100%=不放大；>100% 时读到该词会放大强调">当前词缩放%</label>
+                        <input type="number" id="rop-scroll-tw-active-scale" class="rop-input" min="80" max="200" step="5" value="100">
+
+                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">跟随笔尖 / 光标</div>
+                        <label>显示跟随笔尖</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-cursor-enabled" checked>
+                            <span style="font-size:11px;color:var(--text-muted);">在书写位置显示笔尖或光标</span>
+                        </div>
+                        <label>笔尖样式</label>
+                        <select id="rop-scroll-tw-cursor-kind" class="rop-select">
+                            <option value="quill">🪶 复古羽毛笔</option>
+                            <option value="rose">🌹 红玫瑰花</option>
+                            <option value="fountain_pen">🖋️ 黑金钢笔尖</option>
+                            <option value="brush">🖌️ 东方水墨毛笔</option>
+                            <option value="pencil">✏️ 经典木铅笔</option>
+                            <option value="sparkle_wand">✨ 星光魔法棒</option>
+                            <option value="butterfly">🦋 灵动金粉蝴蝶</option>
+                            <option value="candle_flame">🕯️ 温暖摇曳烛火</option>
+                            <option value="dove">🕊️ 圣洁和平白鸽</option>
+                            <option value="heart">❤️ 立体发光红心</option>
+                            <option value="leaf">🍃 清新翠绿嫩叶</option>
+                            <option value="sakura">🌸 浪漫粉白樱花</option>
+                            <option value="crown">👑 璀璨金色皇冠</option>
+                            <option value="music_note">🎵 律动金色音符</option>
+                            <option value="cross_light">✝️ 光芒十字架</option>
+                            <option value="feather_gold">🪽 鎏金神圣金羽</option>
+                            <option value="image">🖼 自定义图片 (PNG/WebP/GIF)</option>
+                            <option value="char">| 文本光标</option>
+                        </select>
+
+                        <div style="grid-column: span 2; margin: 2px 0 4px 0;">
+                            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">点选内置笔尖小图标（共16款矢量图标 + 自定义传图）：</div>
+                            <div id="rop-scroll-tw-icon-grid" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;">
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="quill" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="quill" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>羽毛笔</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="rose" data-angle="-12" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="rose" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>玫瑰花</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="fountain_pen" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="fountain_pen" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>钢笔尖</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="brush" data-angle="-10" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="brush" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>水墨笔</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="pencil" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="pencil" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>木铅笔</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sparkle_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sparkle_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>魔法棒</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="butterfly" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="butterfly" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金粉蝶</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="candle_flame" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="candle_flame" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>暖烛火</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="dove" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="dove" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>和平鸽</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="heart" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>红心</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="leaf" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="leaf" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>翠绿叶</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sakura" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sakura" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>樱花瓣</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="crown" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="crown" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金皇冠</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="music_note" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="music_note" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金音符</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cross_light" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cross_light" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>十字光</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="feather_gold" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="feather_gold" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣金羽</span></button>
+                            </div>
+                        </div>
+
+                        <div id="rop-scroll-tw-cursor-image-row" style="grid-column: span 2; display:none; padding:6px; border-radius:6px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);">
+                            <input type="hidden" id="rop-scroll-tw-cursor-image" value="">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                <button type="button" id="rop-scroll-tw-cursor-upload-btn" class="btn btn-secondary" style="padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer;">📂 选择笔尖图片...</button>
+                                <img id="rop-scroll-tw-cursor-preview" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);display:none;">
+                                <span id="rop-scroll-tw-cursor-name" style="font-size:10px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传图片</span>
+                            </div>
+                            <div class="rop-grid" style="margin-top:4px;">
+                                <label title="图片对齐到出字点的水平位置（0=最左，50=居中，100=最右）">笔尖锚点X%</label>
+                                <input type="number" id="rop-scroll-tw-cursor-anchor-x" class="rop-input" min="0" max="100" step="1" value="15">
+                                <label title="图片对齐到出字点的垂直位置（0=最上，50=居中，100=最下）">笔尖锚点Y%</label>
+                                <input type="number" id="rop-scroll-tw-cursor-anchor-y" class="rop-input" min="0" max="100" step="1" value="85">
+                            </div>
+                        </div>
+
+                        <label>笔尖大小</label>
+                        <input type="number" id="rop-scroll-tw-cursor-scale" class="rop-input" min="0.2" max="4" step="0.1" value="1.1">
+                        <label>笔尖偏移X</label>
+                        <input type="number" id="rop-scroll-tw-cursor-offset-x" class="rop-input" min="-300" max="300" step="2" value="0">
+                        <label>笔尖偏移Y</label>
+                        <input type="number" id="rop-scroll-tw-cursor-offset-y" class="rop-input" min="-300" max="300" step="2" value="0">
+                        <label>笔尖角度°</label>
+                        <input type="number" id="rop-scroll-tw-cursor-angle" class="rop-input" min="-180" max="180" step="5" value="-8">
+                        <label>光标字符</label>
+                        <input type="text" id="rop-scroll-tw-cursor-char" class="rop-input" value="|" maxlength="4">
+                        <label>光标颜色</label>
+                        <input type="color" id="rop-scroll-tw-cursor-color" class="rop-color" value="#FFD700">
                     </div>
 
                     <!-- ③ 滚动运动：位置参数 -->
@@ -1519,6 +1656,32 @@ class ReelsOverlayPanel {
             });
         }
 
+        // Overlay style scope (当前队列 / 所有队列 / 仅当前任务)
+        const styleScopeEl = this.container.querySelector('#rop-style-scope');
+        if (styleScopeEl) {
+            if (this.videoCanvas?.scopedTask) {
+                const scopeRow = styleScopeEl.closest('.rop-scope-row');
+                if (scopeRow) scopeRow.style.display = 'none';
+            }
+            styleScopeEl.addEventListener('change', () => {
+                const scope = styleScopeEl.value || 'folder';
+                const shouldSync = scope !== 'task';
+                const cardApplyAll = this.container.querySelector('#rop-card-apply-all');
+                const scrollApplyAll = this.container.querySelector('#rop-scroll-apply-all');
+                if (cardApplyAll) cardApplyAll.checked = shouldSync;
+                if (scrollApplyAll) scrollApplyAll.checked = shouldSync;
+                if (shouldSync) {
+                    const overlays = this.videoCanvas?.overlayMgr?.overlays || [];
+                    if (overlays.length > 0) {
+                        const presetSelect = this.container.querySelector('#rop-group-preset-select');
+                        const selectedTask = window._reelsState?.tasks?.[window._reelsState?.selectedIdx];
+                        const activePresetName = selectedTask?._overlayPresetName || presetSelect?.value || '';
+                        this._applyPresetLayersToScopeTasks(activePresetName, overlays, { loadMode: 'replace', textMode: 'keep' });
+                    }
+                }
+            });
+        }
+
         // Overlay group presets
         this.container.querySelector('#rop-group-preset-update')?.addEventListener('click', () => this._updateOverlayGroupPreset());
         this.container.querySelector('#rop-group-preset-save')?.addEventListener('click', () => this._saveOverlayGroupPreset());
@@ -1565,16 +1728,7 @@ class ReelsOverlayPanel {
                 }
                 if (ov.type === 'image') ov.scale = 1;
                 this._syncFromOverlay(ov);
-                
-                const applyAllEl = this.container.querySelector('#rop-card-apply-all');
-                if (ov.type === 'textcard' && applyAllEl && applyAllEl.checked) {
-                    this._applyTextcardStyleToAllTasks(ov);
-                }
-                const scrollApplyAllEl = this.container.querySelector('#rop-scroll-apply-all');
-                if (ov.type === 'scroll' && scrollApplyAllEl && scrollApplyAllEl.checked) {
-                    this._applyScrollStyleToAllTasks(ov);
-                }
-                
+                this._syncOverlayStyleToScopeTasks(ov);
                 if (this.videoCanvas) this.videoCanvas.render();
             });
         });
@@ -1590,16 +1744,7 @@ class ReelsOverlayPanel {
                 ov.h = 1920;
                 if (ov.type === 'image') ov.scale = 1;
                 this._syncFromOverlay(ov);
-                
-                const applyAllEl = this.container.querySelector('#rop-card-apply-all');
-                if (ov.type === 'textcard' && applyAllEl && applyAllEl.checked) {
-                    this._applyTextcardStyleToAllTasks(ov);
-                }
-                const scrollApplyAllEl = this.container.querySelector('#rop-scroll-apply-all');
-                if (ov.type === 'scroll' && scrollApplyAllEl && scrollApplyAllEl.checked) {
-                    this._applyScrollStyleToAllTasks(ov);
-                }
-                
+                this._syncOverlayStyleToScopeTasks(ov);
                 if (this.videoCanvas) this.videoCanvas.render();
             });
         });
@@ -1737,6 +1882,7 @@ class ReelsOverlayPanel {
             'rop-scroll-title-deco-opacity',
             'rop-scroll-font', 'rop-scroll-fontsize',
             'rop-scroll-color', 'rop-scroll-bold', 'rop-scroll-weight',
+            'rop-scroll-uppercase', 'rop-scroll-letterspacing',
             'rop-scroll-align', 'rop-scroll-linespacing', 'rop-scroll-textw',
             'rop-scroll-text-direction',
             'rop-scroll-stroke-color', 'rop-scroll-stroke-width',
@@ -1762,6 +1908,14 @@ class ReelsOverlayPanel {
             'rop-scroll-bg-border-enabled', 'rop-scroll-bg-border-sides', 'rop-scroll-bg-border-color', 'rop-scroll-bg-border-width',
             'rop-scroll-bg-border-style', 'rop-scroll-bg-border-opacity',
             'rop-scroll-bg-blur-enabled', 'rop-scroll-bg-blur-amount',
+            // 滚动字幕出字效果
+            'rop-scroll-tw-enabled', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
+            'rop-scroll-tw-unrevealed-opacity',
+            'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color', 'rop-scroll-tw-active-scale',
+            'rop-scroll-tw-cursor-enabled', 'rop-scroll-tw-cursor-kind', 'rop-scroll-tw-cursor-image',
+            'rop-scroll-tw-cursor-anchor-x', 'rop-scroll-tw-cursor-anchor-y',
+            'rop-scroll-tw-cursor-scale', 'rop-scroll-tw-cursor-offset-x', 'rop-scroll-tw-cursor-offset-y',
+            'rop-scroll-tw-cursor-angle', 'rop-scroll-tw-cursor-char', 'rop-scroll-tw-cursor-color',
             // 文字翻转器
             'rop-flipper-enabled', 'rop-flipper-duration', 'rop-flipper-lines', 'rop-flipper-loop', 'rop-flipper-effect', 'rop-flipper-transition-duration'
         ];
@@ -1770,6 +1924,83 @@ class ReelsOverlayPanel {
             if (!el) continue;
             el.addEventListener('input', () => this._syncToOverlay());
             el.addEventListener('change', () => this._syncToOverlay());
+        }
+
+        // 滚动字幕出字效果：快捷按钮、16款小图标点选与图片上传
+        const scrollTwCursorKindEl = this.container.querySelector('#rop-scroll-tw-cursor-kind');
+        if (scrollTwCursorKindEl) {
+            scrollTwCursorKindEl.addEventListener('change', () => this._syncScrollTypewriterCursorImageUI());
+        }
+        this.container.querySelectorAll('.rop-scroll-tw-icon-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.preventDefault();
+                const kind = chip.dataset.kind || 'quill';
+                const angle = parseFloat(chip.dataset.angle ?? '-8');
+                this._val('rop-scroll-tw-enabled', true);
+                this._val('rop-scroll-tw-cursor-enabled', true);
+                this._val('rop-scroll-tw-cursor-kind', kind);
+                if (Number.isFinite(angle)) {
+                    this._val('rop-scroll-tw-cursor-angle', angle);
+                }
+                this._syncScrollTypewriterCursorImageUI();
+                this._syncToOverlay();
+            });
+        });
+        this.container.querySelectorAll('.rop-scroll-tw-opacity-preset').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const op = parseInt(btn.dataset.opacity ?? '0', 10) || 0;
+                this._val('rop-scroll-tw-enabled', true);
+                this._val('rop-scroll-tw-unrevealed-opacity', op);
+                this._syncToOverlay();
+            });
+        });
+        this.container.querySelectorAll('.rop-scroll-tw-style-preset').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const preset = btn.dataset.preset;
+                this._val('rop-scroll-tw-enabled', true);
+                this._val('rop-scroll-tw-speech-sync', true);
+                if (preset === 'quill') {
+                    this._val('rop-scroll-tw-reveal-type', 'char');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    this._val('rop-scroll-tw-cursor-enabled', true);
+                    this._val('rop-scroll-tw-cursor-kind', 'quill');
+                    this._val('rop-scroll-tw-cursor-scale', 1.15);
+                    this._val('rop-scroll-tw-cursor-angle', -8);
+                } else if (preset === 'rose') {
+                    this._val('rop-scroll-tw-reveal-type', 'char');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    this._val('rop-scroll-tw-cursor-enabled', true);
+                    this._val('rop-scroll-tw-cursor-kind', 'rose');
+                    this._val('rop-scroll-tw-cursor-scale', 1.15);
+                    this._val('rop-scroll-tw-cursor-angle', -12);
+                } else if (preset === 'image') {
+                    this._val('rop-scroll-tw-reveal-type', 'char');
+                    this._val('rop-scroll-tw-cursor-enabled', true);
+                    this._val('rop-scroll-tw-cursor-kind', 'image');
+                    this._syncScrollTypewriterCursorImageUI();
+                    if (!this._get('rop-scroll-tw-cursor-image')) {
+                        await this._uploadScrollTypewriterCursorImage();
+                        return;
+                    }
+                } else if (preset === 'readfollow') {
+                    this._val('rop-scroll-tw-reveal-type', 'word');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#FFD700');
+                    this._val('rop-scroll-tw-active-scale', 110);
+                }
+                this._syncScrollTypewriterCursorImageUI();
+                this._syncToOverlay();
+            });
+        });
+        const scrollTwUploadBtn = this.container.querySelector('#rop-scroll-tw-cursor-upload-btn');
+        if (scrollTwUploadBtn) {
+            scrollTwUploadBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this._uploadScrollTypewriterCursorImage();
+            });
         }
 
         // ── Windows Electron 焦点修复 ──
@@ -2005,7 +2236,7 @@ class ReelsOverlayPanel {
             const rangeEl = this.container.querySelector('#' + linkId);
             if (!rangeEl) return;
             // Range → Number
-            rangeEl.addEventListener('input', () => { numEl.value = rangeEl.value; });
+            rangeEl.addEventListener('input', () => { numEl.value = rangeEl.value; this._syncToOverlay(); });
             // Number → Range
             numEl.addEventListener('input', () => { rangeEl.value = numEl.value; this._syncToOverlay(); });
             numEl.addEventListener('change', () => { rangeEl.value = numEl.value; this._syncToOverlay(); });
@@ -2149,22 +2380,19 @@ class ReelsOverlayPanel {
 
         // VideoCanvas 回调
         if (this.videoCanvas) {
+            const prevOnOverlayChange = typeof this.videoCanvas.onOverlayChange === 'function'
+                ? this.videoCanvas.onOverlayChange.bind(this.videoCanvas)
+                : null;
             this.videoCanvas.onSelect = (ov) => this.selectOverlay(ov);
             this.videoCanvas.onDeselect = () => this.deselectOverlay();
             this.videoCanvas.onOverlayChange = (ov) => {
+                if (prevOnOverlayChange) prevOnOverlayChange(ov);
                 // 列表中的改名、显示开关和上下移动以前没有传 ov，导致这里
                 // 读取 ov.type 时抛错，中断了把最新覆层顺序同步回任务的流程。
                 // 空变更只需要由外层回调保存/重绘，不应把它当作某个覆层的属性变更。
                 if (!ov || typeof ov !== 'object') return;
                 this._syncFromOverlay(ov);
-                const applyAllEl = this.container.querySelector('#rop-card-apply-all');
-                if (ov.type === 'textcard' && applyAllEl && applyAllEl.checked) {
-                    this._applyTextcardStyleToAllTasks(ov);
-                }
-                const scrollApplyAllEl = this.container.querySelector('#rop-scroll-apply-all');
-                if (ov.type === 'scroll' && scrollApplyAllEl && scrollApplyAllEl.checked) {
-                    this._applyScrollStyleToAllTasks(ov);
-                }
+                this._syncOverlayStyleToScopeTasks(ov);
             };
         }
     }
@@ -2832,7 +3060,7 @@ class ReelsOverlayPanel {
             " onmouseover="this.style.borderColor='var(--accent-primary)';this.style.background='var(--hover-bg)'" 
                onmouseout="this.style.borderColor='var(--border-color)';this.style.background='var(--bg-secondary)'">
                 <div style="font-size: 32px;">${item.icon}</div>
-                <div style="font-size: 12px; color: #fff; text-align: center; word-break: break-all; width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${item.name}</div>
+                <div style="font-size: 12px; color: #fff; text-align: center; word-break: break-all; width: 100%; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${this._esc(item.name)}</div>
                 <div style="font-size: 10px; color: #888;">${item.typeLabel}</div>
             </div>
         `).join('');
@@ -2843,7 +3071,7 @@ class ReelsOverlayPanel {
                     <div>
                         <div style="font-size: 16px; font-weight: bold; color: #fff;">固定覆层素材库</div>
                         <div style="font-size: 12px; color: #888; margin-top: 4px; display: flex; gap: 8px; align-items:center;">
-                            ${folderPath}
+                            ${this._esc(folderPath)}
                             <button id="rop-lib-reselect" style="background:none; border:none; color: var(--accent-primary); cursor: pointer; font-size:11px; text-decoration:underline;">更改目录</button>
                         </div>
                     </div>
@@ -3041,15 +3269,16 @@ class ReelsOverlayPanel {
             }
             const opacityStyle = ov.disabled ? 'opacity: 0.5; filter: grayscale(1);' : '';
             const eyeIcon = ov.disabled ? '🙈' : '👁️'; 
-            return `<div class="rop-list-item ${isSelected ? 'selected' : ''}" data-id="${ov.id}" style="${opacityStyle}">
+            const safeId = this._esc(ov.id);
+            return `<div class="rop-list-item ${isSelected ? 'selected' : ''}" data-id="${safeId}" style="${opacityStyle}">
                 <span class="rop-list-arrow">${isSelected ? '▼' : '▶'}</span>
-                ${icon} <span class="rop-list-label">${lockIcon}${label}</span>
+                ${icon} <span class="rop-list-label">${lockIcon}${this._esc(label)}</span>
                 <span class="rop-list-time">${ov.start?.toFixed(1) || 0}s–${(ov.end >= 9999 ? '全程' : (ov.end?.toFixed(1) || 0) + 's')}</span>
-                <button class="rop-list-edit-name" data-id="${ov.id}" title="重命名此图层">✏️</button>
-                <button class="rop-list-toggle-eye" data-id="${ov.id}" title="${ov.disabled ? '启用 (取消隐藏)' : '临时禁用 (隐藏)'}">${eyeIcon}</button>
-                <button class="rop-list-move-up" data-id="${ov.id}" title="层级上移 (置顶/覆盖其他)">⬆️</button>
-                <button class="rop-list-move-down" data-id="${ov.id}" title="层级下移 (置底/被其他覆盖)">⬇️</button>
-                <button class="rop-list-del" data-id="${ov.id}" title="删除此覆层">✕</button>
+                <button class="rop-list-edit-name" data-id="${safeId}" title="重命名此图层">✏️</button>
+                <button class="rop-list-toggle-eye" data-id="${safeId}" title="${ov.disabled ? '启用 (取消隐藏)' : '临时禁用 (隐藏)'}">${eyeIcon}</button>
+                <button class="rop-list-move-up" data-id="${safeId}" title="层级上移 (置顶/覆盖其他)">⬆️</button>
+                <button class="rop-list-move-down" data-id="${safeId}" title="层级下移 (置底/被其他覆盖)">⬇️</button>
+                <button class="rop-list-del" data-id="${safeId}" title="删除此覆层">✕</button>
             </div>`;
         }).join('');
 
@@ -3152,7 +3381,11 @@ class ReelsOverlayPanel {
                 const ov = (this.videoCanvas?.overlayMgr?.overlays || []).find(o => o.id === id);
                 const label = ov ? (ov.name || ov.title_text || ov.content || '').slice(0, 20) || ov.type : id;
                 if (!confirm(`确定删除覆层「${label}」吗？`)) return;
-                this.videoCanvas.overlayMgr.removeOverlay(id);
+                if (typeof this.videoCanvas?.removeOverlay === 'function') {
+                    this.videoCanvas.removeOverlay(id);
+                } else {
+                    this.videoCanvas?.overlayMgr?.removeOverlay(id);
+                }
                 if (this._selectedOv?.id === id) {
                     this._selectedOv = null;
                     this.container.querySelector('#rop-props').style.display = 'none';
@@ -3320,7 +3553,10 @@ class ReelsOverlayPanel {
                 }
             }
         } else {
-            el.value = v ?? '';
+            const isTextInput = (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && !['checkbox', 'color', 'range', 'file', 'radio'].includes(el.type);
+            if (!(isTextInput && el === document.activeElement)) {
+                el.value = v ?? '';
+            }
         }
         if (['rop-font', 'rop-title-font', 'rop-body-font', 'rop-footer-font', 'rop-scroll-font', 'rop-scroll-title-font'].includes(id)) {
             if (window.getFontManager) {
@@ -3956,6 +4192,26 @@ class ReelsOverlayPanel {
             // 磨砂模糊
             this._val('rop-scroll-bg-blur-enabled', ov.bg_blur_enabled || false);
             this._val('rop-scroll-bg-blur-amount', ov.bg_blur_amount ?? 10);
+            // ── 出字效果（朗诵打字机 / 手写跟读）──
+            this._val('rop-scroll-tw-enabled', ov.scroll_typewriter_enabled === true);
+            this._val('rop-scroll-tw-speech-sync', ov.scroll_tw_speech_sync !== false);
+            this._val('rop-scroll-tw-reveal-type', ov.scroll_tw_reveal_type || 'char');
+            this._val('rop-scroll-tw-unrevealed-opacity', ov.scroll_tw_unrevealed_opacity ?? 0);
+            this._val('rop-scroll-tw-active-highlight', ov.scroll_tw_active_highlight !== false);
+            this._val('rop-scroll-tw-active-color', ov.scroll_tw_active_color || '#FFD700');
+            this._val('rop-scroll-tw-active-scale', ov.scroll_tw_active_scale ?? 100);
+            this._val('rop-scroll-tw-cursor-enabled', ov.scroll_tw_cursor_enabled !== false);
+            this._val('rop-scroll-tw-cursor-kind', ov.scroll_tw_cursor_kind || 'quill');
+            this._val('rop-scroll-tw-cursor-image', ov.scroll_tw_cursor_image || '');
+            this._val('rop-scroll-tw-cursor-anchor-x', ov.scroll_tw_cursor_anchor_x ?? 15);
+            this._val('rop-scroll-tw-cursor-anchor-y', ov.scroll_tw_cursor_anchor_y ?? 85);
+            this._val('rop-scroll-tw-cursor-scale', ov.scroll_tw_cursor_scale ?? 1.1);
+            this._val('rop-scroll-tw-cursor-offset-x', ov.scroll_tw_cursor_offset_x ?? 0);
+            this._val('rop-scroll-tw-cursor-offset-y', ov.scroll_tw_cursor_offset_y ?? 0);
+            this._val('rop-scroll-tw-cursor-angle', ov.scroll_tw_cursor_angle ?? -8);
+            this._val('rop-scroll-tw-cursor-char', ov.scroll_tw_cursor_char || '|');
+            this._val('rop-scroll-tw-cursor-color', ov.scroll_tw_cursor_color || '#FFD700');
+            this._syncScrollTypewriterCursorImageUI();
         }
 
         this._val('rop-anim-in', ov.anim_in_type || 'none');
@@ -4184,7 +4440,8 @@ class ReelsOverlayPanel {
             ov.radius_bl = radius;
             ov.radius_br = radius;
             ov.fullscreen_mask = this._get('rop-fullscreen-mask');
-            ov.name = this._get('rop-name') || '';
+            const cardNameVal = this._get('rop-name');
+            if (cardNameVal !== undefined) ov.name = cardNameVal || '';
             ov.fixed_text = this._get('rop-fixed-text');
 
             if (ov.type === 'textcard') {
@@ -4512,6 +4769,25 @@ class ReelsOverlayPanel {
             // 磨砂模糊
             ov.bg_blur_enabled = this._get('rop-scroll-bg-blur-enabled');
             ov.bg_blur_amount = this._get('rop-scroll-bg-blur-amount');
+            // 出字效果（朗诵写出/打字机）
+            ov.scroll_typewriter_enabled = !!this._get('rop-scroll-tw-enabled');
+            ov.scroll_tw_unrevealed_opacity = Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0);
+            ov.scroll_tw_speech_sync = !!this._get('rop-scroll-tw-speech-sync');
+            ov.scroll_tw_reveal_type = this._get('rop-scroll-tw-reveal-type') || 'char';
+            ov.scroll_tw_active_highlight = !!this._get('rop-scroll-tw-active-highlight');
+            ov.scroll_tw_active_color = this._get('rop-scroll-tw-active-color') || '#FFD700';
+            ov.scroll_tw_active_scale = Number(this._get('rop-scroll-tw-active-scale') || 100);
+            ov.scroll_tw_cursor_enabled = !!this._get('rop-scroll-tw-cursor-enabled');
+            ov.scroll_tw_cursor_kind = this._get('rop-scroll-tw-cursor-kind') || 'quill';
+            ov.scroll_tw_cursor_image = this._get('rop-scroll-tw-cursor-image') || ov.scroll_tw_cursor_image || '';
+            ov.scroll_tw_cursor_char = this._get('rop-scroll-tw-cursor-char') || '|';
+            ov.scroll_tw_cursor_color = this._get('rop-scroll-tw-cursor-color') || '#FFD700';
+            ov.scroll_tw_cursor_scale = Number(this._get('rop-scroll-tw-cursor-scale') || 1.1);
+            ov.scroll_tw_cursor_offset_x = Number(this._get('rop-scroll-tw-cursor-offset-x') ?? 0);
+            ov.scroll_tw_cursor_offset_y = Number(this._get('rop-scroll-tw-cursor-offset-y') ?? 0);
+            ov.scroll_tw_cursor_angle = Number(this._get('rop-scroll-tw-cursor-angle') ?? -8);
+            ov.scroll_tw_cursor_anchor_x = Number(this._get('rop-scroll-tw-cursor-anchor-x') ?? 15);
+            ov.scroll_tw_cursor_anchor_y = Number(this._get('rop-scroll-tw-cursor-anchor-y') ?? 85);
         }
 
         ov.anim_in_type = this._get('rop-anim-in');
@@ -4521,7 +4797,8 @@ class ReelsOverlayPanel {
 
         // Fixed text and name flags
         ov.fixed_text = this._get('rop-fixed-text');
-        ov.name = this._get('rop-name') || '';
+        const endNameVal = this._get('rop-name');
+        if (endNameVal !== undefined) ov.name = endNameVal || '';
 
         // Auto-Colorize panel visibility & sync
         const autoColorProps = this.container.querySelector('#rop-autocolor-props');
@@ -4531,20 +4808,6 @@ class ReelsOverlayPanel {
                 this._renderAutoColorRules();
             } else {
                 autoColorProps.style.display = 'none';
-            }
-        }
-
-        if (ov.type === 'textcard') {
-            const applyAllCheckbox = this.container.querySelector('#rop-card-apply-all');
-            if (applyAllCheckbox && applyAllCheckbox.checked) {
-                this._applyTextcardStyleToAllTasks(ov);
-            }
-        }
-
-        if (ov.type === 'scroll') {
-            const scrollApplyAllCb = this.container.querySelector('#rop-scroll-apply-all');
-            if (scrollApplyAllCb && scrollApplyAllCb.checked) {
-                this._applyScrollStyleToAllTasks(ov);
             }
         }
 
@@ -4559,6 +4822,8 @@ class ReelsOverlayPanel {
             this._updateFlipperInfo(ov);
         }
 
+        this._syncOverlayStyleToScopeTasks(ov);
+
         // Re-render canvas to reflect changes, coalesced to avoid intermediate frames while applying panel values.
         this._requestRender();
         if (typeof this.videoCanvas?.onOverlayChange === 'function') {
@@ -4569,6 +4834,163 @@ class ReelsOverlayPanel {
                     this.videoCanvas.onOverlayChange(ov);
                 }
             });
+        }
+    }
+
+    _syncScrollTypewriterCursorImageUI() {
+        const ov = this._selectedOv;
+        const kind = this._get('rop-scroll-tw-cursor-kind') || ov?.scroll_tw_cursor_kind || 'quill';
+
+        // 1. 首次绘制 16 款内置笔尖小图标的 Canvas 预览
+        const drawTipFn = (typeof drawSpeechWritingTip === 'function')
+            ? drawSpeechWritingTip
+            : window.drawSpeechWritingTip;
+        if (typeof drawTipFn === 'function' && this.container) {
+            this.container.querySelectorAll('.rop-tw-icon-canvas').forEach(cvs => {
+                if (cvs.dataset.rendered === '1') return;
+                const c = cvs.getContext('2d');
+                if (!c) return;
+                c.clearRect(0, 0, cvs.width, cvs.height);
+                const k = cvs.dataset.kind || 'quill';
+                drawTipFn(c, k, 3, 17, 12.5, 0);
+                cvs.dataset.rendered = '1';
+            });
+        }
+
+        // 2. 高亮当前选中的小图标按钮
+        if (this.container) {
+            this.container.querySelectorAll('.rop-scroll-tw-icon-chip').forEach(chip => {
+                const active = chip.dataset.kind === kind;
+                chip.style.borderColor = active ? '#38bdf8' : 'rgba(255,255,255,0.12)';
+                chip.style.background = active ? 'rgba(56,189,248,0.22)' : 'rgba(255,255,255,0.04)';
+                chip.style.color = active ? '#ffffff' : '#eee';
+            });
+        }
+
+        // 3. 自定义图片行显隐与预览
+        const imgRow = this.container?.querySelector('#rop-scroll-tw-cursor-image-row');
+        if (imgRow) imgRow.style.display = kind === 'image' ? '' : 'none';
+        const imgUrl = this._get('rop-scroll-tw-cursor-image') || ov?.scroll_tw_cursor_image || '';
+        const previewEl = this.container?.querySelector('#rop-scroll-tw-cursor-preview');
+        if (previewEl) {
+            if (imgUrl) {
+                previewEl.src = imgUrl;
+                previewEl.style.display = '';
+            } else {
+                previewEl.removeAttribute('src');
+                previewEl.style.display = 'none';
+            }
+        }
+        const nameEl = this.container?.querySelector('#rop-scroll-tw-cursor-name');
+        if (nameEl) {
+            if (imgUrl) {
+                nameEl.textContent = imgUrl.startsWith('data:') ? '已加载自定义笔尖图片' : imgUrl.split(/[\\/]/).pop();
+            } else {
+                nameEl.textContent = '尚未上传图片';
+            }
+        }
+        if (imgUrl && window.ReelsOverlay?.prepareScrollWritingCursorImage && ov) {
+            window.ReelsOverlay.prepareScrollWritingCursorImage(ov, () => this._requestRender());
+        }
+    }
+
+    async _uploadScrollTypewriterCursorImage() {
+        const ov = this._selectedOv;
+        if (!ov || ov.type !== 'scroll') return;
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/png,image/webp,image/gif,image/svg+xml,image/jpeg';
+        input.onchange = () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const dataUrl = String(reader.result || '');
+                ov.scroll_tw_cursor_image = dataUrl;
+                ov.scroll_tw_cursor_kind = 'image';
+                this._val('rop-scroll-tw-cursor-image', dataUrl);
+                this._val('rop-scroll-tw-cursor-kind', 'image');
+                this._syncScrollTypewriterCursorImageUI();
+                this._syncToOverlay();
+            };
+            reader.readAsDataURL(file);
+        };
+        input.click();
+    }
+
+    _getOverlayStyleScope() {
+        if (this.videoCanvas?.scopedTask) return 'task';
+        const el = this.container?.querySelector('#rop-style-scope') || document.getElementById('rop-style-scope');
+        return el ? (el.value || 'folder') : 'folder';
+    }
+
+    _shouldSyncStyleToScope(ov) {
+        if (this.videoCanvas?.scopedTask) return false;
+        const scope = this._getOverlayStyleScope();
+        if (scope === 'task') return false;
+        if (ov?.type === 'textcard') {
+            const cb = this.container?.querySelector('#rop-card-apply-all');
+            if (cb && !cb.checked) return false;
+        }
+        if (ov?.type === 'scroll') {
+            const cb = this.container?.querySelector('#rop-scroll-apply-all');
+            if (cb && !cb.checked) return false;
+        }
+        return true;
+    }
+
+    _findMatchingOverlayInTask(task, sourceOv) {
+        if (!task || !Array.isArray(task.overlays) || !sourceOv) return null;
+        if (task.overlays.includes(sourceOv)) return null;
+        const mgrOverlays = this.videoCanvas?.overlayMgr?.overlays || [];
+        const exactIdx = mgrOverlays.indexOf(sourceOv);
+        if (exactIdx >= 0 && task.overlays[exactIdx] && task.overlays[exactIdx].type === sourceOv.type) {
+            return task.overlays[exactIdx];
+        }
+        const sameTypeInMgr = mgrOverlays.filter(o => o && o.type === sourceOv.type);
+        const typeOrderIdx = sameTypeInMgr.indexOf(sourceOv);
+        const sameTypeInTask = task.overlays.filter(o => o && o.type === sourceOv.type);
+        if (typeOrderIdx >= 0 && sameTypeInTask[typeOrderIdx]) {
+            return sameTypeInTask[typeOrderIdx];
+        }
+        return sameTypeInTask[0] || null;
+    }
+
+    _syncOverlayStyleToScopeTasks(ov) {
+        if (!ov || !this._shouldSyncStyleToScope(ov)) return;
+        if (ov.type === 'textcard') {
+            this._applyTextcardStyleToAllTasks(ov);
+        } else if (ov.type === 'scroll') {
+            this._applyScrollStyleToAllTasks(ov);
+        } else {
+            this._applyGenericOverlayStyleToAllTasks(ov);
+        }
+    }
+
+    _applyGenericOverlayStyleToAllTasks(ov) {
+        if (!ov || this._isApplyingGenericOverlay) return;
+        const scopedTasks = this._getStyleApplyScopeTasks();
+        if (!Array.isArray(scopedTasks) || scopedTasks.length <= 1) return;
+        this._isApplyingGenericOverlay = true;
+        try {
+            const cloneBase = JSON.parse(JSON.stringify(ov, (key, val) => key === '_allOverlays' ? undefined : val));
+            delete cloneBase.id;
+            delete cloneBase._img;
+            delete cloneBase._imgLoaded;
+            delete cloneBase._selected;
+            if (ov.type === 'text' && !ov.fixed_text) {
+                delete cloneBase.content;
+                delete cloneBase.styled_ranges;
+            }
+            scopedTasks.forEach(task => {
+                const targetOv = this._findMatchingOverlayInTask(task, ov);
+                if (targetOv) {
+                    const styleCopy = JSON.parse(JSON.stringify(cloneBase));
+                    Object.assign(targetOv, styleCopy);
+                }
+            });
+        } finally {
+            this._isApplyingGenericOverlay = false;
         }
     }
 
@@ -4583,7 +5005,7 @@ class ReelsOverlayPanel {
         
         try {
             const styleObj = this._extractCardStyle(ov);
-            // explicitly include transforms for "apply to all" logic
+            // explicitly include transforms & timing for "apply to all" logic
             styleObj.x = ov.x;
             styleObj.y = ov.y;
             styleObj.w = ov.w;
@@ -4591,16 +5013,20 @@ class ReelsOverlayPanel {
             styleObj.rotation = ov.rotation;
             styleObj.opacity = ov.opacity;
             styleObj.scale = ov.scale;
+            styleObj.start = ov.start;
+            styleObj.end = ov.end;
+            styleObj.disabled = ov.disabled;
+            if (ov.fixed_text) {
+                styleObj.title_text = ov.title_text;
+                styleObj.body_text = ov.body_text;
+                styleObj.footer_text = ov.footer_text;
+            }
 
             scopedTasks.forEach(task => {
-                if (task && Array.isArray(task.overlays)) {
-                    task.overlays.forEach(otherOv => {
-                        if (otherOv && otherOv.type === 'textcard' && otherOv !== ov) {
-                            // Deep copy to prevent shared array/object references (like styled_ranges)
-                            const styleCopy = JSON.parse(JSON.stringify(styleObj));
-                            Object.assign(otherOv, styleCopy);
-                        }
-                    });
+                const targetOv = this._findMatchingOverlayInTask(task, ov);
+                if (targetOv) {
+                    const styleCopy = JSON.parse(JSON.stringify(styleObj));
+                    Object.assign(targetOv, styleCopy);
                 }
             });
         } finally {
@@ -4611,7 +5037,7 @@ class ReelsOverlayPanel {
     _extractScrollStyle(ov) {
         // Extract scroll overlay style properties (excludes text content)
         const keys = [
-            'name', 'fixed_text',
+            'name', 'fixed_text', 'disabled', 'start', 'end',
             'x', 'y', 'w', 'h', 'rotation', 'opacity',
             // 标题样式
             'scroll_title_fontsize', 'scroll_title_font_family', 'scroll_title_font_weight',
@@ -4629,10 +5055,9 @@ class ReelsOverlayPanel {
             'scroll_title_deco_enabled', 'scroll_title_deco_position', 'scroll_title_deco_style',
             'scroll_title_deco_align', 'scroll_title_deco_color', 'scroll_title_deco_color2',
             'scroll_title_deco_thickness', 'scroll_title_deco_length', 'scroll_title_deco_gap', 'scroll_title_deco_opacity',
-            'scroll_title_styled_ranges',
             // 正文样式
             'font_family', 'fontsize', 'font_weight', 'bold', 'italic',
-            'color', 'gradient_direction', 'scroll_gradient_direction', 'text_align', 'text_width', 'line_spacing',
+            'color', 'gradient_direction', 'scroll_gradient_direction', 'text_align', 'text_direction', 'text_width', 'line_spacing',
             'scroll_uppercase', 'scroll_letter_spacing',
             'use_stroke', 'stroke_color', 'stroke_width',
             'shadow_enabled', 'shadow_color', 'shadow_blur',
@@ -4641,11 +5066,16 @@ class ReelsOverlayPanel {
             'scroll_body_bg_enabled', 'scroll_body_bg_mode', 'scroll_body_bg_color',
             'scroll_body_bg_opacity', 'scroll_body_bg_radius',
             'scroll_body_bg_pad_h', 'scroll_body_bg_pad_top', 'scroll_body_bg_pad_bottom',
-            'scroll_styled_ranges',
             // 滚动参数
             'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
             'scroll_offset_x', 'scroll_offset_y',
             'scroll_speed', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+            // 出字效果（朗诵写出/打字机）
+            'scroll_typewriter_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
+            'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
+            'scroll_tw_cursor_enabled', 'scroll_tw_cursor_kind', 'scroll_tw_cursor_char', 'scroll_tw_cursor_color',
+            'scroll_tw_cursor_scale', 'scroll_tw_cursor_offset_x', 'scroll_tw_cursor_offset_y', 'scroll_tw_cursor_angle',
+            'scroll_tw_cursor_image', 'scroll_tw_cursor_anchor_x', 'scroll_tw_cursor_anchor_y',
             // 羽化
             'feather_top', 'feather_bottom', 'feather_top_offset', 'feather_bottom_offset',
             'feather_left', 'feather_right', 'feather_left_offset', 'feather_right_offset',
@@ -4659,6 +5089,9 @@ class ReelsOverlayPanel {
             // 动画
             'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration',
         ];
+        if (ov.fixed_text) {
+            keys.push('scroll_title', 'content', 'scroll_title_styled_ranges', 'scroll_styled_ranges');
+        }
         const result = {};
         for (const k of keys) {
             if (ov[k] !== undefined) result[k] = ov[k];
@@ -4680,13 +5113,10 @@ class ReelsOverlayPanel {
             const styleObj = this._extractScrollStyle(ov);
 
             scopedTasks.forEach(task => {
-                if (task && Array.isArray(task.overlays)) {
-                    task.overlays.forEach(otherOv => {
-                        if (otherOv && otherOv.type === 'scroll' && otherOv !== ov) {
-                            const styleCopy = JSON.parse(JSON.stringify(styleObj));
-                            Object.assign(otherOv, styleCopy);
-                        }
-                    });
+                const targetOv = this._findMatchingOverlayInTask(task, ov);
+                if (targetOv) {
+                    const styleCopy = JSON.parse(JSON.stringify(styleObj));
+                    Object.assign(targetOv, styleCopy);
                 }
             });
         } finally {
@@ -4694,12 +5124,40 @@ class ReelsOverlayPanel {
         }
     }
 
-    // 在大量制作的分组投影中，主队列会同时显示多个任务组。样式同步只应
-    // 修改所选任务所属的那一组；普通单组队列仍保持原来的全部任务范围。
-    _getStyleApplyScopeTasks() {
+    // 根据【样式作用】下拉选择（当前队列 / 所有队列 / 仅当前任务）返回目标任务列表
+    _getStyleApplyScopeTasks(scopeOverride = null) {
         if (this.videoCanvas?.scopedTask) return [this.videoCanvas.scopedTask];
+        const scope = scopeOverride || this._getOverlayStyleScope();
+        const state = window._reelsState;
+        const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
+        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
+        if (scope === 'task') {
+            return selectedTask ? [selectedTask] : [];
+        }
+        if (scope === 'all') {
+            const combined = new Set(allTasks);
+            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const activeIds = new Set(allTasks.map(t => t?.id).filter(Boolean));
+                for (const tab of _batchTableState.tabs) {
+                    for (const t of (tab?.tasks || [])) {
+                        if (t && (!t.id || !activeIds.has(t.id))) combined.add(t);
+                    }
+                }
+            }
+            return Array.from(combined);
+        }
+        // 默认: 'folder' (当前队列)
         const groupTasks = this.videoCanvas?.getTaskGroupTasks?.();
-        return Array.isArray(groupTasks) ? groupTasks : (window._reelsState?.tasks || []);
+        if (Array.isArray(groupTasks) && groupTasks.length > 0) return groupTasks;
+        if (!selectedTask) return allTasks;
+        if (selectedTask._folderQueueId) {
+            return allTasks.filter(t => t._folderQueueId === selectedTask._folderQueueId);
+        }
+        if (selectedTask._batchTabId) {
+            return allTasks.filter(t => t._batchTabId === selectedTask._batchTabId);
+        }
+        const unpartitioned = allTasks.filter(t => !t._folderQueueId && !t._batchTabId);
+        return unpartitioned.length > 0 ? unpartitioned : allTasks;
     }
 
     _syncTextcardMaskEnabledUI() {
@@ -4833,8 +5291,7 @@ class ReelsOverlayPanel {
     _commitAutoColorRules() {
         const ov = this._selectedOv;
         if (!ov) return;
-        if (ov.type === 'scroll' && this.container.querySelector('#rop-scroll-apply-all')?.checked) this._applyScrollStyleToAllTasks(ov);
-        if (ov.type === 'textcard' && this.container.querySelector('#rop-card-apply-all')?.checked) this._applyTextcardStyleToAllTasks(ov);
+        this._syncOverlayStyleToScopeTasks(ov);
         this.videoCanvas?.render();
         this.videoCanvas?.onOverlayChange?.(ov);
     }
@@ -5161,11 +5618,12 @@ class ReelsOverlayPanel {
             'footer_stroke_color', 'footer_stroke_width', 'footer_shadow_color', 'footer_shadow_blur', 'footer_shadow_x', 'footer_shadow_y',
             // 动画
             'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration',
-            // 富文本样式范围
-            'title_styled_ranges', 'body_styled_ranges', 'footer_styled_ranges',
             // 文字翻转器
             'flipper_enabled', 'flipper_duration', 'flipper_lines', 'flipper_loop', 'flipper_effect', 'flipper_transition_duration',
         ];
+        if (ov.fixed_text) {
+            keys.push('title_styled_ranges', 'body_styled_ranges', 'footer_styled_ranges');
+        }
         const result = {};
         for (const k of keys) {
             if (ov[k] !== undefined) result[k] = ov[k];
@@ -5281,7 +5739,7 @@ class ReelsOverlayPanel {
             });
             // 多次尝试 focus 确保 Electron 渲染完成后能获得焦点
             setTimeout(() => input.focus(), 50);
-            setTimeout(() => { if (document.activeElement !== input) input.focus(); }, 150);
+            setTimeout(() => { if (!box.contains(document.activeElement)) input.focus(); }, 150);
         });
     }
 
@@ -5339,7 +5797,7 @@ class ReelsOverlayPanel {
                 if (e.key === 'Escape') close(null);
             });
             setTimeout(() => input.focus(), 50);
-            setTimeout(() => { if (document.activeElement !== input) input.focus(); }, 150);
+            setTimeout(() => { if (!box.contains(document.activeElement)) input.focus(); }, 150);
         });
     }
 
@@ -5378,7 +5836,7 @@ class ReelsOverlayPanel {
         this._syncFromOverlay(this._selectedOv);
         
         const applyAllCheckbox = this.container.querySelector('#rop-card-apply-all');
-        if (applyAllCheckbox && applyAllCheckbox.checked) {
+        if (this._shouldSyncStyleToScope(this._selectedOv) || (applyAllCheckbox && applyAllCheckbox.checked)) {
             this._applyTextcardStyleToAllTasks(this._selectedOv);
         }
         
@@ -5482,7 +5940,7 @@ class ReelsOverlayPanel {
 
     _getOverlayGroupPresets() {
         try {
-            const presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}');
+            const presets = JSON.parse(window.electronAPI?.readOverlayGroupPresets?.() || localStorage.getItem('reels_overlay_group_presets') || '{}');
             let migrated = false;
             for (const [name, data] of Object.entries(presets)) {
                 try {
@@ -5509,7 +5967,7 @@ class ReelsOverlayPanel {
                 }
             }
             if (migrated) {
-                localStorage.setItem('reels_overlay_group_presets', JSON.stringify(presets));
+                this._setOverlayGroupPresets(presets);
                 console.log('[PresetMigration] 已将旧格式的自定义预设迁移至新可视化格式');
             }
             return presets;
@@ -5561,7 +6019,21 @@ class ReelsOverlayPanel {
     }
 
     _setOverlayGroupPresets(data) {
-        localStorage.setItem('reels_overlay_group_presets', JSON.stringify(data));
+        let previous = {};
+        try { previous = JSON.parse(window.electronAPI?.readOverlayGroupPresets?.() || localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (_) {}
+        const changedNames = Object.keys(data).filter(name => previous[name] &&
+            JSON.stringify(Array.isArray(previous[name]) ? previous[name] : previous[name].layers) !==
+            JSON.stringify(Array.isArray(data[name]) ? data[name] : data[name].layers));
+        const raw = JSON.stringify(data);
+        if (window.electronAPI?.saveOverlayGroupPresets) {
+            const result = window.electronAPI.saveOverlayGroupPresets(raw);
+            if (!result?.ok) {
+                const message = `覆层预设保存失败：${result?.error || '无法写入预设库'}`;
+                alert(message);
+                throw new Error(message);
+            }
+        } else localStorage.setItem('reels_overlay_group_presets', raw);
+        for (const name of changedNames) window.reelsRefreshTasksUsingOverlayPreset?.(name, previous[name]);
     }
 
     _debouncedSavePresets(data) {
@@ -5620,7 +6092,8 @@ class ReelsOverlayPanel {
             const layers = Array.isArray(data) ? data : data.layers;
             const count = Array.isArray(layers) ? layers.length : 0;
             const isBuiltin = builtInKeys.includes(name);
-            const optHtml = `<option value="${name}">${name} (${count}层)</option>`;
+            const safeName = this._esc(name);
+            const optHtml = `<option value="${safeName}">${safeName} (${count}层)</option>`;
             if (isBuiltin) builtInHtml += optHtml;
             else customHtml += optHtml;
         }
@@ -5780,6 +6253,7 @@ class ReelsOverlayPanel {
             }
         }
         
+        if (isUpdate || presets[name]) this._recordAppliedOverlayPreset(name);
         presets[name] = newPreset;
         this._setOverlayGroupPresets(presets);
         this._notifyOverlayPresetsChanged();
@@ -5970,6 +6444,11 @@ class ReelsOverlayPanel {
         }
         if (!this.videoCanvas) return;
 
+        if (window._reelsState && window._reelsState.overlayPanel === this && window._reelsState.selectedIdx < 0 && Array.isArray(window._reelsState.tasks) && window._reelsState.tasks.length > 0) {
+            if (typeof reelsSelectTask === 'function') reelsSelectTask(0);
+            else window._reelsState.selectedIdx = 0;
+        }
+
         const mgr = this.videoCanvas.overlayMgr;
         if (!mgr) return;
         // 选择框是异步的。无论取消、按 Esc 或点击遮罩，都明确把画布恢复为
@@ -6004,12 +6483,12 @@ class ReelsOverlayPanel {
                 const loadedEnd = Number(clone.end);
                 clone.start = Number.isFinite(loadedStart) ? Math.max(0, loadedStart) : 0;
                 clone.end = Number.isFinite(loadedEnd) && loadedEnd >= clone.start ? loadedEnd : 9999;
-            // Auto-stop scroll presets use the receiving task's duration, not the template's.
-            // Explicit display ranges and manually timed overlays keep their saved timing.
-            if (clone.type === 'scroll' && clone.scroll_auto_stop === true
-                && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
-                clone.end = 9999;
-            }
+                // Auto-stop scroll presets use the receiving task's duration, not the template's.
+                // Explicit display ranges and manually timed overlays keep their saved timing.
+                if (clone.type === 'scroll' && clone.scroll_auto_stop === true
+                    && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
+                    clone.end = 9999;
+                }
 
                 mgr.overlays.push(clone);
                 newlyAdded.push(clone);
@@ -6026,6 +6505,7 @@ class ReelsOverlayPanel {
                 }
             }
 
+            this._applyPresetLayersToScopeTasks(name, layers, { loadMode: 'merge', textMode: 'keep' });
             this._selectedOv = newlyAdded[0] || mgr.overlays[0] || null;
             this._refreshList();
             if (this._selectedOv) this._syncFromOverlay(this._selectedOv);
@@ -6159,14 +6639,216 @@ class ReelsOverlayPanel {
             }
         }
 
+        this._applyPresetLayersToScopeTasks(name, layers, { loadMode: 'replace', textMode: 'keep' });
         // Refresh UI
         this._selectedOv = mgr.overlays[0] || null;
         this._refreshList();
         if (this._selectedOv) this._syncFromOverlay(this._selectedOv);
         if (this.videoCanvas) this.videoCanvas.render();
-        if (missingTextLayers.length > 0) {
+        if (missingTextLayers.length > 0 && (this._getStyleApplyScopeTasks()?.length || 0) <= 1) {
             alert(`预设已加载，但以下覆层没有对应文案，请手动填写：\n${missingTextLayers.join('\n')}`);
         }
+    }
+
+    _buildOverlaysForTaskFromPreset(existingOverlays, presetLayers, { loadMode = 'replace', textMode = 'keep' } = {}) {
+        const cleanSerialize = (arr) => JSON.parse(JSON.stringify(arr || [], (key, val) => key === '_allOverlays' ? undefined : val));
+        const oldOverlays = cleanSerialize(existingOverlays);
+        const layers = Array.isArray(presetLayers) ? presetLayers : [];
+        if (loadMode === 'merge') {
+            const newlyAdded = [];
+            const idMap = {};
+            for (let i = 0; i < layers.length; i++) {
+                const clone = cleanSerialize(layers[i]);
+                const oldId = clone.id;
+                clone.id = 'ov_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                if (oldId) idMap[oldId] = clone.id;
+                const loadedStart = Number(clone.start);
+                const loadedEnd = Number(clone.end);
+                clone.start = Number.isFinite(loadedStart) ? Math.max(0, loadedStart) : 0;
+                clone.end = Number.isFinite(loadedEnd) && loadedEnd >= clone.start ? loadedEnd : 9999;
+                if (clone.type === 'scroll' && clone.scroll_auto_stop === true
+                    && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
+                    clone.end = 9999;
+                }
+                oldOverlays.push(clone);
+                newlyAdded.push(clone);
+            }
+            const firstScrollOv = newlyAdded.find(o => o.type === 'scroll') || oldOverlays.find(o => o.type === 'scroll');
+            for (const ov of newlyAdded) {
+                if (ov.bind_scroll_overlay_id) {
+                    if (idMap[ov.bind_scroll_overlay_id]) {
+                        ov.bind_scroll_overlay_id = idMap[ov.bind_scroll_overlay_id];
+                    } else if (firstScrollOv) {
+                        ov.bind_scroll_overlay_id = firstScrollOv.id;
+                    }
+                }
+            }
+            return oldOverlays;
+        }
+
+        const oldTextByIndex = [...oldOverlays];
+        const oldTextByType = new Map();
+        const usedOldText = new Set();
+        const collectText = (ov) => {
+            if (!ov || typeof ov !== 'object' || ov.fixed_text) return null;
+            const data = {};
+            let hasText = false;
+            for (const key of ['title_text', 'body_text', 'footer_text', 'content', 'scroll_title']) {
+                if (typeof ov[key] === 'string' && ov[key].length > 0) {
+                    data[key] = ov[key];
+                    hasText = true;
+                }
+            }
+            return hasText ? data : null;
+        };
+        for (const ov of oldTextByIndex) {
+            const data = collectText(ov);
+            if (!data) continue;
+            const key = ov.type || 'unknown';
+            if (!oldTextByType.has(key)) oldTextByType.set(key, []);
+            oldTextByType.get(key).push({ ov, data });
+        }
+        const nextTextFor = (type) => {
+            const typed = oldTextByType.get(type);
+            while (typed && typed.length) {
+                const item = typed.shift();
+                if (!usedOldText.has(item.ov)) {
+                    usedOldText.add(item.ov);
+                    return item.data;
+                }
+            }
+            for (const arr of oldTextByType.values()) {
+                while (arr.length) {
+                    const item = arr.shift();
+                    if (!usedOldText.has(item.ov)) {
+                        usedOldText.add(item.ov);
+                        return item.data;
+                    }
+                }
+            }
+            return null;
+        };
+        const applyText = (ov, tData) => {
+            if (!ov || !tData) return;
+            if (ov.type === 'textcard') {
+                const tt = tData.title_text ?? tData.scroll_title;
+                const bt = tData.body_text ?? tData.content;
+                const ft = tData.footer_text;
+                if (typeof tt === 'string' && tt.length > 0) { ov.title_text = tt; ov.title_styled_ranges = null; }
+                if (typeof bt === 'string' && bt.length > 0) { ov.body_text = bt; ov.body_styled_ranges = null; }
+                if (typeof ft === 'string' && ft.length > 0) { ov.footer_text = ft; ov.footer_styled_ranges = null; }
+            } else if (ov.type === 'scroll') {
+                const st = tData.scroll_title ?? tData.title_text;
+                const sb = tData.content ?? tData.body_text;
+                if (typeof st === 'string' && st.length > 0) { ov.scroll_title = st; ov.scroll_title_styled_ranges = null; }
+                if (typeof sb === 'string' && sb.length > 0) { ov.content = sb; ov.scroll_styled_ranges = null; }
+            } else if (ov.type === 'text') {
+                const txt = tData.content ?? tData.title_text ?? tData.body_text;
+                if (typeof txt === 'string' && txt.length > 0) { ov.content = txt; ov.styled_ranges = null; }
+            }
+        };
+
+        const result = [];
+        const idMap = {};
+        for (let i = 0; i < layers.length; i++) {
+            const clone = cleanSerialize(layers[i]);
+            const oldId = clone.id;
+            clone.id = 'ov_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            if (oldId) idMap[oldId] = clone.id;
+            const loadedStart = Number(clone.start);
+            const loadedEnd = Number(clone.end);
+            clone.start = Number.isFinite(loadedStart) ? Math.max(0, loadedStart) : 0;
+            clone.end = Number.isFinite(loadedEnd) && loadedEnd >= clone.start ? loadedEnd : 9999;
+            if (clone.type === 'scroll' && clone.scroll_auto_stop === true
+                && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
+                clone.end = 9999;
+            }
+            if (!clone.fixed_text) {
+                if (textMode === 'clear') {
+                    if (clone.type === 'textcard') {
+                        clone.title_text = '';
+                        clone.body_text = '';
+                        clone.footer_text = '';
+                    } else if (clone.type === 'scroll') {
+                        clone.scroll_title = '';
+                        clone.content = '';
+                    } else if (clone.type === 'text') {
+                        clone.content = '';
+                    }
+                } else if (textMode !== 'use') {
+                    const indexedSource = oldTextByIndex[i];
+                    const indexedText = usedOldText.has(indexedSource) ? null : collectText(indexedSource);
+                    if (indexedText) usedOldText.add(indexedSource);
+                    applyText(clone, indexedText || nextTextFor(clone.type));
+                }
+            }
+            result.push(clone);
+        }
+
+        const firstScrollOv = result.find(o => o.type === 'scroll');
+        for (const ov of result) {
+            if (ov.bind_scroll_overlay_id) {
+                if (idMap[ov.bind_scroll_overlay_id]) {
+                    ov.bind_scroll_overlay_id = idMap[ov.bind_scroll_overlay_id];
+                } else if (firstScrollOv) {
+                    ov.bind_scroll_overlay_id = firstScrollOv.id;
+                }
+            }
+        }
+        return result;
+    }
+
+    _applyPresetLayersToScopeTasks(name, layers, { loadMode = 'replace', textMode = 'keep' } = {}) {
+        const state = window._reelsState;
+        if (!state || state.overlayPanel !== this) return;
+        if (state.selectedIdx < 0 && Array.isArray(state.tasks) && state.tasks.length > 0) {
+            state.selectedIdx = 0;
+        }
+        const selectedTask = state.tasks?.[state.selectedIdx] || null;
+        if (selectedTask && this.videoCanvas?.overlayMgr) {
+            if (name && loadMode !== 'merge') selectedTask._overlayPresetName = name;
+            selectedTask.overlays = JSON.parse(JSON.stringify(this.videoCanvas.overlayMgr.overlays, (key, value) => key === '_allOverlays' ? undefined : value));
+        }
+
+        const scopedTasks = this._getStyleApplyScopeTasks();
+        let updatedCount = selectedTask ? 1 : 0;
+        if (Array.isArray(scopedTasks) && Array.isArray(layers) && layers.length > 0) {
+            for (const task of scopedTasks) {
+                if (!task || task === selectedTask) continue;
+                task.overlays = this._buildOverlaysForTaskFromPreset(task.overlays || [], layers, { loadMode, textMode });
+                if (name && loadMode !== 'merge') task._overlayPresetName = name;
+                updatedCount++;
+            }
+        }
+
+        if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+            try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+        }
+        if (typeof _syncTasksToActiveTab === 'function') {
+            try { _syncTasksToActiveTab(); } catch (_) {}
+        }
+        if (typeof _batchAutoSave === 'function') {
+            try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+        }
+        if (typeof _renderTaskList === 'function') {
+            try { _renderTaskList(); } catch (_) {}
+        }
+        if (typeof reelsUpdatePreview === 'function') {
+            try { reelsUpdatePreview(); } catch (_) {}
+        }
+        if (updatedCount > 1 && typeof showToast === 'function') {
+            const scope = this._getOverlayStyleScope();
+            const scopeLabel = scope === 'all' ? '所有队列' : '当前队列';
+            const presetLabel = name ? `预设「${name}」` : '当前覆层样式';
+            showToast(`✅ 已将${presetLabel}应用到${scopeLabel} (${updatedCount} 个任务)`, 'success');
+        }
+    }
+
+    _recordAppliedOverlayPreset(name) {
+        const state = window._reelsState;
+        if (!name || state?.overlayPanel !== this) return;
+        const overlays = this.videoCanvas?.overlayMgr?.overlays || [];
+        this._applyPresetLayersToScopeTasks(name, overlays, { loadMode: 'replace', textMode: 'keep' });
     }
 
     _detectPresetCategory(name, presetData) {
@@ -6639,7 +7321,7 @@ class ReelsOverlayPanel {
             // 必须以 localStorage 原始值为准：图库内存对象已混入内置预设，
             // 在它上面删除再回写会留下旧缓存或初始化时重写的自定义项。
             let storedPresets = {};
-            try { storedPresets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (_) {}
+            try { storedPresets = JSON.parse(window.electronAPI?.readOverlayGroupPresets?.() || localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (_) {}
             const customNames = Object.keys(storedPresets).filter(key => !builtInKeys.includes(key));
             if (!customNames.length) return alert('没有可清空的“我的预设”');
             if (!confirm(`确定清空 ${customNames.length} 个自己导入或保存的预设吗？\n\n内置预设不会删除。此操作不可撤销。`)) return;
@@ -6870,7 +7552,7 @@ class ReelsOverlayPanel {
                 ${imgHtml}
                 <div class="rop-gallery-info">
                     <div class="rop-gallery-title-row">
-                        <div class="rop-gallery-title" title="${name}">${name}</div>
+                        <div class="rop-gallery-title" title="${this._esc(name)}">${this._esc(name)}</div>
                         ${!isBuiltin ? `<span style="display:inline-flex;gap:2px;flex-shrink:0;">
                             <button class="rop-gallery-group-btn" title="移动到分组" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:#6ee7b7;line-height:1;">🏷</button>
                             <button class="rop-gallery-rename-btn" title="重命名" style="background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;color:#8af;line-height:1;">✏️</button>
@@ -7102,10 +7784,10 @@ class ReelsOverlayPanel {
             else if (ov.type === 'scroll') { fillTemporaryText(ov, 'scroll_title', index); fillTemporaryText(ov, 'content', index); }
             else if (ov.type === 'text') fillTemporaryText(ov, 'content', index);
         });
-        const safeName = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        const safeName = String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
         const previewBackground = this._presetGalleryPreviewBackground || '';
         const previewBackgroundName = previewBackground ? previewBackground.split(/[\\/]/).pop() : '未设置（深色背景）';
-        content.innerHTML = `<div class="rop-gallery-header" style="flex-shrink:0;"><h3>✏️ 编辑预设：${safeName}</h3><button class="rop-library-back rop-library-action">← 返回预设库</button></div>
+        content.innerHTML = `<div class="rop-gallery-header" style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;"><div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;"><h3 style="margin:0;white-space:nowrap;">✏️ 编辑预设：</h3><input data-lib-name value="${safeName}" placeholder="输入模板/预设名称..." style="background:#0f172a;border:1px solid #334155;color:#fff;padding:5px 10px;border-radius:6px;font-size:13px;font-weight:600;min-width:180px;max-width:320px;outline:none;"><span data-lib-name-badge style="font-size:12px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeName}</span></div><button class="rop-library-back rop-library-action">← 返回预设库</button></div>
           <div style="flex:1;min-height:0;height:calc(100% - 56px);display:grid;grid-template-columns:minmax(280px,360px) minmax(380px,1fr);gap:16px;padding:12px 18px;overflow:hidden;box-sizing:border-box;">
             <div style="display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;">
               <div data-lib-viewport style="position:relative;width:100%;aspect-ratio:9/16;max-height:calc(100vh - 165px);background:#0b1020;border-radius:10px;overflow:hidden;cursor:grab;user-select:none;border:1px solid rgba(255,255,255,0.15);box-shadow:0 8px 24px rgba(0,0,0,0.45);flex-shrink:0;">
@@ -7130,6 +7812,19 @@ class ReelsOverlayPanel {
             </div>
           </div>`;
         const get = selector => content.querySelector(selector);
+        const libNameInput = get('[data-lib-name]');
+        const libNameBadge = get('[data-lib-name-badge]');
+        let currentEditedName = name;
+        if (libNameInput) {
+            libNameInput.addEventListener('keydown', e => e.stopPropagation());
+            libNameInput.addEventListener('input', e => {
+                const v = (e.target.value || '').trim();
+                if (v) {
+                    currentEditedName = v;
+                    if (libNameBadge) libNameBadge.textContent = v;
+                }
+            });
+        }
 
         // ── 预览画面滚轮缩放与拖拽平移 ──
         const viewport = get('[data-lib-viewport]');
@@ -7274,14 +7969,26 @@ class ReelsOverlayPanel {
         editor = new ReelsOverlayPanel(get('[data-lib-panel]'), proxy);
         get('[data-lib-panel]').querySelector('.rop-section')?.remove();
         editor._refreshList(); if (mgr.overlays[0]) editor.selectOverlay(mgr.overlays[0]); draw();
-        get('[data-lib-save]').onclick = () => {
-            let target = name; if (isBuiltin) { target = prompt('内置预设不能覆盖，请输入新预设名称：', `${name}（我的修改）`); if (!target) return; }
-            let presets = {}; try { presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (_) {}
+        get('[data-lib-save]').onclick = async () => {
+            const inputName = (libNameInput?.value || '').trim() || currentEditedName || name;
+            let target = inputName;
+            if (isBuiltin && target === name) {
+                target = await window.reelsShowInputDialog('另存覆层预设', '请输入新预设名称', `${name}（我的修改）`);
+                if (!target) return;
+            }
+            const presets = this._getOverlayGroupPresets();
             const layersToSave = JSON.parse(JSON.stringify(mgr.overlays));
             // 仅把没有被用户实际改写的临时文案恢复为原来的空字段。
             temporaryTextFields.forEach(({ index, key, original }) => { const temp = key === 'title_text' || key === 'scroll_title' ? previewText.title : (key === 'footer_text' ? previewText.footer : previewText.body); if (layersToSave[index]?.[key] === temp) layersToSave[index][key] = original; });
+            if (!isBuiltin && target !== name && presets[name]) {
+                delete presets[name];
+            }
             presets[target] = { ...(Array.isArray(data) ? {} : data), name:target, layers:layersToSave, meta:this._migratePresetFormat(target, layersToSave).meta, updatedAt:new Date().toISOString() };
-            localStorage.setItem('reels_overlay_group_presets', JSON.stringify(presets));
+            name = target;
+            currentEditedName = target;
+            if (libNameInput) libNameInput.value = target;
+            if (libNameBadge) libNameBadge.textContent = target;
+            this._setOverlayGroupPresets(presets);
             this._notifyOverlayPresetsChanged();
             if (typeof showToast === 'function') showToast(`预设「${target}」已保存`, 'success');
         };
@@ -7290,6 +7997,10 @@ class ReelsOverlayPanel {
     }
 
     async _applyPresetFromGallery(presetData, mode, presetName = '') {
+        if (window._reelsState && window._reelsState.overlayPanel === this && window._reelsState.selectedIdx < 0 && Array.isArray(window._reelsState.tasks) && window._reelsState.tasks.length > 0) {
+            if (typeof reelsSelectTask === 'function') reelsSelectTask(0);
+            else window._reelsState.selectedIdx = 0;
+        }
         const mgr = this.videoCanvas.overlayMgr;
         if (!mgr) return false;
         const previousOverlays = JSON.parse(JSON.stringify(mgr.overlays, (key, value) => key === '_allOverlays' ? undefined : value));
@@ -7347,6 +8058,7 @@ class ReelsOverlayPanel {
                 }
             }
 
+            this._applyPresetLayersToScopeTasks(presetName, layers, { loadMode: 'merge', textMode: mode || 'keep' });
             this._selectedOv = newlyAdded[0] || mgr.overlays[0] || null;
             this._refreshList();
             if (this._selectedOv) this._syncFromOverlay(this._selectedOv);
@@ -7520,6 +8232,7 @@ class ReelsOverlayPanel {
         if (this._selectedOv) this._syncFromOverlay(this._selectedOv);
         if (this.videoCanvas) this.videoCanvas.render();
 
+        this._applyPresetLayersToScopeTasks(presetName, layers, { loadMode: 'replace', textMode: mode || 'keep' });
         if (mode === 'keep' && missingTextLayers.length > 0) {
             alert(`预设已加载，但以下覆层没有可继承的文案，请手动填写：\n${missingTextLayers.join('\n')}`);
         } else if (mode === 'clear') {
@@ -7596,10 +8309,12 @@ class ReelsOverlayPanel {
 
     _mergeImportedOverlayGroupPresets(data, missingMedia = []) {
         const presets = this._getOverlayGroupPresets(); let addedCount = 0, overwrittenCount = 0;
-        const conflicts = Object.keys(data || {}).filter(name => presets[name]);
+        const safeKeys = Object.keys(data || {}).filter(k => k !== '__proto__' && k !== 'constructor' && k !== 'prototype');
+        const conflicts = safeKeys.filter(name => Object.prototype.hasOwnProperty.call(presets, name));
         const overwrite = !conflicts.length || confirm(`导入中有已存在的预设：\n${conflicts.join(', ')}\n\n是否覆盖？取消将跳过冲突项。`);
-        for (const [name, value] of Object.entries(data || {})) {
-            if (presets[name]) { if (overwrite) { presets[name] = value; overwrittenCount++; } }
+        for (const name of safeKeys) {
+            const value = data[name];
+            if (Object.prototype.hasOwnProperty.call(presets, name)) { if (overwrite) { presets[name] = value; overwrittenCount++; } }
             else { presets[name] = value; addedCount++; }
         }
         this._setOverlayGroupPresets(presets); this._notifyOverlayPresetsChanged();

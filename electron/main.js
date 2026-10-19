@@ -17,6 +17,7 @@ const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 const { registerAPIHandlers } = require('./apiRouter');
 const persistentPresetStore = require('./services/persistentPresetStore');
 const overlayPresetPackage = require('./services/overlayPresetPackage');
+const sharedProfile = require('./services/sharedProfile');
 
 let mainWindow;
 let appIsReady = false;
@@ -105,6 +106,8 @@ async function migrateLegacyFileStorageToDevOrigin(targetWindow) {
 
     let legacyWindow = null;
     try {
+        const hasWorkspace = Boolean(sharedProfile.readUnifiedBatchWorkspace());
+        if(hasWorkspace){log('[Workspace] Valid disk workspace: skip legacy cache migration');return false;}
         const currentStore = await targetWindow.webContents.executeJavaScript(
             'Object.fromEntries(Array.from({length:localStorage.length},(_,i)=>{const k=localStorage.key(i);return [k,localStorage.getItem(k)]}))',
             true
@@ -429,11 +432,9 @@ async function logBatchStartupState(targetWindow, label = 'startup') {
     if (!targetWindow || targetWindow.isDestroyed()) return;
     try {
         const state = await targetWindow.webContents.executeJavaScript(
-            `(()=>{let saved=null;try{saved=JSON.parse(localStorage.getItem('reels_batch_config_autosave')||'null')}catch(_){}` +
+            `(()=>{const tabs=(window._batchTableState?.tabs||[]).map(t=>({name:t.name,count:t.tasks?.length||0}));` +
             `return {memoryTasks:window._reelsState?.tasks?.length||0,` +
-            `tabs:(window._batchTableState?.tabs||[]).map(t=>({name:t.name,count:t.tasks?.length||0})),` +
-            `savedTabs:(saved?.tabs||[]).map(t=>({name:t.name,count:t.tasks?.length||0})),` +
-            `savedTotal:(saved?.tabs||[]).reduce((n,t)=>n+(t.tasks?.length||0),0)}})()`,
+            `tabs,savedTotal:tabs.reduce((n,t)=>n+t.count,0)}})()`,
             true
         );
         log(`[BatchStartup:${label}] ${JSON.stringify(state)}`);
@@ -458,6 +459,14 @@ try {
     console.warn('[Protocol] local-media privilege registration skipped:', e.message);
 }
 
+// Portable profile lives beside the executable.
+const _portableRoot = app.isPackaged ? path.dirname(process.execPath) : '';
+const _portableMode = Boolean(_portableRoot && fs.existsSync(path.join(_portableRoot, 'portable.flag')));
+if (_portableMode) {
+    const portableUserData = path.join(_portableRoot, 'portable-data');
+    fs.mkdirSync(portableUserData, { recursive: true });
+    app.setPath('userData', portableUserData);
+}
 // ── 自定义缓存路径（必须在 app.ready 之前设置）──
 const _cacheConfigPath = path.join(app.isPackaged ? path.dirname(process.execPath) : __dirname, '.videokit-cache-config.json');
 function _loadCacheConfig() {
@@ -471,10 +480,15 @@ function _loadCacheConfig() {
     } catch (e) { /* ignore */ }
     return null;
 }
-const _customUserData = _loadCacheConfig();
+const _customUserData = _portableMode ? null : _loadCacheConfig();
 if (_customUserData) {
     app.setPath('userData', _customUserData);
 }
+
+// The editor is the only workspace owner; a second launch focuses it.
+const _workspaceInstanceOwner=app.requestSingleInstanceLock();
+if(!_workspaceInstanceOwner)app.quit();
+app.on('second-instance',()=>{if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
 
 // 日志文件路径
 const logDir = (app && app.isPackaged)
@@ -617,6 +631,10 @@ function setupFFmpegPath() {
             path.join(getResourcePath('vendor'), 'windows', 'ffmpeg', 'bin'),
             // 额外的 fallback：直接在 vendor/ffmpeg 下（无 bin 子目录的情况）
             path.join(getResourcePath('vendor'), 'ffmpeg'),
+            ...(process.env.LOCALAPPDATA ? [
+                path.join(process.env.LOCALAPPDATA, 'Programs', 'videokit', 'resources', 'vendor', 'ffmpeg', 'bin'),
+                path.join(process.env.LOCALAPPDATA, 'Programs', 'videokit', 'resources', 'vendor', 'ffmpeg'),
+            ] : []),
         ];
         log(`[FFmpeg] Windows resource path: ${getResourcePath('vendor')}`);
         let found = false;
@@ -650,7 +668,7 @@ function createWindow() {
         return;
     }
 
-    if (!appIsReady) return;
+    if (!appIsReady || !_workspaceInstanceOwner) return;
 
     const windowOptions = {
         width: 1200,
@@ -719,7 +737,9 @@ function createWindow() {
             }
         });
         loadDevServer();
-        mainWindow.webContents.openDevTools();
+        if (process.env.VIDEOKIT_DEVTOOLS === '1') {
+            mainWindow.webContents.openDevTools();
+        }
         mainWindow.webContents.once('did-finish-load', async () => {
             const recovered = await recoverPendingBatchFromTemplates(mainWindow);
             const stylesRecovered = recovered ? false : await recoverPendingStylesFromTemplates(mainWindow);
@@ -734,12 +754,30 @@ function createWindow() {
         if (!global._isWatching) {
             global._isWatching = true;
             const fs = require('fs');
+            const watchReadyAt = Date.now() + 4000;
+            const mtimeCache = new Map();
+            const hasRealFileModification = (baseDir, relPath) => {
+                if (Date.now() < watchReadyAt) return false;
+                try {
+                    const full = path.join(baseDir, relPath);
+                    if (!fs.existsSync(full)) return false;
+                    const mtime = fs.statSync(full).mtimeMs;
+                    if (mtime < watchReadyAt) return false;
+                    const prev = mtimeCache.get(full) || 0;
+                    if (mtime <= prev + 50) return false;
+                    mtimeCache.set(full, mtime);
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            };
 
             // 监听主进程目录 (electron/) 变化 ➔ 自动重启 Electron 应用
             let relaunchTimeout;
             const electronDir = path.join(__dirname);
             fs.watch(electronDir, { recursive: true }, (eventType, filename) => {
                 if (filename && (filename.endsWith('.js') || filename.endsWith('.json') || filename.endsWith('.html'))) {
+                    if (!hasRealFileModification(electronDir, filename)) return;
                     clearTimeout(relaunchTimeout);
                     relaunchTimeout = setTimeout(() => {
                         log(`[HotReload] 主进程文件改变: ${filename}，正在重启 Electron...`);
@@ -755,6 +793,7 @@ function createWindow() {
             if (fs.existsSync(srcDir)) {
                 fs.watch(srcDir, { recursive: true }, (eventType, filename) => {
                     if (filename && (filename.endsWith('.js') || filename.endsWith('.css') || filename.endsWith('.html'))) {
+                        if (!hasRealFileModification(srcDir, filename)) return;
                         clearTimeout(reloadTimeout);
                         reloadTimeout = setTimeout(() => {
                             log(`[HotReload] 渲染进程文件改变: ${filename}，正在刷新页面...`);
@@ -770,6 +809,29 @@ function createWindow() {
         mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     }
 
+    let workspaceCloseApproved=false,workspaceCloseSaving=false;
+    mainWindow.on('close',async event=>{
+        if(workspaceCloseApproved || mainWindow?.webContents?.isDestroyed())return;
+        event.preventDefault();
+        if(workspaceCloseSaving)return;
+        workspaceCloseSaving=true;
+        const closingWindow=mainWindow;
+        try{
+            const result=await closingWindow.webContents.executeJavaScript(`(()=>{
+                if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
+                const result=window.reelsFlushWorkspaceBeforeClose();
+                if(result?.ok)window._workspaceCloseAlreadySaved=true;
+                return result;
+            })()`,true);
+            if(!result?.ok)throw new Error(result?.error||'自动保存未完成');
+            workspaceCloseApproved=true;
+            closingWindow.close();
+        }catch(error){
+            log('[Workspace] Close save failed: '+error.message);
+            if(!closingWindow.isDestroyed())dialog.showMessageBoxSync(closingWindow,{type:'error',title:'自动保存失败',message:'当前编辑未能保存，已取消退出。',detail:error.message,buttons:['返回软件'],defaultId:0});
+        }finally{workspaceCloseSaving=false;}
+    });
+
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
@@ -777,6 +839,7 @@ function createWindow() {
 
 // 应用启动
 app.whenReady().then(async () => {
+    if(!_workspaceInstanceOwner)return;
     appIsReady = true;
     log('=== App Ready (Node.js Backend) ===');
 
@@ -790,7 +853,7 @@ app.whenReady().then(async () => {
         if (process.platform === 'win32' && filePath.startsWith('/') && filePath.includes(':')) {
             filePath = filePath.substring(1);
         }
-        const resolved = path.resolve(filePath);
+        let resolved = sharedProfile.resolveSharedProfileFilePath(path.resolve(filePath));
 
         try {
             // SBP-004: Validate file extension for security
@@ -806,15 +869,36 @@ app.whenReady().then(async () => {
                 // Fonts
                 '.ttf', '.otf', '.woff', '.woff2'
             ];
-            const ext = path.extname(resolved).toLowerCase();
+            let ext = path.extname(resolved).toLowerCase();
             if (!allowedExtensions.includes(ext)) {
                 console.error('[local-media] Access blocked for invalid extension:', ext, 'path:', resolved);
+                return new Response('Access Denied', { status: 403 });
+            }
+            const baseNameLower = path.basename(resolved).toLowerCase();
+            const blockedBasenames = new Set([
+                'gladia_keys.json',
+                'gemini_keys.json',
+                'elevenlabs_settings.json',
+                'transcription_providers.json',
+                '.videokit-cache-config.json',
+                'settings.json',
+                '.env',
+                '.env.local',
+                '.env.production',
+            ]);
+            if (blockedBasenames.has(baseNameLower)) {
+                console.error('[local-media] Access blocked for sensitive file:', baseNameLower);
                 return new Response('Access Denied', { status: 403 });
             }
 
             if (!fs.existsSync(resolved)) {
                 console.error('[local-media] File not found:', resolved);
                 return new Response('Not Found', { status: 404 });
+            }
+
+            if (request.url.includes('?reelsPreview=sdr-v2') && request.method !== 'OPTIONS') {
+                resolved = await require('./services/reels-hdr-preview').prepareReelsPreview(resolved);
+                ext = path.extname(resolved).toLowerCase();
             }
 
             const stat = fs.statSync(resolved);
@@ -905,19 +989,60 @@ app.whenReady().then(async () => {
         try { return { ok: true, ...persistentPresetStore.writeSnapshot(values) }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
+    ipcMain.on('persistent-presets:set', (event, key, value) => {
+        try {
+            assertTrustedRenderer(event);
+            if (!['reels_overlay_group_presets','reels_subtitle_presets'].includes(key) || typeof value !== 'string') throw new Error('无效的预设数据');
+            const parsed = JSON.parse(value);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('无效的覆层预设格式');
+            const values = persistentPresetStore.readSnapshot();
+            values[key] = value;
+            event.returnValue = { ok: true, ...persistentPresetStore.writeSnapshot(values) };
+        } catch (error) { event.returnValue = { ok: false, error: error.message }; }
+    });
     handleTrusted('export-overlay-preset-package', async (_event, presets) => {
         const result = await dialog.showSaveDialog(mainWindow, { title: '导出含媒体的覆层预设包', defaultPath: `overlay_presets_${Date.now()}.zip`, filters: [{ name: 'VideoKit 预设包', extensions: ['zip'] }] });
         if (result.canceled || !result.filePath) return { ok: false, canceled: true };
         try { return { ok: true, ...(await overlayPresetPackage.exportPackage({ presets, outputPath: result.filePath })), path: result.filePath }; }
         catch (error) { return { ok: false, error: error.message }; }
     });
+    const mirrorPresetSubdir = async (sourceDir, subDirName) => {
+        if (sharedProfile.isIsolatedTestProfile() || !fs.existsSync(sourceDir)) return;
+        for (const presetDir of sharedProfile.getCandidatePresetDirs()) {
+            const targetDir = path.join(presetDir, subDirName);
+            if (path.resolve(targetDir) === path.resolve(sourceDir)) continue;
+            try {
+                await fs.promises.mkdir(targetDir, { recursive: true });
+                await fs.promises.cp(sourceDir, targetDir, { recursive: true, force: false });
+            } catch (_) { }
+        }
+    };
     handleTrusted('import-overlay-preset-package', async (_event, packagePath) => {
-        try { return { ok: true, ...(await overlayPresetPackage.importPackage({ packagePath, destinationDir: path.join(app.getPath('userData'), 'videokit-presets', 'imported-overlay-assets') })) }; }
-        catch (error) { return { ok: false, error: error.message }; }
+        try {
+            const destinationDir = path.join(app.getPath('userData'), 'videokit-presets', 'imported-overlay-assets');
+            const imported = await overlayPresetPackage.importPackage({ packagePath, destinationDir });
+            await mirrorPresetSubdir(destinationDir, 'imported-overlay-assets');
+            return { ok: true, ...imported };
+        } catch (error) { return { ok: false, error: error.message }; }
     });
     handleTrusted('save-overlay-preset-assets', async (_event, preset) => {
-        try { return { ok: true, ...(await overlayPresetPackage.savePresetAssets({ preset, destinationDir: path.join(app.getPath('userData'), 'videokit-presets', 'saved-overlay-assets') })) }; }
-        catch (error) { return { ok: false, error: error.message }; }
+        try {
+            const destinationDir = path.join(app.getPath('userData'), 'videokit-presets', 'saved-overlay-assets');
+            const saved = await overlayPresetPackage.savePresetAssets({ preset, destinationDir });
+            await mirrorPresetSubdir(destinationDir, 'saved-overlay-assets');
+            return { ok: true, ...saved };
+        } catch (error) { return { ok: false, error: error.message }; }
+    });
+
+    handleTrusted('batch-project:choose-import-mode', async (event, counts = {}) => {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const options = {
+            type: 'question', title: '加载工程', message: '请选择导入方式',
+            detail: `当前有 ${Number(counts.current) || 0} 个工程标签页，将导入 ${Number(counts.incoming) || 0} 个。\n\n追加：保留原有工程，新增导入的标签页。\n覆盖：先备份原有工程，再替换全部标签页。`,
+            buttons: ['追加到现有工程', '覆盖所有工程', '取消'], defaultId: 0, cancelId: 2, noLink: true,
+        };
+        const result = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+        return ['append', 'replace', 'cancel'][result.response] || 'cancel';
     });
 
     handleTrusted('get-app-version', () => {
@@ -1357,6 +1482,9 @@ app.whenReady().then(async () => {
     // IPC: 保存 PNG 帧（分层 PNG 序列导出用）
     handleTrusted('save-png-frame', async (event, { outputPath: pngPath, rawRGBA, width, height, isPng }) => {
         try {
+            if (!pngPath || typeof pngPath !== 'string' || path.extname(pngPath).toLowerCase() !== '.png') {
+                return { ok: false, error: '无效的 PNG 帧输出路径（必须为 .png 文件）' };
+            }
             // 已经是 PNG 数据，直接写入
             if (isPng) {
                 fs.writeFileSync(pngPath, Buffer.from(rawRGBA));
@@ -1646,6 +1774,14 @@ app.whenReady().then(async () => {
         if (!filePath || !fs.existsSync(filePath)) {
             throw new Error(`文件不存在: ${filePath}`);
         }
+        const allowedAudioVideoExts = new Set([
+            '.wav', '.mp3', '.m4a', '.aac', '.flac', '.ogg', '.opus', '.wma', '.aiff', '.aif', '.amr',
+            '.mp4', '.webm', '.mkv', '.avi', '.mov', '.flv', '.3gp', '.m4v', '.wmv', '.ts'
+        ]);
+        const ext = path.extname(String(filePath)).toLowerCase();
+        if (!allowedAudioVideoExts.has(ext)) {
+            throw new Error(`不支持的音视频文件格式: ${ext || '未知'}`);
+        }
         const settingsService = require('./services/settings');
         const { spawnSync } = require('child_process');
         const ffmpeg = ffmpegService.resolveCommand('ffmpeg');
@@ -1670,9 +1806,38 @@ app.whenReady().then(async () => {
         return buf;
     });
 
-    // IPC: 在 Finder/Explorer 中高亮文件
-    handleTrusted('show-item-in-folder', (event, fullPath) => {
-        if (fullPath && typeof fullPath === 'string') shell.showItemInFolder(fullPath);
+    // IPC: 在 Finder/Explorer 中高亮文件或打开所在目录
+    handleTrusted('show-item-in-folder', async (event, fullPath) => {
+        if (!fullPath || typeof fullPath !== 'string') return { ok: false };
+        try {
+            let target = fullPath.trim();
+            const hashIdx = target.indexOf('#');
+            if (hashIdx !== -1) target = target.slice(0, hashIdx);
+            if (/^local-media:\/\//i.test(target)) {
+                target = require('url').fileURLToPath(target.replace(/^local-media:/i, 'file:'));
+            } else if (/^file:\/\//i.test(target)) {
+                target = require('url').fileURLToPath(target);
+            }
+            const sharedProfile = require('./services/sharedProfile');
+            target = sharedProfile.resolveSharedProfileFilePath(path.resolve(target));
+            if (fs.existsSync(target)) {
+                const stat = fs.statSync(target);
+                if (stat.isDirectory()) {
+                    await shell.openPath(target);
+                } else {
+                    shell.showItemInFolder(target);
+                }
+                return { ok: true, path: target };
+            }
+            const parentDir = path.dirname(target);
+            if (parentDir && fs.existsSync(parentDir)) {
+                await shell.openPath(parentDir);
+                return { ok: true, path: parentDir, parentFallback: true };
+            }
+        } catch (err) {
+            log(`[show-item-in-folder] failed for ${fullPath}: ${err.message}`);
+        }
+        return { ok: false };
     });
 
     // IPC: 用系统默认浏览器打开链接
@@ -1698,8 +1863,11 @@ app.whenReady().then(async () => {
         }
     });
 
-    // IPC: 扫描本地字体目录 + 系统字体
-    handleTrusted('scan-fonts', async () => {
+    // IPC: 扫描本地字体目录 + 系统字体（缓存系统字体，避免重复扫描 Windows 字体；本地字体目录变化时自动更新）
+    let _cachedSystemFonts = null;
+    let _cachedLocalFonts = null;
+    let _cachedLocalFontsSig = '';
+    handleTrusted('scan-fonts', async (event, options = {}) => {
         try {
             const os = require('os');
             const fontExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc', '.dfont']);
@@ -1752,6 +1920,24 @@ app.whenReady().then(async () => {
                 return cleaned || raw.trim();
             }
 
+            function computeLocalDirSig(dirs) {
+                const parts = [];
+                for (const d of dirs) {
+                    if (!d || !fs.existsSync(d)) {
+                        parts.push(`${d}:missing`);
+                        continue;
+                    }
+                    try {
+                        const st = fs.statSync(d);
+                        const entries = fs.readdirSync(d);
+                        parts.push(`${d}:${Math.round(st.mtimeMs)}:${entries.length}:${entries.join(',')}`);
+                    } catch (_) {
+                        parts.push(`${d}:err`);
+                    }
+                }
+                return parts.join('|');
+            }
+
             // ── 扫描单个目录 ──
             function scanDir(dirPath, isSystemFont = false) {
                 const results = [];
@@ -1799,47 +1985,52 @@ app.whenReady().then(async () => {
                 return results;
             }
 
-            const fontList = [];
-
-            // ── 1. 项目内置字体 (assets/fonts) ──
+            // ── 1. 项目内置字体 (assets/fonts + fonts-local) ──
             const fontsDir = app.isPackaged
                 ? path.join(process.resourcesPath, 'assets', 'fonts')
                 : path.join(__dirname, '..', 'assets', 'fonts');
-            fontList.push(...scanDir(fontsDir, false));
-            // Personal fonts are local development assets, separate from distributable resources.
-            if (!app.isPackaged) fontList.push(...scanDir(path.join(__dirname, '..', 'fonts-local'), false));
+            const localDirs = [fontsDir];
+            if (!app.isPackaged) localDirs.push(path.join(__dirname, '..', 'fonts-local'));
 
-            // ── 2. 系统字体目录 ──
-            const systemDirs = [];
-            if (process.platform === 'darwin') {
-                // macOS
-                systemDirs.push('/Library/Fonts');
-                systemDirs.push(path.join(os.homedir(), 'Library', 'Fonts'));
-                // /System/Library/Fonts 包含Apple系统字体（可能受SIP保护但可读）
-                systemDirs.push('/System/Library/Fonts');
-                systemDirs.push('/System/Library/Fonts/Supplemental');
-            } else if (process.platform === 'win32') {
-                // Windows
-                const winFonts = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts');
-                systemDirs.push(winFonts);
-                // 用户字体目录 (Windows 10+)
-                const userFonts = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Windows', 'Fonts');
-                systemDirs.push(userFonts);
-            } else {
-                // Linux
-                systemDirs.push('/usr/share/fonts');
-                systemDirs.push('/usr/local/share/fonts');
-                systemDirs.push(path.join(os.homedir(), '.fonts'));
-                systemDirs.push(path.join(os.homedir(), '.local', 'share', 'fonts'));
+            const currentLocalSig = computeLocalDirSig(localDirs);
+            if (!_cachedLocalFonts || _cachedLocalFontsSig !== currentLocalSig || options?.forceRescanLocal) {
+                const localScanned = [];
+                for (const dir of localDirs) {
+                    localScanned.push(...scanDir(dir, false));
+                }
+                _cachedLocalFonts = localScanned;
+                _cachedLocalFontsSig = currentLocalSig;
             }
 
-            for (const dir of systemDirs) {
-                fontList.push(...scanDir(dir, true));
+            // ── 2. 系统字体目录（缓存避免反复扫描 Windows 字体）──
+            if (!_cachedSystemFonts || options?.forceRescanSystem) {
+                const systemDirs = [];
+                if (process.platform === 'darwin') {
+                    systemDirs.push('/Library/Fonts');
+                    systemDirs.push(path.join(os.homedir(), 'Library', 'Fonts'));
+                    systemDirs.push('/System/Library/Fonts');
+                    systemDirs.push('/System/Library/Fonts/Supplemental');
+                } else if (process.platform === 'win32') {
+                    const winFonts = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts');
+                    systemDirs.push(winFonts);
+                    const userFonts = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Windows', 'Fonts');
+                    systemDirs.push(userFonts);
+                } else {
+                    systemDirs.push('/usr/share/fonts');
+                    systemDirs.push('/usr/local/share/fonts');
+                    systemDirs.push(path.join(os.homedir(), '.fonts'));
+                    systemDirs.push(path.join(os.homedir(), '.local', 'share', 'fonts'));
+                }
+
+                const sysScanned = [];
+                for (const dir of systemDirs) {
+                    sysScanned.push(...scanDir(dir, true));
+                }
+                _cachedSystemFonts = sysScanned;
+                log(`[Fonts] scanned ${_cachedLocalFonts.length + _cachedSystemFonts.length} font files (${systemDirs.length} system dirs + assets)`);
             }
 
-            // ── 去重（同 family 只保留一个条目用于注册，但保留所有 weight/style 变体）──
-            log(`[Fonts] scanned ${fontList.length} font files (${systemDirs.length} system dirs + assets)`);
-            return fontList;
+            return [..._cachedLocalFonts, ..._cachedSystemFonts];
         } catch (err) {
             log(`[Fonts] scanning error: ${err.message}`);
             return [];
@@ -1985,10 +2176,13 @@ app.whenReady().then(async () => {
                     webPreferences: {
                         nodeIntegration: false,
                         contextIsolation: true,
+                        sandbox: true,
                     },
                 });
 
                 pickerWin.setMenuBarVisibility(false);
+                pickerWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+                pickerWin.webContents.on('will-navigate', (e) => e.preventDefault());
 
                 // 注入 HTML：显示截图 + 点击取色
                 const html = `<!DOCTYPE html>
@@ -2201,7 +2395,7 @@ app.whenReady().then(async () => {
     createWindow();
 
     // 自动更新：仅在打包版启用（开发模式跳过）
-    if (app.isPackaged && mainWindow) {
+    if (app.isPackaged && mainWindow && !_portableMode) {
         initAutoUpdater(mainWindow, log);
     } else {
         log('[Updater] 开发模式，跳过自动更新初始化');

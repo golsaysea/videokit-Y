@@ -77,7 +77,7 @@ function applyAuthHeaders(headers, apiKey) {
 function requestMultipart(urlPath, apiKey, parts = [], timeout = 300000) {
     return new Promise((resolve, reject) => {
         const url = new URL(API_BASE + urlPath);
-        const boundary = `----VideoKit${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+        const boundary = `----VideoKit${Date.now().toString(16)}${require('crypto').randomBytes(12).toString('hex')}`;
         const chunks = [];
 
         for (const part of parts) {
@@ -536,7 +536,7 @@ async function requestTTS(apiKey, voiceId, text, modelId, stability, outputForma
     };
 
     async function doRequest(vid) {
-        return await request('POST', `/text-to-speech/${vid || voiceId}?output_format=${outputFormat}`, apiKey, payload, 300000);
+        return await request('POST', `/text-to-speech/${encodeURIComponent(String(vid || voiceId))}?output_format=${encodeURIComponent(String(outputFormat))}`, apiKey, payload, 300000);
     }
 
     let res = await doRequest();
@@ -767,7 +767,7 @@ async function searchVoices(apiKey, searchTerm) {
 
 async function addVoice(apiKey, publicVoiceId, name, autoDelete = true) {
     async function tryAdd() {
-        return await request('POST', `/voices/add/${publicVoiceId}`, apiKey, { new_name: name });
+        return await request('POST', `/voices/add/${encodeURIComponent(String(publicVoiceId))}`, apiKey, { new_name: name });
     }
 
     let res = await tryAdd();
@@ -802,7 +802,7 @@ async function addVoice(apiKey, publicVoiceId, name, autoDelete = true) {
 }
 
 async function deleteVoice(apiKey, voiceId) {
-    const res = await request('DELETE', `/voices/${voiceId}`, apiKey);
+    const res = await request('DELETE', `/voices/${encodeURIComponent(String(voiceId))}`, apiKey);
     if (res.status === 200) return { success: true, voice_id: voiceId };
     throw new Error(`删除失败: ${res.body.toString().slice(0, 300)}`);
 }

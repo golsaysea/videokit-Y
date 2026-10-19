@@ -138,15 +138,7 @@ function loadScript(filePath) {
         script.src = toFileUrl(filePath);
         script.onload = () => resolve();
         script.onerror = () => {
-            console.warn(`[Shadow] 脚本加载失败: ${filePath}, 尝试直接 eval...`);
-            // Fallback: read and eval
-            try {
-                const code = fs.readFileSync(filePath, 'utf-8');
-                (new Function(code))();
-                resolve();
-            } catch (e) {
-                reject(new Error(`脚本加载/执行失败: ${filePath}: ${e.message}`));
-            }
+            reject(new Error(`脚本加载失败: ${filePath}`));
         };
         document.body.appendChild(script);
     });

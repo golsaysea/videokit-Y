@@ -1063,14 +1063,21 @@ function _initReelsModule() {
                 },
                 getSelected() { return null; },
                 getTaskGroupTasks() {
-                    const selected = _getSelectedTask();
-                    const tasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks : [];
-                    // 大量制作会把多组任务投影到同一队列，并用 _batchTabId 标识组。
-                    // 选中其中一项时，模板样式只能同步给同一组的任务。
-                    if (selected?._batchProjection && selected._batchTabId) {
-                        return tasks.filter(task => task?._batchProjection && task._batchTabId === selected._batchTabId);
+                    if (typeof _getCurrentReelsGroupTasks === 'function' && _reelsState.selectedIdx >= 0) {
+                        const group = _getCurrentReelsGroupTasks();
+                        if (Array.isArray(group) && group.length > 0) return group;
                     }
-                    return tasks;
+                    const tasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks : [];
+                    const selected = _getSelectedTask() || tasks[0] || null;
+                    if (!selected) return tasks;
+                    if (selected._folderQueueId) {
+                        return tasks.filter(task => task && task._folderQueueId === selected._folderQueueId);
+                    }
+                    if (selected._batchTabId) {
+                        return tasks.filter(task => task && task._batchTabId === selected._batchTabId);
+                    }
+                    const unpartitioned = tasks.filter(task => task && !task._folderQueueId && !task._batchTabId);
+                    return unpartitioned.length > 0 ? unpartitioned : tasks;
                 },
                 render() { /* rAF loop handles rendering */ },
                 getOverlayAboveSubtitle() {
@@ -1570,9 +1577,13 @@ async function _getSystemDownloadsPath() {
 
 async function _initReelsExportDefaults() {
     const outputEl = document.getElementById('reels-output-dir');
+    const preferredDir = _readPreferredReelsOutputDir();
+    if (outputEl && preferredDir) outputEl.value = preferredDir;
     if (outputEl && !outputEl.value) {
-        outputEl.value = await _getSystemDownloadsPath();
+        const defaultDir = await _getSystemDownloadsPath();
+        if (!outputEl.value) outputEl.value = _readPreferredReelsOutputDir() || defaultDir;
     }
+    outputEl?.addEventListener('change', () => _rememberReelsOutputDir(outputEl.value));
     
     // Initialize export naming mode dropdown (outer)
     const namingModeOuter = document.getElementById('reels-export-naming-mode-outer');
@@ -1885,6 +1896,14 @@ function _ovOnMouseMove(e) {
 }
 
 function _ovOnMouseUp(e) {
+    if (_reelsState.overlayDrag) {
+        const proxy = _reelsState.overlayProxy;
+        const ov = (proxy?.overlayMgr?.overlays || []).find(o => o.id === _reelsState.overlayDrag.ovId);
+        _syncCurrentOverlayEditorToSelectedTask();
+        if (ov && _reelsState.overlayPanel && typeof _reelsState.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
+            _reelsState.overlayPanel._syncOverlayStyleToScopeTasks(ov);
+        }
+    }
     _reelsState.overlayDrag = null;
 }
 
@@ -2160,6 +2179,7 @@ function _refreshReelsFontSelects(fm, values = {}) {
     if (!fm || typeof fm.refreshFontSelect !== 'function') return;
     const defaults = {
         'reels-font-family': 'Arial',
+        'reels-fullpage-typewriter-title-font': 'Arial',
         'rop-font': 'Arial',
         'rop-title-font': 'Crimson Pro',
         'rop-body-font': 'Arial',
@@ -2167,8 +2187,16 @@ function _refreshReelsFontSelects(fm, values = {}) {
         'rop-scroll-font': 'Arial',
         'rop-scroll-title-font': 'Arial',
     };
+    const mergedValues = {};
     for (const [id, fallback] of Object.entries(defaults)) {
-        fm.refreshFontSelect(id, Object.prototype.hasOwnProperty.call(values, id) ? values[id] : fallback);
+        mergedValues[id] = Object.prototype.hasOwnProperty.call(values, id) ? values[id] : fallback;
+    }
+    if (typeof fm.refreshAllFontSelects === 'function') {
+        fm.refreshAllFontSelects(mergedValues);
+    } else {
+        for (const [id, val] of Object.entries(mergedValues)) {
+            fm.refreshFontSelect(id, val);
+        }
     }
 }
 
@@ -2260,6 +2288,12 @@ function reelsApplyAnimationPreset(silent = false) {
     set('reels-word-pop-read-opacity-range', preset.word_pop_random_read_opacity);
     set('reels-metro-unread-opacity', preset.metro_unread_opacity);
     set('reels-metro-unread-opacity-range', preset.metro_unread_opacity);
+    set('reels-char-anim-intensity', preset.char_anim_intensity);
+    set('reels-char-anim-intensity-range', preset.char_anim_intensity);
+    set('reels-char-anim-duration', preset.char_anim_duration);
+    set('reels-char-anim-duration-range', preset.char_anim_duration);
+    set('reels-char-anim-stagger', preset.char_anim_stagger);
+    set('reels-char-anim-stagger-range', preset.char_anim_stagger);
     setChk('reels-karaoke-hl', preset.karaoke_highlight);
 
     _persistSubtitleStyleByScope(_readStyleFromUI());
@@ -2277,6 +2311,11 @@ const REELS_ANIMATION_PARAM_GROUPS = [
     { types: ['floating'], label: '漂浮', ids: ['reels-float-amp', 'reels-float-amp-range', 'reels-float-period', 'reels-float-period-range'] },
     { types: ['typewriter'], label: '打字机', ids: ['reels-typewriter-reveal-type', 'reels-typewriter-unread-opacity', 'reels-typewriter-unread-opacity-range'] },
     { types: ['char_bounce'], label: '逐字弹跳', ids: ['reels-bounce-height', 'reels-bounce-height-range'] },
+    { types: ['char_float_up', 'char_pop_elastic', 'char_wave', 'char_drop_bounce', 'char_squash_bounce', 'char_center_spread'], label: '逐字动画', ids: [
+        'reels-char-anim-intensity', 'reels-char-anim-intensity-range',
+        'reels-char-anim-duration', 'reels-char-anim-duration-range',
+        'reels-char-anim-stagger', 'reels-char-anim-stagger-range'
+    ] },
     { types: ['metronome'], label: '节奏逐词', ids: ['reels-metro-bpm', 'reels-metro-bpm-range', 'reels-metro-read-color', 'reels-metro-unread-color', 'reels-metro-unread-opacity', 'reels-metro-unread-opacity-range'] },
     { types: ['letter_jump'], label: '逐字放大', ids: ['reels-jump-scale', 'reels-jump-scale-range'] },
     { types: ['flash_highlight'], label: '闪光高亮', ids: ['reels-flash-color'] },
@@ -2537,6 +2576,12 @@ function _getNamedSubtitlePresetStyle(name) {
 }
 
 function _resolveSubtitleStyleForTask(task) {
+    let style = _resolveSubtitleStyleForTaskBase(task);
+    if(style?.fullpage_typewriter_split && style.fullpage_typewriter_auto_sequence===undefined)style={...style,fullpage_typewriter_auto_sequence:true,fullpage_typewriter_title_reveal:'char',fullpage_typewriter_title_delay:0,fullpage_typewriter_body_delay:0};
+    if(task?.writingSplit)style={...style,...task.subtitleStyle};
+    return getWritingVisualStyle(task?.writingTitle!==undefined && style.fullpage_typewriter_title_auto===false ? {...style, fullpage_typewriter_title_text:task.writingTitle} : style);
+}
+function _resolveSubtitleStyleForTaskBase(task) {
     const globalStyle = _reelsState.globalSubtitleStyle;
     // ── 最高优先级：批量表格中设置的字幕模板预设 ──
     if (task && task._subtitlePreset && window.ReelsStyleEngine) {
@@ -2648,12 +2693,15 @@ function _readStyleFromUI() {
         fontsize: num('reels-fontsize', 74),
         bold: num('reels-font-weight', chk('reels-bold') ? 700 : 400) >= 600,
         italic: chk('reels-italic'),
+        uppercase: chk('reels-uppercase'),
         letter_spacing: num('reels-letter-spacing', 0),
         text_direction: val('reels-text-direction') || 'auto',
 
         // Colors
         color_text: val('reels-color-text') || '#FFFFFF',
         text_gradient_direction: get('reels-color-text')?.dataset?.gradientDirection || 'horizontal',
+        text_gradient_scope: val('reels-text-gradient-scope') || 'line',
+        highlight_enabled: get('reels-highlight-enabled') ? chk('reels-highlight-enabled') : true,
         color_high: val('reels-color-high') || '#FFD700',
         high_gradient_direction: get('reels-color-high')?.dataset?.gradientDirection || 'horizontal',
 
@@ -2680,6 +2728,9 @@ function _readStyleFromUI() {
         // Box
         use_box: chk('reels-use-box'),
         box_adaptive_width: chk('reels-box-adaptive-width'),
+        box_connected: get('reels-box-connected') ? chk('reels-box-connected') : true,
+        box_concave_radius: num('reels-box-concave-radius', 10),
+        box_snap_threshold: num('reels-box-snap-threshold', 18),
         box_brush_style: val('reels-box-brush-style') || 'rect',
         box_brush_color_mode: val('reels-box-brush-color-mode') || 'tint',
         box_custom_brush_data: val('reels-box-custom-brush-data') || '',
@@ -2786,6 +2837,9 @@ function _readStyleFromUI() {
         floating_period: num('reels-float-period', 2.0),
         char_bounce_height: num('reels-bounce-height', 20),
         char_bounce_stagger: 0.05,
+        char_anim_intensity: num('reels-char-anim-intensity', 1.0),
+        char_anim_duration: num('reels-char-anim-duration', 0.28),
+        char_anim_stagger: num('reels-char-anim-stagger', 0.04),
         metronome_bpm: num('reels-metro-bpm', 120),
         letter_jump_scale: num('reels-jump-scale', 1.5),
         letter_jump_duration: 0.2,
@@ -2836,6 +2890,51 @@ function _readStyleFromUI() {
         fullpage_typewriter_reveal_type: val('reels-fullpage-typewriter-reveal-type') || 'char',
         fullpage_typewriter_align: val('reels-fullpage-typewriter-align') || 'center',
         fullpage_typewriter_cursor: chk('reels-fullpage-typewriter-cursor'),
+        fullpage_typewriter_keep_background: chk('reels-fullpage-typewriter-keep-background'),
+        fullpage_typewriter_title_font_follow: chk('reels-fullpage-typewriter-title-font-follow'),
+        fullpage_typewriter_title_stroke_independent: chk('reels-fullpage-typewriter-title-stroke-independent'),
+        fullpage_typewriter_title_stroke_enabled: chk('reels-fullpage-typewriter-title-stroke-enabled'),
+        fullpage_typewriter_title_stroke_color: val('reels-fullpage-typewriter-title-stroke-color') || '#3e2723',
+        fullpage_typewriter_title_stroke_width: num('reels-fullpage-typewriter-title-stroke-width', 3),
+        fullpage_typewriter_title_stroke_opacity: num('reels-fullpage-typewriter-title-stroke-opacity', 255),
+        fullpage_typewriter_title_box_enabled: chk('reels-fullpage-typewriter-title-box-enabled'),
+        fullpage_typewriter_title_box_color: val('reels-fullpage-typewriter-title-box-color') || "#000000",
+        fullpage_typewriter_title_box_opacity: num('reels-fullpage-typewriter-title-box-opacity', 180),
+        fullpage_typewriter_body_stroke_independent: chk('reels-fullpage-typewriter-body-stroke-independent'),
+        fullpage_typewriter_body_stroke_enabled: chk('reels-fullpage-typewriter-body-stroke-enabled'),
+        fullpage_typewriter_body_stroke_color: val('reels-fullpage-typewriter-body-stroke-color') || '#3e2723',
+        fullpage_typewriter_body_stroke_width: num('reels-fullpage-typewriter-body-stroke-width', 3),
+        fullpage_typewriter_body_stroke_opacity: num('reels-fullpage-typewriter-body-stroke-opacity', 255),
+        fullpage_typewriter_body_box_enabled: chk('reels-fullpage-typewriter-body-box-enabled'),
+        fullpage_typewriter_body_box_color: val('reels-fullpage-typewriter-body-box-color') || "#000000",
+        fullpage_typewriter_body_box_opacity: num('reels-fullpage-typewriter-body-box-opacity', 180),
+        fullpage_typewriter_auto_sequence: chk('reels-fullpage-typewriter-auto-sequence'),
+        fullpage_typewriter_split: chk('reels-fullpage-typewriter-split'),
+        fullpage_typewriter_title_auto: chk('reels-fullpage-typewriter-title-auto'),
+        fullpage_typewriter_title_text: val('reels-fullpage-typewriter-title-text') || "",
+        fullpage_typewriter_title_font: val('reels-fullpage-typewriter-title-font') || "",
+        fullpage_typewriter_title_size: num('reels-fullpage-typewriter-title-size', 56),
+        fullpage_typewriter_title_weight: val('reels-fullpage-typewriter-title-weight') || "700",
+        fullpage_typewriter_title_color: val('reels-fullpage-typewriter-title-color') || "#FFD700",
+        fullpage_typewriter_title_x: num('reels-fullpage-typewriter-title-x', 50),
+        fullpage_typewriter_title_y: num('reels-fullpage-typewriter-title-y', 20),
+        fullpage_typewriter_title_delay: num('reels-fullpage-typewriter-title-delay', 0),
+        fullpage_typewriter_title_reveal: val('reels-fullpage-typewriter-title-reveal') || "sentence",
+        fullpage_typewriter_title_cursor: chk('reels-fullpage-typewriter-title-cursor'),
+        fullpage_typewriter_body_reveal: val('reels-fullpage-typewriter-body-reveal') || "sentence",
+        fullpage_typewriter_body_delay: num('reels-fullpage-typewriter-body-delay', 0),
+        fullpage_typewriter_body_x: num('reels-fullpage-typewriter-body-x', 50),
+        fullpage_typewriter_body_y: num('reels-fullpage-typewriter-body-y', 60),
+        fullpage_typewriter_body_cursor: chk('reels-fullpage-typewriter-body-cursor'),
+        fullpage_typewriter_speech_sync: chk('reels-fullpage-typewriter-speech-sync'),
+        fullpage_typewriter_cursor_image: val('reels-fullpage-typewriter-cursor-image'),
+        fullpage_typewriter_cursor_image_anchor_x: num('reels-fullpage-typewriter-cursor-image-anchor-x',50),
+        fullpage_typewriter_cursor_image_anchor_y: num('reels-fullpage-typewriter-cursor-image-anchor-y',50),
+        fullpage_typewriter_cursor_kind: val('reels-fullpage-typewriter-cursor-kind') || 'char',
+        fullpage_typewriter_cursor_scale: num('reels-fullpage-typewriter-cursor-scale', 1),
+        fullpage_typewriter_cursor_offset_x: num('reels-fullpage-typewriter-cursor-offset-x', 0),
+        fullpage_typewriter_cursor_offset_y: num('reels-fullpage-typewriter-cursor-offset-y', 0),
+        fullpage_typewriter_cursor_angle: num('reels-fullpage-typewriter-cursor-angle', 0),
         fullpage_typewriter_cursor_char: val('reels-fullpage-typewriter-cursor-char') || '|',
         fullpage_typewriter_cursor_color: val('reels-fullpage-typewriter-cursor-color') || '#FFD700',
         fullpage_typewriter_unrevealed_opacity: num('reels-tw-unrevealed-opacity', 0) / 255,
@@ -3030,6 +3129,10 @@ function _writeStyleToUI(style) {
     const set = (id, val) => {
         const el = document.getElementById(id);
         if (el) {
+            if(id==='reels-fullpage-typewriter-title-font'){
+                reelsWritingTitleFontFocus();
+                if(val && !Array.from(el.options).some(o=>o.value===val)){const option=document.createElement('option');option.value=val;option.textContent=val;el.appendChild(option);}
+            }
             el.value = val;
             el.dataset.rawValue = val;
         }
@@ -3072,6 +3175,7 @@ function _writeStyleToUI(style) {
     set('reels-font-weight', String(weight));
     setChk('reels-bold', weight >= 600);
     setChk('reels-italic', style.italic);
+    setChk('reels-uppercase', style.uppercase);
     set('reels-letter-spacing', style.letter_spacing || 0);
     set('reels-text-direction', style.text_direction || 'auto');
     reelsRefreshSubtitleWeightOptions();
@@ -3089,6 +3193,8 @@ function _writeStyleToUI(style) {
             _syncSubtitleGradientSwatch(colorTextEl, document.getElementById('reels-color-text-gradient-btn'));
         }
     }
+    set('reels-text-gradient-scope', style.text_gradient_scope || 'line');
+    setChk('reels-highlight-enabled', style.highlight_enabled !== false);
 
     const colorHighEl = document.getElementById('reels-color-high');
     if (colorHighEl) {
@@ -3120,6 +3226,11 @@ function _writeStyleToUI(style) {
     set('reels-shadow-offset-y', style.shadow_offset_y ?? 2);
     setChk('reels-use-box', style.use_box);
     setChk('reels-box-adaptive-width', style.box_adaptive_width);
+    setChk('reels-box-connected', style.box_connected !== false);
+    set('reels-box-concave-radius', style.box_concave_radius ?? 10);
+    set('reels-box-concave-radius-range', style.box_concave_radius ?? 10);
+    set('reels-box-snap-threshold', style.box_snap_threshold ?? 18);
+    set('reels-box-snap-threshold-range', style.box_snap_threshold ?? 18);
     set('reels-box-brush-style', style.box_brush_style || 'rect');
     set('reels-box-brush-color-mode', style.box_brush_color_mode || 'tint');
     set('reels-box-custom-brush-data', style.box_custom_brush_data || '');
@@ -3215,6 +3326,12 @@ function _writeStyleToUI(style) {
     set('reels-float-amp', style.floating_amplitude || 8);
     set('reels-float-period', style.floating_period || 2);
     set('reels-bounce-height', style.char_bounce_height || 20);
+    set('reels-char-anim-intensity', style.char_anim_intensity ?? 1.0);
+    set('reels-char-anim-intensity-range', style.char_anim_intensity ?? 1.0);
+    set('reels-char-anim-duration', style.char_anim_duration ?? 0.28);
+    set('reels-char-anim-duration-range', style.char_anim_duration ?? 0.28);
+    set('reels-char-anim-stagger', style.char_anim_stagger ?? 0.04);
+    set('reels-char-anim-stagger-range', style.char_anim_stagger ?? 0.04);
     set('reels-metro-bpm', style.metronome_bpm || 120);
     set('reels-jump-scale', style.letter_jump_scale || 1.5);
     set('reels-flash-color', style.flash_color || '#FFFFFF');
@@ -3251,6 +3368,54 @@ function _writeStyleToUI(style) {
     set('reels-fullpage-typewriter-reveal-type', style.fullpage_typewriter_reveal_type || 'char');
     set('reels-fullpage-typewriter-align', style.fullpage_typewriter_align || 'center');
     setChk('reels-fullpage-typewriter-cursor', style.fullpage_typewriter_cursor !== false);
+    setChk('reels-fullpage-typewriter-keep-background', style.fullpage_typewriter_keep_background ?? true);
+    setChk('reels-fullpage-typewriter-title-font-follow', style.fullpage_typewriter_title_font_follow ?? true);
+    setChk('reels-fullpage-typewriter-title-stroke-independent', style.fullpage_typewriter_title_stroke_independent);
+    setChk('reels-fullpage-typewriter-title-stroke-enabled', style.fullpage_typewriter_title_stroke_enabled ?? style.use_stroke ?? true);
+    set('reels-fullpage-typewriter-title-stroke-color', style.fullpage_typewriter_title_stroke_color ?? style.color_outline ?? '#3e2723');
+    set('reels-fullpage-typewriter-title-stroke-width', style.fullpage_typewriter_title_stroke_width ?? style.border_width ?? 3);
+    set('reels-fullpage-typewriter-title-stroke-opacity', style.fullpage_typewriter_title_stroke_opacity ?? style.opacity_outline ?? 255);
+    setChk('reels-fullpage-typewriter-title-box-enabled', style.fullpage_typewriter_title_box_enabled ?? style.use_box ?? true);
+    set('reels-fullpage-typewriter-title-box-color', style.fullpage_typewriter_title_box_color ?? style.color_bg ?? "#000000");
+    set('reels-fullpage-typewriter-title-box-opacity', style.fullpage_typewriter_title_box_opacity ?? style.opacity_bg ?? 180);
+    setChk('reels-fullpage-typewriter-body-stroke-independent', style.fullpage_typewriter_body_stroke_independent);
+    setChk('reels-fullpage-typewriter-body-stroke-enabled', style.fullpage_typewriter_body_stroke_enabled ?? style.use_stroke ?? true);
+    set('reels-fullpage-typewriter-body-stroke-color', style.fullpage_typewriter_body_stroke_color ?? style.color_outline ?? '#3e2723');
+    set('reels-fullpage-typewriter-body-stroke-width', style.fullpage_typewriter_body_stroke_width ?? style.border_width ?? 3);
+    set('reels-fullpage-typewriter-body-stroke-opacity', style.fullpage_typewriter_body_stroke_opacity ?? style.opacity_outline ?? 255);
+    setChk('reels-fullpage-typewriter-body-box-enabled', style.fullpage_typewriter_body_box_enabled ?? style.use_box ?? true);
+    set('reels-fullpage-typewriter-body-box-color', style.fullpage_typewriter_body_box_color ?? style.color_bg ?? "#000000");
+    set('reels-fullpage-typewriter-body-box-opacity', style.fullpage_typewriter_body_box_opacity ?? style.opacity_bg ?? 180);
+    setChk('reels-fullpage-typewriter-auto-sequence', style.fullpage_typewriter_auto_sequence ?? true);
+    setChk('reels-fullpage-typewriter-split', style.fullpage_typewriter_split ?? false);
+    setChk('reels-fullpage-typewriter-title-auto', style.fullpage_typewriter_title_auto ?? true);
+    set('reels-fullpage-typewriter-title-text', style.fullpage_typewriter_title_text ?? "");
+    set('reels-fullpage-typewriter-title-font', style.fullpage_typewriter_title_font ?? "");
+    set('reels-fullpage-typewriter-title-size', style.fullpage_typewriter_title_size ?? 56);
+    set('reels-fullpage-typewriter-title-weight', style.fullpage_typewriter_title_weight ?? "700");
+    set('reels-fullpage-typewriter-title-color', style.fullpage_typewriter_title_color ?? "#FFD700");
+    set('reels-fullpage-typewriter-title-x', style.fullpage_typewriter_title_x ?? 50);
+    set('reels-fullpage-typewriter-title-y', style.fullpage_typewriter_title_y ?? 20);
+    set('reels-fullpage-typewriter-title-delay', style.fullpage_typewriter_title_delay ?? 0);
+    set('reels-fullpage-typewriter-title-reveal', style.fullpage_typewriter_title_reveal ?? "sentence");
+    setChk('reels-fullpage-typewriter-title-cursor', style.fullpage_typewriter_title_cursor ?? true);
+    set('reels-fullpage-typewriter-body-reveal', style.fullpage_typewriter_body_reveal ?? "sentence");
+    set('reels-fullpage-typewriter-body-delay', style.fullpage_typewriter_body_delay ?? 0);
+    set('reels-fullpage-typewriter-body-x', style.fullpage_typewriter_body_x ?? 50);
+    set('reels-fullpage-typewriter-body-y', style.fullpage_typewriter_body_y ?? 60);
+    setChk('reels-fullpage-typewriter-body-cursor', style.fullpage_typewriter_body_cursor ?? true);
+    reelsRefreshWritingTitleEditor();
+    requestAnimationFrame(() => window.reelsWritingTitleFontChanged());
+    setChk('reels-fullpage-typewriter-speech-sync', style.fullpage_typewriter_speech_sync ?? true);
+    set('reels-fullpage-typewriter-cursor-image', style.fullpage_typewriter_cursor_image || '');
+    set('reels-fullpage-typewriter-cursor-image-anchor-x', style.fullpage_typewriter_cursor_image_anchor_x ?? 50);
+    set('reels-fullpage-typewriter-cursor-image-anchor-y', style.fullpage_typewriter_cursor_image_anchor_y ?? 50);
+    set('reels-fullpage-typewriter-cursor-kind', style.fullpage_typewriter_cursor_kind ?? "char");
+    reelsRefreshSpeechWritingImageUI();
+    set('reels-fullpage-typewriter-cursor-scale', style.fullpage_typewriter_cursor_scale ?? 1);
+    set('reels-fullpage-typewriter-cursor-offset-x', style.fullpage_typewriter_cursor_offset_x ?? 0);
+    set('reels-fullpage-typewriter-cursor-offset-y', style.fullpage_typewriter_cursor_offset_y ?? 0);
+    set('reels-fullpage-typewriter-cursor-angle', style.fullpage_typewriter_cursor_angle ?? 0);
     set('reels-fullpage-typewriter-cursor-char', style.fullpage_typewriter_cursor_char || '|');
     set('reels-fullpage-typewriter-cursor-color', style.fullpage_typewriter_cursor_color || '#FFD700');
     const fullpageTypewriterUnreadOpacity = Number(style.fullpage_typewriter_unrevealed_opacity ?? style.tw_unrevealed_opacity ?? 0);
@@ -3319,7 +3484,7 @@ function _reelsUpdatePreviewInternal() {
     const renderer = _reelsState.renderer;
     if (!renderer) return;
 
-    const style = _readStyleFromUI();
+    const style = getWritingVisualStyle(_readStyleFromUI());
     // 预览必须是纯读取：任务切换、播放器 timeupdate、字体异步加载都会调用它。
     // 在这里写入会把旧任务的 UI 样式误存进新任务/新作用域。
     const previewText = (document.getElementById('reels-preview-text') || {}).value || 'Hello World 这是一个测试字幕';
@@ -3717,6 +3882,7 @@ function _reelsUpdatePreviewInternal() {
 
     const subtitleToggle = document.getElementById('reels-subtitle-toggle');
     const showSubtitle = !subtitleToggle || subtitleToggle.checked;
+    const showOverlay = _isReelsOverlayToggleEnabled();
     const rangeToggle = document.getElementById('reels-show-subtitle-range');
     const showSubtitleRange = !rangeToggle || rangeToggle.checked;
 
@@ -3725,6 +3891,7 @@ function _reelsUpdatePreviewInternal() {
     const renderOverlays = () => {
     // ── 渲染覆层 (文字卡片等) ──
     if (!inCoverEditMode && _inCoverPhase) {
+        if (!showOverlay) return;
         // Normal mode > Cover phase -> ONLY render Cover overlays
         const coverOverlays = (_selectedTask && _selectedTask.cover && _selectedTask.cover.overlays) ? _selectedTask.cover.overlays : [];
         if (coverOverlays.length > 0 && window.ReelsOverlay) {
@@ -3740,7 +3907,7 @@ function _reelsUpdatePreviewInternal() {
         const ovMgr = _reelsState.overlayProxy ? _reelsState.overlayProxy.overlayMgr : null;
         // 使用与时间线、导出完全相同的合成栈。不能从 overlayMgr 和插入轨
         // 临时拼接后再按陈旧 z_index 排序，否则右侧/左侧的层级调整不会反映到画面。
-        const overlays = _getTaskRenderOverlays(_selectedTask, { forExport: false });
+        const overlays = _getTaskRenderOverlays(_selectedTask, { forExport: false, showOverlay });
         if (overlays.length > 0) {
             // 注入覆层列表引用（供跟随绑定），确保 scroll 先渲染
             const sorted = overlays.filter(o => !o.disabled).slice().sort((a, b) => {
@@ -3756,12 +3923,20 @@ function _reelsUpdatePreviewInternal() {
                 
                 ov._subtitleTimeMode = _selectedTask ? _selectedTask.subtitleTimeMode : null;
                 ov._subtitleTimeSlices = _selectedTask ? _selectedTask.subtitleTimeSlices : null;
+                if (ov.type === 'scroll') {
+                    Object.defineProperty(ov, '_taskSegments', {
+                        value: _selectedTask ? _selectedTask.segments : null,
+                        writable: true,
+                        configurable: true,
+                        enumerable: false,
+                    });
+                }
 
                 ReelsOverlay.drawOverlay(ctx, ov, ovTime, w, h);
             }
         }
         // ── 选中框 + 拖拽手柄 ──
-        if (ovMgr) {
+        if (ovMgr && showOverlay) {
             _drawOverlaySelectionUI(ctx, w, h);
         }
     }
@@ -3780,7 +3955,7 @@ function _reelsUpdatePreviewInternal() {
 
     if (activeSegment && showSubtitle) {
         if (typeof _selectedTask !== 'undefined' && _selectedTask && _selectedTask.segments) {
-            renderer.setContextSegments(_selectedTask.segments);
+            renderer.setContextSegments(_selectedTask.segments, _selectedTask.ttsText || _selectedTask.aiScript || '');
         } else {
             renderer.setContextSegments([activeSegment]);
         }
@@ -3838,8 +4013,21 @@ function _reelsUpdatePreviewInternal() {
     }
 }
 
+function _isReelsOverlayToggleEnabled() {
+    const v1Toggle = document.getElementById('reels-overlay-toggle');
+    if (v1Toggle) return v1Toggle.checked !== false;
+    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="overlays"]');
+    if (v2Toggle) return v2Toggle.checked !== false;
+    return true;
+}
+
 function reelsOnSubtitleToggleChange(checkbox) {
+    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="subs"]');
+    if (v2Toggle && checkbox && v2Toggle !== checkbox) {
+        v2Toggle.checked = checkbox.checked;
+    }
     reelsUpdatePreview();
+    if (typeof window.ReelsPreviewV2?.render === 'function') window.ReelsPreviewV2.render();
     if (checkbox && !checkbox.checked) {
         const message = '已关闭字幕：预览不显示字幕，导出的视频也不会带字幕。';
         if (typeof showToast === 'function') showToast(message, 'warning');
@@ -3847,6 +4035,25 @@ function reelsOnSubtitleToggleChange(checkbox) {
     }
 }
 window.reelsOnSubtitleToggleChange = reelsOnSubtitleToggleChange;
+
+function reelsOnOverlayToggleChange(checkbox) {
+    const v1Toggle = document.getElementById('reels-overlay-toggle');
+    if (v1Toggle && checkbox && v1Toggle !== checkbox) {
+        v1Toggle.checked = checkbox.checked;
+    }
+    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="overlays"]');
+    if (v2Toggle && checkbox && v2Toggle !== checkbox) {
+        v2Toggle.checked = checkbox.checked;
+    }
+    reelsUpdatePreview();
+    if (typeof window.ReelsPreviewV2?.render === 'function') window.ReelsPreviewV2.render();
+    if (checkbox && !checkbox.checked) {
+        const message = '已关闭覆层：预览不显示覆层，导出的视频也不会带覆层。';
+        if (typeof showToast === 'function') showToast(message, 'warning');
+        else alert(message);
+    }
+}
+window.reelsOnOverlayToggleChange = reelsOnOverlayToggleChange;
 
 function _drawSubtitlePreviewRange(ctx, style, canvasW, canvasH) {
     if (!ctx || !style) return;
@@ -5071,14 +5278,17 @@ function _reelsFileExists(filePath) {
 }
 
 function _toPlayablePath(filePath, srcUrl = null) {
-    if (srcUrl && _reelsFileExists(srcUrl)) return srcUrl;
-    if (!filePath) return '';
-    if (!_reelsFileExists(filePath)) return '';
-    if (window.electronAPI && typeof window.electronAPI.toFileUrl === 'function') {
-        const u = window.electronAPI.toFileUrl(filePath);
-        if (u) return u;
+    let url = '';
+    if (srcUrl && _reelsFileExists(srcUrl)) url = srcUrl;
+    else {
+        if (!filePath || !_reelsFileExists(filePath)) return '';
+        url = window.electronAPI?.toFileUrl?.(filePath) || _normalizeWatermarkPath(filePath);
     }
-    return _normalizeWatermarkPath(filePath);
+    // Only Reels playback requests use SDR proxies. Export keeps the source path.
+    if (url.startsWith('local-media://') && /\.(mp4|mov|m4v|mkv|webm|avi|ts|mts|m2ts|3gp)(?:[?#]|$)/i.test(url)) {
+        url = url.split('?')[0].split('#')[0] + '?reelsPreview=sdr-v2';
+    }
+    return url;
 }
 
 /**
@@ -5088,6 +5298,7 @@ function _toPlayablePath(filePath, srcUrl = null) {
 function _normalizeLocalMediaPath(p) {
     if (!p) return '';
     let s = String(p);
+    if (s.startsWith('local-media://')) s = s.split('?')[0].split('#')[0];
     // 去掉 local-media:// 或 file:// 前缀
     if (s.startsWith('local-media:///')) {
         s = s.slice(14);
@@ -5133,7 +5344,8 @@ function _getReelsFastExportCapability(task, explicitBgPath = '') {
     if (task.contentVideoDirectBg || task.contentVideoBlurBg) {
         return { supported: false, reason: '内容视频背景需要逐帧合成' };
     }
-    const hasBlendOverlay = (task.overlays || []).some((overlay) =>
+    const showOverlay = _isReelsOverlayToggleEnabled();
+    const hasBlendOverlay = showOverlay && (task.overlays || []).some((overlay) =>
         overlay && !overlay.disabled && overlay.blend_mode && overlay.blend_mode !== 'source-over'
     );
     if (hasBlendOverlay) {
@@ -7520,8 +7732,14 @@ function _queueTxtFile(file) {
     reader.readAsText(file);
 }
 
+function _naturalCompareFileNames(a, b) {
+    const nameA = String(a?.name || a?.baseName || a?.path || a || '');
+    const nameB = String(b?.name || b?.baseName || b?.path || b || '');
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+}
+
 function _onTxtFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).sort(_naturalCompareFileNames);
     for (const f of files) _queueTxtFile(f);
     e.target.value = '';
 }
@@ -7913,7 +8131,8 @@ function reelsOnWorkModeChange() {
 
 function _queueMixedFiles(files, options = {}) {
     const workMode = _getWorkMode();
-    for (const file of files) {
+    const sortedFiles = Array.from(files || []).sort(_naturalCompareFileNames);
+    for (const file of sortedFiles) {
         const ext = _fileExt(file.name || '');
         if (ext === 'srt' && workMode === 'srt') {
             _queueSrtFile(file);
@@ -7930,27 +8149,27 @@ function _queueMixedFiles(files, options = {}) {
 }
 
 function _onVideoFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).sort(_naturalCompareFileNames);
     for (const f of files) _queueBackgroundFile(f);
     reelsAutoMatchFiles();
     e.target.value = '';
 }
 
 function _onAudioFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).sort(_naturalCompareFileNames);
     for (const f of files) _queueAudioFile(f);
     reelsAutoMatchFiles();
     e.target.value = '';
 }
 
 function _onSrtFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).sort(_naturalCompareFileNames);
     for (const f of files) _queueSrtFile(f);
     e.target.value = '';
 }
 
 function _onFolderFilesSelected(e) {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []).sort(_naturalCompareFileNames);
     _queueMixedFiles(files);
     reelsAutoMatchFiles();
     e.target.value = '';
@@ -8190,18 +8409,18 @@ function reelsToggleFolderQueue(queueId) {
             _reelsState.folderQueueCollapsed[id] = id !== queueId;
         });
         _reelsState.folderQueueCollapsed[queueId] = false;
-        _renderTaskList();
+        _renderTaskList({ preserveScroll: true });
         return;
     }
     _reelsState.folderQueueCollapsed[queueId] = !_reelsState.folderQueueCollapsed[queueId];
-    _renderTaskList();
+    _renderTaskList({ preserveScroll: true });
 }
 
 function reelsToggleFolderQueueExport(queueId, checked) {
     (_reelsState.tasks || []).forEach(task => {
         if (task._folderQueueId === queueId) task._exportSelected = !!checked;
     });
-    _renderTaskList();
+    _renderTaskList({ preserveScroll: true });
 }
 window.reelsToggleFolderQueueExport = reelsToggleFolderQueueExport;
 
@@ -8265,7 +8484,8 @@ function _onTaskListDrop(e) {
     e.currentTarget.style.borderColor = '';
     e.currentTarget.style.backgroundColor = '';
     e.currentTarget.style.boxShadow = '';
-    const draggedIndex = Number(e.dataTransfer?.getData('application/x-videokit-reels-task-index'));
+    const draggedRaw = e.dataTransfer?.getData('application/x-videokit-reels-task-index');
+    const draggedIndex = draggedRaw !== '' && draggedRaw != null ? Number(draggedRaw) : NaN;
     if (Number.isInteger(draggedIndex) && draggedIndex >= 0 && draggedIndex < _reelsState.tasks.length) {
         const targetRow = e.target.closest?.('.reels-task-item');
         const targetIndex = Number(targetRow?.dataset?.taskIdx);
@@ -8313,7 +8533,8 @@ function _onTaskListDrop(e) {
         path: file._nativePath || ((typeof getFileNativePath === 'function') ? getFileNativePath(file) : (file.path || '')),
     })).filter(item => item.path);
     const dirs = fileEntries.filter(item => window.electronAPI?.isDirectory?.(item.path)).map(item => item.path);
-    const regularFiles = fileEntries.filter(item => !window.electronAPI?.isDirectory?.(item.path)).map(item => item.file);
+    const regularEntries = fileEntries.filter(item => !window.electronAPI?.isDirectory?.(item.path));
+    const regularFiles = regularEntries.map(item => item.file);
 
     if (dirs.length > 0) {
         const result = _importDroppedReelsTaskFolders(dirs);
@@ -8336,7 +8557,52 @@ function _onTaskListDrop(e) {
             }
         }
     }
-    if (regularFiles.length > 0) {
+    if (regularEntries.length > 0) {
+        // 如果直接拖入单个或多个视频/图片到指定任务行，直接绑定到该任务行
+        const targetRow = e.target.closest?.('.reels-task-item');
+        const targetIndex = targetRow ? Number(targetRow.dataset?.taskIdx) : -1;
+        const allVisualBg = regularEntries.every(item => REELS_BACKGROUND_EXTS.has(_fileExt(item.file.name || item.path || '')));
+        if (Number.isInteger(targetIndex) && targetIndex >= 0 && targetIndex < _reelsState.tasks.length && allVisualBg) {
+            const sortedBgPaths = regularEntries
+                .slice()
+                .sort((a, b) => _naturalCompareFileNames(a.file, b.file))
+                .map(item => item.path)
+                .filter(Boolean);
+            const targetTask = _reelsState.tasks[targetIndex];
+            if (targetTask && sortedBgPaths.length > 0) {
+                const firstPath = sortedBgPaths[0];
+                const firstUrl = window.electronAPI?.toFileUrl?.(firstPath) || null;
+                if (sortedBgPaths.length === 1) {
+                    targetTask.bgMode = 'single';
+                    targetTask.bgClipPool = [];
+                    targetTask.bgClipActivePool = [];
+                } else {
+                    targetTask.bgMode = 'multi';
+                    targetTask.bgClipPool = sortedBgPaths;
+                    targetTask.bgClipActivePool = [];
+                    targetTask.bgClipOrder = targetTask.bgClipOrder || 'sequence';
+                    targetTask.bgTransition = targetTask.bgTransition || 'crossfade';
+                    targetTask.bgTransDur = targetTask.bgTransDur ?? 0.5;
+                }
+                targetTask.bgPath = firstPath;
+                targetTask.videoPath = firstPath;
+                targetTask.bgSrcUrl = firstUrl;
+                targetTask.srcUrl = firstUrl;
+                _renderTaskList({ preserveScroll: true });
+                reelsSelectTask(targetIndex);
+                if (typeof _batchAutoSave === 'function') _batchAutoSave();
+                if (typeof showToast === 'function') {
+                    showToast(
+                        sortedBgPaths.length > 1
+                            ? `🎬 已将 ${sortedBgPaths.length} 个素材设为第 ${targetIndex + 1} 行的多素材背景`
+                            : `✅ 已更新第 ${targetIndex + 1} 行的背景素材`,
+                        'success'
+                    );
+                }
+                return;
+            }
+        }
+
         _queueMixedFiles(regularFiles, { createBackgroundTasks: true });
         reelsAutoMatchFiles();
         const backgroundCount = regularFiles.filter(file => REELS_BACKGROUND_EXTS.has(_fileExt(file.name || ''))).length;
@@ -8458,10 +8724,10 @@ function _pruneFreeBgOnlyTasks() {
 }
 
 function reelsAutoMatchFiles() {
-    const backgrounds = _reelsState.pendingFiles.backgrounds.splice(0);
-    const audios = _reelsState.pendingFiles.audios.splice(0);
-    const srts = _reelsState.pendingFiles.srts.splice(0);
-    const txts = _reelsState.pendingFiles.txts.splice(0);
+    const backgrounds = _reelsState.pendingFiles.backgrounds.splice(0).sort(_naturalCompareFileNames);
+    const audios = _reelsState.pendingFiles.audios.splice(0).sort(_naturalCompareFileNames);
+    const srts = _reelsState.pendingFiles.srts.splice(0).sort(_naturalCompareFileNames);
+    const txts = _reelsState.pendingFiles.txts.splice(0).sort(_naturalCompareFileNames);
     const receivedFiles = backgrounds.length + audios.length + srts.length + txts.length > 0;
     const matchMode = _getMatchMode();
     // 用对象引用而非索引记录本次导入涉及的任务；导入流程可能会新建任务或
@@ -8654,11 +8920,12 @@ function reelsSetTaskNameDisplay(mode) {
 }
 window.reelsSetTaskNameDisplay = reelsSetTaskNameDisplay;
 
-function _renderTaskList() {
+function _renderTaskList(options = {}) {
     const container = document.getElementById('reels-task-list');
     const countEl = document.getElementById('reels-task-count');
     const countPanelEl = document.getElementById('reels-task-count-panel');
     if (!container) return;
+    const prevScrollTop = container.scrollTop;
 
     const tasks = _reelsState.tasks;
     const taskNameDisplay = _getReelsTaskNameDisplay();
@@ -8674,6 +8941,7 @@ function _renderTaskList() {
     _updateExportSelectedCountUI();
 
     if (tasks.length === 0) {
+        _updateToggleAllGroupsBtnUI();
         const hint = workMode === 'srt'
             ? '添加背景素材 + 配音 + SRT，支持拖拽和文件夹导入；同名自动配对。'
             : workMode === 'dubbed_text'
@@ -8764,9 +9032,9 @@ function _renderTaskList() {
                 const tSnip = ovTitle.length > 12 ? ovTitle.substring(0, 10) + '…' : ovTitle;
                 const bSnip = ovBody.length > 20 ? ovBody.substring(0, 18) + '…' : ovBody;
                 const parts = [];
-                if (tSnip) parts.push(`<b>${tSnip}</b>`);
-                if (bSnip) parts.push(bSnip);
-                ovPreview = `<div style="font-size:10px;color:#8899aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;" title="${ovTitle}\n${ovBody}">${icon} ${parts.join(' | ')}</div>`;
+                if (tSnip) parts.push(`<b>${escapeTaskText(tSnip)}</b>`);
+                if (bSnip) parts.push(escapeTaskText(bSnip));
+                ovPreview = `<div style="font-size:10px;color:#8899aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;" title="${escapeTaskText(ovTitle)}\n${escapeTaskText(ovBody)}">${icon} ${parts.join(' | ')}</div>`;
             }
         }
 
@@ -8790,11 +9058,13 @@ function _renderTaskList() {
         let batchGroupHeader = '';
         const isLegacyTask = !task._batchTabId;
         const batchGroupId = task._batchTabId || legacyGroupId;
+        if (_reelsState.batchGroupCollapsed[batchGroupId] === undefined) _reelsState.batchGroupCollapsed[batchGroupId] = true;
         const batchGroupCollapsed = !!_reelsState.batchGroupCollapsed[batchGroupId];
         if (batchGroupId !== lastBatchGroupId) {
             const groupName = escapeTaskText(isLegacyTask ? '已有任务（未归档）' : (task._batchTabName || '未命名分组'));
             const groupTasks = tasks.filter(item => isLegacyTask ? !item._batchTabId : item._batchTabId === batchGroupId);
             const groupSelected = groupTasks.filter(item => item._exportSelected !== false).length;
+            const groupIndeterminate = groupSelected > 0 && groupSelected < groupTasks.length;
             const encodedGroupId = encodeURIComponent(batchGroupId);
             batchGroupHeader = `
                 <div class="reels-batch-group-header"
@@ -8804,7 +9074,7 @@ function _renderTaskList() {
                     <button onclick="event.stopPropagation(); reelsToggleBatchGroup(decodeURIComponent('${encodedGroupId}'))"
                         style="border:none;background:transparent;color:#c7d2fe;cursor:pointer;padding:0;font-size:11px;"
                         title="折叠/展开分组">${batchGroupCollapsed ? '▶' : '▼'}</button>
-                    <input type="checkbox" ${groupSelected === groupTasks.length ? 'checked' : ''}
+                    <input type="checkbox" class="reels-batch-group-export-cb" data-indeterminate="${groupIndeterminate ? '1' : '0'}" ${groupSelected === groupTasks.length && groupTasks.length > 0 ? 'checked' : ''}
                         onchange="event.stopPropagation(); reelsToggleBatchGroupExport(decodeURIComponent('${encodedGroupId}'), this.checked)"
                         onclick="event.stopPropagation()"
                         style="accent-color:var(--accent-color,#7b8bef);margin:0;transform:scale(1.08);cursor:pointer;"
@@ -8818,6 +9088,7 @@ function _renderTaskList() {
 
         let folderHeader = '';
         const queueId = task._folderQueueId || '';
+        if (queueId && _reelsState.folderQueueCollapsed[queueId] === undefined) _reelsState.folderQueueCollapsed[queueId] = true;
         const queueCollapsed = queueId ? !!_reelsState.folderQueueCollapsed[queueId] : false;
         if (queueId && queueId !== lastFolderQueueId) {
             const queueName = escapeTaskText(task._folderQueueName || '文件夹队列');
@@ -8825,6 +9096,7 @@ function _renderTaskList() {
             const queueTasks = tasks.filter(item => item._folderQueueId === queueId);
             const queueCount = queueTasks.length;
             const queueSelected = queueTasks.filter(item => item._exportSelected !== false).length;
+            const queueIndeterminate = queueSelected > 0 && queueSelected < queueCount;
             const encodedQueueId = encodeURIComponent(queueId);
             folderHeader = `
                 <div class="reels-folder-queue-header" onclick="reelsToggleFolderQueue(decodeURIComponent('${encodedQueueId}'))"
@@ -8832,7 +9104,7 @@ function _renderTaskList() {
                            border-radius:6px;background:rgba(76,158,255,0.12);border:1px solid rgba(76,158,255,0.25);
                            color:#9ccaff;cursor:pointer;font-size:11px;font-weight:600;">
                     <span>${queueCollapsed ? '▶' : '▼'}</span>
-                    <input type="checkbox" ${queueSelected === queueCount ? 'checked' : ''}
+                    <input type="checkbox" class="reels-folder-queue-export-cb" data-indeterminate="${queueIndeterminate ? '1' : '0'}" ${queueSelected === queueCount && queueCount > 0 ? 'checked' : ''}
                         onchange="event.stopPropagation(); reelsToggleFolderQueueExport(decodeURIComponent('${encodedQueueId}'), this.checked)"
                         onclick="event.stopPropagation()"
                         style="accent-color:var(--accent-color,#7b8bef);margin:0;transform:scale(1.08);cursor:pointer;"
@@ -8877,15 +9149,77 @@ function _renderTaskList() {
         `;
     }).join('');
 
-    // Auto-scroll selected task into view
-    const selectedEl = container.querySelector('.reels-task-selected');
-    if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    container.querySelectorAll('input[type="checkbox"][data-indeterminate="1"]').forEach(cb => {
+        cb.indeterminate = true;
+    });
+
+    _updateToggleAllGroupsBtnUI();
+
+    if (options && options.preserveScroll) {
+        container.scrollTop = prevScrollTop;
+    } else {
+        // Auto-scroll selected task into view
+        const selectedEl = container.querySelector('.reels-task-selected');
+        if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 }
+
+function _areAllReelsTaskGroupsCollapsed() {
+    const tasks = _reelsState.tasks || [];
+    if (tasks.length === 0) return true;
+    const legacyGroupId = '__reels_existing_tasks__';
+    for (const task of tasks) {
+        const batchGroupId = task._batchTabId || legacyGroupId;
+        const batchCollapsed = _reelsState.batchGroupCollapsed?.[batchGroupId] !== undefined
+            ? !!_reelsState.batchGroupCollapsed[batchGroupId]
+            : true;
+        if (!batchCollapsed) return false;
+        if (task._folderQueueId) {
+            const queueCollapsed = _reelsState.folderQueueCollapsed?.[task._folderQueueId] !== undefined
+                ? !!_reelsState.folderQueueCollapsed[task._folderQueueId]
+                : true;
+            if (!queueCollapsed) return false;
+        }
+    }
+    return true;
+}
+
+function _updateToggleAllGroupsBtnUI() {
+    const btn = document.getElementById('reels-toggle-all-groups-btn');
+    if (!btn) return;
+    const allCollapsed = _areAllReelsTaskGroupsCollapsed();
+    if (allCollapsed) {
+        btn.textContent = '▼ 全部展开';
+        btn.title = '一键展开全部任务分组与队列';
+    } else {
+        btn.textContent = '▲ 全部合拢';
+        btn.title = '一键合拢全部任务分组与队列';
+    }
+}
+
+function reelsToggleAllTaskGroups() {
+    const tasks = _reelsState.tasks || [];
+    if (tasks.length === 0) return;
+    const shouldExpand = _areAllReelsTaskGroupsCollapsed();
+    const targetCollapsed = !shouldExpand;
+    if (!_reelsState.batchGroupCollapsed) _reelsState.batchGroupCollapsed = {};
+    if (!_reelsState.folderQueueCollapsed) _reelsState.folderQueueCollapsed = {};
+    const legacyGroupId = '__reels_existing_tasks__';
+    tasks.forEach(task => {
+        const batchGroupId = task._batchTabId || legacyGroupId;
+        _reelsState.batchGroupCollapsed[batchGroupId] = targetCollapsed;
+        if (task._folderQueueId) {
+            _reelsState.folderQueueCollapsed[task._folderQueueId] = targetCollapsed;
+        }
+    });
+    _renderTaskList({ preserveScroll: true });
+}
+window.reelsToggleAllTaskGroups = reelsToggleAllTaskGroups;
 
 function reelsToggleBatchGroup(groupId) {
     if (!_reelsState.batchGroupCollapsed) _reelsState.batchGroupCollapsed = {};
     _reelsState.batchGroupCollapsed[groupId] = !_reelsState.batchGroupCollapsed[groupId];
-    _renderTaskList();
+    _renderTaskList({ preserveScroll: true });
 }
 window.reelsToggleBatchGroup = reelsToggleBatchGroup;
 
@@ -8895,7 +9229,7 @@ function reelsToggleBatchGroupExport(groupId, checked) {
             task._exportSelected = !!checked;
         }
     });
-    _renderTaskList();
+    _renderTaskList({ preserveScroll: true });
 }
 window.reelsToggleBatchGroupExport = reelsToggleBatchGroupExport;
 
@@ -9322,7 +9656,13 @@ function reelsSelectTask(idx) {
 function reelsRemoveTask(idx) {
     if (idx < 0 || idx >= _reelsState.tasks.length) return;
     const prevSelectedIdx = _reelsState.selectedIdx;
-    _reelsState.tasks.splice(idx, 1);
+    const removed = _reelsState.tasks.splice(idx, 1);
+
+    if (typeof window.reelsSyncTaskRemovalToBatchTabs === 'function') {
+        window.reelsSyncTaskRemovalToBatchTabs(removed);
+    } else if (typeof _batchAutoSave === 'function') {
+        _batchAutoSave();
+    }
 
     if (_reelsState.tasks.length === 0) {
         _reelsState.selectedIdx = -1;
@@ -10577,15 +10917,20 @@ async function reelsSavePreset() {
                 _reelsRefreshPresetList();
                 const select = document.getElementById('reels-preset-select');
                 if (select) select.value = name;
+                const triggerLabel = document.querySelector('#reels-preset-select-trigger span');
+                if (triggerLabel) triggerLabel.textContent = name;
+                showToast(`字幕预设已保存：${name}`, 'success', 3000);
                 console.log(`[预设] 保存成功: "${name}", keys: ${Object.keys(style).length}`);
             } else {
-                alert(`保存失败！可能预设数量已满（${ReelsStyleEngine.MAX_PRESETS}个）或名称无效。`);
+                alert('字幕预设保存失败：' + (ReelsStyleEngine.getLastPresetSaveError?.() || '无法写入预设库，请检查保存目录是否可写。'));
             }
         } else {
             console.error('[预设] ReelsStyleEngine 未加载！');
+            alert('字幕模板引擎未加载，请重新打开软件后再试。');
         }
     } catch (e) {
         console.error('[预设] 保存出错:', e);
+        alert(`字幕预设保存失败：${e.message || String(e)}`);
     }
 }
 
@@ -11033,10 +11378,23 @@ function _reelsParentDir(filePath) {
     return normalized.slice(0, idx);
 }
 
+function _readPreferredReelsOutputDir() {
+    try { return window.electronAPI?.readReelsOutputDirectory?.() || localStorage.getItem('reels_last_output_dir') || ''; } catch (_) { return ''; }
+}
+function _rememberReelsOutputDir(dir) {
+    if (!dir || !String(dir).trim()) return;
+    const value = String(dir).trim();
+    const result = window.electronAPI?.saveReelsOutputDirectory?.(value);
+    if (result?.ok === false) { alert(`输出目录记忆失败：${result.error}`); return; }
+    try { localStorage.setItem('reels_last_output_dir', value); } catch (_) { }
+}
 function reelsSelectOutputDir() {
     if (window.electronAPI && window.electronAPI.selectDirectory) {
         window.electronAPI.selectDirectory().then(dir => {
-            if (dir) document.getElementById('reels-output-dir').value = dir;
+            if (dir) {
+                document.getElementById('reels-output-dir').value = dir;
+                _rememberReelsOutputDir(dir);
+            }
         });
     } else {
         alert('输出目录选择需要在 Electron 环境中运行');
@@ -11178,25 +11536,14 @@ function reelsCancelExport() {
 function reelsToggleExportSelect(idx, checked) {
     const task = _reelsState.tasks[idx];
     if (task) task._exportSelected = !!checked;
-    _updateExportSelectedCountUI();
-    // 更新该行的视觉不透明度（无需完整重绘）
-    const items = document.querySelectorAll('.reels-task-item');
-    if (items[idx]) items[idx].style.opacity = checked ? '1' : '0.45';
+    _renderTaskList({ preserveScroll: true });
 }
 window.reelsToggleExportSelect = reelsToggleExportSelect;
 
 /** 全选 / 取消全选 */
 function reelsToggleExportSelectAll(checked) {
     _reelsState.tasks.forEach(t => t._exportSelected = !!checked);
-    // 更新所有 checkbox
-    document.querySelectorAll('.reels-export-cb').forEach(cb => {
-        cb.checked = !!checked;
-    });
-    // 更新所有行的不透明度
-    document.querySelectorAll('.reels-task-item').forEach(el => {
-        el.style.opacity = checked ? '1' : '0.45';
-    });
-    _updateExportSelectedCountUI();
+    _renderTaskList({ preserveScroll: true });
 }
 window.reelsToggleExportSelectAll = reelsToggleExportSelectAll;
 
@@ -11362,7 +11709,8 @@ async function _exportSaveCoverPng(task, outputDirTrimmed, baseName) {
         }
 
         // Draw Cover overlays
-        if (task.cover.overlays && task.cover.overlays.length > 0 && window.ReelsOverlay) {
+        const showOverlay = _isReelsOverlayToggleEnabled();
+        if (showOverlay && task.cover.overlays && task.cover.overlays.length > 0 && window.ReelsOverlay) {
             for (const ov of task.cover.overlays) {
                 if (ov.disabled) continue;
                 ov._exporting = true;
@@ -11404,12 +11752,13 @@ async function _exportCoverVideo(task, taskStyle, outputDirTrimmed, baseName) {
         let exportEngine = (document.getElementById('reels-export-engine') || {}).value || 'precise';
         if (exportEngine === 'experimental') exportEngine = 'hardware';
         const gpuEnabled = (document.getElementById('reels-use-gpu') || {}).checked || exportEngine === 'hardware';
+        const showOverlay = _isReelsOverlayToggleEnabled();
         
         await window.reelsWysiwygExport({
             canvas: offCanvas,
             style: taskStyle,
             segments: [],
-            overlays: task.cover.overlays || [],
+            overlays: showOverlay ? (task.cover.overlays || []) : [],
             backgroundPath: task.cover.bgPath || task.bgPath,
             bgMode: 'single',
             outputPath: outputPath,
@@ -11508,10 +11857,11 @@ function _refreshMultiPresetList() {
         const tagColor = isBuiltin ? 'rgba(100,200,150,0.15)' : 'rgba(123,139,239,0.1)';
         const tagText = isBuiltin ? '内置' : '自定义';
         const tagFg = isBuiltin ? '#6cc' : '#8b8bfa';
+        const safeName = String(name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         return `<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#ccc;cursor:pointer;padding:3px 6px;border-radius:4px;background:${tagColor};white-space:nowrap;">
-            <input type="checkbox" class="reels-mp-cb" data-preset-name="${name.replace(/"/g, '&quot;')}" style="margin:0;transform:scale(0.85);">
+            <input type="checkbox" class="reels-mp-cb" data-preset-name="${safeName}" style="margin:0;transform:scale(0.85);">
             <span style="font-size:9px;color:${tagFg};font-weight:600;">[${tagText}]</span>
-            ${name}
+            ${safeName}
         </label>`;
     }).join('');
 
@@ -11542,7 +11892,7 @@ function _updateMultiPresetSummary() {
 }
 
 function _resolveSafeReelsExportConcurrency(requested, totalJobs, options = {}) {
-    const wanted = Math.max(1, Math.min(4, parseInt(requested, 10) || 1));
+    const wanted = Math.max(1, Math.min(10, parseInt(requested, 10) || 1));
     // 导出并发由用户选择；不要根据内存解码器或队列长度静默降级。
     return wanted;
 }
@@ -12408,6 +12758,7 @@ async function reelsStartExport(options = {}) {
             
             const subtitleToggle = document.getElementById('reels-subtitle-toggle');
             const showSubtitle = !subtitleToggle || subtitleToggle.checked;
+            const showOverlay = _isReelsOverlayToggleEnabled();
 
             // ── 封面静帧单独输出 ──
             if (task.cover && task.cover.enabled !== false && task.cover.exportSeparate !== false) {
@@ -12434,7 +12785,7 @@ async function reelsStartExport(options = {}) {
                     segments: task.segments || [],
                     originalScript: task.ttsText || task.aiScript || task.txtContent || "",
                     showSubtitle: showSubtitle,
-                    overlays: _getTaskRenderOverlays(task),
+                    overlays: _getTaskRenderOverlays(task, { showOverlay }),
                     insertAudioClips: _getTaskInsertAudio(task),
                     overlayAboveSubtitle: task.overlayAboveSubtitle !== false,
                     backgroundPath: bgPath,
@@ -12508,7 +12859,7 @@ async function reelsStartExport(options = {}) {
                 // ── 渲染覆层为透明 PNG ──
                 let overlayPngPath = null;
                 let overlayPngSlices = null; // 时间切片多 PNG 模式
-                const taskOverlays = task.overlays || [];
+                const taskOverlays = showOverlay ? (task.overlays || []) : [];
                 let hasTimeSlice = task.subtitleTimeMode === 'split' && Array.isArray(task.subtitleTimeSlices) && task.subtitleTimeSlices.length > 0;
 
                 // B 版自动拆分：标题 0~10s，正文 10s~ (通过 AB 批量创建时的 _version 标记识别)
@@ -12717,7 +13068,7 @@ async function reelsStartExport(options = {}) {
                     task,
                     style: taskStyle,
                     segments: showSubtitle ? (task.segments || []) : [],
-                    overlays: task.overlays || [],
+                    overlays: taskOverlays,
                     overlayPngPath: overlayPngPath,  // 单张 PNG（常规模式）
                     overlayPngSlices: overlayPngSlices, // 多张 PNG（时间切片模式）
                     videoPath: task.videoPath || null,
@@ -12757,7 +13108,7 @@ async function reelsStartExport(options = {}) {
                 let estimatedDuration = 0;
                 try {
                     let maxFlipperDuration = 0;
-                    if (task && Array.isArray(task.overlays)) {
+                    if (showOverlay && task && Array.isArray(task.overlays)) {
                         for (const ov of task.overlays) {
                             if (ov && !ov.disabled && ov.flipper_enabled) {
                                 const text = (ov.type === 'textcard') ? (ov.body_text || '') : (ov.content || '');
@@ -12802,7 +13153,7 @@ async function reelsStartExport(options = {}) {
                 estimatedDuration = Number(estimatedDuration);
                 if (!Number.isFinite(estimatedDuration) || estimatedDuration < 0) estimatedDuration = 0;
                 const estimatedFrames = Math.ceil((estimatedDuration || 0) * 30);
-                const hasVideoOverlays = Array.isArray(task.overlays) && task.overlays.some(ov => ov && ov.type === 'video' && !ov.disabled);
+                const hasVideoOverlays = showOverlay && Array.isArray(task.overlays) && task.overlays.some(ov => ov && ov.type === 'video' && !ov.disabled);
                 const hasContentVideo = !!task.contentVideoPath;
                 let contentVideoIsDirSequence = false;
                 const cvPathForCheck = _normalizeLocalMediaPath(task.contentVideoPath || '');
@@ -13518,7 +13869,7 @@ function applyRestoredProject(result) {
     _reelsState.selectedIdx = _reelsState.tasks.length > 0
         ? Math.max(0, Math.min(result.selectedIdx >= 0 ? result.selectedIdx : 0, _reelsState.tasks.length - 1))
         : -1;
-    _reelsState.backgroundLibrary = [];
+    _reelsState.backgroundLibrary = _isRestoringHistory ? _cloneProjectDataForSave(result.backgroundLibrary || []) : [];
     _ensureBackgroundLibraryFromTasks();
 
     // 在渲染/同步当前标签之前恢复完整批量表格快照，避免撤销时把其他标签页
@@ -13553,7 +13904,8 @@ function applyRestoredProject(result) {
             _setExportSettingValue(id, val);
         };
         const setCheck = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
-        if (opts.outputDir) setVal('reels-output-dir', opts.outputDir);
+        const preferredDir = _readPreferredReelsOutputDir();
+        if (preferredDir || opts.outputDir) setVal('reels-output-dir', preferredDir || opts.outputDir);
         if (opts.copyProjectToOutput !== undefined) setCheck('reels-copy-project-to-output', opts.copyProjectToOutput);
         if (opts.quality) setVal('reels-quality', opts.quality);
         if (opts.exportEngine) setVal('reels-export-engine', opts.exportEngine === 'experimental' ? 'hardware' : opts.exportEngine);
@@ -13755,6 +14107,104 @@ async function reelsLoadProject() {
 let _reelsHistoryStack = [];
 let _reelsHistoryIndex = -1;
 let _isRestoringHistory = false;
+const _reelsHistoryStrings = new Map();
+const _reelsHistoryStringIds = new Map();
+let _reelsHistoryNextStringId = 1;
+const _reelsHistoryResourceRefs = new Map();
+function _encodeReelsHistory(state) {
+    if(!_reelsHistoryStack.length){_reelsHistoryStrings.clear();_reelsHistoryStringIds.clear();_reelsHistoryNextStringId=1;_reelsHistoryResourceRefs.clear();}
+    const refs=new Set();
+    const encoded=JSON.stringify(state,(key,value)=>{
+        if(typeof value!=='string'||value.length<1024)return value;
+        let id=_reelsHistoryStringIds.get(value);
+        if(!id){id=_reelsHistoryNextStringId++;_reelsHistoryStringIds.set(value,id);_reelsHistoryStrings.set(id,value);}
+        refs.add(id);return {__vk_undo_string_v1:id};
+    });
+    _reelsHistoryResourceRefs.set(encoded,refs);return encoded;
+}
+function _decodeReelsHistory(value) {
+    return JSON.parse(value,(key,item)=>{
+        if(item&&typeof item==='object'&&Object.keys(item).length===1&&item.__vk_undo_string_v1){
+            if(!_reelsHistoryStrings.has(item.__vk_undo_string_v1))throw new Error('撤销资源缺失');
+            return _reelsHistoryStrings.get(item.__vk_undo_string_v1);
+        }
+        return item;
+    });
+}
+function _collectReelsHistoryStrings() {
+    const used=new Set();
+    const retained=new Set(_reelsHistoryStack);
+    for(const [snapshot,refs]of _reelsHistoryResourceRefs){if(!retained.has(snapshot)){_reelsHistoryResourceRefs.delete(snapshot);continue;}for(const id of refs)used.add(id);}
+    for(const [id,value]of _reelsHistoryStrings)if(!used.has(id)){_reelsHistoryStrings.delete(id);_reelsHistoryStringIds.delete(value);}
+}
+function _trimReelsHistory(settings) {
+    _collectReelsHistoryStrings();
+    // Retain one undo even when a single project exceeds the chosen budget.
+    while(_reelsHistoryStack.length>2&&(_reelsHistoryStack.length>settings.maxSteps||_historyBytes()>settings.maxBytes)){
+        _reelsHistoryStack.shift();_reelsHistoryIndex=Math.max(-1,_reelsHistoryIndex-1);_collectReelsHistoryStrings();
+    }
+}
+function _cloneReelsHistoryTasks(tasks) {
+    const allowed=new Set(['_subtitlePreset','_overlayPresetName','_sourceFolder','_folderQueueId','_folderQueueName']);
+    function clone(value,seen=new WeakSet()){
+        if(!value||typeof value!=='object')return value;
+        if(value instanceof Date)return value.toISOString();
+        if(seen.has(value))return undefined;seen.add(value);
+        if(Array.isArray(value))return value.map(v=>clone(v,seen));
+        const out={};for(const [k,v]of Object.entries(value))if((!k.startsWith('_')||allowed.has(k))&&typeof v!=='function')out[k]=clone(v,seen);return out;
+    }
+    const clones=clone(tasks);
+    clones.forEach((task,i)=>{for(const key of ['_batchProjection','_batchTabId','_batchTabName','_batchTabOrder','_batchTaskOrder'])if(tasks[i][key]!==undefined)task[key]=tasks[i][key];});
+    return clones;
+}
+
+function _captureReelsHistoryState() {
+    const style = _readStyleFromUI();
+    const globalStyle = _cloneSubtitleStyle(_reelsState.globalSubtitleStyle) || style;
+    const exportOpts = {
+        outputDir: (document.getElementById('reels-output-dir') || {}).value || '',
+        copyProjectToOutput: (document.getElementById('reels-copy-project-to-output') || {}).checked || false,
+        quality: (document.getElementById('reels-quality') || {}).value || 'medium',
+        exportEngine: (document.getElementById('reels-export-engine') || {}).value || 'precise',
+        customBitrateMbps: _readReelsCustomBitrate().target,
+        customMaxBitrateMbps: _readReelsCustomBitrate().max,
+        suffix: (document.getElementById('reels-suffix') || {}).value || '_subtitled',
+        namingMode: (document.getElementById('reels-export-naming-mode-outer') || {}).value || (document.getElementById('reels-naming-mode') || {}).value || localStorage.getItem('reels_naming_mode') || 'text',
+        namingStartDate: localStorage.getItem('reels_naming_start_date') || '',
+        namingVidsPerDay: parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3,
+        namingPrefix: localStorage.getItem('reels_naming_prefix') || '',
+        namingSuffix: localStorage.getItem('reels_naming_suffix') || '',
+        voiceVolume: parseFloat((document.getElementById('reels-voice-volume') || {}).value || '100') || 100,
+        bgVolume: _getGlobalBgVolumePercent(),
+        bgmVolume: _getGlobalBgmVolumePercent(),
+        useGPU: (document.getElementById('reels-use-gpu') || {}).checked || false,
+        useMemoryDecoder: (document.getElementById('reels-use-memory-decoder') || {}).checked || false,
+        previewLoop: (document.getElementById('reels-preview-loop') || {}).checked !== false,
+        loopFade: (document.getElementById('reels-loop-fade') || {}).checked !== false,
+        loopFadeDuration: parseFloat((document.getElementById('reels-loop-fade-dur') || {}).value || '1') || 1,
+        introPath: (document.getElementById('reels-intro-path') || {}).value || '',
+        karaokeHighlight: (document.getElementById('reels-karaoke-hl') || {}).checked || false,
+        reverbEnabled: (document.getElementById('reels-reverb-enabled') || {}).checked || false,
+        reverbPreset: (document.getElementById('reels-reverb-preset') || {}).value || 'hall',
+        reverbMix: parseFloat((document.getElementById('reels-reverb-mix') || {}).value || '30') || 30,
+        stereoWidth: parseFloat((document.getElementById('reels-stereo-width') || {}).value || '100') || 100,
+        audioFxTarget: (document.getElementById('reels-audio-fx-target') || {}).value || 'all',
+        subtitleStyleApplyAll: _isStyleApplyAllEnabled(),
+        subtitleStyleScopeVersion: 2,
+        subtitleStyleScope: _getSubtitleStyleScope(),
+    };
+    return {
+        tasks: _cloneReelsHistoryTasks(_reelsState.tasks),
+        backgroundLibrary: _cloneReelsHistoryTasks(_reelsState.backgroundLibrary || []),
+        // 当前任务只是批量表格中一个标签页的投影；必须同时保存完整标签页，
+        // 才能撤销跨标签的参数、素材池和行级修改。
+        batchTable: window.reelsCaptureBatchTableState?.(),
+        style: globalStyle,
+        exportOpts,
+        selectedIdx: _reelsState.selectedIdx,
+    };
+}
+
 const REELS_HISTORY_SETTINGS_KEY = 'videokit_reels_history_settings_v1';
 const REELS_HISTORY_DEFAULTS = Object.freeze({ maxSteps: 300, maxBytes: 100 * 1024 * 1024 });
 
@@ -13772,7 +14222,7 @@ function _readReelsHistorySettings() {
 
 function _historyBytes() {
     // JS 字符串通常以 UTF-16 保存；近似值足够用来控制内存上限。
-    return _reelsHistoryStack.reduce((total, item) => total + String(item || '').length * 2, 0);
+    return _reelsHistoryStack.reduce((total, item) => total + String(item || '').length * 2, 0) + Array.from(_reelsHistoryStrings.values()).reduce((sum,value)=>sum+value.length*2,0);
 }
 
 window.reelsGetHistorySettings = function() {
@@ -13786,17 +14236,14 @@ window.reelsSetHistorySettings = function(input = {}) {
         maxBytes: Math.max(10 * 1024 * 1024, Math.min(500 * 1024 * 1024, Number(input.maxBytes) || previous.maxBytes)),
     };
     localStorage.setItem(REELS_HISTORY_SETTINGS_KEY, JSON.stringify(next));
-    while (_reelsHistoryStack.length > next.maxSteps || _historyBytes() > next.maxBytes) {
-        _reelsHistoryStack.shift();
-        _reelsHistoryIndex = Math.max(-1, _reelsHistoryIndex - 1);
-    }
+    _trimReelsHistory(next);
     return window.reelsGetHistorySettings();
 };
 
 window.reelsSaveHistory = function() {
-    if (_isRestoringHistory || !window._reelsState || typeof collectCurrentProjectState !== 'function') return;
+    if (_reelsHistoryRangeGesture || _isRestoringHistory || !window._reelsState || typeof collectCurrentProjectState !== 'function') return;
     try {
-        const stateStr = JSON.stringify(collectCurrentProjectState());
+        const stateStr = _encodeReelsHistory(_captureReelsHistoryState());
         // 如果与当前处于相同状态则不保存
         if (_reelsHistoryIndex >= 0 && _reelsHistoryStack[_reelsHistoryIndex] === stateStr) {
             return;
@@ -13809,21 +14256,19 @@ window.reelsSaveHistory = function() {
         _reelsHistoryIndex = _reelsHistoryStack.length - 1;
         const settings = _readReelsHistorySettings();
         // 两道限制：步数和占用。达到任一限制都淘汰最早状态。
-        while (_reelsHistoryStack.length > settings.maxSteps || _historyBytes() > settings.maxBytes) {
-            _reelsHistoryStack.shift();
-            _reelsHistoryIndex = Math.max(-1, _reelsHistoryIndex - 1);
-        }
+        _trimReelsHistory(settings);
     } catch (e) {
         console.warn('[History] Failed to save history snapshot', e);
     }
 };
 
 window.reelsUndo = function() {
+    _flushReelsHistory();
     if (_reelsHistoryIndex > 0) {
         _reelsHistoryIndex--;
         _isRestoringHistory = true;
         try {
-            const state = JSON.parse(_reelsHistoryStack[_reelsHistoryIndex]);
+            const state = _decodeReelsHistory(_reelsHistoryStack[_reelsHistoryIndex]);
             applyRestoredProject(state);
             const statusEl = document.getElementById('reels-export-status');
             if (statusEl) statusEl.textContent = '⏪ 撤销成功';
@@ -13839,11 +14284,12 @@ window.reelsUndo = function() {
 };
 
 window.reelsRedo = function() {
+    _flushReelsHistory();
     if (_reelsHistoryIndex < _reelsHistoryStack.length - 1) {
         _reelsHistoryIndex++;
         _isRestoringHistory = true;
         try {
-            const state = JSON.parse(_reelsHistoryStack[_reelsHistoryIndex]);
+            const state = _decodeReelsHistory(_reelsHistoryStack[_reelsHistoryIndex]);
             applyRestoredProject(state);
             const statusEl = document.getElementById('reels-export-status');
             if (statusEl) statusEl.textContent = '⏩ 重做成功';
@@ -13858,46 +14304,37 @@ window.reelsRedo = function() {
     }
 };
 
-// 监听键盘快捷键
-document.addEventListener('keydown', (e) => {
-    // 确保是在批量/剪辑工具的焦点上下文中才响应
-    const panel = document.getElementById('batch-reels-panel');
-    if (!panel || !panel.classList.contains('active')) return;
-    
-    // 不要拦截输入框内部的标准撤销，除非你想覆盖（这里暂时不拦截在文本输入框内的原生撤销行为）
-    const isTextInput = (e.target.tagName === 'INPUT' && ['text', 'number', 'search', 'password', 'url', 'email'].includes(e.target.type)) || 
-                        e.target.tagName === 'TEXTAREA' || 
-                        e.target.isContentEditable;
-    
-    // Command/Ctrl + Z (Undo)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        if (isTextInput) return; // 允许输入框使用原生撤销
-        e.preventDefault();
-        window.reelsUndo();
-    }
-    // Command/Ctrl + Shift + Z 或者 Ctrl + Y (Redo)
-    else if (((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') || 
-             ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')) {
-        if (isTextInput) return; // 允许输入框使用原生重做
-        e.preventDefault();
-        window.reelsRedo();
-    }
+function _reelsHistoryEventInEditor(event) {
+    const panel=document.getElementById('batch-reels-panel');
+    return !!(panel?.classList.contains('active')||event.target?.closest?.('#reels-batch-table-container'));
+}
+function _reelsHistoryNativeText(target) {
+    return !!(target?.isContentEditable||target?.tagName==='TEXTAREA'||(target?.tagName==='INPUT'&&['text','search','password','url','email','tel'].includes(target.type)));
+}
+document.addEventListener('keydown',event=>{
+    if(event.defaultPrevented||event.isComposing||event.altKey||!(event.ctrlKey||event.metaKey)||!_reelsHistoryEventInEditor(event))return;
+    const key=event.key.toLowerCase();if(key!=='z'&&key!=='y')return;
+    if(_reelsHistoryNativeText(event.target))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if(key==='y'||event.shiftKey)window.reelsRedo();else window.reelsUndo();
+},true);
+let _reelsHistoryRangeGesture=false,_reelsHistoryPending=null;
+function _flushReelsHistory(){if(_reelsHistoryPending!==null){clearTimeout(_reelsHistoryPending);_reelsHistoryPending=null;window.reelsSaveHistory();}}
+for(const name of ['pointerdown','beforeinput'])document.addEventListener(name,event=>{
+    if(!_reelsHistoryEventInEditor(event)||_isRestoringHistory)return;
+    if(name==='pointerdown'&&!event.target?.closest?.('input,textarea,select,button,canvas,[onclick],[contenteditable]'))return;
+    if(_reelsHistoryPending===null)window.reelsSaveHistory();
+    if(name==='pointerdown'&&event.target?.type==='range')_reelsHistoryRangeGesture=true;
+},true);
+for(const name of ['input','change','click','pointerup'])document.addEventListener(name,event=>{
+    if(!_reelsHistoryEventInEditor(event)||_isRestoringHistory)return;
+    if(name==='pointerup')_reelsHistoryRangeGesture=false;
+    if(_reelsHistoryRangeGesture)return;
+    if(name==='click'&&!event.target?.closest?.('input,select,button,[onclick]'))return;
+    clearTimeout(_reelsHistoryPending);
+    _reelsHistoryPending=setTimeout(()=>{_reelsHistoryPending=null;if(!_isRestoringHistory)window.reelsSaveHistory();},name==='input'?350:0);
 });
-
-// 监听所有的UI变更（利用事件委托）
-// `change` 事件适合大部分失去焦点、选项改变、滑块松开的情况
-document.addEventListener('change', (e) => {
-    if (e.target.closest('#batch-reels-panel') || e.target.closest('.reels-batch-table-container')) {
-        window.reelsSaveHistory();
-    }
-});
-
-// 初始化时保存一个空状态
-setTimeout(() => {
-    if (typeof window.reelsSaveHistory === 'function') {
-        window.reelsSaveHistory();
-    }
-}, 2000);
+setTimeout(()=>window.reelsSaveHistory?.(),2000);
 
 // ═══════════════════════════════════════════════════════
 // Font Upload
@@ -13998,7 +14435,8 @@ function reelsMarkStyleDirty(e) {
     
     // Ignore non-style inputs
     if (el.id === 'reels-style-scope' || el.id === 'reels-preset-select' ||
-        el.id === 'reels-subtitle-toggle' || el.id === 'reels-show-subtitle-range') return;
+        el.id === 'reels-subtitle-toggle' || el.id === 'reels-overlay-toggle' ||
+        el.id === 'reels-show-subtitle-range') return;
 
     // User actively modified a style parameter, breaking the preset link
     const applyAll = typeof _isStyleApplyAllEnabled === 'function' ? _isStyleApplyAllEnabled() : true;
@@ -14160,6 +14598,9 @@ async function _pickSingleFile(title, extensions) {
 }
 
 function _getTaskRenderOverlays(task, customOptions = {}) {
+    const showOverlay = customOptions.showOverlay !== undefined
+        ? customOptions.showOverlay
+        : _isReelsOverlayToggleEnabled();
     const options = {
         width: _reelsState?.targetWidth || 1080,
         height: _reelsState?.targetHeight || 1920,
@@ -14167,9 +14608,10 @@ function _getTaskRenderOverlays(task, customOptions = {}) {
         ...customOptions,
     };
     if (typeof window.ReelsRenderPlan?.getCompositedOverlays === 'function') {
-        return window.ReelsRenderPlan.getCompositedOverlays(task, options);
+        const composited = window.ReelsRenderPlan.getCompositedOverlays(task, options);
+        return showOverlay ? composited : composited.filter(ov => ov && ov._insertClip);
     }
-    const base = Array.isArray(task?.overlays) ? task.overlays : [];
+    const base = showOverlay && Array.isArray(task?.overlays) ? task.overlays : [];
     const inserts = window.ReelsRenderPlan?.getInsertOverlays?.(task, options) || [];
     return [...inserts, ...base];
 }
@@ -14457,11 +14899,12 @@ function _showInsertClipInspector(editorClip) {
     const transOutType = item.transitionOut?.type !== undefined ? item.transitionOut.type : 'fade';
     const transOutDur = item.transitionOut?.duration != null ? Number(item.transitionOut.duration) : 0.35;
 
+    const safeFilename = String(filename || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     panel.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:8px">
         <div style="font-weight:700;color:#6ee7b7;display:flex;align-items:center;gap:6px">
           <span>🎬 插入素材与画中画</span>
-          <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.2);color:#a7f3d0;border:1px solid rgba(16,185,129,0.35);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${filename}">${filename}</span>
+          <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.2);color:#a7f3d0;border:1px solid rgba(16,185,129,0.35);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${safeFilename}">${safeFilename}</span>
         </div>
         <button id="reels-insert-close-btn" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:4px">✕</button>
       </div>
@@ -15527,3 +15970,131 @@ window.reelsSetBgOffsetUI = function(axis, value) {
     if (elRange) elRange.value = value;
     window.reelsSaveBgConfigUI();
 };
+
+window.reelsSetSpeechWritingTip = function(kind) {
+    const set = (id, value, check = false) => { const el=document.getElementById(id); if(el) {if(check)el.checked=value;else el.value=value;} };
+    set('reels-fullpage-typewriter', true, true);
+    set('reels-fullpage-typewriter-cursor', true, true);
+    set('reels-fullpage-typewriter-speech-sync', true, true);
+    set('reels-fullpage-typewriter-reveal-type', 'char');
+    set('reels-fullpage-typewriter-cursor-kind', kind);
+    set('reels-fullpage-typewriter-cursor-scale', kind === 'rose' ? .75 : 1.4);
+    set('reels-fullpage-typewriter-cursor-offset-x', 0);
+    set('reels-fullpage-typewriter-cursor-offset-y', 0);
+    set('reels-fullpage-typewriter-cursor-angle', 0);
+    set('reels-scrolling-mode', false, true);
+    set('reels-tw-unrevealed-opacity', 0);
+    set('reels-tw-unrevealed-opacity-range', 0);
+    const options=document.getElementById('reels-fullpage-typewriter-options');if(options)options.style.display='';
+    const control=document.getElementById('reels-fullpage-typewriter-cursor-kind');
+    if(control)control.dispatchEvent(new Event('change', {bubbles:true}));
+    reelsRefreshSpeechWritingPreview();
+};
+window.reelsRefreshSpeechWritingPreview = function() {
+    if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();
+    if(window.ReelsPreviewV2?.isOpen?.())window.ReelsPreviewV2.render();
+};
+
+window.reelsRefreshWritingTitleEditor = function() {
+    const auto=document.getElementById('reels-fullpage-typewriter-title-auto');
+    const input=document.getElementById('reels-fullpage-typewriter-title-text');
+    const task=typeof _getSelectedTask==='function'?_getSelectedTask():null;
+    if(auto?.checked && input) {
+        const parts=getSplitWritingParts(task?.segments||[],{fullpage_typewriter_title_auto:true},task?.ttsText||task?.aiScript||'');
+        input.value=parts.title[0]?.text||'';
+    }
+    const options=document.getElementById('reels-writing-split-options');
+    if(options)options.style.display=document.getElementById('reels-fullpage-typewriter-split')?.checked?'':'none';
+};
+window.reelsWritingTitleTextChanged = function() {
+    const auto=document.getElementById('reels-fullpage-typewriter-title-auto');if(auto)auto.checked=false;
+    const task=typeof _getSelectedTask==='function'?_getSelectedTask():null;if(task)task.writingTitle=document.getElementById('reels-fullpage-typewriter-title-text')?.value||'';
+    if(typeof _persistSubtitleStyleByScope==='function')_persistSubtitleStyleByScope(_readStyleFromUI());
+    if(typeof _batchAutoSave==='function')_batchAutoSave();
+    reelsRefreshSpeechWritingPreview();
+};
+window.reelsWritingTitleFontFocus = function() {
+    const source=document.getElementById('reels-font-family'),select=document.getElementById('reels-fullpage-typewriter-title-font');
+    if(!source||!select)return;
+    const value=select.value;select.replaceChildren();
+    const follow=document.createElement('option');follow.value='';follow.textContent='跟随正文字体';select.appendChild(follow);
+    for(const opt of source.options){if(!opt.value)continue;select.appendChild(opt.cloneNode(true));}
+    if(value && !Array.from(select.options).some(opt=>opt.value===value)){const opt=document.createElement('option');opt.value=value;opt.textContent=value;select.appendChild(opt);}
+    select.value=value;
+};
+window.reelsWritingTitleFontChanged = async function(fromUser=false) {
+    reelsWritingTitleFontFocus();
+    const select=document.getElementById('reels-fullpage-typewriter-title-font'),font=select?.value;
+    if(fromUser){const follow=document.getElementById('reels-fullpage-typewriter-title-font-follow');if(follow)follow.checked=!font;_persistSubtitleStyleByScope(_readStyleFromUI());if(typeof _batchAutoSave==='function')_batchAutoSave();}
+    if(font&&typeof getFontManager==='function'){try{await getFontManager().loadGoogleFont(font);}catch(error){console.warn('[WritingTitle] font load failed',error);}}
+    reelsRefreshSpeechWritingPreview();
+};
+window.reelsEnableSplitWriting = function() {
+    for(const id of ['reels-fullpage-typewriter','reels-fullpage-typewriter-split']){const el=document.getElementById(id);if(el)el.checked=true;}
+    const options=document.getElementById('reels-fullpage-typewriter-options');if(options)options.style.display='';
+    const auto=document.getElementById('reels-fullpage-typewriter-auto-sequence');if(auto)auto.checked=true;
+    const reveal=document.getElementById('reels-fullpage-typewriter-title-reveal');if(reveal)reveal.value='char';
+    for(const key of ['title-delay','body-delay']){const field=document.getElementById('reels-fullpage-typewriter-'+key);if(field)field.value=0;}
+    reelsRefreshWritingTitleEditor();
+    const el=document.getElementById('reels-fullpage-typewriter-split');if(el)el.dispatchEvent(new Event('change',{bubbles:true}));
+    reelsRefreshSpeechWritingPreview();
+};
+
+window.reelsRefreshWritingFontSample=function(){
+    const sample=document.getElementById('reels-writing-title-font-sample');
+    const label=document.getElementById('reels-writing-title-font-label');
+    if(!sample)return;
+    const get=id=>document.getElementById('reels-fullpage-typewriter-'+id);
+    const follow=get('title-font-follow')?.checked!==false;
+    const font=(follow?document.getElementById('reels-font-family')?.value:get('title-font')?.value)||document.getElementById('reels-font-family')?.value||'Arial';
+    sample.textContent=get('title-text')?.value?.trim()||'Aa Bb Cc · 字体效果预览';
+    sample.style.fontFamily=JSON.stringify(font)+', serif';
+    sample.style.fontWeight=get('title-weight')?.value||'700';
+    sample.style.fontSize='28px';
+    sample.style.color=get('title-color')?.value||'#ffd700';
+    if(label)label.textContent=(follow?'跟随正文：':'标题字体：')+font;
+};
+window.reelsStepWritingTitleFont=function(direction){
+    reelsWritingTitleFontFocus();
+    const select=document.getElementById('reels-fullpage-typewriter-title-font');if(!select?.options?.length)return;
+    select.selectedIndex=(Math.max(0,select.selectedIndex)+direction+select.options.length)%select.options.length;
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+};
+const _refreshSpeechWritingWithFontSample=window.reelsRefreshSpeechWritingPreview;
+window.reelsRefreshSpeechWritingPreview=function(...args){
+    reelsRefreshWritingFontSample();
+    return _refreshSpeechWritingWithFontSample?.apply(this,args);
+};
+
+window.reelsUploadSpeechWritingImage=async function(){
+    try{
+        const files=await window.electronAPI.selectFiles({title:'上传跟随出字的图片',multiple:false,filters:[{name:'图片',extensions:['png','jpg','jpeg','webp','gif']}]});
+        if(!files?.[0])return;
+        const result=window.electronAPI.importWritingCursorImage(files[0]);
+        if(!result?.ok)throw new Error(result?.error||'图片上传失败');
+        const probe=new Image();await new Promise((resolve,reject)=>{probe.onload=resolve;probe.onerror=()=>reject(new Error('图片无法读取，请选择 PNG、JPG、WebP 或 GIF 图片。'));probe.src=window.electronAPI.toFileUrl(result.path);});
+        if(/\.gif$/i.test(result.path)) {
+            const check=new ReelsCanvasRenderer(document.createElement('canvas'));
+            await check.prepareWritingCursorImage({fullpage_typewriter_cursor_kind:'image',fullpage_typewriter_cursor_image:result.path});
+        }
+        document.getElementById('reels-fullpage-typewriter-cursor-image').value=result.path;
+        reelsSetSpeechWritingTip('image');
+        if(typeof _persistSubtitleStyleByScope==='function')_persistSubtitleStyleByScope(_readStyleFromUI());
+        if(typeof _batchAutoSave==='function')_batchAutoSave();
+        reelsRefreshSpeechWritingPreview();
+    }catch(error){alert('上传出字图片失败：'+(error.message||String(error)));}
+};
+window.reelsRefreshSpeechWritingImageUI=function(){
+    const path=document.getElementById('reels-fullpage-typewriter-cursor-image')?.value||'';
+    const row=document.getElementById('reels-writing-custom-image-options');
+    if(row)row.style.display=document.getElementById('reels-fullpage-typewriter-cursor-kind')?.value==='image'?'':'none';
+    const thumb=document.getElementById('reels-writing-custom-image-preview');
+    if(thumb){const url=path?(window.electronAPI?.toFileUrl?.(path)||path):'';if(thumb.getAttribute('src')!==url){if(url)thumb.src=url;else thumb.removeAttribute('src');}thumb.style.display=path?'':'none';}
+    const label=document.getElementById('reels-writing-custom-image-name');if(label)label.textContent=path?'已上传图片，可使用大小、偏移、角度调整':'尚未上传图片';
+};
+const _refreshWritingBeforeCustomImage=window.reelsRefreshSpeechWritingPreview;
+window.reelsRefreshSpeechWritingPreview=function(...args){
+    reelsRefreshSpeechWritingImageUI();
+    return _refreshWritingBeforeCustomImage?.apply(this,args);
+};
+

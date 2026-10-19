@@ -196,7 +196,7 @@ LOG = os.path.join(tempfile.gettempdir(), 'VideoKit Import Fusion.log')
 def vlog(message):
     with open(LOG, 'a', encoding='utf-8') as f: f.write(str(message) + '\\n')
 open(LOG, 'w', encoding='utf-8').write('VideoKit native Fusion import started\\n')
-MANIFEST = r'''${manifestPath.replace(/'/g, "\\'")}'''
+MANIFEST = ${JSON.stringify(String(manifestPath))}
 with open(MANIFEST, 'r', encoding='utf-8') as f: data = json.load(f)
 
 try:
@@ -520,22 +520,21 @@ function createFusionPackage({ outputDir, taskName, fcpxmlPath, tasks, fps = 30,
 }
 
 function installResolveMenuScript(scriptPath) {
-    if (!scriptPath || !fs.existsSync(scriptPath)) throw new Error('Fusion 导入脚本不存在');
-    // Keep the changing batch script in VideoKit's user data. Resolve 20.2 on
-    // this Mac only scans the shared /Library script folder, so it receives one
-    // small, stable launcher. Later exports update only this user-owned file.
-    // Resolve may be denied access to another app's Application Support
-    // directory by macOS privacy controls. /Users/Shared is readable by both.
-    const latestDir = path.join('/Users/Shared', 'VideoKit', 'Resolve');
+    if (!scriptPath || typeof scriptPath !== 'string' || !scriptPath.endsWith('_import_fusion.py') || !fs.existsSync(scriptPath)) {
+        throw new Error('Fusion 导入脚本不存在或路径无效');
+    }
+    // Keep the changing batch script in a user-owned dot-directory (~/.videokit/resolve)
+    // outside macOS TCC-protected folders and not world-writable like /Users/Shared.
+    const latestDir = path.join(os.homedir(), '.videokit', 'resolve');
     const latestScript = path.join(latestDir, 'VideoKit Import Fusion Latest.py');
-    fs.mkdirSync(latestDir, { recursive: true });
+    fs.mkdirSync(latestDir, { recursive: true, mode: 0o700 });
     fs.copyFileSync(scriptPath, latestScript);
 
     const sharedDir = '/Library/Application Support/Blackmagic Design/DaVinci Resolve/Fusion/Scripts/Comp';
     const sharedScript = path.join(sharedDir, 'VideoKit Import Fusion.py');
     const launcher = `# VideoKit Resolve launcher
 import os, traceback, tempfile
-latest = '/Users/Shared/VideoKit/Resolve/VideoKit Import Fusion Latest.py'
+latest = os.path.expanduser('~/.videokit/resolve/VideoKit Import Fusion Latest.py')
 log = os.path.join(tempfile.gettempdir(), 'VideoKit Menu Launcher.log')
 with open(log, 'w', encoding='utf-8') as f: f.write('launcher started\\n' + latest + '\\n')
 try:
@@ -548,10 +547,10 @@ except Exception:
 `;
     let needsInstall = true;
     try { needsInstall = fs.readFileSync(sharedScript, 'utf8') !== launcher; } catch (_) { /* install it */ }
-    if (needsInstall) {
+    if (needsInstall && process.platform === 'darwin') {
         const tempLauncher = path.join(os.tmpdir(), 'videokit-resolve-launcher.py');
         fs.writeFileSync(tempLauncher, launcher, 'utf8');
-        const command = `mkdir -p ${JSON.stringify(sharedDir)} && cp ${JSON.stringify(tempLauncher)} ${JSON.stringify(sharedScript)}`;
+        const command = `/usr/bin/install -d -m 755 ${JSON.stringify(sharedDir)} && /usr/bin/install -m 644 ${JSON.stringify(tempLauncher)} ${JSON.stringify(sharedScript)}`;
         execFileSync('osascript', ['-e', `do shell script ${JSON.stringify(command)} with administrator privileges`], { stdio: 'ignore' });
     }
     return { installed_path: sharedScript, latest_script_path: latestScript };

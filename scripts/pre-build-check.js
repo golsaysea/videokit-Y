@@ -277,6 +277,64 @@ function checkNativeModules() {
     }
 }
 
+// ═══════════════════════════════════════════════════════
+// 6. 核心功能回归检查 (Reels / T字幕 / 字体 / 连体背景 / 实时预览)
+// ═══════════════════════════════════════════════════════
+function checkCoreFeatureRegressions() {
+    printHeader('6. 核心功能回归检测 (Reels / T字幕 / 字体 / 连体背景 / 实时预览)');
+    const checks = [
+        {
+            file: 'src/reels-style-engine.js',
+            patterns: ['text_gradient_scope', 'uppercase', 'highlight_enabled', 'box_connected', 'box_concave_radius', 'box_snap_threshold', 'char_anim_intensity', 'char_anim_duration', 'char_anim_stagger'],
+            desc: 'T字幕样式字段（渐变范围、非破坏式大写、朗读高亮开关、连体背景、动画参数）',
+        },
+        {
+            file: 'src/reels-anim-engine.js',
+            patterns: ['char_float_up', 'char_pop_elastic', 'char_wave', 'char_drop_bounce', 'char_squash_bounce', 'char_center_spread'],
+            desc: 'T字幕 6 种逐字动画系统扩展',
+        },
+        {
+            file: 'src/reels-canvas-renderer.js',
+            patterns: ['_buildConnectedAdaptiveBoxPath', 'text_gradient_scope', 'highlight_enabled', 'uppercase'],
+            desc: 'T字幕连体贴合背景几何构建与渲染兼容',
+        },
+        {
+            file: 'src/reels-font-manager.js',
+            patterns: ['UNIFIED_FONT_SELECT_IDS', 'getUnifiedFontCatalog', 'refreshCatalogIfChanged', '_loadingGoogleFontPromises'],
+            desc: '统一字体库系统与 Google Fonts 按需缓存',
+        },
+        {
+            file: 'src/reels-overlay-panel.js',
+            patterns: ['ropEditorEventGuard', 'rop-tpl-name-input', 'scroll_uppercase', 'scroll_letter_spacing'],
+            desc: '覆层模板名称输入焦点保护与滚动文字实时预览刷新',
+        },
+        {
+            file: 'src/reels-batch-table.js',
+            patterns: ['_rbtResolveStaticVideoThumbnail', 'stopHoverPreviewVideo', 'reelsSyncTaskRemovalToBatchTabs', 'isRowDirectBgDrop', '_naturalSortByName'],
+            desc: '批量 Reels 静态缩略图缓存、单悬停预览、行拖拽分配、自然数字排序与删除持久化',
+        },
+        {
+            file: 'electron/services/reels-hdr-preview.js',
+            patterns: ['classifyVideoColorProfile', 'buildBt709ConversionFilter'],
+            desc: '宽色域 (HLG/PQ/BT.2020/P3) 自动识别与 BT.709 转换',
+        },
+    ];
+
+    for (const item of checks) {
+        if (!fs.existsSync(item.file)) {
+            printError(`[回归检查] 关键文件缺失: ${item.file}`);
+            continue;
+        }
+        const content = fs.readFileSync(item.file, 'utf8');
+        const missing = item.patterns.filter(p => !content.includes(p));
+        if (missing.length > 0) {
+            printError(`[回归检查] ${item.file} 缺少关键实现 (${missing.join(', ')}) — ${item.desc}`);
+        } else {
+            printPass(`${item.desc} (${item.file})`);
+        }
+    }
+}
+
 // ═══ Main Execution ═══
 console.log(`${BOLD}${CYAN}🚀 开始执行打包前自动化跨平台兼容性体检...${RESET}`);
 
@@ -285,6 +343,7 @@ checkWorkflowConfigs();
 checkStaticCode();
 checkCaseSensitiveImports();
 checkNativeModules();
+checkCoreFeatureRegressions();
 
 console.log(`\n${BOLD}${CYAN}=== 体检报告汇总 ===${RESET}`);
 console.log(`${GREEN}✔ PASS 项：代表当前无阻断性跨平台 Bug。${RESET}`);

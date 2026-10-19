@@ -48,6 +48,9 @@ function resolveCommand(cmd) {
     const roots = [
         path.join(__dirname, '..', '..', 'vendor'),
         typeof process.resourcesPath === 'string' ? path.join(process.resourcesPath, 'vendor') : '',
+        process.platform === 'win32' && process.env.LOCALAPPDATA
+            ? path.join(process.env.LOCALAPPDATA, 'Programs', 'videokit', 'resources', 'vendor')
+            : '',
     ].filter(Boolean);
     const relativeDirs = process.platform === 'win32'
         ? [path.join('ffmpeg', 'bin'), path.join('windows', 'ffmpeg', 'bin'), 'ffmpeg']

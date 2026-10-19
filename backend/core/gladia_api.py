@@ -239,13 +239,18 @@ def transcribe_local_audio(file_path, api_key="", language_behaviour="automatic 
 
 def poll_for_result(result_url, api_key, poll_interval_seconds=10, max_attempts=60):
     """轮询异步任务结果"""
+    from urllib.parse import urlparse
+    parsed = urlparse(str(result_url or ''))
+    if parsed.scheme != 'https' or not (parsed.hostname == 'api.gladia.io' or (parsed.hostname and parsed.hostname.endswith('.gladia.io'))):
+        print(f"拒绝向非受信任的 Gladia 域名发送 API Key: {result_url}")
+        return None
     headers = {"x-gladia-key": api_key, "Accept": "application/json"}
     print(f"开始轮询结果 URL: {result_url}")
     
     for attempt in range(max_attempts):
         print(f"轮询尝试 {attempt + 1}/{max_attempts}...")
         try:
-            response = requests.get(result_url, headers=headers)
+            response = requests.get(result_url, headers=headers, timeout=30)
             if response.status_code == 200:
                 result_json = response.json()
                 status = result_json.get('status', '').lower()

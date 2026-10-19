@@ -143,14 +143,15 @@ def upload_file():
     
     # 保存到临时目录
     import uuid
-    safe_name = f"{uuid.uuid4().hex[:8]}_{file.filename}"
+    base_filename = os.path.basename(file.filename).replace('\x00', '') or 'upload.bin'
+    safe_name = f"{uuid.uuid4().hex[:8]}_{base_filename}"
     save_path = os.path.join(UPLOAD_DIR, safe_name)
     file.save(save_path)
     
     return jsonify({
         "success": True,
         "path": save_path,
-        "name": file.filename
+        "name": base_filename
     })
 
 @app.route('/api/open-folder', methods=['POST', 'OPTIONS'])
@@ -169,9 +170,11 @@ def open_folder():
     if folder_path.startswith('~'):
         folder_path = os.path.expanduser(folder_path)
     
-    # 检查文件夹是否存在
+    # 检查路径是否存在，若传入的是文件则打开其父目录，防止直接执行可执行文件
     if not os.path.exists(folder_path):
         return jsonify({"error": f"文件夹不存在: {folder_path}"}), 404
+    if not os.path.isdir(folder_path):
+        folder_path = os.path.dirname(os.path.abspath(folder_path))
     
     # 用系统命令打开文件夹
     import subprocess
@@ -265,7 +268,7 @@ def proxy_local_file():
     if not os.path.exists(file_path):
         return jsonify({"error": f"文件不存在: {file_path}"}), 404
     
-    # 获取文件扩展名确定 MIME 类型
+    # 获取文件扩展名确定 MIME 类型（仅允许音视频媒体后缀）
     ext = os.path.splitext(file_path)[1].lower()
     mime_types = {
         '.mp3': 'audio/mpeg',
@@ -280,7 +283,9 @@ def proxy_local_file():
         '.avi': 'video/x-msvideo',
         '.webm': 'video/webm'
     }
-    mime_type = mime_types.get(ext, 'application/octet-stream')
+    if ext not in mime_types:
+        return jsonify({"error": f"不支持的文件类型: {ext}"}), 403
+    mime_type = mime_types[ext]
     
     return send_file(file_path, mimetype=mime_type)
 
@@ -309,9 +314,10 @@ def generate_subtitle_with_file():
     if not audio_file.filename:
         return jsonify({"error": "文件名为空"}), 400
     
+    safe_audio_filename = os.path.basename(audio_file.filename).replace('\x00', '') or 'audio.bin'
     # 保存临时文件
     temp_dir = tempfile.gettempdir()
-    temp_audio_path = os.path.join(temp_dir, f"batch_{int(time.time())}_{audio_file.filename}")
+    temp_audio_path = os.path.join(temp_dir, f"batch_{int(time.time())}_{safe_audio_filename}")
     audio_file.save(temp_audio_path)
     
     # 获取其他参数
@@ -351,11 +357,12 @@ def generate_subtitle_with_file():
                 "filepath": translate_path
             }
         
-        current_language = change_language(language) if language in [v["name"] for v in LANGUAGES.values()] else language
+        raw_lang = change_language(language) if language in [v["name"] for v in LANGUAGES.values()] else language
+        current_language = re.sub(r'[^a-zA-Z0-9_-]', '', str(raw_lang or 'en')) or 'en'
         lang_en_name = get_language(current_language)
         
         # 使用原始音频文件名（不含临时前缀）
-        original_filename = audio_file.filename
+        original_filename = safe_audio_filename
         file_name = os.path.splitext(original_filename)[0]
         log_dir = "./log"
         os.makedirs(log_dir, exist_ok=True)
@@ -1283,8 +1290,9 @@ def _request_elevenlabs_tts(api_key, voice_id, text, model_id, stability, output
     }
 
     def do_request():
+        from urllib.parse import quote
         return requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format={output_format}",
+            f"https://api.elevenlabs.io/v1/text-to-speech/{quote(str(voice_id), safe='')}?output_format={quote(str(output_format), safe='')}",
             headers=headers,
             json=payload
         )
@@ -1433,10 +1441,11 @@ def search_elevenlabs_voices():
     
     try:
         import requests
+        from urllib.parse import quote
         headers = {"xi-api-key": api_key}
         # 搜索共享声音库，增加到50个结果
         response = requests.get(
-            f"https://api.elevenlabs.io/v1/shared-voices?search={search_term}&page_size=50",
+            f"https://api.elevenlabs.io/v1/shared-voices?search={quote(str(search_term), safe='')}&page_size=50",
             headers=headers,
             timeout=15
         )
@@ -1481,9 +1490,10 @@ def add_elevenlabs_voice():
     def try_add_voice():
         """尝试添加音色"""
         import requests
+        from urllib.parse import quote
         headers = {"xi-api-key": api_key, "Content-Type": "application/json"}
         response = requests.post(
-            f"https://api.elevenlabs.io/v1/voices/add/{public_voice_id}",
+            f"https://api.elevenlabs.io/v1/voices/add/{quote(str(public_voice_id), safe='')}",
             headers=headers,
             json={"new_name": name},
             timeout=15
@@ -1589,9 +1599,10 @@ def delete_elevenlabs_voice():
     
     try:
         import requests
+        from urllib.parse import quote
         headers = {"xi-api-key": api_key}
         response = requests.delete(
-            f"https://api.elevenlabs.io/v1/voices/{voice_id}",
+            f"https://api.elevenlabs.io/v1/voices/{quote(str(voice_id), safe='')}",
             headers=headers,
             timeout=15
         )
@@ -3743,10 +3754,12 @@ def analyze_video():
         return '', 204
     
     data = request.json
-    url = data.get('url', '')
+    url = str(data.get('url', '')).strip()
     
     if not url:
         return jsonify({"error": "缺少视频链接"}), 400
+    if not (url.startswith('http://') or url.startswith('https://')):
+        return jsonify({"error": "仅支持 http:// 或 https:// 视频链接"}), 400
     
     try:
         import yt_dlp
@@ -3794,13 +3807,15 @@ def download_video():
         return '', 204
     
     data = request.json
-    url = data.get('url', '')
+    url = str(data.get('url', '')).strip()
     quality = data.get('quality', 'best')
     output_dir = data.get('output_dir', os.path.expanduser('~/Downloads'))
     download_subtitle = data.get('download_subtitle', False)
     
     if not url:
         return jsonify({"error": "缺少视频链接"}), 400
+    if not (url.startswith('http://') or url.startswith('https://')):
+        return jsonify({"error": "仅支持 http:// 或 https:// 视频链接"}), 400
     
     try:
         import yt_dlp
@@ -3891,8 +3906,14 @@ def download_video_batch():
             ydl_opts['writesubtitles'] = True
             ydl_opts['subtitleslangs'] = [sub_lang, 'en', 'zh-Hans']
         
-        # 下载所有视频
-        urls = [item.get('url') for item in items if item.get('url')]
+        # 下载所有视频（仅允许 http/https 链接）
+        urls = [
+            str(item.get('url')).strip()
+            for item in items
+            if item.get('url') and (str(item.get('url')).strip().startswith('http://') or str(item.get('url')).strip().startswith('https://'))
+        ]
+        if not urls:
+            return jsonify({"error": "没有有效的 http/https 视频链接"}), 400
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download(urls)
@@ -4497,7 +4518,7 @@ if __name__ == '__main__':
             cleanup_interval=30,          # 每 30 秒清理空闲连接
             map_size=100000,              # asyncore map 大小
             url_scheme='http',
-            expose_tracebacks=True,       # 开发阶段显示错误详情
+            expose_tracebacks=False,      # 禁用对外返回堆栈信息，避免敏感路径泄露
         )
     except ImportError:
         print(f"[警告] Waitress 未安装，使用 Flask 开发服务器 (稳定性较差)")

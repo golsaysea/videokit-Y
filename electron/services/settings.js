@@ -29,6 +29,13 @@ function getBackendDir() {
 function getAllCandidateBackendDirs() {
     const list = [getBackendDir()];
     try {
+        const sharedProfile = require('./sharedProfile');
+        for (const profileDir of sharedProfile.getCandidateProfileDirs()) {
+            const candidate = path.join(profileDir, 'backend');
+            if (!list.includes(candidate) && fs.existsSync(candidate)) list.push(candidate);
+        }
+    } catch { }
+    try {
         const legacy1 = path.join(os.homedir(), 'Library', 'Application Support', 'videokit', 'backend');
         if (!list.includes(legacy1) && fs.existsSync(legacy1)) list.push(legacy1);
     } catch { }
@@ -106,16 +113,8 @@ function saveGladiaKeys(data) {
     const payload = { keys: [...new Set(keys)] };
     const primaryFile = getGladiaKeysPath();
     writeJSON(primaryFile, payload);
-    
-    // Also sync to workspace backend if available
-    try {
-        const workspaceDir = path.join(__dirname, '..', '..', 'backend');
-        if (fs.existsSync(workspaceDir) && workspaceDir !== path.dirname(primaryFile)) {
-            writeJSON(path.join(workspaceDir, 'gladia_keys.json'), payload);
-        }
-    } catch { }
 
-    // Also sync to transcription_providers.json
+    // Also sync to transcription_providers.json in userData
     try {
         const transPath = getTranscriptionSettingsPath();
         const trans = readJSON(transPath) || { version: 1, providers: {} };
@@ -144,6 +143,19 @@ function decryptTranscriptionKeys(payload) {
         const keys = JSON.parse(safeStorage.decryptString(Buffer.from(payload.keys_encrypted, 'base64')));
         return Array.isArray(keys) ? keys.map(k => String(k || '').trim()).filter(Boolean) : [];
     } catch { return []; }
+}
+
+function encryptTranscriptionKeys(keys) {
+    const clean = (Array.isArray(keys) ? keys : []).map(k => String(k || '').trim()).filter(Boolean);
+    const safeStorage = getSafeStorage();
+    if (safeStorage?.isEncryptionAvailable?.()) {
+        try {
+            return {
+                keys_encrypted: safeStorage.encryptString(JSON.stringify(clean)).toString('base64'),
+            };
+        } catch { }
+    }
+    return { keys: clean };
 }
 
 function normalizeProvider(value) {
@@ -204,8 +216,8 @@ function loadTranscriptionProviders() {
         }
     };
 
-    // If common storage was missing or didn't have plain keys, persist the merged plain keys now
-    if (!raw || !raw.providers || !Array.isArray(raw.providers?.gladia?.keys)) {
+    // If common storage was missing, persist the merged keys now
+    if (!raw || !raw.providers || (!Array.isArray(raw.providers?.gladia?.keys) && !raw.providers?.gladia?.keys_encrypted)) {
         try {
             saveTranscriptionProviders({
                 primary: result.primary,
@@ -245,6 +257,7 @@ function getPublicTranscriptionProviders() {
 function saveTranscriptionProviders(input = {}) {
     const existing = loadTranscriptionProviders();
     const providers = {};
+    const plainGladiaKeys = [];
     for (const name of ['deepgram', 'groq', 'gladia']) {
         let keys;
         if (Object.prototype.hasOwnProperty.call(input, `${name}_keys`)) {
@@ -253,7 +266,9 @@ function saveTranscriptionProviders(input = {}) {
         } else {
             keys = existing.providers?.[name]?.keys || [];
         }
-        providers[name] = { keys: [...new Set(keys)] };
+        const uniqueKeys = [...new Set(keys)];
+        if (name === 'gladia') plainGladiaKeys.push(...uniqueKeys);
+        providers[name] = encryptTranscriptionKeys(uniqueKeys);
     }
 
     const primary = normalizeProvider(input.primary) || normalizeProvider(existing.primary) || 'gladia';
@@ -271,16 +286,16 @@ function saveTranscriptionProviders(input = {}) {
         providers,
     };
 
-    // 保存是“权威覆盖”，必须同步所有历史候选目录。读取端会为兼容旧版合并
-    // 这些目录；若只写当前目录，已删除的旧 Key 会在下一次读取时被合并回来。
-    const candidateDirs = getAllCandidateBackendDirs();
+    // 保存是“权威覆盖”，同步所有非源码仓库的用户数据候选目录（绝不写入源码仓库 backend/ 目录）。
+    const workspaceDir = path.resolve(__dirname, '..', '..', 'backend');
+    const candidateDirs = getAllCandidateBackendDirs().filter(dir => path.resolve(dir) !== workspaceDir);
     for (const dir of candidateDirs) {
         try { writeJSON(path.join(dir, 'transcription_providers.json'), payload); } catch { }
     }
 
-    // 3. Keep gladia_keys.json in sync for legacy compatibility
+    // 3. Keep gladia_keys.json in sync in userData for legacy compatibility
     try {
-        const gladiaPayload = { keys: providers.gladia.keys };
+        const gladiaPayload = { keys: plainGladiaKeys };
         writeJSON(getGladiaKeysPath(), gladiaPayload);
         for (const dir of candidateDirs) {
             try { writeJSON(path.join(dir, 'gladia_keys.json'), gladiaPayload); } catch { }
@@ -483,6 +498,9 @@ function saveReplaceRules(data) { writeJSON(getReplaceRulesPath(), data); }
 // ==================== File Operations ====================
 
 function openFolder(folderPath) {
+    if (!folderPath || typeof folderPath !== 'string') {
+        return Promise.reject(new Error('路径无效'));
+    }
     let expandedPath = folderPath;
     if (expandedPath === '~') {
         expandedPath = os.homedir();
@@ -500,6 +518,11 @@ function openFolder(folderPath) {
 
     try {
         const { shell } = require('electron');
+        const stat = fs.statSync(expandedPath);
+        if (!stat.isDirectory()) {
+            shell.showItemInFolder(expandedPath);
+            return Promise.resolve({ message: '已在文件夹中显示' });
+        }
         return shell.openPath(expandedPath).then((errMsg) => {
             if (errMsg) throw new Error(errMsg);
             return { message: '已打开' };
@@ -514,7 +537,8 @@ const UPLOAD_DIR = path.join(getBackendDir(), 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function uploadFile(buffer, filename) {
-    const destPath = path.join(UPLOAD_DIR, filename);
+    const safeName = path.basename(String(filename || 'upload.bin')).replace(/[\0]/g, '') || 'upload.bin';
+    const destPath = path.join(UPLOAD_DIR, safeName);
     fs.writeFileSync(destPath, buffer);
     return { path: destPath };
 }

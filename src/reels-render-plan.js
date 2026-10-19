@@ -215,7 +215,9 @@
         });
         trackFor(timeline, 'subs', '字幕', 'subs');
 
-        // 清理空轨道与重复字幕轨，保留所有有内容的轨道
+        // 清理无效片段、空轨道与重复角色轨，保留所有有效有内容的轨道
+        const seenTrackRoles = new Set();
+        const SINGLETON_ROLES = new Set(['background', 'source_audio', 'voice', 'bgm', 'content_video', 'insert_video', 'subs']);
         let hasSubsTrack = false;
         timeline.tracks = timeline.tracks.filter((track) => {
             if (track.type === 'subs') {
@@ -224,7 +226,16 @@
                 track._extra.label = '字幕';
                 return true;
             }
-            return Array.isArray(track.clips) && track.clips.length > 0;
+            if (Array.isArray(track.clips)) {
+                track.clips = track.clips.filter((clip) => clip && clip.sourceId && timeline.sources[clip.sourceId]);
+            }
+            if (!Array.isArray(track.clips) || track.clips.length === 0) return false;
+            const role = track._extra?.trackRole || '';
+            if (role && SINGLETON_ROLES.has(role)) {
+                if (seenTrackRoles.has(role)) return false;
+                seenTrackRoles.add(role);
+            }
+            return true;
         });
 
         // 对背景视频与绑定原声进行防重叠校验，若发生重叠自动向后推移，彻底杜绝画面重叠

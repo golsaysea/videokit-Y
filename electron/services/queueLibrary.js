@@ -29,10 +29,20 @@ function summarize(snapshot) {
     return { tasks, audio: audio.size, video: video.size, subtitles, tabs: snapshot.tabs.length };
 }
 
-function createQueueLibrary(root) {
-    const filename = id => {
+function createQueueLibrary(root, extraRoots = []) {
+    const allRoots = [...new Set([root, ...(Array.isArray(extraRoots) ? extraRoots : [])].filter(Boolean).map(r => path.resolve(r)))];
+    const validateId = id => {
         if (!/^[a-f0-9-]{36}$/.test(String(id))) throw new Error('队列编号无效');
-        return path.join(root, `${id}.json`);
+        return String(id);
+    };
+    const filename = (id, dir = root) => path.join(dir, `${validateId(id)}.json`);
+    const findExistingFile = id => {
+        const safeId = validateId(id);
+        for (const dir of allRoots) {
+            const p = path.join(dir, `${safeId}.json`);
+            if (fs.existsSync(p)) return p;
+        }
+        return path.join(root, `${safeId}.json`);
     };
     return {
         save(name, snapshot) {
@@ -44,28 +54,68 @@ function createQueueLibrary(root) {
                 if (task.srtPath && fs.existsSync(task.srtPath)) task.srtContent = fs.readFileSync(task.srtPath, 'utf8');
             }
             const entry = { id: crypto.randomUUID(), name, savedAt: new Date().toISOString(), counts: summarize(copy), snapshot: copy };
+            const jsonStr = JSON.stringify(entry);
             fs.mkdirSync(root, { recursive: true });
-            const target = filename(entry.id);
+            const target = filename(entry.id, root);
             const temporary = `${target}.tmp`;
             try {
-                fs.writeFileSync(temporary, JSON.stringify(entry), { flag: 'wx' });
+                fs.writeFileSync(temporary, jsonStr, { flag: 'wx' });
                 fs.renameSync(temporary, target);
             } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+            for (const otherRoot of allRoots) {
+                if (otherRoot === path.resolve(root)) continue;
+                try {
+                    fs.mkdirSync(otherRoot, { recursive: true });
+                    const otherTarget = filename(entry.id, otherRoot);
+                    const otherTmp = `${otherTarget}.${process.pid}.tmp`;
+                    fs.writeFileSync(otherTmp, jsonStr, 'utf8');
+                    fs.renameSync(otherTmp, otherTarget);
+                } catch (_) { }
+            }
             const { snapshot: _, ...metadata } = entry;
-            return metadata;
+            return { ...metadata, filePath: target };
         },
         list() {
-            if (!fs.existsSync(root)) return [];
-            return fs.readdirSync(root).filter(f => /^[a-f0-9-]{36}\.json$/.test(f)).flatMap(f => {
-                try {
-                    const entry = JSON.parse(fs.readFileSync(path.join(root, f), 'utf8'));
-                    validate(entry.snapshot);
-                    return [{ id: path.basename(f, '.json'), name: entry.name, savedAt: entry.savedAt, counts: summarize(entry.snapshot) }];
-                } catch { return []; }
-            }).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+            const byId = new Map();
+            for (const dir of allRoots) {
+                if (!fs.existsSync(dir)) continue;
+                let files = [];
+                try { files = fs.readdirSync(dir); } catch (_) { continue; }
+                for (const f of files) {
+                    if (!/^[a-f0-9-]{36}\.json$/.test(f)) continue;
+                    const id = path.basename(f, '.json');
+                    if (byId.has(id)) continue;
+                    const fullPath = path.join(dir, f);
+                    try {
+                        const entry = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+                        validate(entry.snapshot);
+                        // Sync to primary root if found only in secondary/portable root
+                        let resolvedPath = fullPath;
+                        const primaryTarget = path.join(root, f);
+                        if (path.resolve(dir) !== path.resolve(root)) {
+                            try {
+                                if (!fs.existsSync(primaryTarget)) {
+                                    fs.mkdirSync(root, { recursive: true });
+                                    fs.copyFileSync(fullPath, primaryTarget);
+                                }
+                                resolvedPath = primaryTarget;
+                            } catch (_) { }
+                        }
+                        byId.set(id, {
+                            id,
+                            name: entry.name,
+                            savedAt: entry.savedAt,
+                            counts: summarize(entry.snapshot),
+                            filePath: resolvedPath,
+                        });
+                    } catch { /* ignore corrupted */ }
+                }
+            }
+            return Array.from(byId.values()).sort((a, b) => String(b.savedAt || '').localeCompare(String(a.savedAt || '')));
         },
         load(id) {
-            const entry = JSON.parse(fs.readFileSync(filename(id), 'utf8'));
+            const targetFile = findExistingFile(id);
+            const entry = JSON.parse(fs.readFileSync(targetFile, 'utf8'));
             validate(entry.snapshot);
             const restoreDir = path.join(root, 'restored-subtitles', crypto.randomUUID());
             let index = 0;
@@ -76,6 +126,7 @@ function createQueueLibrary(root) {
                     fs.writeFileSync(task.srtPath, task.srtContent, 'utf8');
                 }
             }
+            entry.filePath = targetFile;
             return entry;
         },
     };

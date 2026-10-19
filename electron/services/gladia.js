@@ -406,7 +406,7 @@ async function splitAudioOnSilence(audioPath, outputDir, minMinutes = 5.0, maxMi
 async function uploadAudio(apiKey, filePath, signal = null) {
     const fileData = fs.readFileSync(filePath);
     const fileName = path.basename(filePath);
-    const boundary = '----FormBoundary' + Math.random().toString(36).slice(2);
+    const boundary = '----FormBoundary' + crypto.randomBytes(16).toString('hex');
 
     let body = '';
     body += `--${boundary}\r\n`;
@@ -485,7 +485,7 @@ async function startTranscription(apiKey, audioUrl, language = 'english', signal
     // 优先使用 Gladia 当前文档推荐的 pre-recorded 结果端点，避免旧端点
     // 在服务升级期间出现不必要的轮询异常或长时间等待。
     return data.id
-        ? `${GLADIA_API_URL}/v2/pre-recorded/${data.id}`
+        ? `${GLADIA_API_URL}/v2/pre-recorded/${encodeURIComponent(String(data.id))}`
         : data.result_url;
 }
 
@@ -493,6 +493,15 @@ async function startTranscription(apiKey, audioUrl, language = 'english', signal
  * 轮询转录结果
  */
 async function pollResult(apiKey, resultUrl, maxAttempts = 60, interval = 3000, signal = null) {
+    let parsedPollUrl;
+    try {
+        parsedPollUrl = new URL(String(resultUrl || ''));
+    } catch {
+        throw new Error('Gladia 轮询地址无效');
+    }
+    if (parsedPollUrl.protocol !== 'https:' || (parsedPollUrl.hostname !== 'api.gladia.io' && !parsedPollUrl.hostname.endsWith('.gladia.io'))) {
+        throw new Error(`拒绝向非受信任的 Gladia 域名发送 API Key: ${parsedPollUrl.hostname}`);
+    }
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (signal?.aborted) throw new Error('任务已停止');
         console.log(`Gladia 轮询尝试 ${attempt + 1}/${maxAttempts}...`);

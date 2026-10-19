@@ -342,6 +342,7 @@ function _drawCroppedVideoCover(ctx, videoEl, cropX, cropY, cropW, cropH, target
  * WYSIWYG 导出一个 Reel 任务
  */
 async function reelsWysiwygExport(params) {
+    params={...params,style:getWritingVisualStyle(params.style)};
     let {
         canvas,
         style,
@@ -492,6 +493,14 @@ async function reelsWysiwygExport(params) {
     // willReadFrequently: 跳过每帧 GPU→CPU readback 同步（~1.5x 提速）
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const renderer = new ReelsCanvasRenderer(canvas);
+    await renderer.prepareWritingCursorImage(style);
+    if (Array.isArray(taskOverlays) && window.ReelsOverlay?.prepareScrollWritingCursorImage) {
+        for (const ov of taskOverlays) {
+            if (ov && !ov.disabled && ov.type === 'scroll') {
+                await window.ReelsOverlay.prepareScrollWritingCursorImage(ov);
+            }
+        }
+    }
 
     // 获取时长：优先文字翻转器，其次自定义时长，否则音频时长，否则覆层视频时长，否则背景视频时长
     let duration = 0;
@@ -1156,7 +1165,7 @@ async function reelsWysiwygExport(params) {
                     activeSeg = best;
                 }
                 if (activeSeg) {
-                    renderer.setContextSegments(segments);
+                    renderer.setContextSegments(segments, originalScript);
                     renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);
                 }
             };
@@ -1182,10 +1191,12 @@ async function reelsWysiwygExport(params) {
                             ov._selected = false;
                             ov._exporting = true;
                             ov._exportDuration = duration; // 让 scroll 覆层知道实际导出时长
+                            ov._taskSegments = segments;
                             ReelsOverlay.drawOverlay(ctx, ov, t, targetWidth, targetHeight);
                         } finally {
                             ov._selected = origSelected;
                             delete ov._exporting;
+                            delete ov._taskSegments;
                         }
                     }
                 }

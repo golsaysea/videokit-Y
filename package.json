@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.4.42",
+  "version": "4.4.43",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -165,6 +165,7 @@
         "deb",
         "tar.gz"
       ],
+      "artifactName": "${productName}-${version}-Linux-${arch}.${ext}",
       "icon": "assets/icon.png",
       "category": "AudioVideo",
       "extraResources": [
@@ -185,6 +186,13 @@
         {
           "from": "assets",
           "to": "assets",
+          "filter": [
+            "**/*"
+          ]
+        },
+        {
+          "from": "vendor/linux/ffmpeg",
+          "to": "vendor/ffmpeg",
           "filter": [
             "**/*"
           ]

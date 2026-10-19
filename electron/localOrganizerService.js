@@ -534,7 +534,27 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
         }
     });
 
-    // 7. 视频缩略图生成与缓存
+    // 7. 视频缩略图生成与缓存（限制并发数并复用缓存）
+    const MAX_THUMB_CONCURRENCY = 2;
+    let activeThumbCount = 0;
+    const thumbWaitQueue = [];
+    const acquireThumbSlot = () => new Promise(resolve => {
+        if (activeThumbCount < MAX_THUMB_CONCURRENCY) {
+            activeThumbCount++;
+            resolve();
+        } else {
+            thumbWaitQueue.push(resolve);
+        }
+    });
+    const releaseThumbSlot = () => {
+        if (thumbWaitQueue.length > 0) {
+            const next = thumbWaitQueue.shift();
+            next();
+        } else {
+            activeThumbCount = Math.max(0, activeThumbCount - 1);
+        }
+    };
+
     ipcMain.handle('local:video-thumbnail', async (_event, filePath, requestedSize = 240) => {
         try {
             if (!filePath || !fs.existsSync(filePath)) return null;
@@ -553,9 +573,11 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
             }
 
             const job = (async () => {
+                await acquireThumbSlot();
                 await fs.promises.mkdir(cacheDir, { recursive: true });
                 const temporaryPath = path.join(cacheDir, `${cacheKey}.${process.pid}.tmp.jpg`);
                 try {
+                    if (fs.existsSync(thumbnailPath)) return thumbnailPath;
                     await runExecFile(getFfmpegCommand(), [
                         '-hide_banner',
                         '-loglevel', 'error',
@@ -567,6 +589,19 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
                         '-y',
                         temporaryPath
                     ]);
+                    if (!fs.existsSync(temporaryPath)) {
+                        await runExecFile(getFfmpegCommand(), [
+                            '-hide_banner',
+                            '-loglevel', 'error',
+                            '-ss', '0',
+                            '-i', filePath,
+                            '-frames:v', '1',
+                            '-vf', `scale=${size}:${size}:force_original_aspect_ratio=decrease`,
+                            '-q:v', '4',
+                            '-y',
+                            temporaryPath
+                        ]);
+                    }
                     if (!fs.existsSync(temporaryPath)) return null;
                     await fs.promises.rename(temporaryPath, thumbnailPath);
                     return thumbnailPath;
@@ -575,6 +610,8 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
                         if (fs.existsSync(temporaryPath)) await fs.promises.unlink(temporaryPath);
                     } catch (_) {}
                     return null;
+                } finally {
+                    releaseThumbSlot();
                 }
             })();
 
@@ -715,7 +752,7 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
                     for (const p of paths) {
                         try {
                             const fileBuffer = await fsP.readFile(p);
-                            const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+                            const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
                             if (hashMap.has(hash)) {
                                 await shell.trashItem(p);
                                 trashed.push(p);
@@ -755,7 +792,7 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
                     for (const p of paths) {
                         try {
                             const buf = await fsP.readFile(p);
-                            const hash = crypto.createHash('md5').update(buf).digest('hex');
+                            const hash = crypto.createHash('sha256').update(buf).digest('hex');
                             if (!hashMap.has(hash)) hashMap.set(hash, []);
                             hashMap.get(hash).push(p);
                         } catch (_) {}
@@ -796,7 +833,7 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
         try {
             if (!filePaths || !filePaths.length) return { success: false, error: '没有文件' };
             if (process.platform === 'darwin') {
-                const escaped = filePaths.map(p => `POSIX file "${p.replace(/"/g, '\\"')}"`).join(', ');
+                const escaped = filePaths.map(p => `POSIX file "${String(p).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`).join(', ');
                 const script = `tell application "Finder" to set the clipboard to {${escaped}}`;
                 await new Promise((resolve, reject) => {
                     execFile('osascript', ['-e', script], (err) => {
@@ -1163,7 +1200,12 @@ function registerLocalOrganizer(rawIpcMain, getMainWindow) {
 
     ipcMain.handle('open-external', async (_event, url) => {
         try {
-            if (url) await shell.openExternal(url);
+            if (!url || typeof url !== 'string') return { success: false, error: 'Invalid URL' };
+            const parsed = new URL(url);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+                return { success: false, error: 'Blocked non-HTTP(S) external URL' };
+            }
+            await shell.openExternal(parsed.toString());
             return { success: true };
         } catch (err) {
             return { success: false, error: err.message };

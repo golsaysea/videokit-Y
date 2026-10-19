@@ -193,10 +193,28 @@ function runYtDlpWithProgress(userArgs, { onData, timeout = 600000 } = {}) {
 }
 
 
+function sanitizeYtDlpUrl(rawUrl) {
+    const clean = String(rawUrl || '').trim();
+    if (!clean || clean.startsWith('-')) {
+        throw new Error('无效的视频链接');
+    }
+    let parsed;
+    try {
+        parsed = new URL(clean);
+    } catch {
+        throw new Error('无效的视频链接格式');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('仅支持 HTTP/HTTPS 视频链接');
+    }
+    return parsed.toString();
+}
+
 /** 分析视频链接 */
 async function analyzeVideo(url) {
+    const safeUrl = sanitizeYtDlpUrl(url);
     const { stdout } = await runYtDlp([
-        '--dump-json', '--flat-playlist', '--no-warnings', url
+        '--dump-json', '--flat-playlist', '--no-warnings', '--', safeUrl
     ], 120000);
 
     // yt-dlp --flat-playlist 输出多行 JSON（播放列表）
@@ -235,8 +253,8 @@ async function analyzeVideo(url) {
         // 单个视频
         return {
             title: info.title || '未知',
-            url: info.webpage_url || url,
-            webpage_url: info.webpage_url || url,
+            url: info.webpage_url || safeUrl,
+            webpage_url: info.webpage_url || safeUrl,
             duration: info.duration || 0,
             thumbnail: info.thumbnail || '',
         };
@@ -247,6 +265,7 @@ async function analyzeVideo(url) {
 
 /** 下载单个视频 */
 async function downloadVideo(url, options = {}) {
+    const safeUrl = sanitizeYtDlpUrl(url);
     const {
         quality = 'best',
         outputDir = path.join(os.homedir(), 'Downloads'),
@@ -271,7 +290,7 @@ async function downloadVideo(url, options = {}) {
         args.push('--write-subs', '--sub-langs', 'en,zh-Hans');
     }
 
-    args.push(url);
+    args.push('--', safeUrl);
     await runYtDlp(args);
 
     return { message: '下载完成', output_path: outputDir };
@@ -314,8 +333,8 @@ async function downloadBatch(items, options = {}) {
         args.push('--write-subs', '--sub-langs', `${subLang},en,zh-Hans`);
     }
 
-    const urls = items.map(i => i.url || i).filter(Boolean);
-    args.push(...urls);
+    const urls = items.map(i => i.url || i).filter(Boolean).map(sanitizeYtDlpUrl);
+    args.push('--', ...urls);
 
     await runYtDlp(args, 3600000); // 1小时超时
 
@@ -351,7 +370,8 @@ async function downloadBatchSequential(urls, options = {}) {
     let failCount = 0;
 
     for (let i = 0; i < urls.length; i++) {
-        const url = urls[i];
+        const safeUrl = sanitizeYtDlpUrl(urls[i]);
+        const url = safeUrl;
         onProgress(i, urls.length, 'downloading', `正在下载 ${i + 1}/${urls.length}: ${url.substring(0, 60)}...`);
 
         const args = [
@@ -389,7 +409,7 @@ async function downloadBatchSequential(urls, options = {}) {
             }
         }
 
-        args.push(url);
+        args.push('--', safeUrl);
 
         try {
             let lastLine = '';

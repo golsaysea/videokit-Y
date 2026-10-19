@@ -422,6 +422,10 @@ function createScrollOverlay(opts = {}) {
         // Applies to both the scrolling body and title; auto resolves each independently.
         text_direction: opts.text_direction || 'auto',
         line_spacing: opts.line_spacing ?? 6,
+        scroll_letter_spacing: opts.scroll_letter_spacing ?? 0,
+        scroll_uppercase: opts.scroll_uppercase !== false,
+        scroll_title_letter_spacing: opts.scroll_title_letter_spacing ?? 0,
+        scroll_title_uppercase: opts.scroll_title_uppercase !== false,
         text_width: opts.text_width ?? 900,
         // 描边
         use_stroke: opts.use_stroke || false,
@@ -471,6 +475,25 @@ function createScrollOverlay(opts = {}) {
         // 整体偏移（裁切区+滚动坐标一起移动）
         scroll_offset_x: opts.scroll_offset_x ?? 0,
         scroll_offset_y: opts.scroll_offset_y ?? 0,
+        // ── 出字效果（朗诵打字机/手写跟读）──
+        scroll_typewriter_enabled: opts.scroll_typewriter_enabled === true,
+        scroll_tw_speech_sync: opts.scroll_tw_speech_sync !== false,
+        scroll_tw_reveal_type: opts.scroll_tw_reveal_type || 'char', // 'char' | 'word' | 'sentence'
+        scroll_tw_unrevealed_opacity: opts.scroll_tw_unrevealed_opacity ?? 0, // 0~100 (%)
+        scroll_tw_active_highlight: opts.scroll_tw_active_highlight !== false,
+        scroll_tw_active_color: opts.scroll_tw_active_color || '#FFD700',
+        scroll_tw_active_scale: opts.scroll_tw_active_scale ?? 100, // 100~200 (%)
+        scroll_tw_cursor_enabled: opts.scroll_tw_cursor_enabled !== false,
+        scroll_tw_cursor_kind: opts.scroll_tw_cursor_kind || 'quill', // 'quill' | 'rose' | 'image' | 'char'
+        scroll_tw_cursor_image: opts.scroll_tw_cursor_image || '',
+        scroll_tw_cursor_anchor_x: opts.scroll_tw_cursor_anchor_x ?? 15,
+        scroll_tw_cursor_anchor_y: opts.scroll_tw_cursor_anchor_y ?? 85,
+        scroll_tw_cursor_scale: opts.scroll_tw_cursor_scale ?? 1.1,
+        scroll_tw_cursor_offset_x: opts.scroll_tw_cursor_offset_x ?? 0,
+        scroll_tw_cursor_offset_y: opts.scroll_tw_cursor_offset_y ?? 0,
+        scroll_tw_cursor_angle: opts.scroll_tw_cursor_angle ?? -8,
+        scroll_tw_cursor_char: opts.scroll_tw_cursor_char || '|',
+        scroll_tw_cursor_color: opts.scroll_tw_cursor_color || '#FFD700',
         // 动画
         transition_preset: opts.transition_preset || 'none',
         transition_duration: opts.transition_duration || 0.35,
@@ -1183,14 +1206,27 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     if (ov.bind_scroll_overlay_id && (ov.type === 'image' || ov.type === 'video')) {
         const allOvs = ov._allOverlays || [];
         const scrollOv = allOvs.find(o => o.id === ov.bind_scroll_overlay_id && o.type === 'scroll');
-        if (scrollOv && scrollOv._scrollBodyFirstLineY != null) {
+        // Measure this frame on a private proxy. Preview clones and layer order
+        // must not decide whether a binding sees fresh coordinates.
+        const anchor = {
+            x: scrollOv?._scrollBodyCurX,
+            y: scrollOv?._scrollBodyFirstLineY,
+        };
+        if (scrollOv && !scrollOv.disabled && typeof drawOverlay === 'function') {
+            const scrollTime = (typeof window !== 'undefined' && window._reelsState?._scrollPreviewEnd && !ov._exporting)
+                ? parseFloat(scrollOv.end || 10) : currentTime;
+            const proxy = { ...scrollOv, _scrollBindingMeasureOnly: true, _scrollBindingResult: anchor };
+            if (ov._exportDuration > 0) proxy._exportDuration = ov._exportDuration;
+            drawOverlay(ctx, proxy, scrollTime, canvasW, canvasH);
+        }
+        if (Number.isFinite(anchor.y)) {
             const bindOffsetX = parseFloat(ov.bind_scroll_offset_x || 0);
             const bindOffsetY = parseFloat(ov.bind_scroll_offset_y || 0);
             const bindMinY = ov.bind_scroll_clamp_min_y;
             const bindMaxY = ov.bind_scroll_clamp_max_y;
 
             // Y 跟随正文第一行
-            let targetY = scrollOv._scrollBodyFirstLineY + bindOffsetY;
+            let targetY = anchor.y + bindOffsetY;
             // 应用边界钳制
             if (bindMinY != null && !isNaN(parseFloat(bindMinY))) {
                 targetY = Math.max(parseFloat(bindMinY), targetY);
@@ -1201,9 +1237,13 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
             y = targetY;
 
             // X 可选跟随
-            if (ov.bind_scroll_follow_x) {
-                x = scrollOv._scrollBodyCurX + bindOffsetX - w / 2;
+            if (ov.bind_scroll_follow_x && Number.isFinite(anchor.x)) {
+                x = anchor.x + bindOffsetX - w / 2;
             }
+            ov._renderedX = x;
+            ov._renderedY = y;
+            ov._renderedW = w;
+            ov._renderedH = h;
         }
     }
 
@@ -3498,7 +3538,8 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     // ── 计算标题占用高度 ──
     let titleOccupiedH = 0;
-    const scrollTitleText = (ov.scroll_title || '').trim();
+    let scrollTitleText = (ov.scroll_title || '').trim();
+    if (ov.scroll_title_uppercase !== false) scrollTitleText = scrollTitleText.toUpperCase();
     const titleIndependent = ov.scroll_title_independent === true;
     let actualTitleFontSize = 56;
     if (scrollTitleText) {
@@ -3624,6 +3665,12 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     ov._scrollBodyFirstLineY = _titleFixed ? curY : (curY + titleOccupiedH);
     ov._scrollBodyLineHeight = lineHeight;
     ov._scrollBodyCurX = curAxisX;
+    if (ov._scrollBindingResult) {
+        ov._scrollBindingResult.x = curAxisX;
+        ov._scrollBindingResult.y = ov._scrollBodyFirstLineY;
+    }
+    // Reuse the exact wrapping, title, auto-fit and auto-stop layout without painting.
+    if (ov._scrollBindingMeasureOnly) return;
 
     // ── 磨砂模糊 (Frosted Glass) ──
     if (ov.bg_blur_enabled) {
@@ -3981,6 +4028,10 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             }
 
         // ── 2. 正文在标题下方的剩余空间内滚动 ──
+        const _twSegments = Array.isArray(ov._taskSegments)
+            ? ov._taskSegments
+            : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
+        const _twContext = { currentTime, start, end, effectiveDuration, segments: _twSegments };
         const bodyClipY = titleIndependent ? clipY : (clipY + titleBlockH + tGap);
         const bodyClipH = titleIndependent ? clipH : (clipH - titleBlockH - tGap);
         if (bodyClipH > 0) {
@@ -3994,7 +4045,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 tc.font = fontStr;
                 const offX = curX - clipX;
                 const offY = curY - bodyClipY;
-                _drawScrollTextBlock(tc, ovProxy, lines, offX, offY, textW, lineHeight, fontSize, align);
+                _drawScrollTextBlock(tc, ovProxy, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
 
                 // 渐变遮罩：固定标题只作用于正文裁切区，标题本身不参与羽化。
                 tc.globalCompositeOperation = 'destination-in';
@@ -4061,12 +4112,16 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 ctx.beginPath();
                 ctx.rect(clipX, bodyClipY, clipW, bodyClipH);
                 ctx.clip();
-                _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align);
+                _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
                 ctx.restore();
             }
         }
     } else {
         // ── 标题跟随滚动 (原有逻辑) ──
+        const _twSegments = Array.isArray(ov._taskSegments)
+            ? ov._taskSegments
+            : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
+        const _twContext = { currentTime, start, end, effectiveDuration, segments: _twSegments };
         const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff > 0 || featherBotOff > 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0;
         if (hasFeather) {
             const cW = Math.ceil(clipW), cH = Math.ceil(clipH);
@@ -4077,7 +4132,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
             const offX = curX - clipX;
             const offY = curY - clipY;
-            _drawScrollTextBlock(tc, ov, lines, offX, offY, textW, lineHeight, fontSize, align);
+            _drawScrollTextBlock(tc, ov, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
 
             tc.globalCompositeOperation = 'destination-in';
             const grad = tc.createLinearGradient(0, 0, 0, cH);
@@ -4143,7 +4198,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ctx.beginPath();
             ctx.rect(clipX, clipY, clipW, clipH);
             ctx.clip();
-            _drawScrollTextBlock(ctx, ov, lines, curX, curY, textW, lineHeight, fontSize, align);
+            _drawScrollTextBlock(ctx, ov, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
             ctx.restore();
         }
     }
@@ -4205,14 +4260,495 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     }
 }
 
+const _scrollTwTokenCache = new Map();
+
+function _buildScrollTypewriterLines(ov, lines, textDirection, twContext) {
+    const start = Number(twContext?.start) || 0;
+    const effectiveDur = Math.max(0.1, Number(twContext?.effectiveDuration) || 10);
+    const speechSync = ov.scroll_tw_speech_sync !== false;
+    const rawRevealType = ov.scroll_tw_reveal_type || 'char';
+    const revealType = (textDirection === 'rtl' && rawRevealType === 'char') ? 'word' : rawRevealType;
+    const rawSegments = speechSync && Array.isArray(twContext?.segments) ? twContext.segments : null;
+    const segSig = rawSegments && rawSegments.length > 0
+        ? `${rawSegments.length}:${rawSegments[0]?.start ?? 0}:${rawSegments[rawSegments.length - 1]?.end ?? 0}:${(rawSegments[0]?.edited_text ?? rawSegments[0]?.text ?? '').slice(0, 20)}`
+        : 'none';
+    const cacheId = ov.id || '_default';
+    const cacheKey = `${lines.join('\n')}|${revealType}|${speechSync ? 1 : 0}|${start.toFixed(3)}|${effectiveDur.toFixed(3)}|${segSig}|${ov.scroll_title || ''}`;
+    const existing = _scrollTwTokenCache.get(cacheId);
+    if (existing && existing.key === cacheKey) {
+        return existing.lineTokensList;
+    }
+
+    const splitGraphemes = (str) => (typeof getWritingGraphemes === 'function')
+        ? getWritingGraphemes(str)
+        : Array.from(str || '');
+    const norm = (str) => String(str || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]/gu, '');
+
+    // 1. Build per-line tokens with charOffset within each line
+    const lineTokensList = [];
+    const allTokens = [];
+    const bodySlots = [];
+
+    for (let li = 0; li < lines.length; li++) {
+        const line = lines[li] || '';
+        let rawChunks;
+        if (revealType === 'char') {
+            rawChunks = splitGraphemes(line);
+        } else {
+            rawChunks = line.match(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]|\s+|[^\s\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]+/g) || (line ? [line] : []);
+        }
+        const lineTokens = [];
+        let charOffset = 0;
+        for (const chunk of rawChunks) {
+            const tok = {
+                text: chunk,
+                lineIdx: li,
+                charStart: charOffset,
+                charEnd: charOffset + chunk.length,
+                start: start,
+                end: start,
+                slots: [],
+            };
+            charOffset += chunk.length;
+            const graphemes = splitGraphemes(chunk);
+            for (const g of graphemes) {
+                const n = norm(g);
+                if (n) {
+                    for (const ch of n) {
+                        const slot = { tok, ch, start: start, end: start };
+                        tok.slots.push(slot);
+                        bodySlots.push(slot);
+                    }
+                }
+            }
+            lineTokens.push(tok);
+            allTokens.push(tok);
+        }
+        lineTokensList.push(lineTokens);
+    }
+
+    // 2. Build speech character timings from aligned segments (if available)
+    const speechChars = [];
+    if (rawSegments && rawSegments.length > 0) {
+        const repairedSegs = (typeof repairCollapsedWritingSegments === 'function')
+            ? repairCollapsedWritingSegments(rawSegments, start + effectiveDur)
+            : rawSegments;
+        for (const seg of repairedSegs) {
+            const segText = String(seg.edited_text ?? seg.text ?? '');
+            if (!segText.trim()) continue;
+            const segStart = Number(seg.start) || 0;
+            const segEnd = Math.max(segStart + 0.001, Number(seg.end) || (segStart + 0.1));
+            if (Array.isArray(seg.words) && seg.words.length > 0) {
+                for (const w of seg.words) {
+                    const wText = norm(w.word ?? w.text ?? '');
+                    if (!wText) continue;
+                    const wStart = Number.isFinite(Number(w.start)) ? Number(w.start) : segStart;
+                    const wEnd = Number.isFinite(Number(w.end)) && Number(w.end) >= wStart ? Number(w.end) : segEnd;
+                    const wDur = Math.max(0.001, wEnd - wStart);
+                    for (let ci = 0; ci < wText.length; ci++) {
+                        speechChars.push({
+                            ch: wText[ci],
+                            start: wStart + wDur * (ci / wText.length),
+                            end: wStart + wDur * ((ci + 1) / wText.length),
+                        });
+                    }
+                }
+            } else {
+                const sNorm = norm(segText);
+                if (!sNorm) continue;
+                const sDur = Math.max(0.001, segEnd - segStart);
+                for (let ci = 0; ci < sNorm.length; ci++) {
+                    speechChars.push({
+                        ch: sNorm[ci],
+                        start: segStart + sDur * (ci / sNorm.length),
+                        end: segStart + sDur * ((ci + 1) / sNorm.length),
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Map bodySlots to speechChars or fallback to uniform timing
+    const M = bodySlots.length;
+    if (M > 0) {
+        if (speechChars.length > 0) {
+            // If speech starts with scroll_title and body doesn't, skip title prefix in speechChars
+            let sOffset = 0;
+            const titleNorm = norm(ov.scroll_title || '');
+            if (titleNorm.length > 0 && speechChars.length > titleNorm.length) {
+                const speechPrefix = speechChars.slice(0, titleNorm.length).map(c => c.ch).join('');
+                const bodyPrefix = bodySlots.slice(0, titleNorm.length).map(c => c.ch).join('');
+                if (speechPrefix === titleNorm && bodyPrefix !== titleNorm) {
+                    sOffset = titleNorm.length;
+                }
+            }
+            const activeSpeech = speechChars.slice(sOffset);
+            const K = activeSpeech.length;
+            if (K > 0) {
+                // Two-pointer alignment with lookahead resync
+                const matched = new Array(M).fill(null);
+                let bi = 0, si = 0;
+                const lookahead = 18;
+                while (bi < M && si < K) {
+                    if (bodySlots[bi].ch === activeSpeech[si].ch) {
+                        matched[bi] = activeSpeech[si];
+                        bi++;
+                        si++;
+                        continue;
+                    }
+                    let foundB = -1, foundS = -1, bestDist = 999;
+                    for (let db = 0; db <= lookahead && bi + db < M; db++) {
+                        for (let ds = 0; ds <= lookahead && si + ds < K; ds++) {
+                            if (db === 0 && ds === 0) continue;
+                            if (db + ds >= bestDist) break;
+                            if (bodySlots[bi + db].ch === activeSpeech[si + ds].ch) {
+                                // Require at least 2 consecutive matching chars when jumping more than 2 chars
+                                if (db + ds > 2 && bi + db + 1 < M && si + ds + 1 < K) {
+                                    if (bodySlots[bi + db + 1].ch !== activeSpeech[si + ds + 1].ch) continue;
+                                }
+                                bestDist = db + ds;
+                                foundB = bi + db;
+                                foundS = si + ds;
+                                break;
+                            }
+                        }
+                    }
+                    if (foundB >= 0) {
+                        bi = foundB;
+                        si = foundS;
+                        matched[bi] = activeSpeech[si];
+                        bi++;
+                        si++;
+                    } else {
+                        // Pair 1-to-1 proportionally when no local match
+                        matched[bi] = activeSpeech[si];
+                        bi++;
+                        si++;
+                    }
+                }
+                // Interpolate any unmatched slots
+                let idx = 0;
+                const firstSpeechStart = activeSpeech[0].start;
+                const lastSpeechEnd = activeSpeech[K - 1].end;
+                while (idx < M) {
+                    if (matched[idx]) {
+                        bodySlots[idx].start = matched[idx].start;
+                        bodySlots[idx].end = matched[idx].end;
+                        idx++;
+                        continue;
+                    }
+                    const gapStartIdx = idx;
+                    while (idx < M && !matched[idx]) idx++;
+                    const gapCount = idx - gapStartIdx;
+                    const t0 = gapStartIdx > 0 ? bodySlots[gapStartIdx - 1].end : firstSpeechStart;
+                    const t1 = idx < M && matched[idx] ? matched[idx].start : Math.max(t0 + 0.02 * gapCount, lastSpeechEnd);
+                    const span = Math.max(0.001, t1 - t0);
+                    for (let g = 0; g < gapCount; g++) {
+                        bodySlots[gapStartIdx + g].start = t0 + span * (g / gapCount);
+                        bodySlots[gapStartIdx + g].end = t0 + span * ((g + 1) / gapCount);
+                    }
+                }
+            } else {
+                for (let i = 0; i < M; i++) {
+                    bodySlots[i].start = start + effectiveDur * (i / M);
+                    bodySlots[i].end = start + effectiveDur * ((i + 1) / M);
+                }
+            }
+        } else {
+            for (let i = 0; i < M; i++) {
+                bodySlots[i].start = start + effectiveDur * (i / M);
+                bodySlots[i].end = start + effectiveDur * ((i + 1) / M);
+            }
+        }
+    }
+
+    // 4. Assign token start/end from their slots
+    let prevEnd = bodySlots.length > 0 ? bodySlots[0].start : start;
+    for (const tok of allTokens) {
+        if (tok.slots.length > 0) {
+            tok.start = tok.slots[0].start;
+            tok.end = tok.slots[tok.slots.length - 1].end;
+            prevEnd = tok.end;
+        } else {
+            tok.start = prevEnd;
+            tok.end = prevEnd;
+        }
+        delete tok.slots;
+    }
+
+    // 5. If sentence mode, group tokens by sentence boundaries
+    if (revealType === 'sentence' && allTokens.length > 0) {
+        let group = [];
+        const flushSentenceGroup = () => {
+            if (!group.length) return;
+            const spoken = group.filter(t => norm(t.text).length > 0);
+            const first = spoken[0] || group[0];
+            const last = spoken[spoken.length - 1] || group[group.length - 1];
+            const sStart = first.start;
+            const sEnd = last.end;
+            for (const t of group) {
+                t.start = sStart;
+                t.end = sEnd;
+                t._sentenceToken = true;
+            }
+            group = [];
+        };
+        for (let i = 0; i < allTokens.length; i++) {
+            const tok = allTokens[i];
+            group.push(tok);
+            const nextTok = allTokens[i + 1];
+            const endsPunct = /[.!?。！？；;…]+['"”’)\]]*$/.test(tok.text.trim());
+            const lineBreakAfter = nextTok && nextTok.lineIdx !== tok.lineIdx && endsPunct;
+            if (endsPunct || lineBreakAfter) {
+                flushSentenceGroup();
+            }
+        }
+        flushSentenceGroup();
+    }
+
+    if (_scrollTwTokenCache.size > 120) {
+        const oldestKey = _scrollTwTokenCache.keys().next().value;
+        _scrollTwTokenCache.delete(oldestKey);
+    }
+    _scrollTwTokenCache.set(cacheId, { key: cacheKey, lineTokensList });
+    return lineTokensList;
+}
+
+function _measureScrollSubstrWidth(ctx, line, startIdx, endIdx, letterSpacing) {
+    if (endIdx <= startIdx) return 0;
+    const sub = line.slice(startIdx, endIdx);
+    if (!sub) return 0;
+    if (letterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
+        const chars = Array.from(sub);
+        let w = 0;
+        for (let i = 0; i < chars.length; i++) {
+            w += ctx.measureText(chars[i]).width;
+            if (i < chars.length - 1) w += letterSpacing;
+        }
+        return w;
+    }
+    return ctx.measureText(sub).width;
+}
+
+function _drawScrollTypewriterCursorImage(ctx, ov, x, y, size, angle, currentTime) {
+    const imgPath = ov.scroll_tw_cursor_image || '';
+    if (!imgPath) return;
+    if (typeof ReelsCanvasRenderer !== 'undefined' && ReelsCanvasRenderer.prototype?._drawWritingCursorImage) {
+        const styleAdapter = {
+            fullpage_typewriter_cursor_image: imgPath,
+            fullpage_typewriter_cursor_image_anchor_x: ov.scroll_tw_cursor_anchor_x ?? 15,
+            fullpage_typewriter_cursor_image_anchor_y: ov.scroll_tw_cursor_anchor_y ?? 85,
+        };
+        ReelsCanvasRenderer.prototype._drawWritingCursorImage.call(
+            ReelsCanvasRenderer.prototype,
+            ctx, styleAdapter, x, y, size, angle, currentTime
+        );
+    }
+}
+
+async function prepareScrollWritingCursorImage(ov) {
+    if (!ov || !ov.scroll_typewriter_enabled || ov.scroll_tw_cursor_enabled === false) return;
+    if ((ov.scroll_tw_cursor_kind || 'quill') !== 'image' || !ov.scroll_tw_cursor_image) return;
+    if (typeof ReelsCanvasRenderer !== 'undefined' && ReelsCanvasRenderer.prototype?._getWritingCursorImage) {
+        const entry = ReelsCanvasRenderer.prototype._getWritingCursorImage.call(
+            ReelsCanvasRenderer.prototype,
+            ov.scroll_tw_cursor_image
+        );
+        if (entry?.promise) await entry.promise;
+    }
+}
+
+function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHeight, fontSize, align, bLetterSpacing, twContext) {
+    const currentTime = Number(twContext?.currentTime) || 0;
+    const textDirection = ctx.direction || 'ltr';
+    const isRtl = textDirection === 'rtl';
+    const lineTokensList = _buildScrollTypewriterLines(ov, lines, textDirection, twContext);
+
+    const unrevealedOpacity = Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100));
+    const activeHighlight = ov.scroll_tw_active_highlight !== false;
+    const activeColor = ov.scroll_tw_active_color || '#FFD700';
+    const activeScale = Math.max(0.5, Math.min(2.5, (Number(ov.scroll_tw_active_scale) || 100) / 100));
+    const cursorEnabled = ov.scroll_tw_cursor_enabled !== false;
+    const tipKind = ov.scroll_tw_cursor_kind || 'quill';
+    const isImageTip = tipKind !== 'char';
+
+    const baseColor = ov.color || '#FFFFFF';
+    const bodyFamily = ov.font_family || 'Arial';
+    const bodyFallback = _resolveOverlayFallback(bodyFamily);
+    const bodyWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400);
+    const gradDir = ov.scroll_body_gradient_direction || ov.scroll_gradient_direction || 'horizontal';
+
+    let rawContent = ov.content || '';
+    if (ov.scroll_uppercase !== false) rawContent = rawContent.toUpperCase();
+    const _scrollBodyMerged = _getAutoColorMergedRanges(ov, 'scroll_body', rawContent);
+    const _scrollBodyRanges = _scrollBodyMerged || ov.scroll_styled_ranges;
+    if (typeof _drawRichLine !== 'undefined') _drawRichLine._searchFrom = 0;
+
+    let cursorX = null;
+    let cursorBaselineY = null;
+    let hasWritingStarted = false;
+
+    for (let li = 0; li < lines.length; li++) {
+        const line = lines[li] || '';
+        const lineTokens = lineTokensList[li] || [];
+        const yc = drawY + fontSize + li * lineHeight;
+        const lx = _alignX(ctx, line, textX, textW, align, bLetterSpacing);
+        const lineW = ctx.measureText(line).width;
+
+        if (li === 0 && lineTokens.length > 0 && cursorX === null) {
+            cursorX = isRtl ? (lx + lineW) : lx;
+            cursorBaselineY = yc;
+        }
+
+        // Build contiguous runs on this line with identical (state, opacity, color, scale)
+        const runs = [];
+        for (const tok of lineTokens) {
+            let state = 'unread';
+            let opacity = unrevealedOpacity;
+            let color = baseColor;
+            let scale = 1.0;
+
+            if (currentTime >= tok.end) {
+                state = 'read';
+                opacity = 1.0;
+            } else if (currentTime >= tok.start && currentTime < tok.end) {
+                state = 'active';
+                opacity = 1.0;
+                if (activeHighlight) color = activeColor;
+                scale = activeScale;
+            }
+
+            if (currentTime >= tok.start && !/^\s+$/.test(tok.text)) {
+                const prefixW = _measureScrollSubstrWidth(ctx, line, 0, tok.charStart, bLetterSpacing);
+                const nextPrefixW = _measureScrollSubstrWidth(ctx, line, 0, tok.charEnd, bLetterSpacing);
+                const tokW = nextPrefixW - prefixW;
+                const tokenX = isRtl ? (lx + lineW - nextPrefixW) : (lx + prefixW);
+                const p = (isImageTip && !tok._sentenceToken && tok.end > tok.start)
+                    ? Math.max(0, Math.min(1, (currentTime - tok.start) / (tok.end - tok.start)))
+                    : 1;
+                cursorX = isRtl ? (tokenX + tokW * (1 - p)) : (tokenX + tokW * p);
+                cursorBaselineY = yc;
+                hasWritingStarted = true;
+            }
+
+            const prevRun = runs[runs.length - 1];
+            if (prevRun && prevRun.state === state && prevRun.opacity === opacity && prevRun.color === color && prevRun.scale === scale && scale === 1.0) {
+                prevRun.charEnd = tok.charEnd;
+                prevRun.text = line.slice(prevRun.charStart, prevRun.charEnd);
+            } else {
+                runs.push({
+                    state,
+                    opacity,
+                    color,
+                    scale,
+                    charStart: tok.charStart,
+                    charEnd: tok.charEnd,
+                    text: line.slice(tok.charStart, tok.charEnd),
+                });
+            }
+        }
+
+        for (const run of runs) {
+            if (run.opacity <= 0.001 || !run.text) continue;
+            const prefixW = _measureScrollSubstrWidth(ctx, line, 0, run.charStart, bLetterSpacing);
+            const nextPrefixW = _measureScrollSubstrWidth(ctx, line, 0, run.charEnd, bLetterSpacing);
+            const runW = nextPrefixW - prefixW;
+            const runX = isRtl ? (lx + lineW - nextPrefixW) : (lx + prefixW);
+
+            ctx.save();
+            ctx.globalAlpha = ctx.globalAlpha * run.opacity;
+
+            if (Math.abs(run.scale - 1.0) > 0.005) {
+                const cx = runX + runW / 2;
+                const cy = yc - fontSize * 0.35;
+                ctx.translate(cx, cy);
+                ctx.scale(run.scale, run.scale);
+                ctx.translate(-cx, -cy);
+            }
+
+            // 1) Shadow
+            if (ov.shadow_enabled) {
+                ctx.save();
+                ctx.shadowColor = _withAlpha(ov.shadow_color || '#000000', (ov.shadow_opacity || 120) / 255);
+                ctx.shadowBlur = parseFloat(ov.shadow_blur || 4);
+                ctx.shadowOffsetX = parseFloat(ov.scroll_shadow_x ?? ov.shadow_offset_x ?? 2);
+                ctx.shadowOffsetY = parseFloat(ov.scroll_shadow_y ?? ov.shadow_offset_y ?? 2);
+                ctx.fillStyle = run.color;
+                if (typeof _fillTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
+                    _fillTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
+                } else {
+                    ctx.fillText(run.text, runX, yc);
+                }
+                ctx.restore();
+            }
+
+            // 2) Stroke
+            if (ov.use_stroke && (ov.stroke_width || 0) > 0) {
+                ctx.save();
+                ctx.strokeStyle = ov.stroke_color || '#000000';
+                ctx.lineWidth = parseFloat(ov.stroke_width || 2) * 2;
+                ctx.lineJoin = 'round';
+                ctx.miterLimit = 2;
+                if (typeof _strokeTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
+                    _strokeTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
+                } else {
+                    ctx.strokeText(run.text, runX, yc);
+                }
+                ctx.restore();
+            }
+
+            // 3) Fill
+            if (run.state !== 'active' && _scrollBodyRanges && _scrollBodyRanges.length > 0 && typeof ReelsRichText !== 'undefined') {
+                _drawRichLine(ctx, run.text, rawContent, _scrollBodyRanges, runX, yc, run.color, fontSize, bodyFamily, bodyFallback, bodyWeight, bLetterSpacing, undefined, undefined, undefined, gradDir);
+            } else {
+                ctx.fillStyle = run.state === 'active'
+                    ? run.color
+                    : _resolveOverlayTextFill(ctx, run.color, lx, yc, fontSize, lineW, gradDir);
+                if (typeof _fillTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
+                    _fillTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
+                } else {
+                    ctx.fillText(run.text, runX, yc);
+                }
+            }
+
+            ctx.restore();
+        }
+    }
+
+    // Draw writing tip / cursor
+    if (cursorEnabled && cursorX !== null && cursorBaselineY !== null) {
+        if (isImageTip && hasWritingStarted) {
+            const rawScale = Number(ov.scroll_tw_cursor_scale) || 100;
+            const scale = Math.max(0.2, Math.min(4, rawScale > 10 ? (rawScale / 100) * 1.15 : rawScale));
+            const offX = Number(ov.scroll_tw_cursor_offset_x) || 0;
+            const offY = Number(ov.scroll_tw_cursor_offset_y) || 0;
+            const angle = Number(ov.scroll_tw_cursor_angle) ?? -8;
+            const tipX = cursorX + offX;
+            const tipY = cursorBaselineY - fontSize * 0.08 + offY;
+            const tipSize = fontSize * scale;
+            if (tipKind === 'image') {
+                _drawScrollTypewriterCursorImage(ctx, ov, tipX, tipY, tipSize, angle, currentTime);
+            } else if (typeof drawSpeechWritingTip === 'function') {
+                drawSpeechWritingTip(ctx, tipKind, tipX, tipY, tipSize, angle);
+            }
+        } else if (!isImageTip && Math.floor(currentTime * 2) % 2 === 0) {
+            ctx.save();
+            ctx.fillStyle = ov.scroll_tw_cursor_color || '#FFD700';
+            ctx.fillText(ov.scroll_tw_cursor_char || '|', cursorX, cursorBaselineY);
+            ctx.restore();
+        }
+    }
+}
+
 /**
  * 绘制滚动字幕文本块 (内部)。
  */
-function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, fontSize, align) {
+function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, fontSize, align, twContext = null) {
     let drawY = textY;
 
     // ── 标题 (如果 _skipTitle 则跳过，由外部固定绘制) ──
-    const titleText = (ov.scroll_title || '').trim();
+    let titleText = (ov.scroll_title || '').trim();
+    if (ov.scroll_title_uppercase !== false) titleText = titleText.toUpperCase();
     if (titleText && !ov._skipTitle) {
         let tSize = parseFloat(ov.scroll_title_fontsize ?? 56);
         const tFamily = ov.scroll_title_font_family || ov.font_family || 'Arial';
@@ -4230,7 +4766,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
             ? ReelsTextDirection.resolve(ov.text_direction, titleText)
             : 'ltr';
         const tLetterSpacing = parseFloat(ov.scroll_title_letter_spacing || 0);
-        if (tLetterSpacing !== 0 && typeof ctx.letterSpacing !== 'undefined') {
+        if (typeof ctx.letterSpacing !== 'undefined') {
             ctx.letterSpacing = tLetterSpacing + 'px';
         }
         const titleTextW = parseFloat(ov.scroll_title_text_width || 0) || textW;
@@ -4306,7 +4842,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
         ? ReelsTextDirection.resolve(ov.text_direction, ov.content || '')
         : 'ltr';
     const bLetterSpacing = parseFloat(ov.scroll_letter_spacing || 0);
-    if (bLetterSpacing !== 0 && typeof ctx.letterSpacing !== 'undefined') {
+    if (typeof ctx.letterSpacing !== 'undefined') {
         ctx.letterSpacing = bLetterSpacing + 'px';
     }
 
@@ -4335,6 +4871,12 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
             ctx.fill();
         }
         ctx.restore();
+    }
+
+    // ── 出字效果（朗诵打字机/手写跟读模式）──
+    if (ov.scroll_typewriter_enabled && lines.length > 0) {
+        _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHeight, fontSize, align, bLetterSpacing, twContext);
+        return;
     }
 
     // 阴影
@@ -5430,6 +5972,7 @@ const ReelsOverlay = {
     createSolidMaskOverlay,
     createScrollOverlay,
     drawOverlay,
+    prepareScrollWritingCursorImage,
     splitBodyText,
     OverlayManager,
     ReelsBrushEngine,

@@ -2477,26 +2477,17 @@ img.su-file-thumb {
 }
 
 #sort-upload-panel .su-tab-bar {
-  flex: 0 1 320px;
+  flex: 1 1 auto;
   min-width: 190px;
-  max-width: 320px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-}
-
-#sort-upload-panel .su-tab-bar::-webkit-scrollbar {
-  height: 5px;
-}
-
-#sort-upload-panel .su-tab-bar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 999px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
+  overflow: visible;
 }
 
 #sort-upload-panel .su-tab-bar .su-tab {
   flex: 0 0 auto;
-  max-width: 118px;
+  max-width: 140px;
 }
 
 #sort-upload-panel .su-tab-bar .su-tab-add {

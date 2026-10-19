@@ -266,11 +266,19 @@ function downloadFile(url, destPath, onProgress, redirects = 0) {
 /**
  * HTTPS GET JSON
  */
-function httpGetJson(url) {
+function httpGetJson(url, redirects = 0) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return Promise.reject(new Error('更新元数据地址无效')); }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || redirects > 10) {
+        return Promise.reject(new Error('更新元数据请求必须使用 HTTPS，且重定向不能超过 10 次'));
+    }
     return new Promise((resolve, reject) => {
         https.get(url, { headers: { 'User-Agent': 'VideoKit-Updater', 'Accept': 'application/vnd.github.v3+json' } }, (res) => {
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return httpGetJson(res.headers.location).then(resolve).catch(reject);
+                res.resume();
+                let nextUrl;
+                try { nextUrl = new URL(res.headers.location, url).href; } catch { return reject(new Error('更新元数据重定向地址无效')); }
+                return httpGetJson(nextUrl, redirects + 1).then(resolve).catch(reject);
             }
             let data = '';
             res.on('data', chunk => data += chunk);

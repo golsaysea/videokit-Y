@@ -115,6 +115,12 @@ const ANIM_TYPE_LABELS = [
     ['打字机', 'typewriter'],
     ['逐字弹跳', 'char_bounce'],
     ['逐字放大', 'letter_jump'],
+    ['逐字上浮', 'char_float_up'],
+    ['逐字弹性放大', 'char_pop_elastic'],
+    ['逐字波浪', 'char_wave'],
+    ['逐字落下回弹', 'char_drop_bounce'],
+    ['逐字挤压弹跳', 'char_squash_bounce'],
+    ['中心扩散', 'char_center_spread'],
     ['逐词弹出(随机)', 'word_pop_random'],
     ['逐词弹出(回弹)', 'word_pop_random_pulse'],
     ['节奏逐词', 'metronome'],
@@ -124,6 +130,19 @@ const ANIM_TYPE_LABELS = [
     ['逐行出现', 'bullet_reveal'],
     ['闪光高亮', 'flash_highlight'],
 ];
+
+const CHAR_ANIM_TYPES = [
+    'char_float_up',
+    'char_pop_elastic',
+    'char_wave',
+    'char_drop_bounce',
+    'char_squash_bounce',
+    'char_center_spread',
+];
+
+function isCharAnimType(type) {
+    return CHAR_ANIM_TYPES.includes(type);
+}
 
 // Transition presets for video/image/text clips
 const DEFAULT_TRANSITION_DURATION = 0.35;
@@ -215,6 +234,127 @@ function computeCharBounceOffset(currentTime, charIndex, segStart, segDur,
     const raw = dt / bounceDur;
     const eased = _getEasing(easingName)(raw);
     return -bounceHeight * Math.sin(Math.PI * eased);
+}
+
+/**
+ * Compute per-character animation transform { dx, dy, scaleX, scaleY, alpha }
+ * for extended T-subtitle per-char animations:
+ * - char_float_up (逐字上浮)
+ * - char_pop_elastic (逐字弹性放大)
+ * - char_wave (逐字波浪)
+ * - char_drop_bounce (逐字落下回弹)
+ * - char_squash_bounce (逐字挤压弹跳)
+ * - char_center_spread (中心扩散)
+ */
+function computeCharAnimTransform(type, currentTime, charIndex, totalChars, segStart, segEnd, opts = {}) {
+    const intensity = Math.max(0.1, Math.min(4.0, Number(opts.intensity ?? 1.0) || 1.0));
+    const charDur = Math.max(0.05, Math.min(3.0, Number(opts.duration ?? 0.28) || 0.28));
+    const stagger = Math.max(0.0, Math.min(1.0, Number(opts.stagger ?? 0.04) ?? 0.04));
+    const fontSize = Math.max(12, Number(opts.fontSize || 74));
+    const count = Math.max(1, totalChars || 1);
+
+    if (currentTime == null || !Number.isFinite(currentTime)) {
+        return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+    }
+
+    if (type === 'char_center_spread') {
+        const centerIdx = (count - 1) / 2;
+        const distFromCenter = Math.abs(charIndex - centerIdx);
+        const signed = charIndex - centerIdx;
+        const charStart = segStart + distFromCenter * stagger;
+        const dt = currentTime - charStart;
+        if (dt <= 0) {
+            return { dx: -signed * fontSize * 0.38 * intensity, dy: 0, scaleX: 0.15, scaleY: 0.15, alpha: 0 };
+        }
+        if (dt >= charDur) {
+            return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        }
+        const t = dt / charDur;
+        const ePos = easeOutCubic(t);
+        const eScale = easeOutBack(t);
+        return {
+            dx: -signed * (fontSize * 0.38 * intensity) * (1 - ePos),
+            dy: 0,
+            scaleX: Math.max(0.08, 0.2 + 0.8 * eScale),
+            scaleY: Math.max(0.08, 0.2 + 0.8 * eScale),
+            alpha: Math.min(1, easeOutQuad(Math.min(1, t * 1.4))),
+        };
+    }
+
+    const charStart = segStart + charIndex * stagger;
+    const dt = currentTime - charStart;
+
+    if (type === 'char_float_up') {
+        const offsetPx = fontSize * 0.45 * intensity;
+        if (dt <= 0) return { dx: 0, dy: offsetPx, scaleX: 1, scaleY: 1, alpha: 0 };
+        if (dt >= charDur) return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        const t = dt / charDur;
+        const e = easeOutCubic(t);
+        return {
+            dx: 0,
+            dy: (1 - e) * offsetPx,
+            scaleX: 1,
+            scaleY: 1,
+            alpha: Math.min(1, easeOutQuad(Math.min(1, t * 1.35))),
+        };
+    }
+
+    if (type === 'char_pop_elastic') {
+        if (dt <= 0) return { dx: 0, dy: 0, scaleX: 0.01, scaleY: 0.01, alpha: 0 };
+        if (dt >= charDur) return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        const t = dt / charDur;
+        const base = easeOutQuad(Math.min(1, t * 2.2));
+        const overshoot = 1 + 0.42 * intensity * Math.pow(2, -6.5 * t) * Math.sin(t * 2.2 * Math.PI);
+        const sc = Math.max(0.05, base * overshoot);
+        return {
+            dx: 0,
+            dy: 0,
+            scaleX: sc,
+            scaleY: sc,
+            alpha: Math.min(1, t * 3.0),
+        };
+    }
+
+    if (type === 'char_wave') {
+        const waveWindow = charDur * 1.6;
+        if (dt <= 0 || dt >= waveWindow) return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        const phase = (dt / Math.max(0.08, charDur)) * Math.PI * 2;
+        const env = Math.sin(Math.min(1, dt / waveWindow) * Math.PI);
+        const dy = -Math.sin(phase) * (fontSize * 0.30 * intensity) * env;
+        return { dx: 0, dy, scaleX: 1, scaleY: 1, alpha: 1 };
+    }
+
+    if (type === 'char_drop_bounce') {
+        const dropPx = fontSize * 0.65 * intensity;
+        if (dt <= 0) return { dx: 0, dy: -dropPx, scaleX: 1, scaleY: 1, alpha: 0 };
+        if (dt >= charDur) return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        const t = dt / charDur;
+        const b = easeOutBounce(t);
+        return {
+            dx: 0,
+            dy: -(1 - b) * dropPx,
+            scaleX: 1,
+            scaleY: 1,
+            alpha: Math.min(1, t * 3.2),
+        };
+    }
+
+    if (type === 'char_squash_bounce') {
+        if (dt <= 0) return { dx: 0, dy: fontSize * 0.32 * intensity, scaleX: 1.25, scaleY: 0.65, alpha: 0 };
+        if (dt >= charDur) return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+        const t = dt / charDur;
+        const dy = -Math.sin(t * Math.PI) * (fontSize * 0.36 * intensity) * (1 - t * 0.35);
+        const sq = Math.sin(t * Math.PI * 2.5) * Math.pow(1 - t, 1.4) * 0.32 * intensity;
+        return {
+            dx: 0,
+            dy,
+            scaleX: Math.max(0.4, 1 - sq),
+            scaleY: Math.max(0.4, 1 + sq),
+            alpha: Math.min(1, t * 3.5),
+        };
+    }
+
+    return { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
 }
 
 /**
@@ -547,11 +687,13 @@ const SPECTRUM_SHAPES = [
 const ReelsAnimEngine = {
     // Easing
     EASING_MAP, EASING_LABELS, ANIM_TYPE_LABELS,
+    CHAR_ANIM_TYPES, isCharAnimType,
     TRANSITION_PRESETS, DEFAULT_TRANSITION_DURATION, SPECTRUM_SHAPES,
     // Core
     computeAnimProgress,
     computeTypewriterProgress,
     computeCharBounceOffset,
+    computeCharAnimTransform,
     computeDynBoxScale,
     computeSlideOffset,
     computePopScale,

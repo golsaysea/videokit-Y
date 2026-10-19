@@ -16,14 +16,14 @@
       <h1 class="app-title">VideoKit</h1>
       <!-- 标签页 -->
       <nav class="tabs">
-        <button class="tab active" data-tab="voiceover-workflow">🚀 一键配音字幕</button>
+        <button class="tab" data-tab="voiceover-workflow">🚀 一键配音字幕</button>
         <button class="tab" data-tab="elevenlabs">ElevenLabs</button>
         <button class="tab" data-tab="microsoft-tts">微软语音</button>
         <button class="tab" data-tab="subtitle">字幕对齐</button>
         <button class="tab" data-tab="media">媒体转换</button>
         <button class="tab" data-tab="srt-tools">SRT工具</button>
         <button class="tab" data-tab="video-download">视频下载</button>
-        <button class="tab" data-tab="batch-reels">🎬 批量Reels</button>
+        <button class="tab active" data-tab="batch-reels">🎬 批量Reels</button>
         <button class="tab" data-tab="settings">设置</button>
       </nav>
     </header>
@@ -60,44 +60,463 @@
       </script>
       <section id="microsoft-tts-panel" class="panel">
         <style>
-          #microsoft-tts-panel .ms-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:end}
-          #microsoft-tts-panel label{display:flex;flex-direction:column;gap:7px;min-width:0}
-          #microsoft-tts-panel .ms-settings select,#microsoft-tts-panel .ms-settings input{width:100%;min-width:0;box-sizing:border-box}
-          #microsoft-tts-panel .ms-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-          #microsoft-tts-panel .ms-card{border:1px solid var(--border-color,#444);border-radius:8px;padding:14px;margin-bottom:12px}
-          #microsoft-tts-panel .ms-card textarea{width:100%;min-height:110px;resize:vertical;line-height:1.7;box-sizing:border-box}
-          #microsoft-tts-panel #ms-text{box-sizing:border-box}
-          @media(max-width:650px){#microsoft-tts-panel .ms-settings{grid-template-columns:1fr}}
+          #microsoft-tts-panel {
+            --ms-bg: #070a16;
+            --ms-panel: rgba(17, 25, 45, 0.86);
+            --ms-panel-strong: rgba(23, 34, 58, 0.95);
+            --ms-field: rgba(7, 11, 24, 0.9);
+            --ms-text: #eef5f4;
+            --ms-muted: #98a8b9;
+            --ms-line: rgba(151, 177, 201, 0.18);
+            --ms-accent: #45d8d0;
+            --ms-gold: #e4bd73;
+            --ms-danger: #ff8d85;
+            --ms-danger-soft: rgba(255, 119, 105, 0.12);
+            --ms-ok: rgba(38, 94, 79, 0.46);
+            --ms-ok-line: rgba(78, 231, 167, 0.48);
+          }
+          #microsoft-tts-panel .ms-studio-shell {
+            display: grid;
+            grid-template-columns: 350px minmax(0, 1fr);
+            gap: 18px;
+            min-height: calc(100vh - 120px);
+            align-items: start;
+          }
+          #microsoft-tts-panel .ms-studio-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+            padding: 18px;
+            background: rgba(7, 11, 24, 0.88);
+            border: 1px solid var(--ms-line);
+            border-radius: 10px;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+          }
+          #microsoft-tts-panel .ms-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 13px;
+            border-bottom: 1px solid var(--ms-line);
+          }
+          #microsoft-tts-panel .ms-brand-mark {
+            display: grid;
+            place-items: center;
+            width: 46px;
+            height: 46px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, rgba(69, 216, 208, 0.18), rgba(228, 189, 115, 0.14));
+            border: 1px solid rgba(69, 216, 208, 0.32);
+            font-size: 22px;
+            flex-shrink: 0;
+          }
+          #microsoft-tts-panel .ms-brand h2 {
+            margin: 0;
+            color: #f4fbfb;
+            font-size: 17px;
+            line-height: 1.22;
+          }
+          #microsoft-tts-panel .ms-brand p {
+            margin: 4px 0 0;
+            color: var(--ms-gold);
+            font-size: 12px;
+          }
+          #microsoft-tts-panel .ms-box {
+            display: grid;
+            gap: 10px;
+            padding: 13px;
+            border: 1px solid var(--ms-line);
+            border-radius: 8px;
+            background: var(--ms-panel);
+          }
+          #microsoft-tts-panel .ms-box-title {
+            color: #dce8e8;
+            font-size: 13px;
+            font-weight: 800;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          }
+          #microsoft-tts-panel .ms-field {
+            display: grid;
+            gap: 6px;
+            min-width: 0;
+          }
+          #microsoft-tts-panel .ms-field > span {
+            color: var(--ms-muted);
+            font-size: 12px;
+            font-weight: 700;
+          }
+          #microsoft-tts-panel .ms-studio-shell input,
+          #microsoft-tts-panel .ms-studio-shell select,
+          #microsoft-tts-panel .ms-studio-shell textarea {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid var(--ms-line);
+            border-radius: 6px;
+            background: var(--ms-field);
+            color: var(--ms-text);
+            outline: none;
+            font: inherit;
+          }
+          #microsoft-tts-panel .ms-studio-shell input,
+          #microsoft-tts-panel .ms-studio-shell select {
+            height: 38px;
+            padding: 0 11px;
+          }
+          #microsoft-tts-panel .ms-studio-shell select option {
+            background: #11192d;
+            color: var(--ms-text);
+          }
+          #microsoft-tts-panel .ms-studio-shell input:focus,
+          #microsoft-tts-panel .ms-studio-shell select:focus,
+          #microsoft-tts-panel .ms-studio-shell textarea:focus {
+            border-color: var(--ms-accent);
+            box-shadow: 0 0 0 3px rgba(69, 216, 208, 0.15);
+          }
+          #microsoft-tts-panel .ms-two-cols,
+          #microsoft-tts-panel .ms-split-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+          }
+          #microsoft-tts-panel .ms-btn {
+            min-height: 36px;
+            padding: 0 13px;
+            border: 1px solid var(--ms-line);
+            border-radius: 6px;
+            background: rgba(24, 35, 58, 0.94);
+            color: var(--ms-text);
+            cursor: pointer;
+            font-size: 13px;
+            transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+          }
+          #microsoft-tts-panel .ms-btn:hover:not(:disabled) {
+            background: rgba(37, 53, 84, 0.96);
+            border-color: rgba(69, 216, 208, 0.45);
+            transform: translateY(-1px);
+          }
+          #microsoft-tts-panel .ms-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.48;
+            transform: none;
+          }
+          #microsoft-tts-panel .ms-btn-primary {
+            background: linear-gradient(135deg, #2bd4ca, #168a9a);
+            border-color: rgba(101, 238, 230, 0.48);
+            color: #061018;
+            font-weight: 800;
+          }
+          #microsoft-tts-panel .ms-btn-primary:hover:not(:disabled) {
+            background: linear-gradient(135deg, #65eee6, #21aeba);
+          }
+          #microsoft-tts-panel .ms-btn-danger {
+            background: var(--ms-danger-soft);
+            border-color: rgba(255, 141, 133, 0.28);
+            color: var(--ms-danger);
+          }
+          #microsoft-tts-panel .ms-segmented {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid var(--ms-line);
+            border-radius: 7px;
+            background: rgba(4, 7, 17, 0.62);
+          }
+          #microsoft-tts-panel .ms-segmented label {
+            position: relative;
+            display: flex;
+            margin: 0;
+          }
+          #microsoft-tts-panel .ms-segmented input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+          }
+          #microsoft-tts-panel .ms-segmented span {
+            display: grid;
+            place-items: center;
+            width: 100%;
+            min-height: 30px;
+            border-radius: 5px;
+            color: var(--ms-muted);
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+          }
+          #microsoft-tts-panel .ms-segmented input:checked + span {
+            background: linear-gradient(135deg, rgba(69, 216, 208, 0.92), rgba(228, 189, 115, 0.86));
+            color: #061018;
+          }
+          #microsoft-tts-panel .ms-status-panel {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--ms-line);
+            border-radius: 8px;
+            background: rgba(5, 8, 18, 0.76);
+            color: var(--ms-muted);
+            font-size: 12px;
+            line-height: 1.45;
+          }
+          #microsoft-tts-panel .ms-progress-track {
+            height: 12px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+          }
+          #microsoft-tts-panel #ms-progress-fill {
+            display: grid;
+            place-items: center;
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #45d8d0, #e4bd73);
+            color: #051019;
+            font-size: 9px;
+            font-weight: 900;
+            transition: width 0.22s ease;
+          }
+          #microsoft-tts-panel .ms-studio-workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            min-width: 0;
+          }
+          #microsoft-tts-panel .ms-studio-topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: rgba(13, 19, 36, 0.9);
+            border: 1px solid var(--ms-line);
+            border-radius: 10px;
+            box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+            flex-wrap: wrap;
+          }
+          #microsoft-tts-panel .ms-studio-topbar h3 {
+            margin: 0;
+            font-size: 18px;
+            color: #f4fbfb;
+          }
+          #microsoft-tts-panel .ms-studio-topbar p {
+            margin: 4px 0 0;
+            color: var(--ms-muted);
+            font-size: 12px;
+          }
+          #microsoft-tts-panel .ms-topbar-actions {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+          #microsoft-tts-panel #ms-queue {
+            display: grid;
+            gap: 12px;
+          }
+          #microsoft-tts-panel .ms-script-card {
+            overflow: hidden;
+            border: 1px solid var(--ms-line);
+            border-radius: 9px;
+            background: var(--ms-panel-strong);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+          }
+          #microsoft-tts-panel .ms-script-card.done {
+            border-color: var(--ms-ok-line);
+            background: var(--ms-ok);
+          }
+          #microsoft-tts-panel .ms-script-card.failed {
+            border-color: rgba(255, 141, 133, 0.46);
+            background: rgba(91, 35, 38, 0.42);
+          }
+          #microsoft-tts-panel .ms-card-head,
+          #microsoft-tts-panel .ms-card-foot {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            background: rgba(8, 13, 27, 0.5);
+          }
+          #microsoft-tts-panel .ms-card-head {
+            justify-content: space-between;
+            border-bottom: 1px solid var(--ms-line);
+          }
+          #microsoft-tts-panel .ms-card-foot {
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            border-top: 1px solid var(--ms-line);
+          }
+          #microsoft-tts-panel .ms-card-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            height: 26px;
+            padding: 0 8px;
+            border-radius: 6px;
+            background: rgba(69, 216, 208, 0.14);
+            border: 1px solid rgba(69, 216, 208, 0.28);
+            color: #8ff8f1;
+            font-size: 13px;
+            font-weight: 900;
+          }
+          #microsoft-tts-panel .ms-card-status {
+            color: var(--ms-muted);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+            text-align: right;
+          }
+          #microsoft-tts-panel .ms-script-card textarea {
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+            min-height: 118px;
+            resize: vertical;
+            padding: 12px;
+            line-height: 1.65;
+            color: var(--ms-text);
+          }
+          #microsoft-tts-panel .ms-script-card textarea:focus {
+            box-shadow: inset 0 0 0 2px rgba(69, 216, 208, 0.22);
+          }
+          @media (max-width: 980px) {
+            #microsoft-tts-panel .ms-studio-shell {
+              grid-template-columns: 1fr;
+            }
+          }
         </style>
-        <div class="panel-content">
-          <div class="form-section">
-            <h3 class="section-title">STEP 1: 选择语言与声音</h3>
-            <p class="hint">微软 Edge 在线朗读 · 无需 Key。默认英语，可切换其他语言。</p>
-            <div class="ms-settings">
-            <label>语言<select id="ms-language" class="select"><option value="en">英语 English</option></select></label>
-            <label>选择声音<select id="ms-voice" class="select"><option value="edge:en-US-AriaNeural">Aria · 英语（美国）· 女声</option></select></label>
-            <label>筛选声音（可选）<input id="ms-voice-search" class="input" placeholder="声音名或地区，例如 en-US"></label>
-            <button id="ms-refresh" class="btn btn-secondary">刷新音色</button><p id="ms-voice-status" class="hint" role="status"></p>
-            <label>语速<select id="ms-rate" class="select"><option value="-25%">慢速 -25%</option><option value="+0%">正常</option><option value="+25%">快速 +25%</option><option value="+50%">快速 +50%</option></select></label>
+        <div class="panel-content" style="max-width: 100%; padding: 8px 4px;">
+          <div class="ms-studio-shell">
+            <!-- 左侧边栏：完全对齐 免费语音批量生成 (Clipchamp Voice Studio) 排版 -->
+            <aside class="ms-studio-sidebar">
+              <div class="ms-brand">
+                <div class="ms-brand-mark">🎙️</div>
+                <div>
+                  <h2>Clipchamp Voice Studio</h2>
+                  <p>微软 Edge-TTS 批量配音工坊 · 免 Python</p>
+                </div>
+              </div>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>输出</span></div>
+                <label class="ms-field">
+                  <span>保存位置</span>
+                  <input id="ms-output" type="text" spellcheck="false" placeholder="默认保存到下载文件夹">
+                </label>
+                <label class="ms-field">
+                  <span>任务文件夹</span>
+                  <input id="ms-task-folder" type="text" spellcheck="false" value="第一期" placeholder="例如：第一期">
+                </label>
+                <div class="ms-split-btns">
+                  <button id="ms-choose-output" class="ms-btn" type="button">选择目录</button>
+                  <button id="ms-open-output" class="ms-btn" type="button">打开目录</button>
+                </div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title">
+                  <span>声音</span>
+                  <button id="ms-refresh" class="ms-btn" type="button" style="min-height:26px;padding:0 9px;font-size:11px;">刷新音色</button>
+                </div>
+                <label class="ms-field">
+                  <span>语言</span>
+                  <select id="ms-language">
+                    <option value="en-US">英语 - 美国 (en-US)</option>
+                  </select>
+                </label>
+                <label class="ms-field">
+                  <span>语音</span>
+                  <select id="ms-voice">
+                    <option value="edge:en-US-AvaMultilingualNeural">Ava Multilingual · Female</option>
+                  </select>
+                </label>
+                <label class="ms-field">
+                  <span>快速搜索声音（可选）</span>
+                  <input id="ms-voice-search" type="text" placeholder="搜索 Ava / Aria / 晓晓 / en-US...">
+                </label>
+                <div class="ms-two-cols">
+                  <label class="ms-field">
+                    <span>速度</span>
+                    <select id="ms-rate">
+                      <option value="-30%">-30%</option>
+                      <option value="-25%">-25%</option>
+                      <option value="-20%">-20%</option>
+                      <option value="-10%">-10%</option>
+                      <option value="+0%" selected>标准</option>
+                      <option value="+10%">+10%</option>
+                      <option value="+20%">+20%</option>
+                      <option value="+25%">+25%</option>
+                      <option value="+30%">+30%</option>
+                      <option value="+50%">+50%</option>
+                    </select>
+                  </label>
+                  <label class="ms-field">
+                    <span>音调</span>
+                    <select id="ms-pitch">
+                      <option value="-20Hz">-20Hz</option>
+                      <option value="-10Hz">-10Hz</option>
+                      <option value="+0Hz" selected>标准</option>
+                      <option value="+10Hz">+10Hz</option>
+                      <option value="+20Hz">+20Hz</option>
+                    </select>
+                  </label>
+                </div>
+                <div id="ms-voice-status" style="font-size:11px;color:var(--ms-muted);" role="status"></div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>一键打包</span></div>
+                <div class="ms-segmented" role="radiogroup" aria-label="一键打包格式">
+                  <label><input type="radio" name="msZipFormat" value="mp3" checked><span>MP3</span></label>
+                  <label><input type="radio" name="msZipFormat" value="mp4"><span>MP4</span></label>
+                  <label><input type="radio" name="msZipFormat" value="both"><span>全部</span></label>
+                </div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>批量导入 / 表格拆分</span></div>
+                <textarea id="ms-text" rows="2" style="min-height:64px;padding:8px;font-size:12px;" placeholder="可在此粘贴 Excel/Google 表格多行文案自动拆分，或直接在右侧卡片内粘贴..."></textarea>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <select id="ms-split" style="flex:1;min-width:120px;height:34px;font-size:12px;">
+                    <option value="line">每行一条</option>
+                    <option value="cells">表格单元格（每格一条）</option>
+                    <option value="paragraph">按空行分隔</option>
+                    <option value="whole">整篇一条</option>
+                  </select>
+                  <button id="ms-add" class="ms-btn" type="button" style="min-height:34px;font-size:12px;">拆分添加</button>
+                  <button id="ms-import" class="ms-btn" type="button" style="min-height:34px;font-size:12px;">导入 TXT</button>
+                  <input id="ms-files" type="file" accept=".txt" multiple hidden>
+                </div>
+              </section>
+
+              <div class="ms-status-panel">
+                <div id="ms-progress" role="status" aria-live="polite">Ready</div>
+                <div id="ms-total" style="font-size:11px;opacity:0.85;">0 条文案</div>
+                <div class="ms-progress-track"><div id="ms-progress-fill"></div></div>
+              </div>
+            </aside>
+
+            <!-- 右侧工作区：文案卡片列表 + 直接试听预览 + 批量生成 + 打包 ZIP -->
+            <div class="ms-studio-workspace">
+              <header class="ms-studio-topbar">
+                <div>
+                  <h3>文案列表</h3>
+                  <p id="ms-card-count">1 条文案 · 可直接在卡片中输入文案点击「试听」即时预览声音</p>
+                </div>
+                <div class="ms-topbar-actions">
+                  <button id="ms-new" class="ms-btn" type="button">添加文案</button>
+                  <button id="ms-start" class="ms-btn ms-btn-primary" type="button">批量生成</button>
+                  <button id="ms-stop" class="ms-btn" type="button" disabled>停止</button>
+                  <button id="ms-preview-all" class="ms-btn" type="button" disabled>试听全部</button>
+                  <button id="ms-create-zip" class="ms-btn" type="button" disabled>打包 MP3 ZIP</button>
+                  <button id="ms-clear" class="ms-btn ms-btn-danger" type="button">清空</button>
+                </div>
+              </header>
+
+              <div id="ms-queue" aria-live="polite"></div>
             </div>
-          </div>
-          <div class="form-section">
-            <h3 class="section-title">STEP 2: 添加文案</h3>
-              <textarea id="ms-text" class="textarea" rows="3" style="width:100%;margin:10px 0" placeholder="在这里粘贴 Google 表格单元格，自动拆成文案卡片；也可输入普通文本后添加。"></textarea>
-              <div class="ms-toolbar"><select id="ms-split" class="select"><option value="cells">表格单元格（每格一条）</option><option value="paragraph">按空行分隔</option><option value="line">每行一条</option><option value="whole">整篇一条</option></select><button id="ms-add" class="btn btn-secondary">添加到列表</button><button id="ms-import" class="btn btn-secondary">导入多个 TXT</button><input id="ms-files" type="file" accept=".txt" multiple hidden></div>
-              <p class="hint">表格按从左到右、从上到下添加，跳过空格；保留单元格内部换行。</p>
-          </div>
-          <div class="form-section">
-            <h3 class="section-title">STEP 3: 预览与编辑文案</h3>
-            <div class="ms-toolbar"><button id="ms-new" class="btn btn-secondary">＋ 新段落</button><button id="ms-clear" class="btn btn-secondary">清空文案</button></div>
-            <div id="ms-queue"></div>
-          </div>
-          <div class="form-section">
-            <h3 class="section-title">STEP 4: 生成与保存</h3>
-            <label>保存位置<input id="ms-output" class="input" readonly placeholder="默认保存到下载文件夹"></label>
-            <button id="ms-choose-output" class="btn btn-secondary">选择保存目录</button><button id="ms-open-output" class="btn btn-secondary">打开输出目录</button>
-            <p class="hint">自动保存文案和设置。每条生成独立 MP3 与 SRT。</p>
-            <div class="ms-footer"><p id="ms-total" class="hint"></p><div class="ms-toolbar"><button id="ms-start" class="btn btn-primary">批量生成微软语音</button><button id="ms-stop" class="btn btn-secondary" disabled>当前任务完成后停止</button></div><p id="ms-progress" role="status" aria-live="polite"></p></div>
           </div>
         </div>
       </section>
@@ -3806,7 +4225,7 @@
       </section>
 
       <!-- ==================== 一键配音字幕面板 ==================== -->
-      <section id="voiceover-workflow-panel" class="panel active">
+      <section id="voiceover-workflow-panel" class="panel">
         <div class="panel-content">
           <!-- 工具栏 -->
           <div class="form-section">
@@ -4201,7 +4620,7 @@
       </section>
 
       <!-- ==================== 批量Reels面板 ==================== -->
-      <section id="batch-reels-panel" class="panel" style="height: 100%; margin: 0; overflow:auto;">
+      <section id="batch-reels-panel" class="panel active" style="height: 100%; margin: 0; overflow:auto;">
         <div class="panel-content"
           style="display: flex; flex-direction: column; height: 100%; width: 100%; max-width: 100%; padding: 0; overflow:hidden;">
 
@@ -4359,9 +4778,12 @@
               <div id="reels-col-tasks"
                 style="width:200px; min-width:120px; display:flex; flex-direction:column; background:var(--bg-secondary);">
                 <div
-                  style="flex-shrink:0; padding:8px 10px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between;">
-                  <h3 class="section-title" style="margin:0; font-size:13px;">📋 任务列表</h3>
-                  <span id="reels-task-count-panel" style="font-size:11px; color:var(--text-secondary);">0</span>
+                  style="flex-shrink:0; padding:8px 10px; border-bottom:1px solid var(--border-color); display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                  <h3 class="section-title" style="margin:0; font-size:13px; white-space:nowrap;">📋 任务列表</h3>
+                  <div style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+                    <button id="reels-toggle-all-groups-btn" class="btn" style="font-size:10px;padding:2px 7px;background:rgba(59,130,246,0.14);color:#93c5fd;border:1px solid rgba(59,130,246,0.32);border-radius:4px;cursor:pointer;display:inline-flex;align-items:center;gap:3px;white-space:nowrap;" onclick="reelsToggleAllTaskGroups()" title="一键全部展开或全部合拢任务分组">▼ 全部展开</button>
+                    <span id="reels-task-count-panel" style="font-size:11px; color:var(--text-secondary);">0</span>
+                  </div>
                 </div>
                 <!-- 导出选择控制栏 -->
                 <div id="reels-export-select-bar" style="flex-shrink:0; display:flex; align-items:center; gap:6px; padding:4px 10px; border-bottom:1px solid var(--border-color); font-size:11px; background:rgba(0,0,0,0.15);">
@@ -4484,6 +4906,8 @@
                             onchange="reelsSyncBoldToWeight(); reelsUpdatePreview()"><span>B</span></label>
                         <label class="checkbox-label" style="margin:0;"><input type="checkbox" id="reels-italic"
                             onchange="reelsRefreshSubtitleWeightOptions(); reelsUpdatePreview()"><span>I</span></label>
+                        <label class="checkbox-label" style="margin:0;" title="非破坏式全大写（不修改原字幕内容，兼容渐变/描边/阴影）"><input type="checkbox" id="reels-uppercase"
+                            onchange="reelsUpdatePreview()"><span>AA全大写</span></label>
                       </div>
 
                       <label style="margin:0;">字重:</label>
@@ -4528,13 +4952,18 @@
                       </div>
 
                       <label style="margin:0;">颜色:</label>
-                      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; min-width:0;">
+                      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; min-width:0;">
                         <label style="margin:0;">文字:</label>
                         <input type="color" id="reels-color-text" value="#FFFFFF"
                           style="width: 36px; height: 28px; border: none; cursor: pointer;"
                           onchange="var e=document.getElementById('reels-ambient-text-color'); if(e)e.value=this.value; if(!this._settingFromGradient){delete this.dataset.gradientValue;} if(typeof _syncSubtitleGradientSwatch==='function')_syncSubtitleGradientSwatch(this,document.getElementById('reels-color-text-gradient-btn')); reelsUpdatePreview()">
                         <button type="button" id="reels-color-text-gradient-btn" class="btn btn-secondary" style="font-size:11px; padding:2px 6px; height:28px; display:inline-flex; align-items:center; gap:2px;" title="文字渐变色 (支持多节点自定义)">🌈</button>
-                        <label style="margin:0;">高亮:</label>
+                        <select id="reels-text-gradient-scope" class="select" style="width:118px; height:28px; font-size:11px; padding:2px 4px;" title="切换整句连续渐变或每个单词独立渐变" onchange="reelsUpdatePreview()">
+                          <option value="line" selected>整句渐变</option>
+                          <option value="word">每个单词独立渐变</option>
+                        </select>
+                        <label class="checkbox-label" style="margin:0;" title="控制当前朗读单词是否切换为高亮颜色"><input type="checkbox" id="reels-highlight-enabled" checked
+                            onchange="var k=document.getElementById('reels-karaoke-hl'); if(k)k.checked=this.checked; reelsUpdatePreview()"><span>朗读高亮:</span></label>
                         <input type="color" id="reels-color-high" value="#FFD700"
                           style="width: 36px; height: 28px; border: none; cursor: pointer;"
                           onchange="if(!this._settingFromGradient){delete this.dataset.gradientValue;} if(typeof _syncSubtitleGradientSwatch==='function')_syncSubtitleGradientSwatch(this,document.getElementById('reels-color-high-gradient-btn')); reelsUpdatePreview()">
@@ -4677,8 +5106,10 @@
                           <div class="param-row" style="flex-wrap: wrap; gap: 10px; margin-bottom: 6px;">
                     <label class="checkbox-label"><input type="checkbox" id="reels-use-box"
                         onchange="reelsUpdatePreview()"><span>启用字幕底框</span></label>
-                    <label class="checkbox-label" title="开启后，多行字幕将根据单行宽度分别绘制背景块"><input type="checkbox" id="reels-box-adaptive-width"
+                    <label class="checkbox-label" title="开启后，多行字幕将根据单行宽度绘制贴合背景"><input type="checkbox" id="reels-box-adaptive-width"
                         onchange="reelsUpdatePreview()"><span>贴合行宽</span></label>
+                    <label class="checkbox-label" title="开启后，多行贴合背景自动连接为平滑连体轮廓，并消除相邻行微小台阶"><input type="checkbox" id="reels-box-connected" checked
+                        onchange="reelsUpdatePreview()"><span>连体轮廓</span></label>
                     <div style="display: flex; align-items: center; gap: 4px;">
                       <input type="color" id="reels-box-color" value="#000000"
                         style="width: 36px; height: 28px; border: none; cursor: pointer;"
@@ -4696,6 +5127,17 @@
                       <input type="range" id="reels-box-radius-range" min="0" max="60" value="8" style="width: 50px;" oninput="document.getElementById('reels-box-radius').value=this.value; reelsUpdatePreview()">
                       <input type="number" id="reels-box-radius" class="input input-small" value="8"
                         style="width: 45px;" oninput="document.getElementById('reels-box-radius-range').value=this.value; reelsUpdatePreview()">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;" title="连体背景多行交接处的内凹圆角半径">
+                      <label>内凹圆角:</label>
+                      <input type="range" id="reels-box-concave-radius-range" min="0" max="40" value="10" style="width: 50px;" oninput="document.getElementById('reels-box-concave-radius').value=this.value; reelsUpdatePreview()">
+                      <input type="number" id="reels-box-concave-radius" class="input input-small" value="10" min="0" max="40"
+                        style="width: 45px;" oninput="document.getElementById('reels-box-concave-radius-range').value=this.value; reelsUpdatePreview()">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;" title="相邻行宽度差小于此像素值时自动对齐，避免小凸角和台阶">
+                      <label>对齐容差:</label>
+                      <input type="number" id="reels-box-snap-threshold" class="input input-small" value="18" min="0" max="80"
+                        style="width: 45px;" oninput="reelsUpdatePreview()">
                     </div>
                     <div style="display: flex; align-items: center; gap: 4px;">
                       <label>羽化:</label>
@@ -4986,12 +5428,113 @@
                             启用全屏打字机（所有文案全屏渐入）
                           </label>
                           <div id="reels-fullpage-typewriter-options" style="display:none;">
+                            <button type="button" class="btn btn-secondary" onclick="reelsEnableSplitWriting()" style="margin-bottom:8px;">标题 / 正文分开出字</button>
+                            <label style="display:flex;gap:6px;margin-bottom:8px;"><input type="checkbox" id="reels-fullpage-typewriter-split" onchange="reelsRefreshWritingTitleEditor();reelsRefreshSpeechWritingPreview()">标题与正文独立显示</label>
+                            <div id="reels-writing-split-options" style="display:none;border:1px solid var(--border-color);padding:8px;margin-bottom:10px;border-radius:6px;">
+                              <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-auto-sequence" checked onchange="reelsRefreshSpeechWritingPreview()">按 SRT 自动衔接：读完标题再出正文（无需正文偏移）</label><label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-keep-background" checked onchange="reelsRefreshSpeechWritingPreview()">保持背景原亮度（关闭全画面遮罩与暗角）</label><strong>标题</strong><label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-title-font-follow" checked onchange="reelsRefreshSpeechWritingPreview()">标题使用正文字体</label><div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;margin:8px 0;align-items:center;">
+ <label>标题描边</label><label><input type="checkbox" id="reels-fullpage-typewriter-title-stroke-independent" onchange="reelsRefreshSpeechWritingPreview()">独立设置（关闭时跟随通用描边）</label>
+ <label>显示描边</label><input type="checkbox" id="reels-fullpage-typewriter-title-stroke-enabled" checked onchange="document.getElementById('reels-fullpage-typewriter-title-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边颜色</label><input type="color" id="reels-fullpage-typewriter-title-stroke-color" value="#3e2723" oninput="document.getElementById('reels-fullpage-typewriter-title-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边粗细</label><input type="number" id="reels-fullpage-typewriter-title-stroke-width" min="0" max="40" step="0.5" value="3" oninput="document.getElementById('reels-fullpage-typewriter-title-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边不透明度</label><input type="range" id="reels-fullpage-typewriter-title-stroke-opacity" min="0" max="255" value="255" oninput="document.getElementById('reels-fullpage-typewriter-title-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()"></div><div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;margin:8px 0;align-items:center;"><label>标题底框</label><label><input type="checkbox" id="reels-fullpage-typewriter-title-box-enabled" checked onchange="reelsRefreshSpeechWritingPreview()">显示底框</label><label>底框颜色</label><input type="color" id="reels-fullpage-typewriter-title-box-color" value="#000000" oninput="reelsRefreshSpeechWritingPreview()"><label>底框不透明度</label><input type="range" id="reels-fullpage-typewriter-title-box-opacity" min="0" max="255" value="180" oninput="reelsRefreshSpeechWritingPreview()" title="0 完全透明，255 完全不透明"></div>
+                              <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-title-auto" checked onchange="reelsRefreshWritingTitleEditor();reelsRefreshSpeechWritingPreview()">默认使用第一句（编辑文案后使用自定义标题）</label>
+                              <textarea id="reels-fullpage-typewriter-title-text" class="input" rows="3" style="width:100%;resize:vertical;" placeholder="默认第一句，可编辑标题文案" oninput="reelsWritingTitleTextChanged()"></textarea>
+                              <div style="display:grid;grid-template-columns:85px minmax(0,1fr);gap:6px;align-items:center;margin-top:8px;">
+                                <label style="margin:0;">标题字体</label><select id="reels-fullpage-typewriter-title-font" class="select" onfocus="reelsWritingTitleFontFocus()" onchange="reelsWritingTitleFontChanged(true)"><option value="">跟随正文字体</option></select><div style="grid-column:1/-1;border:1px solid var(--border-color);border-radius:6px;padding:10px;background:var(--bg-secondary);">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <span id="reels-writing-title-font-label" style="font-size:11px;flex:1;">标题字体预览</span>
+            <button type="button" class="btn btn-secondary" style="font-size:11px;padding:3px 6px;" onclick="reelsStepWritingTitleFont(-1)">上一字体</button>
+            <button type="button" class="btn btn-secondary" style="font-size:11px;padding:3px 6px;" onclick="reelsStepWritingTitleFont(1)">下一字体</button>
+          </div>
+          <div id="reels-writing-title-font-sample" style="font-size:28px;line-height:1.5;overflow-wrap:anywhere;max-height:180px;overflow:auto;">Aa Bb Cc · 字体效果预览</div>
+        </div>
+                                <label style="margin:0;">标题字号</label><input type="number" id="reels-fullpage-typewriter-title-size" class="input" value="56" step="1" min="8" max="300" oninput="reelsRefreshSpeechWritingPreview()">
+                                <label style="margin:0;">标题字重</label><select id="reels-fullpage-typewriter-title-weight" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="400">常规</option><option value="700" selected>粗体</option><option value="900">特粗</option></select>
+                                <label style="margin:0;">标题颜色</label><input type="color" id="reels-fullpage-typewriter-title-color" value="#FFD700" oninput="reelsRefreshSpeechWritingPreview()">
+                                <label style="margin:0;">标题出字</label><select id="reels-fullpage-typewriter-title-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
+                                <label style="margin:0;">标题X %</label><input type="number" id="reels-fullpage-typewriter-title-x" class="input" value="50" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">标题Y %</label><input type="number" id="reels-fullpage-typewriter-title-y" class="input" value="20" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">标题时间偏移 秒</label><input type="number" id="reels-fullpage-typewriter-title-delay" class="input" value="0" step="0.1" min="-1000" max="1000" oninput="reelsRefreshSpeechWritingPreview()">
+                              </div>
+                              <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-title-cursor" checked onchange="reelsRefreshSpeechWritingPreview()">标题显示笔尖</label>
+                              <strong style="display:block;margin-top:10px;">正文</strong><div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;margin:8px 0;align-items:center;">
+ <label>正文描边</label><label><input type="checkbox" id="reels-fullpage-typewriter-body-stroke-independent" onchange="reelsRefreshSpeechWritingPreview()">独立设置（关闭时跟随通用描边）</label>
+ <label>显示描边</label><input type="checkbox" id="reels-fullpage-typewriter-body-stroke-enabled" checked onchange="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边颜色</label><input type="color" id="reels-fullpage-typewriter-body-stroke-color" value="#3e2723" oninput="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边粗细</label><input type="number" id="reels-fullpage-typewriter-body-stroke-width" min="0" max="40" step="0.5" value="3" oninput="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
+ <label>描边不透明度</label><input type="range" id="reels-fullpage-typewriter-body-stroke-opacity" min="0" max="255" value="255" oninput="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()"></div><div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;margin:8px 0;align-items:center;"><label>正文底框</label><label><input type="checkbox" id="reels-fullpage-typewriter-body-box-enabled" checked onchange="reelsRefreshSpeechWritingPreview()">显示底框</label><label>底框颜色</label><input type="color" id="reels-fullpage-typewriter-body-box-color" value="#000000" oninput="reelsRefreshSpeechWritingPreview()"><label>底框不透明度</label><input type="range" id="reels-fullpage-typewriter-body-box-opacity" min="0" max="255" value="180" oninput="reelsRefreshSpeechWritingPreview()" title="0 完全透明，255 完全不透明"></div>
+                              <div style="display:grid;grid-template-columns:85px minmax(0,1fr);gap:6px;align-items:center;margin-top:8px;">
+                                <label style="margin:0;">正文出字</label><select id="reels-fullpage-typewriter-body-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
+                                <label style="margin:0;">正文X %</label><input type="number" id="reels-fullpage-typewriter-body-x" class="input" value="50" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">正文Y %</label><input type="number" id="reels-fullpage-typewriter-body-y" class="input" value="60" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">正文时间偏移 秒</label><input type="number" id="reels-fullpage-typewriter-body-delay" class="input" value="0" step="0.1" min="-1000" max="1000" oninput="reelsRefreshSpeechWritingPreview()">
+                              </div>
+                              <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-body-cursor" checked onchange="reelsRefreshSpeechWritingPreview()">正文显示笔尖</label>
+                              <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">第一句作为标题，不在正文重复。正文使用其余朗诵字幕和原时间轴，字体在“文本基础属性”中编辑。逐句时整句在该句开始时出现，并保留已出现的句子。编辑标题文案不会改变录音。</div>
+                            </div>
+
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('quill')">🪶 羽毛笔</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('rose')">🌹 玫瑰花</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('fountain_pen')">🖋️ 钢笔尖</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('brush')">🖌️ 水墨笔</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('pencil')">✏️ 木铅笔</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('sparkle_wand')">✨ 魔法棒</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('butterfly')">🦋 金粉蝶</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('candle_flame')">🕯️ 暖烛火</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('dove')">🕊️ 和平鸽</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('heart')">❤️ 红心</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('leaf')">🍃 翠绿叶</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('sakura')">🌸 樱花瓣</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('crown')">👑 金皇冠</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('music_note')">🎵 金音符</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('cross_light')">✝️ 十字光</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsSetSpeechWritingTip('feather_gold')">🪽 圣金羽</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsUploadSpeechWritingImage()">🖼 上传图片</button>
+                            </div>
+                            <label style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                              <input type="checkbox" id="reels-fullpage-typewriter-speech-sync" checked onchange="reelsRefreshSpeechWritingPreview()">按朗诵时间出字（含停顿）
+                            </label>
+                            <div style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin-bottom:8px;">优先使用逐词时间戳，在每个词内逐字显现；只有 SRT 句子时间时，按句内时长估算。标题可用独立文字覆层固定显示。</div>
+                            <div class="param-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                              <label style="min-width:80px;margin:0;">笔尖样式:</label>
+                              <select id="reels-fullpage-typewriter-cursor-kind" class="select" onchange="reelsRefreshSpeechWritingPreview()">
+                                <option value="char">闪烁字符</option>
+                                <option value="quill">🪶 复古羽毛笔</option>
+                                <option value="rose">🌹 红玫瑰花</option>
+                                <option value="fountain_pen">🖋️ 黑金钢笔尖</option>
+                                <option value="brush">🖌️ 东方水墨毛笔</option>
+                                <option value="pencil">✏️ 经典木铅笔</option>
+                                <option value="sparkle_wand">✨ 星光魔法棒</option>
+                                <option value="butterfly">🦋 灵动金粉蝴蝶</option>
+                                <option value="candle_flame">🕯️ 温暖摇曳烛火</option>
+                                <option value="dove">🕊️ 圣洁和平白鸽</option>
+                                <option value="heart">❤️ 立体发光红心</option>
+                                <option value="leaf">🍃 清新翠绿嫩叶</option>
+                                <option value="sakura">🌸 浪漫粉白樱花</option>
+                                <option value="crown">👑 璀璨金色皇冠</option>
+                                <option value="music_note">🎵 律动金色音符</option>
+                                <option value="cross_light">✝️ 光芒十字架</option>
+                                <option value="feather_gold">🪽 鎏金神圣金羽</option>
+                                <option value="image">🖼 上传的图片</option>
+                              </select>
+                            </div>
+                            <input type="hidden" id="reels-fullpage-typewriter-cursor-image">
+                            <div id="reels-writing-custom-image-options" style="display:none;border:1px solid var(--border-color);border-radius:6px;padding:8px;margin-bottom:8px;">
+                              <img id="reels-writing-custom-image-preview" alt="出字图片预览" style="display:none;width:64px;height:64px;object-fit:contain;">
+                              <div id="reels-writing-custom-image-name" style="font-size:11px;">尚未上传图片</div>
+                              <button type="button" class="btn btn-secondary" onclick="reelsUploadSpeechWritingImage()">更换图片</button>
+                              <div style="font-size:11px;margin-top:6px;">支持 PNG、JPG、WebP、GIF（保留动画）。图片跟随点：中心是 50 / 50；把数值调整到图片上的笔尖位置。</div>
+                              <label>图片跟随点 X % <input type="number" class="input" id="reels-fullpage-typewriter-cursor-image-anchor-x" min="0" max="100" value="50" oninput="reelsRefreshSpeechWritingPreview()"></label>
+                              <label>图片跟随点 Y % <input type="number" class="input" id="reels-fullpage-typewriter-cursor-image-anchor-y" min="0" max="100" value="50" oninput="reelsRefreshSpeechWritingPreview()"></label>
+                            </div>
+                            <div class="param-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><label style="min-width:80px;margin:0;">笔尖大小:</label><input type="number" id="reels-fullpage-typewriter-cursor-scale" class="input" value="1" step="0.1" min="0.2" max="4" style="width:85px;" oninput="reelsRefreshSpeechWritingPreview()"></div>
+                            <div class="param-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><label style="min-width:80px;margin:0;">笔尖X偏移:</label><input type="number" id="reels-fullpage-typewriter-cursor-offset-x" class="input" value="0" step="1" min="-1000" max="1000" style="width:85px;" oninput="reelsRefreshSpeechWritingPreview()"></div>
+                            <div class="param-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><label style="min-width:80px;margin:0;">笔尖Y偏移:</label><input type="number" id="reels-fullpage-typewriter-cursor-offset-y" class="input" value="0" step="1" min="-1000" max="1000" style="width:85px;" oninput="reelsRefreshSpeechWritingPreview()"></div>
+                            <div class="param-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><label style="min-width:80px;margin:0;">笔尖角度:</label><input type="number" id="reels-fullpage-typewriter-cursor-angle" class="input" value="0" step="1" min="-180" max="180" style="width:85px;" oninput="reelsRefreshSpeechWritingPreview()"></div>
+
                             <div class="param-row" style="margin-bottom:6px; display:flex; align-items:center; gap:8px;">
                               <label style="min-width:80px; margin:0;">出字类型:</label>
                               <select id="reels-fullpage-typewriter-reveal-type" class="select" style="width:100px;"
                                 onchange="if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
                                 <option value="char">字母/单字</option>
-                                <option value="word">单词/短语</option>
+                                <option value="word">单词/短语</option><option value="sentence">逐句出现</option>
                               </select>
                             </div>
                             <div class="param-row" style="margin-bottom:6px; display:flex; align-items:center; gap:8px;">
@@ -5006,7 +5549,7 @@
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px;">
                               <input type="checkbox" id="reels-fullpage-typewriter-cursor" checked
                                 onchange="if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
-                              启用闪烁光标
+                              显示书写笔尖 / 光标
                             </label>
                             <div class="param-row" style="margin-bottom:6px; display:flex; align-items:center; gap:8px;">
                               <label style="min-width:80px; margin:0;">光标字符:</label>
@@ -5132,6 +5675,12 @@
                             <option value="typewriter">打字机</option>
                             <option value="char_bounce">逐字弹跳</option>
                             <option value="letter_jump">逐字放大</option>
+                            <option value="char_float_up">逐字上浮</option>
+                            <option value="char_pop_elastic">逐字弹性放大</option>
+                            <option value="char_wave">逐字波浪</option>
+                            <option value="char_drop_bounce">逐字落下回弹</option>
+                            <option value="char_squash_bounce">逐字挤压弹跳</option>
+                            <option value="char_center_spread">中心扩散</option>
                             <option value="word_pop_random">逐词弹出(随机)</option>
                             <option value="word_pop_random_pulse">逐词弹出(回弹)</option>
                             <option value="word_random_position">随机单词定位</option>
@@ -5220,6 +5769,31 @@
                             <input type="range" id="reels-bounce-height-range" min="5" max="60" value="20" style="flex:1; min-width:40px;" oninput="document.getElementById('reels-bounce-height').value=this.value; reelsUpdatePreview()">
                             <input type="number" id="reels-bounce-height" class="input input-small" value="20" min="5" max="60" style="width:48px; flex:0 0 48px; padding:2px 2px; text-align:center;" oninput="document.getElementById('reels-bounce-height-range').value=this.value; reelsUpdatePreview()">
                             <span style="font-size:11px; color:var(--text-secondary); flex:0 0 16px;">px</span>
+                          </div>
+                        </div>
+
+                        <!-- 3b. 扩展逐字动画参数 (上浮/弹性放大/波浪/落下回弹/挤压弹跳/中心扩散) -->
+                        <div class="reels-anim-group-box" data-anim-types="char_float_up,char_pop_elastic,char_wave,char_drop_bounce,char_squash_bounce,char_center_spread" style="display: none; padding: 6px 8px; background: rgba(0,0,0,0.18); border-radius: 5px;">
+                          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; font-weight: 500;">逐字动画参数</div>
+                          <div style="display: flex; flex-direction: column; gap: 5px;">
+                            <div style="display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; width: 100%;">
+                              <label style="margin:0; font-size:12px; flex:0 0 60px; white-space:nowrap;">动画强度:</label>
+                              <input type="range" id="reels-char-anim-intensity-range" min="0.2" max="3.0" step="0.05" value="1.0" style="flex:1; min-width:40px;" oninput="document.getElementById('reels-char-anim-intensity').value=this.value; reelsUpdatePreview()">
+                              <input type="number" id="reels-char-anim-intensity" class="input input-small" value="1.0" min="0.2" max="3.0" step="0.05" style="width:48px; flex:0 0 48px; padding:2px 2px; text-align:center;" oninput="document.getElementById('reels-char-anim-intensity-range').value=this.value; reelsUpdatePreview()">
+                              <span style="font-size:11px; color:var(--text-secondary); flex:0 0 16px;">×</span>
+                            </div>
+                            <div style="display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; width: 100%;">
+                              <label style="margin:0; font-size:12px; flex:0 0 60px; white-space:nowrap;">单字时长:</label>
+                              <input type="range" id="reels-char-anim-duration-range" min="0.05" max="1.2" step="0.02" value="0.28" style="flex:1; min-width:40px;" oninput="document.getElementById('reels-char-anim-duration').value=this.value; reelsUpdatePreview()">
+                              <input type="number" id="reels-char-anim-duration" class="input input-small" value="0.28" min="0.05" max="1.2" step="0.02" style="width:48px; flex:0 0 48px; padding:2px 2px; text-align:center;" oninput="document.getElementById('reels-char-anim-duration-range').value=this.value; reelsUpdatePreview()">
+                              <span style="font-size:11px; color:var(--text-secondary); flex:0 0 16px;">s</span>
+                            </div>
+                            <div style="display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; width: 100%;">
+                              <label style="margin:0; font-size:12px; flex:0 0 60px; white-space:nowrap;">逐字间隔:</label>
+                              <input type="range" id="reels-char-anim-stagger-range" min="0.005" max="0.25" step="0.005" value="0.04" style="flex:1; min-width:40px;" oninput="document.getElementById('reels-char-anim-stagger').value=this.value; reelsUpdatePreview()">
+                              <input type="number" id="reels-char-anim-stagger" class="input input-small" value="0.04" min="0.005" max="0.25" step="0.005" style="width:48px; flex:0 0 48px; padding:2px 2px; text-align:center;" oninput="document.getElementById('reels-char-anim-stagger-range').value=this.value; reelsUpdatePreview()">
+                              <span style="font-size:11px; color:var(--text-secondary); flex:0 0 16px;">s</span>
+                            </div>
                           </div>
                         </div>
 
@@ -5569,8 +6143,9 @@
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           <label style="margin:0; font-size:12px; color:var(--text-secondary);">背景素材:</label>
                           <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                            <input type="text" id="reels-bg-path-ui" class="input file-path" placeholder="(未选择背景素材)" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px;">
+                            <input type="text" id="reels-bg-path-ui" class="input file-path" placeholder="(未选择背景素材)" title="右键打开文件所在位置" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px; cursor:context-menu;">
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsSelectBgPathUI()">选择</button>
+                            <button class="btn btn-secondary" style="font-size:10px; padding:2px 5px; flex-shrink:0;" onclick="window.reelsRevealPathInFolder?.(document.getElementById('reels-bg-path-ui')?.value)" title="打开背景素材所在文件夹 (也可右键输入框)">📂</button>
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsCopyCvToBgUI()" title="将内容视频路径复制 to 背景">同内容</button>
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0; color:#f87171;" onclick="reelsClearBgPathUI()">清除</button>
                           </div>
@@ -5582,8 +6157,9 @@
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           <label style="margin:0; font-size:12px; color:var(--text-secondary);">素材池:</label>
                           <div style="display:flex; gap:6px; align-items:center; min-width:0;">
-                            <span id="reels-bg-pool-count" style="font-size:11px; color:var(--text-secondary);">已添加 0 个素材</span>
+                            <span id="reels-bg-pool-count" style="font-size:11px; color:var(--text-secondary); cursor:context-menu;" title="右键打开首个背景素材位置">已添加 0 个素材</span>
                             <button class="btn btn-secondary" style="font-size:10px; padding:3px 8px; flex-shrink:0;" onclick="reelsManageBgPoolUI()">⚙️ 管理素材池</button>
+                            <button class="btn btn-secondary" style="font-size:10px; padding:3px 6px; flex-shrink:0;" onclick="window.reelsRevealActiveTaskMedia?.('bg')" title="打开背景素材所在位置">📂</button>
                           </div>
                         </div>
 
@@ -5631,8 +6207,9 @@
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           <label style="margin:0; font-size:11px; color:var(--text-secondary);">背景片段池 (文件夹):</label>
                           <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                            <input type="text" id="reels-bg-clippool-dir-ui" class="input file-path" placeholder="(未选择片段目录)" readonly style="flex:1; font-size:10px; height:22px; padding:2px 4px;">
+                            <input type="text" id="reels-bg-clippool-dir-ui" class="input file-path" placeholder="(未选择片段目录)" title="右键打开文件夹位置" readonly style="flex:1; font-size:10px; height:22px; padding:2px 4px; cursor:context-menu;">
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsSelectClipPoolUI()">选择</button>
+                            <button class="btn btn-secondary" style="font-size:10px; padding:2px 5px; flex-shrink:0;" onclick="window.reelsRevealPathInFolder?.(document.getElementById('reels-bg-clippool-dir-ui')?.value)" title="打开背景片段池文件夹">📂</button>
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0; color:#f87171;" onclick="reelsClearClipPoolUI()">清除</button>
                           </div>
                         </div>
@@ -5753,8 +6330,9 @@
                       <div style="display:flex; flex-direction:column; gap:4px;">
                         <label style="margin:0; font-size:12px; color:var(--text-secondary);">内容视频:</label>
                         <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                          <input type="text" id="reels-cv-path-ui" class="input file-path" placeholder="(未选择内容视频)" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px;">
+                          <input type="text" id="reels-cv-path-ui" class="input file-path" placeholder="(未选择内容视频)" title="右键打开文件所在位置" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px; cursor:context-menu;">
                           <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsSelectCvPathUI()">选择</button>
+                          <button class="btn btn-secondary" style="font-size:10px; padding:2px 5px; flex-shrink:0;" onclick="window.reelsRevealPathInFolder?.(document.getElementById('reels-cv-path-ui')?.value)" title="打开内容视频所在文件夹 (也可右键输入框)">📂</button>
                           <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsCopyBgToCvUI()" title="将背景素材路径复制 to 内容视频">同背景</button>
                           <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0; color:#f87171;" onclick="reelsClearCvPathUI()">清除</button>
                         </div>
@@ -5916,8 +6494,9 @@
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           <label style="margin:0; font-size:12px; color:var(--text-secondary);">配乐素材:</label>
                           <div style="display:flex; gap:4px; align-items:center; min-width:0;">
-                            <input type="text" id="reels-bgm-path-ui" class="input file-path" placeholder="(未选择配乐素材)" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px;">
+                            <input type="text" id="reels-bgm-path-ui" class="input file-path" placeholder="(未选择配乐素材)" title="右键打开文件所在位置" readonly style="flex:1; font-size:10px; height:24px; padding:2px 4px; cursor:context-menu;">
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0;" onclick="reelsSelectBgmPathUI()">选择</button>
+                            <button class="btn btn-secondary" style="font-size:10px; padding:2px 5px; flex-shrink:0;" onclick="window.reelsRevealPathInFolder?.(document.getElementById('reels-bgm-path-ui')?.value)" title="打开配乐所在文件夹 (也可右键输入框)">📂</button>
                             <button class="btn btn-secondary" style="font-size:10px; padding:2px 6px; flex-shrink:0; color:#f87171;" onclick="reelsClearBgmPathUI()">清除</button>
                           </div>
                         </div>
@@ -5928,8 +6507,9 @@
                         <div style="display:flex; flex-direction:column; gap:4px;">
                           <label style="margin:0; font-size:12px; color:var(--text-secondary);">配乐池:</label>
                           <div style="display:flex; gap:6px; align-items:center; min-width:0;">
-                            <span id="reels-bgm-pool-count" style="font-size:11px; color:var(--text-secondary);">已添加 0 个配乐</span>
+                            <span id="reels-bgm-pool-count" style="font-size:11px; color:var(--text-secondary); cursor:context-menu;" title="右键打开首个配乐文件位置">已添加 0 个配乐</span>
                             <button class="btn btn-secondary" style="font-size:10px; padding:3px 8px; flex-shrink:0;" onclick="reelsManageBgmPoolUI()">⚙️ 管理配乐池</button>
+                            <button class="btn btn-secondary" style="font-size:10px; padding:3px 6px; flex-shrink:0;" onclick="window.reelsRevealActiveTaskMedia?.('bgm')" title="打开配乐文件所在位置">📂</button>
                           </div>
                         </div>
 
@@ -6101,6 +6681,12 @@
                         title="预览与导出字幕总开关：关闭后，导出的视频也不会带字幕">
                         <input type="checkbox" id="reels-subtitle-toggle" checked onchange="reelsOnSubtitleToggleChange(this)"
                           style="accent-color:var(--accent-color);"> 字幕（关闭=导出不带）
+                      </label>
+                      <label
+                        style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;margin-left:2px;"
+                        title="预览与导出覆层总开关：关闭后，导出的视频也不会带覆层">
+                        <input type="checkbox" id="reels-overlay-toggle" checked onchange="reelsOnOverlayToggleChange(this)"
+                          style="accent-color:var(--accent-color);"> 覆层（关闭=导出不带）
                       </label>
                       <label
                         style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;margin-left:2px;"
@@ -6449,8 +7035,8 @@
                 <label style="display:flex;align-items:center;gap:4px;font-size:11px;white-space:nowrap;">
                   并发数:
 
-                  <input type="range" id="reels-export-concurrency-range" min="1" max="4" step="1" value="1" style="width:80px;">
-                  <input type="number" id="reels-export-concurrency" class="input input-small" min="1" max="4" value="1" style="width:44px;font-size:11px;" title="同时导出的任务数">
+                  <input type="range" id="reels-export-concurrency-range" min="1" max="10" step="1" value="1" style="width:80px;">
+                  <input type="number" id="reels-export-concurrency" class="input input-small" min="1" max="10" value="1" style="width:44px;font-size:11px;" title="同时导出的任务数">
                 </label>
                 <label style="display:flex;align-items:center;gap:4px;font-size:11px;white-space:nowrap;">
                   刷新间隔:
@@ -7611,6 +8197,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-queue-library.js"></script>
   <script src="batch-reels.js"></script>
   <script src="reels-preview-v2.js"></script>
+  <script src="global-edit-history.js"></script>
   <script src="sort-upload.js"></script>
   <script src="app.js"></script>
   <script src="voiceover-workflow.js"></script>

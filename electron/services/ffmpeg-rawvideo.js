@@ -2340,10 +2340,16 @@ function cleanup(session) {
 }
 
 function cleanupBg(framesDir) {
-    if (!framesDir || !fs.existsSync(framesDir)) return;
+    if (!framesDir || typeof framesDir !== 'string' || !fs.existsSync(framesDir)) return;
     
     // 覆层的 PNG 序列作为长期重复使用的资源，不在这里直接随临时目录清理（依赖外部应用清理或用户手动清理临时区）
     if (framesDir.includes('videokit_overlay_cache')) {
+        return;
+    }
+
+    const baseName = path.basename(path.resolve(framesDir));
+    if (!baseName.startsWith('reels_bg_')) {
+        console.warn(`[WYSIWYG] 拒绝清理非临时背景帧目录: ${framesDir}`);
         return;
     }
 
@@ -2543,7 +2549,8 @@ async function parallelExport(opts, mainWindow) {
             }, 5 * 60 * 1000);
 
             const onResult = (event, result) => {
-                if (result.chunkId !== chunk.chunkId) return;
+                if (event.sender !== win.webContents) return;
+                if (!result || result.chunkId !== chunk.chunkId) return;
                 clearTimeout(timeout);
                 cleanupListeners();
                 try { win.close(); } catch(_) {}
@@ -2557,7 +2564,8 @@ async function parallelExport(opts, mainWindow) {
             };
 
             const onProgress = (event, data) => {
-                if (data.chunkId !== chunk.chunkId) return;
+                if (event.sender !== win.webContents) return;
+                if (!data || data.chunkId !== chunk.chunkId) return;
                 progressMap[chunk.chunkId] = data.pct || 0;
                 // 聚合进度发回主窗口
                 const avgPct = Math.round(progressMap.reduce((a, b) => a + b, 0) / chunks.length);

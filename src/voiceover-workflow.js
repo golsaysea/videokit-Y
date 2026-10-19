@@ -414,7 +414,7 @@ function getStatusText(status) {
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function vwGetFileName(filePath) {
@@ -1207,7 +1207,10 @@ async function retryAllVWSubtitles() {
 }
 
 // 页面加载时刷新音色
-document.addEventListener('DOMContentLoaded', () => {
+let vwPageInitialized = false;
+function initVWPageOnce() {
+    if (vwPageInitialized) return;
+    vwPageInitialized = true;
     if (restoreVWResumeState()) {
         renderVWTasks();
         updateVWTaskCount();
@@ -1226,7 +1229,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(`已恢复上次一键配音任务：${vwTasks.length} 条，未完成 ${remainingCount} 条`, 'info');
     }
     setTimeout(refreshVWVoices, 1000);
-});
+}
+window.initVWPageOnce = initVWPageOnce;
+
 
 // 浏览输出目录
 async function vwBrowseOutputDir() {
@@ -1290,3 +1295,5 @@ async function vwOpenOutputDir() {
         showToast('打开失败，文件夹可能不存在', 'error');
     }
 }
+
+window.VideoKitGlobalHistory.register('voiceover-workflow',{contexts:['voiceover-workflow'],capture:()=>({tasks:vwTasks,output:vwWorkflowBatchOutputDir}),restore:state=>{vwTasks=state.tasks;vwWorkflowBatchOutputDir=state.output;},busy:()=>vwWorkflowRunning||vwRetryAllRunning||vwTasks.some(task=>task.status==='generating'),render:()=>{renderVWTasks();saveVWResumeState();}});

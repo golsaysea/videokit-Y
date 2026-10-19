@@ -7,7 +7,17 @@
  */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { app } = require('electron');
+const sharedProfile = require('./sharedProfile');
+
+function safeTemplateId(id) {
+    const clean = path.basename(String(id || '')).replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!clean || clean === '.' || clean === '..') {
+        throw new Error('无效的模板 ID');
+    }
+    return clean;
+}
 
 function getTemplatesDir() {
     const dir = path.join(app.getPath('userData'), 'videokit-templates');
@@ -17,22 +27,50 @@ function getTemplatesDir() {
     return dir;
 }
 
+function getAllTemplateDirs() {
+    const dirs = sharedProfile.getCandidateTemplateDirs();
+    return dirs.length ? dirs : [getTemplatesDir()];
+}
+
 function getIndexPath() {
     return path.join(getTemplatesDir(), 'index.json');
 }
 
 function readIndex() {
-    const p = getIndexPath();
-    if (!fs.existsSync(p)) return [];
-    try {
-        return JSON.parse(fs.readFileSync(p, 'utf-8'));
-    } catch {
-        return [];
+    const byId = new Map();
+    for (const dir of [...getAllTemplateDirs()].reverse()) {
+        const p = path.join(dir, 'index.json');
+        if (!fs.existsSync(p)) continue;
+        try {
+            const arr = JSON.parse(fs.readFileSync(p, 'utf-8'));
+            if (!Array.isArray(arr)) continue;
+            for (const item of arr) {
+                if (!item || !item.id) continue;
+                const existing = byId.get(item.id);
+                const oldTime = existing ? (Date.parse(existing.updatedAt || existing.createdAt || '') || 0) : -1;
+                const newTime = Date.parse(item.updatedAt || item.createdAt || '') || 0;
+                if (!existing || newTime >= oldTime) {
+                    byId.set(item.id, item);
+                }
+            }
+        } catch { }
     }
+    return [...byId.values()].sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || '') || 0) - (Date.parse(a.updatedAt || a.createdAt || '') || 0));
 }
 
 function writeIndex(index) {
-    fs.writeFileSync(getIndexPath(), JSON.stringify(index, null, 2), 'utf-8');
+    const body = JSON.stringify(index, null, 2);
+    fs.writeFileSync(getIndexPath(), body, 'utf-8');
+    if (!sharedProfile.isIsolatedTestProfile()) {
+        for (const dir of getAllTemplateDirs()) {
+            const p = path.join(dir, 'index.json');
+            if (path.resolve(p) === path.resolve(getIndexPath())) continue;
+            try {
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(p, body, 'utf-8');
+            } catch { }
+        }
+    }
 }
 
 /**
@@ -46,11 +84,14 @@ function listTemplates() {
  * 获取单个模板的完整数据
  */
 function getTemplate(id) {
-    const filePath = path.join(getTemplatesDir(), `${id}.json`);
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`模板不存在: ${id}`);
+    const safeId = safeTemplateId(id);
+    for (const dir of getAllTemplateDirs()) {
+        const filePath = path.join(dir, `${safeId}.json`);
+        if (fs.existsSync(filePath)) {
+            return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        }
     }
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    throw new Error(`模板不存在: ${safeId}`);
 }
 
 /**
@@ -65,7 +106,7 @@ function getTemplate(id) {
  */
 function saveTemplate({ id, name, description, thumbnail, tags, projectData }) {
     const now = new Date().toISOString();
-    const templateId = id || `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const templateId = id ? safeTemplateId(id) : `tpl_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
     // 完整数据写入独立文件
     const fullData = {
@@ -82,14 +123,31 @@ function saveTemplate({ id, name, description, thumbnail, tags, projectData }) {
     const filePath = path.join(getTemplatesDir(), `${templateId}.json`);
 
     // 如果是更新，保留原始创建时间
-    if (id && fs.existsSync(filePath)) {
-        try {
-            const existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            fullData.createdAt = existing.createdAt || now;
-        } catch { /* use now */ }
+    if (id) {
+        for (const dir of getAllTemplateDirs()) {
+            const candidate = path.join(dir, `${templateId}.json`);
+            if (fs.existsSync(candidate)) {
+                try {
+                    const existing = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+                    fullData.createdAt = existing.createdAt || now;
+                    break;
+                } catch { /* use now */ }
+            }
+        }
     }
 
-    fs.writeFileSync(filePath, JSON.stringify(fullData, null, 2), 'utf-8');
+    const fullBody = JSON.stringify(fullData, null, 2);
+    fs.writeFileSync(filePath, fullBody, 'utf-8');
+    if (!sharedProfile.isIsolatedTestProfile()) {
+        for (const dir of getAllTemplateDirs()) {
+            const mirrorPath = path.join(dir, `${templateId}.json`);
+            if (path.resolve(mirrorPath) === path.resolve(filePath)) continue;
+            try {
+                fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(mirrorPath, fullBody, 'utf-8');
+            } catch { }
+        }
+    }
 
     // 更新索引
     const index = readIndex();
@@ -120,15 +178,18 @@ function saveTemplate({ id, name, description, thumbnail, tags, projectData }) {
  * 删除模板
  */
 function deleteTemplate(id) {
+    const safeId = safeTemplateId(id);
     // 删除数据文件
-    const filePath = path.join(getTemplatesDir(), `${id}.json`);
-    if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+    for (const dir of getAllTemplateDirs()) {
+        const filePath = path.join(dir, `${safeId}.json`);
+        if (fs.existsSync(filePath)) {
+            try { fs.unlinkSync(filePath); } catch { }
+        }
     }
 
     // 更新索引
     const index = readIndex();
-    const filtered = index.filter(t => t.id !== id);
+    const filtered = index.filter(t => t.id !== safeId);
     writeIndex(filtered);
 
     return { success: true };
@@ -138,20 +199,37 @@ function deleteTemplate(id) {
  * 重命名模板
  */
 function renameTemplate(id, newName) {
-    const filePath = path.join(getTemplatesDir(), `${id}.json`);
-    if (!fs.existsSync(filePath)) {
-        throw new Error(`模板不存在: ${id}`);
+    const safeId = safeTemplateId(id);
+    let targetPath = '';
+    for (const dir of getAllTemplateDirs()) {
+        const candidate = path.join(dir, `${safeId}.json`);
+        if (fs.existsSync(candidate)) {
+            targetPath = candidate;
+            break;
+        }
+    }
+    if (!targetPath) {
+        throw new Error(`模板不存在: ${safeId}`);
     }
 
     // 更新数据文件
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
     data.name = newName;
     data.updatedAt = new Date().toISOString();
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    const body = JSON.stringify(data, null, 2);
+    fs.writeFileSync(path.join(getTemplatesDir(), `${safeId}.json`), body, 'utf-8');
+    if (!sharedProfile.isIsolatedTestProfile()) {
+        for (const dir of getAllTemplateDirs()) {
+            const mirrorPath = path.join(dir, `${safeId}.json`);
+            try {
+                if (fs.existsSync(mirrorPath)) fs.writeFileSync(mirrorPath, body, 'utf-8');
+            } catch { }
+        }
+    }
 
     // 更新索引
     const index = readIndex();
-    const entry = index.find(t => t.id === id);
+    const entry = index.find(t => t.id === safeId);
     if (entry) {
         entry.name = newName;
         entry.updatedAt = data.updatedAt;

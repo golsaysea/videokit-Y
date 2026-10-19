@@ -1,3 +1,12 @@
+function _rbtReadOverlayGroupPresetsRaw() {
+    return window.electronAPI?.readOverlayGroupPresets?.() || localStorage.getItem('reels_overlay_group_presets') || '{}';
+}
+function _rbtSaveOverlayGroupPresets(data) {
+    if (window._reelsState?.overlayPanel?._setOverlayGroupPresets) return window._reelsState.overlayPanel._setOverlayGroupPresets(data);
+    const result = window.electronAPI?.saveOverlayGroupPresets?.(JSON.stringify(data));
+    if (result && !result.ok) { alert('覆层预设保存失败：' + result.error); throw new Error(result.error); }
+    if (!result) localStorage.setItem('reels_overlay_group_presets', JSON.stringify(data));
+}
 /**
  * reels-batch-table.js — 批量文字卡片表格管理
  *
@@ -79,7 +88,7 @@ window.openBatchOverlayPresetEditor = function(name, preset) {
     const panel = new window.ReelsOverlayPanel(get('[data-panel]'), proxy); get('[data-panel]').querySelector('.rop-section')?.remove(); panel._refreshList(); if(mgr.overlays[0]) panel.selectOverlay(mgr.overlays[0]); draw();
     get('[data-bg]').onclick = async () => { const p = await window.electronAPI?.selectFiles?.({title:'选择临时预览背景',filters:[{name:'图片或视频',extensions:['mp4','mov','mkv','webm','jpg','jpeg','png','webp','gif']}]}); bgPath=p?.[0]||''; if(!bgPath)return; const isImg=/\.(jpg|jpeg|png|webp|gif)$/i.test(bgPath), el=isImg?get('[data-image]'):get('[data-video]'); get('[data-image]').style.display=isImg?'':'none';get('[data-video]').style.display=isImg?'none':'';el.src=window.electronAPI?.toFileUrl?window.electronAPI.toFileUrl(bgPath):bgPath;if(!isImg)el.play().catch(()=>{});get('[data-label]').textContent=bgPath.split(/[\\/]/).pop(); };
     get('[data-clear]').onclick=()=>{get('[data-video]').removeAttribute('src');get('[data-image]').removeAttribute('src');get('[data-image]').style.display='none';get('[data-video]').style.display='';get('[data-label]').textContent='未设置（深色底）';};
-    get('[data-save]').onclick=()=>{let all={};try{all=JSON.parse(localStorage.getItem('reels_overlay_group_presets')||'{}')}catch(_){};all[name]={...(Array.isArray(preset)?{}:preset),name,layers:JSON.parse(JSON.stringify(mgr.overlays)),updatedAt:new Date().toISOString()};localStorage.setItem('reels_overlay_group_presets',JSON.stringify(all));if(typeof showToast==='function')showToast(`预设「${name}」已保存`, 'success');};
+    get('[data-save]').onclick=()=>{let all={};try{all=JSON.parse(_rbtReadOverlayGroupPresetsRaw()||'{}')}catch(_){};all[name]={...(Array.isArray(preset)?{}:preset),name,layers:JSON.parse(JSON.stringify(mgr.overlays)),updatedAt:new Date().toISOString()};_rbtSaveOverlayGroupPresets(all);if(typeof showToast==='function')showToast(`预设「${name}」已保存`, 'success');};
     get('[data-close]').onclick=()=>modal.remove();
 };
 const _VOICE_HINT_REGEX = /(^|[\s._-])(voice|audio|dub|dubbing|narration|vo|配音|人声|旁白|解说|口播)([\s._-]|$)/i;
@@ -137,11 +146,27 @@ function _resolveDuplicateTaskNames(tasks) {
 
 
 function _naturalSortByName(a, b) {
-    return String(a?.name || a || '').localeCompare(String(b?.name || b || ''), undefined, {
+    const extractName = (item) => {
+        if (item && typeof item === 'object') {
+            if (item.name) return String(item.name);
+            if (item.path) return String(item.path).replace(/\\/g, '/').split('/').pop() || String(item.path);
+        }
+        const s = String(item || '');
+        return s.replace(/\\/g, '/').split('/').pop() || s;
+    };
+    const nameA = extractName(a);
+    const nameB = extractName(b);
+    const cmp = nameA.localeCompare(nameB, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+    });
+    if (cmp !== 0) return cmp;
+    return String(a?.path || a?.name || a || '').localeCompare(String(b?.path || b?.name || b || ''), undefined, {
         numeric: true,
         sensitivity: 'base',
     });
 }
+window._naturalSortByName = _naturalSortByName;
 
 function _rbtFileExists(filePath) {
     if (!filePath || typeof filePath !== 'string') return false;
@@ -219,7 +244,7 @@ const _batchTableState = {
     _activeScrollName: '',
     _activeScrollIdx: 0,
     // ── 工程管理 ──
-    projectDir: '',
+    projectDir: (typeof window !== 'undefined' && window.electronAPI?.getDefaultProjectDir?.()) || '',
     projectName: 'UntitledProject.json',
     openSnapshotTasks: null,
     // 停顿插入的统一规则：只影响之后执行的批量插入，不改已有片段。
@@ -257,14 +282,26 @@ function _stripBatchGroupMeta(task) {
 }
 
 function _isBatchGroupedProjection(tasks = window._reelsState?.tasks || []) {
-    return tasks.length > 0 && tasks.some(t => t && t._batchProjection && t._batchTabId);
+    if (tasks.length > 0 && tasks.some(t => t && t._batchProjection && t._batchTabId)) return true;
+    if (tasks.length === 0 && !_batchTableState.visible && Array.isArray(_batchTableState.appliedTabIds) && _batchTableState.appliedTabIds.length > 0) {
+        return true;
+    }
+    return false;
 }
 
 /** 将外部按组任务的修改精确回写到各自标签，避免覆盖当前活动标签。 */
 function _syncGroupedProjectionToTabs(activeTasks) {
     const grouped = new Map();
     for (const task of activeTasks) {
-        if (!task?._batchTabId) continue;
+        if (!task?._batchTabId){
+            const activeTab=_getActiveTab();if(!activeTab)continue;
+            _ensureTaskId(task);task._batchTabId=activeTab.id;task._batchTabName=activeTab.name;task._batchProjection=true;
+            task._batchTaskOrder=(activeTab.tasks||[]).length+activeTasks.indexOf(task);
+        }
+        if(!_batchTableState.tabs.some(tab=>tab.id===task._batchTabId)){
+            _batchTableState.tabs.push({id:task._batchTabId,name:task._batchTabName||'恢复的任务组',tasks:[]});
+            _normalizeBatchTabState();
+        }
         if (!grouped.has(task._batchTabId)) grouped.set(task._batchTabId, []);
         grouped.get(task._batchTabId).push(task);
     }
@@ -279,6 +316,21 @@ function _syncGroupedProjectionToTabs(activeTasks) {
             .map(_stripBatchGroupMeta);
     }
 }
+
+function reelsSyncTaskRemovalToBatchTabs(removedTasks) {
+    const list = Array.isArray(removedTasks) ? removedTasks : (removedTasks ? [removedTasks] : []);
+    const removedIds = new Set(list.map(t => t?.id).filter(Boolean));
+    if (removedIds.size > 0) {
+        for (const tab of _batchTableState.tabs || []) {
+            if (Array.isArray(tab.tasks)) {
+                tab.tasks = tab.tasks.filter(t => !t || !removedIds.has(t.id));
+            }
+        }
+    }
+    _syncTasksToActiveTab();
+    _batchAutoSave({ skipSync: true });
+}
+window.reelsSyncTaskRemovalToBatchTabs = reelsSyncTaskRemovalToBatchTabs;
 
 // Importers (for example 文案自动剪辑) add a task directly to the Reels queue.
 // Archive it immediately in the active batch tab as well; otherwise opening the
@@ -325,7 +377,8 @@ function _syncTasksToActiveTab() {
         if (t.id) tabTasksMap.set(t.id, { task: t, index: i });
     });
 
-    let isSubset = activeTasks.length > 0 && activeTasks.every(t => t.id && tabTasksMap.has(t.id));
+    const isExplicitSubsetMode = window._reelsSubsetSyncMode === true;
+    let isSubset = isExplicitSubsetMode && activeTasks.length > 0 && activeTasks.every(t => t.id && tabTasksMap.has(t.id));
     if (isSubset && activeTasks.length < tabTasks.length) {
         // Only update the tasks in tabTasks that match activeTasks by ID
         const updatedTabTasks = tabTasks.map(t => {
@@ -338,7 +391,7 @@ function _syncTasksToActiveTab() {
         tab.tasks = updatedTabTasks;
         console.log(`[BatchTable._syncTasksToActiveTab] 合并子集变化到 tab (仅更新已选中的 ${activeTasks.length} 个任务，保留其他任务)`);
     } else {
-        // Full overwrite or not a subset
+        // Full overwrite so deleted tasks are removed from the tab as well
         tab.tasks = _cloneBatchTasks(activeTasks);
         console.log('[BatchTable._syncTasksToActiveTab] 保存全部 tasks 到 tab, 长度:', tab.tasks.length);
     }
@@ -379,6 +432,7 @@ function _addTab(name) {
     const tab = { id, name: name || `标签${_batchTableState.tabs.length + 1}`, materialDir: '', lastRefreshTime: null, tasks: [] };
     _batchTableState.tabs.push(tab);
     _switchToTab(id);
+    _batchAutoSave();
 }
 
 function _removeTab(tabId) {
@@ -402,6 +456,7 @@ async function _renameTab(tabId) {
     if (newName && newName.trim()) {
         tab.name = newName.trim();
         _renderBatchTable();
+        _batchAutoSave();
     }
 }
 
@@ -643,6 +698,17 @@ function reelsToggleBatchTable(options = {}) {
         console.log('[BatchTable.toggle] 打开表格，当前 tasks:', _dbg.join(', '));
         // Sync current tasks into active tab on open
         _syncTasksToActiveTab();
+        // Snapshot every tab, not just the active tab: switching tabs saves edits eagerly.
+        _batchTableState.editSessionSnapshot = {
+            tabs: _batchTableState.tabs.map(tab => ({ ...tab, tasks: _cloneBatchTasks(tab.tasks || []) })),
+            activeTabId: _batchTableState.activeTabId,
+            nextTabId: _batchTableState.nextTabId,
+            projectDir: _batchTableState.projectDir,
+            projectName: _batchTableState.projectName,
+            tasks: _cloneBatchTasks(window._reelsState.tasks || []),
+            selectedIdx: window._reelsState.selectedIdx,
+            appliedTabIds: [...(_batchTableState.appliedTabIds || [])],
+        };
         // Load full tasks list from tab
         const tab = _getActiveTab();
         if (tab) {
@@ -666,6 +732,7 @@ function reelsToggleBatchTable(options = {}) {
             } else if (_batchTableState.tabs.length > 1) {
                 _restoreGroupedProjectionFromTabs(_batchTableState.tabs.map(tab => tab.id));
             }
+            if (typeof _renderTaskList === 'function') _renderTaskList();
             _batchTableState.openSnapshotTasks = _batchTasksSnapshot(window._reelsState?.tasks || []);
             console.log('[BatchTable.toggle] 关闭表格，已保存 changes');
             if (window._reelsState?.tasks.length && typeof reelsSelectTask === 'function') {
@@ -675,25 +742,26 @@ function reelsToggleBatchTable(options = {}) {
             }
             _batchAutoSave({ skipSync: true });
         } else {
-            const originalSnapshot = _batchTableState.openSnapshotTasks;
-            const projectedSnapshot = _getProjectedBatchTasksSnapshot();
-            if (originalSnapshot && projectedSnapshot !== originalSnapshot) {
-                const discard = confirm('批量表格里有未应用的修改，确定放弃并关闭吗？');
-                if (!discard) {
-                    _batchTableState.visible = true;
-                    return;
-                }
-            }
-            _restoreBatchTableOpenSnapshot();
-            const groupedSnapshot = _batchTableState.openedGroupedProjection;
-            if (groupedSnapshot && window._reelsState) {
-                window._reelsState.tasks = _cloneBatchTasks(groupedSnapshot.tasks || []);
-                window._reelsState.selectedIdx = groupedSnapshot.selectedIdx ?? -1;
-                _batchTableState.appliedTabIds = [...(groupedSnapshot.appliedTabIds || [])];
+            const snapshot = _batchTableState.editSessionSnapshot;
+            if (snapshot && window._reelsState) {
+                _batchTableState.tabs = snapshot.tabs.map(tab => ({ ...tab, tasks: _cloneBatchTasks(tab.tasks || []) }));
+                for (const key of ['activeTabId', 'nextTabId', 'projectDir', 'projectName']) _batchTableState[key] = snapshot[key];
+                _batchTableState.appliedTabIds = [...snapshot.appliedTabIds];
+                _batchTableState.selectedRows = new Set();
+                window._reelsState.tasks = _cloneBatchTasks(snapshot.tasks);
+                window._reelsState.selectedIdx = snapshot.selectedIdx;
+                _skipNextApply = true;
                 if (typeof _renderTaskList === 'function') _renderTaskList();
+                _syncSelectedTaskOverlayMgrIfNeeded(snapshot.selectedIdx);
+                if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+                // Replace any interim automatic saves with the opening snapshot.
+                _batchAutoSave({ skipSync: true });
+            } else {
+                _restoreBatchTableOpenSnapshot();
             }
             console.log('[BatchTable.toggle] 关闭表格，已放弃 changes');
         }
+        _batchTableState.editSessionSnapshot = null;
         _batchTableState.openedGroupedProjection = null;
         _batchTableState.container.style.display = 'none';
         if (typeof _renderTaskList === 'function') _renderTaskList();
@@ -1086,16 +1154,12 @@ function _renderBatchTable() {
     container.innerHTML = `
         <div class="rbt-panel">
             <!-- ═══ 标签栏与工程管理 ═══ -->
-            <div class="rbt-tabbar" style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="rbt-tabs-scroll" style="flex:1;">
+            <div class="rbt-tabbar">
+                <div class="rbt-tabs-scroll">
                     ${tabsHtml}
                     <div class="rbt-tab rbt-tab-add" title="新建标签页">＋</div>
                     <div class="rbt-tab rbt-tab-clear-all" title="清空删除所有标签页" style="color:#f66;font-size:11px;margin-left:4px;">🗑 清空</div>
                     <div class="rbt-tab rbt-tab-merge" id="rbt-merge-tabs-btn" title="将多个标签页的任务合并到当前渲染队列" style="color:#7b8bef;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(123,139,239,0.3);background:rgba(123,139,239,0.1);">📋 应用标签页</div>
-                </div>
-                <div style="padding-right:12px; display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:11px;color:#888;">📦 当前工程:</span>
-                    <span id="rbt-project-mgr-btn" style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline;font-weight:bold;" title="点击设置保存目录与管理多工程">${_escHtml(_batchTableState.projectName || 'UntitledProject.json')}</span>
                 </div>
             </div>
 
@@ -1176,6 +1240,10 @@ function _renderBatchTable() {
                 <button id="rbt-toggle-actions-btn" class="rbt-btn" style="padding:2px 8px;font-size:11px;" title="隐藏/显示操作面板">${_batchTableState.actionsCollapsed ? '🔽 展开操作面板' : '🔼 收起操作面板'}</button>
                 <span style="flex:1;"></span>
                 ${!_batchTableState.mediaPoolOpen && matDir ? `<span style="font-size:10px; color:var(--text-muted);">📁 ${_escHtml(matDirShort)}</span>` : ''}
+                <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                    <span style="font-size:11px;color:#888;">📦 当前工程:</span>
+                    <span id="rbt-project-mgr-btn" style="font-size:12px;color:var(--accent);cursor:pointer;text-decoration:underline;font-weight:bold;" title="点击设置保存目录与管理多工程">${_escHtml(_batchTableState.projectName || 'UntitledProject.json')}</span>
+                </div>
             </div>
 
             <div class="rbt-actions-panel" style="display:${_batchTableState.actionsCollapsed ? 'none' : 'flex'};">
@@ -1192,13 +1260,14 @@ function _renderBatchTable() {
                         <button class="rbt-btn rbt-btn-primary" id="rbt-save-queue-btn">保存队列</button>
                         <button class="rbt-btn" id="rbt-load-queue-btn">调用队列</button>
                         <button class="rbt-btn" id="rbt-cloud-settings-btn">转录 API · Groq / Gladia</button>
-                        <button class="rbt-btn" id="rbt-save-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">保存工程</button>
+                        <button class="rbt-btn" id="rbt-save-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;" title="只保存当前标签页的工程和任务">保存当前工程</button>
+                        <button class="rbt-btn" id="rbt-save-all-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;" title="保存所有标签页的工程和任务">保存全部工程</button>
                         <button class="rbt-btn" id="rbt-load-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">加载工程</button>
                         <button class="rbt-btn" id="rbt-relocate-btn" style="padding:2px 8px;font-size:11px;background:rgba(60,60,120,0.5);border:1px solid rgba(100,100,200,0.3);color:#a0a0e0;" title="查找并重新关联缺失的素材文件">🔍 查找素材</button>
                         <input type="file" id="rbt-file-config" class="rbt-hidden-input" accept=".json">
                         <span style="color:rgba(255,255,255,0.2);margin:0 2px;">|</span>
                         <button class="rbt-btn" id="rbt-col-settings-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">列设置</button>
-                        <button class="rbt-btn" id="rbt-close-btn" style="padding:2px 8px;font-size:11px;background:rgba(120,40,40,0.6);border:1px solid rgba(220,80,80,0.3);color:#f48484;">关闭界面</button>
+                        <button class="rbt-btn" id="rbt-close-btn" style="padding:2px 8px;font-size:11px;background:rgba(120,40,40,0.6);border:1px solid rgba(220,80,80,0.3);color:#f48484;" title="放弃本次打开表格后的修改">关闭不保存</button>
                         <span class="rbt-batch-rowbreak"></span>
                         <span class="rbt-batch-subgroup">数据录入</span>
                         <button id="rbt-open-media-pool-btn" class="rbt-btn" style="background:${_batchTableState.mediaPoolOpen ? 'rgba(50,70,160,0.6)' : 'rgba(40,60,120,0.6)'}; color:#9bb0ff; border:1px solid rgba(80,120,220,0.3); font-size:11px; padding:2px 8px;">${_batchTableState.mediaPoolOpen ? '收起素材池' : '打开素材池'}</button>
@@ -1391,6 +1460,8 @@ function _renderBatchTable() {
                             <option value="ttsText">选列：[人声-配音文案]</option>
                             <option value="overlay_title">选列：[覆层标题]</option>
                             <option value="overlay_body">选列：[覆层内容]</option>
+                            <option value="scroll_body">选列：[滚动字幕正文]</option>
+                            <option value="scroll_title">选列：[滚动标题]</option>
                         </select>
                         <div style="position:relative;display:flex;align-items:center;">
                             <button class="rbt-btn" id="rbt-lang-picker-btn" style="padding:2px 8px;font-size:11px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:#ccc;width:95px;display:flex;justify-content:space-between;align-items:center;height:24px;">英语 ▾</button>
@@ -1545,6 +1616,7 @@ function _renderBatchTable() {
                 <span id="rbt-count">${tasks.length} 个任务</span>
                 <span id="rbt-align-progress" style="font-size:12px;color:#a0d0ff;margin-left:12px;"></span>
                 <div class="rbt-footer-hint">提示: 先粘贴文案创建行 → 再批量添加素材自动按顺序分配 | 设置素材文件夹后可一键刷新同步最新文件</div>
+                <button class="rbt-btn" id="rbt-discard-btn" title="恢复打开表格前的工程内容">关闭不保存</button>
                 <button class="rbt-btn rbt-btn-primary" id="rbt-apply-btn">✅ 应用更改并关闭</button>
             </div>
 
@@ -1713,57 +1785,205 @@ function _renderBatchTable() {
   }
 }
 
+const _rbtVideoThumbCache = new Map();
+const _rbtVideoThumbInflight = new Map();
+const _RBT_THUMB_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const _RBT_MAX_THUMB_CONCURRENCY = 2;
+let _rbtActiveThumbTasks = 0;
+const _rbtThumbTaskQueue = [];
+
+function _rbtGetCachedVideoThumbUrl(filePath) {
+    if (!filePath) return '';
+    return _rbtVideoThumbCache.get(String(filePath)) || '';
+}
+
+function _rbtRunWithThumbConcurrency(fn) {
+    return new Promise((resolve, reject) => {
+        const run = () => {
+            _rbtActiveThumbTasks++;
+            Promise.resolve()
+                .then(fn)
+                .then(resolve, reject)
+                .finally(() => {
+                    _rbtActiveThumbTasks = Math.max(0, _rbtActiveThumbTasks - 1);
+                    if (_rbtThumbTaskQueue.length > 0) {
+                        const next = _rbtThumbTaskQueue.shift();
+                        next();
+                    }
+                });
+        };
+        if (_rbtActiveThumbTasks < _RBT_MAX_THUMB_CONCURRENCY) {
+            run();
+        } else {
+            _rbtThumbTaskQueue.push(run);
+        }
+    });
+}
+
+function _rbtCaptureVideoFrameFallback(videoSrc, seekTime = 0.5) {
+    return new Promise((resolve) => {
+        if (!videoSrc || typeof document === 'undefined') return resolve('');
+        const v = document.createElement('video');
+        let settled = false;
+        const cleanup = (result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            try {
+                v.pause();
+                v.removeAttribute('src');
+                v.load();
+            } catch (_) {}
+            resolve(result || '');
+        };
+        const timer = setTimeout(() => cleanup(''), 5000);
+        v.muted = true;
+        v.playsInline = true;
+        v.preload = 'metadata';
+        v.crossOrigin = 'anonymous';
+        v.addEventListener('loadedmetadata', () => {
+            const dur = Number.isFinite(v.duration) ? v.duration : 0;
+            const target = dur > 0 ? Math.min(Math.max(0.05, seekTime), Math.max(0, dur - 0.05)) : 0.1;
+            try { v.currentTime = target; } catch (_) { cleanup(''); }
+        }, { once: true });
+        v.addEventListener('seeked', () => {
+            try {
+                const vw = v.videoWidth || 160;
+                const vh = v.videoHeight || 160;
+                const scale = Math.min(1, 160 / Math.max(vw, vh, 1));
+                const cw = Math.max(1, Math.round(vw * scale));
+                const ch = Math.max(1, Math.round(vh * scale));
+                const c = document.createElement('canvas');
+                c.width = cw;
+                c.height = ch;
+                const ctx = c.getContext('2d');
+                ctx.drawImage(v, 0, 0, cw, ch);
+                cleanup(c.toDataURL('image/jpeg', 0.72));
+            } catch (_) {
+                cleanup('');
+            }
+        }, { once: true });
+        v.addEventListener('error', () => cleanup(''), { once: true });
+        v.src = String(videoSrc).split('#')[0];
+        try { v.load(); } catch (_) { cleanup(''); }
+    });
+}
+
+function _rbtResolveStaticVideoThumbnail(filePath, videoSrc, seekTime = 1) {
+    const cacheKey = String(filePath || videoSrc || '').trim();
+    if (!cacheKey) return Promise.resolve('');
+    if (_rbtVideoThumbCache.has(cacheKey)) {
+        return Promise.resolve(_rbtVideoThumbCache.get(cacheKey));
+    }
+    if (_rbtVideoThumbInflight.has(cacheKey)) {
+        return _rbtVideoThumbInflight.get(cacheKey);
+    }
+    const promise = _rbtRunWithThumbConcurrency(async () => {
+        if (_rbtVideoThumbCache.has(cacheKey)) return _rbtVideoThumbCache.get(cacheKey);
+        if (filePath && window.electronAPI?.localFiles?.getVideoThumbnail) {
+            try {
+                const thumbPath = await window.electronAPI.localFiles.getVideoThumbnail(filePath, 160);
+                if (thumbPath) {
+                    const thumbUrl = _rbtMediaUrl(thumbPath);
+                    if (thumbUrl) {
+                        _rbtVideoThumbCache.set(cacheKey, thumbUrl);
+                        return thumbUrl;
+                    }
+                }
+            } catch (_) {}
+        }
+        const fallbackUrl = await _rbtCaptureVideoFrameFallback(videoSrc || _rbtMediaUrl(filePath), seekTime);
+        if (fallbackUrl) {
+            _rbtVideoThumbCache.set(cacheKey, fallbackUrl);
+            return fallbackUrl;
+        }
+        return '';
+    }).finally(() => {
+        _rbtVideoThumbInflight.delete(cacheKey);
+    });
+    _rbtVideoThumbInflight.set(cacheKey, promise);
+    return promise;
+}
+window._rbtResolveStaticVideoThumbnail = _rbtResolveStaticVideoThumbnail;
+window._rbtVideoThumbCache = _rbtVideoThumbCache;
+
 function _hydrateBatchVideoThumbnails(container) {
     if (!container) return;
-    const videos = container.querySelectorAll('video.rbt-thumb-previewable');
-    if (!videos.length) return;
+    const thumbEls = container.querySelectorAll('img.rbt-video-thumb, video.rbt-thumb-previewable');
+    if (!thumbEls.length) return;
 
-    // 使用 IntersectionObserver 延迟加载/解码滚动可视区域内的视频缩略图
+    const hydrateElement = (el) => {
+        if (el.dataset.thumbHydrated === 'true') return;
+        el.dataset.thumbHydrated = 'true';
+
+        if (el.tagName === 'IMG') {
+            const filePath = el.dataset.filePath || '';
+            const videoSrc = el.dataset.videoSrc || '';
+            const seekTime = parseFloat(el.dataset.seekTime) || 1;
+            const cached = _rbtGetCachedVideoThumbUrl(filePath || videoSrc);
+            if (cached) {
+                el.src = cached;
+                return;
+            }
+            _rbtResolveStaticVideoThumbnail(filePath, videoSrc, seekTime).then((thumbUrl) => {
+                if (thumbUrl) {
+                    el.src = thumbUrl;
+                } else {
+                    el.style.background = '#111';
+                }
+            });
+            return;
+        }
+
+        // Legacy <video> fallback if any remain
+        const video = el;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+        const src = video.getAttribute('src') || '';
+        const match = src.match(/#t=([0-9.]+)/);
+        const requestedTime = match ? parseFloat(match[1]) : 0.1;
+        video.addEventListener('loadedmetadata', () => {
+            const duration = Number.isFinite(video.duration) ? video.duration : 0;
+            const maxTime = duration > 0 ? Math.max(0, duration - 0.05) : requestedTime;
+            const targetTime = Math.min(Math.max(0.1, requestedTime), maxTime);
+            try { if (Number.isFinite(targetTime)) video.currentTime = targetTime; } catch (_) {}
+        }, { once: true });
+        video.addEventListener('loadeddata', () => {
+            try { video.pause(); } catch (_) {}
+        }, { once: true });
+        try { video.load(); } catch (_) {}
+    };
+
+    if (typeof IntersectionObserver !== 'function') {
+        thumbEls.forEach(hydrateElement);
+        return;
+    }
+
     const observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
             if (entry.isIntersecting) {
-                const video = entry.target;
-                observer.unobserve(video); // 开始加载后停止观察
-
-                if (video.dataset.thumbHydrated === 'true') return;
-                video.dataset.thumbHydrated = 'true';
-                video.muted = true;
-                video.playsInline = true;
-                video.preload = 'metadata'; // 仅加载元数据，避免下载完整视频
-
-                const src = video.getAttribute('src') || '';
-                const match = src.match(/#t=([0-9.]+)/);
-                const requestedTime = match ? parseFloat(match[1]) : 0.1;
-                const seekToFrame = () => {
-                    const duration = Number.isFinite(video.duration) ? video.duration : 0;
-                    const maxTime = duration > 0 ? Math.max(0, duration - 0.05) : requestedTime;
-                    const targetTime = Math.min(Math.max(0.1, requestedTime), maxTime);
-                    try {
-                        if (Number.isFinite(targetTime)) video.currentTime = targetTime;
-                    } catch (_) {}
-                };
-
-                video.addEventListener('loadedmetadata', seekToFrame, { once: true });
-                video.addEventListener('loadeddata', () => {
-                    try { video.pause(); } catch (_) {}
-                }, { once: true });
-                video.addEventListener('error', () => {
-                    video.style.background = '#111';
-                    video.title = `${video.title || ''} 缩略图加载失败`.trim();
-                }, { once: true });
-
-                try { video.load(); } catch (_) {}
+                const el = entry.target;
+                observer.unobserve(el);
+                hydrateElement(el);
             }
         });
     }, {
         root: container.querySelector('.rbt-table-wrap'),
-        rootMargin: '100px', // 提前 100px 缓冲加载
+        rootMargin: '120px',
         threshold: 0.01
     });
 
-    videos.forEach((video) => {
-        if (video.dataset.thumbHydrated !== 'true') {
-            observer.observe(video);
+    thumbEls.forEach((el) => {
+        const filePath = el.dataset?.filePath || el.dataset?.videoSrc || '';
+        const cached = filePath ? _rbtGetCachedVideoThumbUrl(filePath) : '';
+        if (cached && el.tagName === 'IMG') {
+            el.src = cached;
+            el.dataset.thumbHydrated = 'true';
+            return;
+        }
+        if (el.dataset.thumbHydrated !== 'true') {
+            observer.observe(el);
         }
     });
 }
@@ -2193,9 +2413,10 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
             }
             const url = _rbtMediaUrl(p);
             const isImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(p);
+            const cachedThumb = !isImg ? (_rbtGetCachedVideoThumbUrl(p) || _RBT_THUMB_PLACEHOLDER) : '';
             return isImg
                 ? `<img class="rbt-thumb-previewable" src="${_escHtml(url)}" style="width:24px;height:24px;object-fit:cover;border-radius:3px;border:1px solid #333;cursor:zoom-in;">`
-                : `<video class="rbt-thumb-previewable" src="${_escHtml(url)}#t=1" preload="metadata" style="width:24px;height:24px;object-fit:cover;border-radius:3px;border:1px solid #333;background:#000;cursor:zoom-in;"></video>`;
+                : `<img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(p)}" data-video-src="${_escHtml(url)}" data-seek-time="1" src="${_escHtml(cachedThumb)}" style="width:24px;height:24px;object-fit:cover;border-radius:3px;border:1px solid #333;background:#000;cursor:zoom-in;">`;
         }).join('');
         bgContent = `<div style="display:flex;flex-direction:column;gap:3px;">
             <div style="display:flex;align-items:center;gap:4px;">
@@ -2224,8 +2445,9 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
                             <span class="rbt-file-name" style="flex:1;font-size:10px;word-break:break-all;" title="${_escHtml(bgPath)}">${_escHtml(_shortName(bgPath))}</span>
                          </div>`;
             } else {
+                const cachedThumb = _rbtGetCachedVideoThumbUrl(bgPath) || _RBT_THUMB_PLACEHOLDER;
                 bgContent = `<div style="display:flex;align-items:center;gap:6px;">
-                            <video class="rbt-thumb-previewable" src="${_escHtml(urlObj)}#t=1" preload="metadata" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;"></video>
+                            <img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(bgPath)}" data-video-src="${_escHtml(urlObj)}" data-seek-time="1" src="${_escHtml(cachedThumb)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;">
                             <span class="rbt-file-name" style="flex:1;font-size:10px;word-break:break-all;" title="${_escHtml(bgPath)}">${_escHtml(_shortName(bgPath))}</span>
                          </div>`;
             }
@@ -2240,10 +2462,11 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
     if (task.hookFile) {
         const hIsImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(task.hookFile);
         const hUrlObj = _rbtMediaUrl(task.hookFile);
+        const hCachedThumb = !hIsImg ? (_rbtGetCachedVideoThumbUrl(task.hookFile) || _RBT_THUMB_PLACEHOLDER) : '';
         hookContent = `<div class="rbt-hook-set" style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="双击重新配置\n${_escHtml(task.hookFile)}">
                             ${hIsImg ?
                 `<img class="rbt-thumb-previewable" src="${_escHtml(hUrlObj)}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;cursor:zoom-in;">` :
-                `<video class="rbt-thumb-previewable" src="${_escHtml(hUrlObj)}#t=0.5" preload="metadata" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;background:#111;cursor:zoom-in;"></video>`
+                `<img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(task.hookFile)}" data-video-src="${_escHtml(hUrlObj)}" data-seek-time="0.5" src="${_escHtml(hCachedThumb)}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;background:#111;cursor:zoom-in;">`
             }
                             <div style="flex:1;display:flex;flex-direction:column;min-width:0;line-height:1.2;">
                               <span class="rbt-file-name" style="font-size:10px;word-break:break-all;">${_escHtml(hookName)}</span>
@@ -2267,8 +2490,9 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
                             <span class="rbt-file-name" style="flex:1;font-size:10px;word-break:break-all;" title="${_escHtml(pipPath)}">${_escHtml(pipName)}</span>
                          </div>`;
         } else {
+            const pipCachedThumb = _rbtGetCachedVideoThumbUrl(pipPath) || _RBT_THUMB_PLACEHOLDER;
             pipContent = `<div style="display:flex;align-items:center;gap:6px;">
-                            <video class="rbt-thumb-previewable" src="${_escHtml(pipUrlObj)}#t=1" preload="metadata" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;"></video>
+                            <img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(pipPath)}" data-video-src="${_escHtml(pipUrlObj)}" data-seek-time="1" src="${_escHtml(pipCachedThumb)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;">
                             <span class="rbt-file-name" style="flex:1;font-size:10px;word-break:break-all;" title="${_escHtml(pipPath)}">${_escHtml(pipName)}</span>
                          </div>`;
         }
@@ -2287,10 +2511,11 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
         if (coverBgPath) {
             const cIsImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(coverBgPath);
             const cUrlObj = _rbtMediaUrl(coverBgPath);
+            const cCachedThumb = !cIsImg ? (_rbtGetCachedVideoThumbUrl(coverBgPath) || _RBT_THUMB_PLACEHOLDER) : '';
             coverContent = `<div class="rbt-cover-set" style="display:flex;align-items:center;gap:4px;cursor:pointer;" title="双击配置封面">
                                  ${cIsImg ?
                     `<img class="rbt-thumb-previewable" src="${_escHtml(cUrlObj)}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;">` :
-                    `<video class="rbt-thumb-previewable" src="${_escHtml(cUrlObj)}#t=0.5" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;background:#111;"></video>`
+                    `<img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(coverBgPath)}" data-video-src="${_escHtml(cUrlObj)}" data-seek-time="0.5" src="${_escHtml(cCachedThumb)}" style="width:28px;height:28px;object-fit:cover;border-radius:3px;flex-shrink:0;background:#111;">`
                 }
                                  <div style="flex:1;min-width:0;font-size:9px;color:#ffd700;line-height:1.1;">✨封面开启<br>已设底图</div>
                             </div>`;
@@ -2463,10 +2688,11 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
             if (cvPath) {
                 const isImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(cvPath);
                 const cvUrl = _rbtMediaUrl(cvPath);
+                const cvCachedThumb = !isImg ? (_rbtGetCachedVideoThumbUrl(cvPath) || _RBT_THUMB_PLACEHOLDER) : '';
                 cvContent = `<div style="display:flex;align-items:center;gap:6px;">
                             ${isImg
                         ? `<img class="rbt-thumb-previewable" src="${_escHtml(cvUrl)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;cursor:zoom-in;">`
-                        : `<video class="rbt-thumb-previewable" src="${_escHtml(cvUrl)}#t=1" preload="metadata" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;"></video>`}
+                        : `<img class="rbt-thumb-previewable rbt-video-thumb" data-file-path="${_escHtml(cvPath)}" data-video-src="${_escHtml(cvUrl)}" data-seek-time="1" src="${_escHtml(cvCachedThumb)}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;flex-shrink:0;background:#000;cursor:zoom-in;">`}
                             <span class="rbt-file-name" style="flex:1;font-size:10px;word-break:break-all;" title="${_escHtml(cvPath)}">${_escHtml(cvName)}</span>
                         </div>`;
             }
@@ -2557,6 +2783,7 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
                 </div>
             </td>
             <td class="rbt-col-tts_text rbt-grp-audio">
+                <button type="button" class="btn btn-secondary" onclick="event.stopPropagation();reelsEditWritingTask(${idx})" style="font-size:11px;padding:3px 6px;margin-bottom:4px;">✎ 打字机标题 / 正文（SRT匹配）</button>
                 <div style="position:relative;">
                     <textarea class="rbt-textarea rbt-tts-text-input" data-idx="${idx}" rows="2" placeholder="粘贴配音文案..." 
                               style="${task.aiTtsDiffWarning ? 'border:1px solid #ef4444; background:rgba(239, 68, 68, 0.1);' : ''}"
@@ -2746,6 +2973,7 @@ function _bindBatchTableEvents() {
 
     // Close
     container.querySelector('#rbt-close-btn')?.addEventListener('click', () => reelsToggleBatchTable({ saveOnClose: false }));
+    container.querySelector('#rbt-discard-btn')?.addEventListener('click', () => reelsToggleBatchTable({ saveOnClose: false }));
     container.querySelector('#reels-naming-mode')?.addEventListener('change', async (e) => {
         const val = e.target.value || 'text';
         localStorage.setItem('reels_naming_mode', val);
@@ -2841,21 +3069,36 @@ function _bindBatchTableEvents() {
     }
 
     let previewTimeout;
+    const stopHoverPreviewVideo = () => {
+        if (!hoverTooltip) return;
+        const oldVideo = hoverTooltip.querySelector('video');
+        if (oldVideo) {
+            try {
+                oldVideo.pause();
+                oldVideo.removeAttribute('src');
+                oldVideo.load();
+            } catch (_) {}
+        }
+        hoverTooltip.style.display = 'none';
+        hoverTooltip.innerHTML = '';
+    };
     container.addEventListener('mouseover', (e) => {
         const target = e.target;
         if (target.classList.contains('rbt-thumb-previewable')) {
             clearTimeout(previewTimeout);
             previewTimeout = setTimeout(() => {
-                const src = target.getAttribute('src');
+                stopHoverPreviewVideo();
+                const videoSrcAttr = target.dataset?.videoSrc || (target.tagName === 'VIDEO' ? target.getAttribute('src') : '');
+                const src = videoSrcAttr || target.getAttribute('src');
                 if (!src) return;
 
-                const isVideo = target.tagName === 'VIDEO';
+                const isVideo = Boolean(videoSrcAttr) || target.tagName === 'VIDEO' || target.classList.contains('rbt-video-thumb');
                 const pureSrc = src.split('#')[0]; // strip hash
 
                 const rect = target.getBoundingClientRect();
 
                 if (isVideo) {
-                    hoverTooltip.innerHTML = `<video src="${_escHtml(pureSrc)}" autoplay loop muted style="max-width:360px; max-height:360px; display:block; object-fit:contain; background:#000;"></video>`;
+                    hoverTooltip.innerHTML = `<video src="${_escHtml(pureSrc)}" autoplay loop muted playsinline style="max-width:360px; max-height:360px; display:block; object-fit:contain; background:#000;"></video>`;
                 } else {
                     hoverTooltip.innerHTML = `<img src="${_escHtml(pureSrc)}" style="max-width:360px; max-height:360px; display:block; object-fit:contain; background:#111;">`;
                 }
@@ -2891,8 +3134,7 @@ function _bindBatchTableEvents() {
         const target = e.target;
         if (target.classList.contains('rbt-thumb-previewable')) {
             clearTimeout(previewTimeout);
-            hoverTooltip.style.display = 'none';
-            hoverTooltip.innerHTML = '';
+            stopHoverPreviewVideo();
         }
     });
 
@@ -3107,7 +3349,7 @@ function _bindBatchTableEvents() {
                 const selOvlTpl = container.querySelector('#rbt-cover-overlay-sel')?.value || '';
                 if (selOvlTpl && window.ReelsOverlay) {
                     let presets = {};
-                    try { presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (e) { }
+                    try { presets = JSON.parse(_rbtReadOverlayGroupPresetsRaw() || '{}'); } catch (e) { }
                     if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
                         presets = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presets };
                     }
@@ -3292,11 +3534,18 @@ function _bindBatchTableEvents() {
         }
         if (!confirm(`确定删除当前标签页中选中的 ${indices.length} 条任务吗？\n\n此操作不会影响其他标签页。`)) return;
         const tasks = window._reelsState?.tasks || [];
+        const removedTasks = [];
         [...indices].sort((a, b) => b - a).forEach(idx => {
-            if (idx >= 0 && idx < tasks.length) tasks.splice(idx, 1);
+            if (idx >= 0 && idx < tasks.length) {
+                removedTasks.push(...tasks.splice(idx, 1));
+            }
         });
         _batchTableState.selectedRows = new Set();
-        if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+        if (typeof window.reelsSyncTaskRemovalToBatchTabs === 'function') {
+            window.reelsSyncTaskRemovalToBatchTabs(removedTasks);
+        } else if (typeof _syncTasksToActiveTab === 'function') {
+            _syncTasksToActiveTab();
+        }
         _skipNextApply = true;
         _renderBatchTable();
         if (typeof _renderTaskList === 'function') _renderTaskList();
@@ -3902,14 +4151,14 @@ function _bindBatchTableEvents() {
                     // data 应该是 { presetName: { overlays: [...] }, ... } 格式
                     const key = 'reels_overlay_group_presets';
                     let existing = {};
-                    try { existing = JSON.parse(localStorage.getItem(key) || '{}'); } catch (ex) { }
+                    try { existing = JSON.parse(_rbtReadOverlayGroupPresetsRaw() || '{}'); } catch (ex) { }
                     let added = 0, skipped = 0;
                     for (const [name, val] of Object.entries(data)) {
                         if (existing[name]) { skipped++; continue; }
                         existing[name] = val;
                         added++;
                     }
-                    localStorage.setItem(key, JSON.stringify(existing));
+                    _rbtSaveOverlayGroupPresets(existing);
                     _renderBatchTable();
                     if (typeof showToast === 'function') showToast(`覆层预设导入完成：新增 ${added} 个，跳过 ${skipped} 个`, 'success');
                     else alert(`覆层预设导入完成：新增 ${added} 个，跳过 ${skipped} 个`);
@@ -4085,7 +4334,10 @@ function _bindBatchTableEvents() {
 
     // Save config (Legacy manual export)
     container.querySelector('#rbt-save-config-btn')?.addEventListener('click', () => {
-        _batchExportConfig();
+        _batchExportConfig('current');
+    });
+    container.querySelector('#rbt-save-all-config-btn')?.addEventListener('click', () => {
+        _batchExportConfig('all');
     });
 
     // Project Manager
@@ -4555,7 +4807,10 @@ function _bindBatchTableEvents() {
         if (_dragCounter <= 0) {
             _dragCounter = 0;
             _hideDropOverlay();
-            panel.querySelectorAll('.rbt-droppable.rbt-drag-over').forEach(c => c.classList.remove('rbt-drag-over'));
+            panel.querySelectorAll('.rbt-droppable.rbt-drag-over, .rbt-row.rbt-row-drag-over').forEach(c => {
+                c.classList.remove('rbt-drag-over');
+                c.classList.remove('rbt-row-drag-over');
+            });
         }
     });
     panel.addEventListener('dragover', (e) => {
@@ -4565,17 +4820,25 @@ function _bindBatchTableEvents() {
         // 内部行拖拽时不覆盖 dropEffect
         if (_dragSrcIdx == null) e.dataTransfer.dropEffect = 'copy';
 
-        // Highlight logic for specific droppable columns
+        // Highlight logic for specific droppable columns and target rows
         const cell = e.target.closest('.rbt-droppable');
+        const row = e.target.closest('.rbt-row');
         panel.querySelectorAll('.rbt-droppable.rbt-drag-over').forEach(c => {
             if (c !== cell) c.classList.remove('rbt-drag-over');
         });
+        panel.querySelectorAll('.rbt-row.rbt-row-drag-over').forEach(r => {
+            if (r !== row) r.classList.remove('rbt-row-drag-over');
+        });
         if (cell) cell.classList.add('rbt-drag-over');
+        if (row && _dragSrcIdx == null) row.classList.add('rbt-row-drag-over');
     });
     panel.addEventListener('drop', async (e) => {
         _dragCounter = 0;
         _hideDropOverlay();
-        panel.querySelectorAll('.rbt-droppable.rbt-drag-over').forEach(c => c.classList.remove('rbt-drag-over'));
+        panel.querySelectorAll('.rbt-droppable.rbt-drag-over, .rbt-row.rbt-row-drag-over').forEach(c => {
+            c.classList.remove('rbt-drag-over');
+            c.classList.remove('rbt-row-drag-over');
+        });
         // If drop lands inside media sidebar, let the sidebar's own handler deal with it
         if (e.target.closest && e.target.closest('#rbt-media-sidebar')) return;
 
@@ -4630,7 +4893,7 @@ function _bindBatchTableEvents() {
         // 如果是内部行拖拽排序（无文件），不拦截，让 tbody 的 drop 处理
         if (_dragSrcIdx != null) return;
 
-        const files = Array.from(e.dataTransfer.files || []);
+        const files = Array.from(e.dataTransfer.files || []).sort(_naturalSortByName);
         if (!files.length) return;
         e.preventDefault();
 
@@ -4640,7 +4903,7 @@ function _bindBatchTableEvents() {
         // them to these renderer-side File objects before any routing occurs.
         const droppedPaths = window.electronAPI?.consumeDroppedFilePaths?.() || [];
         files.forEach((file, index) => {
-            if (droppedPaths[index]) file._nativePath = droppedPaths[index];
+            if (!file._nativePath && droppedPaths[index]) file._nativePath = droppedPaths[index];
         });
 
         // ── Check if any directory was dropped ──
@@ -4653,6 +4916,7 @@ function _bindBatchTableEvents() {
 
         // ── 精确落到 bgm 单元格时，设为配乐或追加到配乐池 ──
         const dropCell = e.target.closest('.rbt-droppable');
+        const targetRow = e.target.closest('.rbt-row');
         if (dropCell && dropCell.dataset.field === 'bgm') {
             const row = dropCell.closest('.rbt-row');
             if (row) {
@@ -4666,11 +4930,7 @@ function _bindBatchTableEvents() {
                     if (audioFiles.length > 0) {
                         const paths = [];
                         for (const af of audioFiles) {
-                            let fpath = af.path;
-                            if (!fpath && window.electronAPI && window.electronAPI.getFilePath) {
-                                try { fpath = window.electronAPI.getFilePath(af); } catch (_) {}
-                            }
-                            fpath = fpath || af.name;
+                            let fpath = _rbtGetNativeFilePath(af) || af.path || af.name;
                             if (fpath) paths.push(fpath);
                         }
                         if (paths.length > 0) {
@@ -4693,6 +4953,25 @@ function _bindBatchTableEvents() {
             return;
         }
 
+        // ── 精确落到 hook 单元格时，直接设为前置 Hook ──
+        if (dropCell && dropCell.dataset.field === 'hook') {
+            const row = dropCell.closest('.rbt-row');
+            if (row && files[0]) {
+                const idx = parseInt(row.dataset.idx);
+                const task = window._reelsState.tasks[idx];
+                if (task) {
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
+                    if (!task.hook) task.hook = {};
+                    task.hook.enabled = true;
+                    task.hook.path = filePath;
+                    task.hookFile = filePath;
+                    _renderBatchTable();
+                    if (typeof showToast === 'function') showToast(`✅ 已设置第 ${idx + 1} 行前置 Hook`, 'success');
+                }
+            }
+            return;
+        }
+
         // ── 精确落到 audio 单元格时，直接设为人声 ──
         if (dropCell && dropCell.dataset.field === 'audio') {
             const row = dropCell.closest('.rbt-row');
@@ -4700,11 +4979,7 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(row.dataset.idx);
                 const task = window._reelsState.tasks[idx];
                 if (task) {
-                    let filePath = files[0].path;
-                    if (!filePath && window.electronAPI && window.electronAPI.getFilePath) {
-                        try { filePath = window.electronAPI.getFilePath(files[0]); } catch (_) { }
-                    }
-                    filePath = filePath || files[0].name;
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
                     task.audioPath = filePath;
                     _renderBatchTable();
                     if (typeof showToast === 'function') showToast(`✅ 已设置第 ${idx + 1} 行人声音频`, 'success');
@@ -4720,11 +4995,7 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(row.dataset.idx);
                 const task = window._reelsState.tasks[idx];
                 if (task) {
-                    let filePath = files[0].path;
-                    if (!filePath && window.electronAPI && window.electronAPI.getFilePath) {
-                        try { filePath = window.electronAPI.getFilePath(files[0]); } catch (_) { }
-                    }
-                    filePath = filePath || files[0].name;
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
                     task.srtPath = filePath;
                     _readSrtFileToTask(task, files[0]);
                     _renderBatchTable();
@@ -4741,11 +5012,7 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(row.dataset.idx);
                 const task = window._reelsState.tasks[idx];
                 if (task) {
-                    let filePath = files[0].path;
-                    if (!filePath && window.electronAPI && window.electronAPI.getFilePath) {
-                        try { filePath = window.electronAPI.getFilePath(files[0]); } catch (_) { }
-                    }
-                    filePath = filePath || files[0].name;
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
                     task.contentVideoPath = filePath;
                     if (task.contentVideoScale == null) task.contentVideoScale = 100;
                     if (task.contentVideoX == null) task.contentVideoX = 'center';
@@ -4764,11 +5031,7 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(row.dataset.idx);
                 const task = window._reelsState.tasks[idx];
                 if (task) {
-                    let filePath = files[0].path;
-                    if (!filePath && window.electronAPI && window.electronAPI.getFilePath) {
-                        try { filePath = window.electronAPI.getFilePath(files[0]); } catch (_) { }
-                    }
-                    filePath = filePath || files[0].name;
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
                     task.pipPath = filePath;
                     _renderBatchTable();
                     if (typeof showToast === 'function') showToast(`✅ 已设置第 ${idx + 1} 行图像覆层`, 'success');
@@ -4784,11 +5047,7 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(row.dataset.idx);
                 const task = window._reelsState.tasks[idx];
                 if (task) {
-                    let filePath = files[0].path;
-                    if (!filePath && window.electronAPI && window.electronAPI.getFilePath) {
-                        try { filePath = window.electronAPI.getFilePath(files[0]); } catch (_) { }
-                    }
-                    filePath = filePath || files[0].name;
+                    const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
                     if (!task.cover) task.cover = {};
                     task.cover.enabled = true;
                     task.cover.bgPath = filePath;
@@ -4808,6 +5067,59 @@ function _bindBatchTableEvents() {
         const forcedVideoRoute = _batchTableState.videoDropRouteEnabled
             ? _batchTableState.videoDropRouteMode
             : null;
+
+        // ── 单个或多个视频/图片直接拖入指定任务行（或该行的 bg 单元格）时，直接绑定到该任务行 ──
+        const isRowDirectBgDrop = targetRow && (!dropCell || dropCell.dataset.field === 'bg') && forcedVideoRoute !== 'audio' && forcedVideoRoute !== 'hook';
+        if (isRowDirectBgDrop) {
+            const allBgMedia = files.every(f => {
+                const ext = (f.name || '').split('.').pop().toLowerCase();
+                return bgExts.has(ext) && !(_VOICE_VIDEO_EXTS.has(ext) && _looksLikeVoiceTrack(f.name || '') && !dropCell);
+            });
+            if (allBgMedia) {
+                const idx = parseInt(targetRow.dataset.idx, 10);
+                const task = window._reelsState?.tasks?.[idx];
+                if (task) {
+                    const bgPaths = files
+                        .slice()
+                        .sort(_naturalSortByName)
+                        .map(f => _rbtGetNativeFilePath(f) || f.path || f.name)
+                        .filter(Boolean);
+                    if (bgPaths.length === 1) {
+                        if (task.bgSrcUrl && task.bgSrcUrl.startsWith('blob:')) {
+                            try { URL.revokeObjectURL(task.bgSrcUrl); } catch (_) { }
+                        }
+                        _setTaskSingleBackground(task, bgPaths[0], { bgSrcUrl: null });
+                        task.srcUrl = null;
+                    } else if (bgPaths.length > 1) {
+                        task.bgMode = 'multi';
+                        task.bgClipPool = bgPaths;
+                        task.bgClipActivePool = [];
+                        task.bgClipOrder = task.bgClipOrder || 'sequence';
+                        task.bgTransition = task.bgTransition || 'crossfade';
+                        task.bgTransDur = task.bgTransDur ?? 0.5;
+                        task.bgPath = bgPaths[0];
+                        task.videoPath = bgPaths[0];
+                        task.bgSrcUrl = null;
+                        task.srcUrl = null;
+                    }
+                    _skipNextApply = true;
+                    _renderBatchTable();
+                    if (typeof _renderTaskList === 'function') _renderTaskList();
+                    if (typeof reelsSelectTask === 'function') reelsSelectTask(idx);
+                    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+                    if (typeof _batchAutoSave === 'function') _batchAutoSave();
+                    if (typeof showToast === 'function') {
+                        showToast(
+                            bgPaths.length > 1
+                                ? `🎬 已将 ${bgPaths.length} 个素材设为第 ${idx + 1} 行的多素材背景`
+                                : `✅ 已设置第 ${idx + 1} 行背景素材`,
+                            'success'
+                        );
+                    }
+                    return;
+                }
+            }
+        }
 
         for (const f of files) {
             const ext = (f.name || '').split('.').pop().toLowerCase();
@@ -5901,9 +6213,17 @@ function _bindBatchTableEvents() {
             const delBtn = e.target.closest('.rbt-delete-btn');
             if (delBtn) {
                 const idx = parseInt(delBtn.dataset.idx);
-                window._reelsState.tasks.splice(idx, 1);
+                const removed = window._reelsState.tasks.splice(idx, 1);
+                if (typeof window.reelsSyncTaskRemovalToBatchTabs === 'function') {
+                    window.reelsSyncTaskRemovalToBatchTabs(removed);
+                } else if (typeof _syncTasksToActiveTab === 'function') {
+                    _syncTasksToActiveTab();
+                }
+                _skipNextApply = true;
                 _renderBatchTable();
+                if (typeof _renderTaskList === 'function') _renderTaskList();
                 if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+                if (typeof _batchAutoSave === 'function') _batchAutoSave();
                 return;
             }
             // 模板选择器触发
@@ -7610,7 +7930,7 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
 
         const fw = m.bold || m.font_weight >= 700 ? 'bold' : 'normal';
         const fsStyle = m.italic ? 'font-style:italic;' : '';
-        const ffStyle = m.font_family ? `font-family:"${m.font_family}",sans-serif;` : '';
+        const ffStyle = m.font_family ? `font-family:"${_escHtml(m.font_family)}",sans-serif;` : '';
         const ttStyle = m.text_transform ? `text-transform:${m.text_transform};` : '';
         const lsStyle = m.letter_spacing ? `letter-spacing:${m.letter_spacing}px;` : '';
 
@@ -8422,7 +8742,7 @@ function _showBgPoolDialog(taskIdx) {
             const url = _rbtMediaUrl(p);
             const isImg = /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(p);
             const checked = activeAll || activeSet.has(p);
-            return `<div class="bgpool-item" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#12122e;border:1px solid #2a2a4a;border-radius:6px;">
+            return `<div class="bgpool-item" data-file-path="${_escHtml(p)}" title="右键打开文件所在位置: ${_escHtml(p)}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#12122e;border:1px solid #2a2a4a;border-radius:6px;cursor:context-menu;">
                 <input type="checkbox" class="bgpool-use-check" data-pool-idx="${i}" ${checked ? 'checked' : ''}
                     title="勾选后参与随机/顺序组合" style="accent-color:#7c5cff;flex-shrink:0;">
                 ${isImg
@@ -8430,6 +8750,7 @@ function _showBgPoolDialog(taskIdx) {
                     : `<video class="rbt-thumb-previewable" src="${_escHtml(url)}#t=1" preload="metadata" style="width:40px;height:40px;object-fit:cover;border-radius:4px;background:#000;cursor:zoom-in;"></video>`
                 }
                 <span style="flex:1;font-size:11px;color:#ccc;word-break:break-all;" title="${_escHtml(p)}">${_escHtml(name)}</span>
+                <button class="bgpool-reveal" data-file-path="${_escHtml(p)}" title="打开文件所在位置" style="width:22px;height:20px;border:1px solid #444;border-radius:4px;background:transparent;color:#8af;font-size:11px;cursor:pointer;padding:0;line-height:18px;" onclick="event.stopPropagation();window.electronAPI?.showItemInFolder?.(this.dataset.filePath)">📂</button>
                 <button class="bgpool-remove" data-pool-idx="${i}" style="width:20px;height:20px;border:1px solid #444;border-radius:4px;background:transparent;color:#f87171;font-size:12px;cursor:pointer;padding:0;line-height:18px;">✕</button>
             </div>`;
         }).join('');
@@ -8811,11 +9132,12 @@ function _showBgmPoolDialog(taskIdx) {
             const name = p.replace(/\\/g, '/').split('/').pop();
             const checked = activeAll || activeSet.has(p);
             const isPlaying = window._activePreviewBgmAudio && window._activePreviewBgmAudio._path === p && !window._activePreviewBgmAudio.paused;
-            return `<div class="bgmpool-item" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#120e24;border:1px solid #3c2356;border-radius:6px;">
+            return `<div class="bgmpool-item" data-file-path="${_escHtml(p)}" title="右键打开文件所在位置: ${_escHtml(p)}" style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:#120e24;border:1px solid #3c2356;border-radius:6px;cursor:context-menu;">
                 <input type="checkbox" class="bgmpool-use-check" data-pool-idx="${i}" ${checked ? 'checked' : ''}
                     title="勾选后参与随机/顺序挑选" style="accent-color:#9b59b6;flex-shrink:0;">
                 <button class="bgmpool-play-btn" data-path="${_escHtml(p)}" style="width:24px;height:24px;border:1px solid #5a3a7f;border-radius:50%;background:#1e1438;color:${isPlaying ? '#e0b3ff' : '#ccc'};font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:22px;">${isPlaying ? '⏸' : '▶'}</button>
                 <span style="flex:1;font-size:11px;color:#ccc;word-break:break-all;" title="${_escHtml(p)}">${_escHtml(name)}</span>
+                <button class="bgmpool-reveal" data-file-path="${_escHtml(p)}" title="打开文件所在位置" style="width:22px;height:20px;border:1px solid #555;border-radius:4px;background:transparent;color:#e0b3ff;font-size:11px;cursor:pointer;padding:0;line-height:18px;" onclick="event.stopPropagation();window.electronAPI?.showItemInFolder?.(this.dataset.filePath)">📂</button>
                 <button class="bgmpool-remove" data-pool-idx="${i}" style="width:20px;height:20px;border:1px solid #555;border-radius:4px;background:transparent;color:#f87171;font-size:12px;cursor:pointer;padding:0;line-height:18px;">✕</button>
             </div>`;
         }).join('');
@@ -10456,7 +10778,7 @@ function _getOverlayGroupPresetList() {
 
     // 1. 获取覆层组预设
     try {
-        const stored = localStorage.getItem('reels_overlay_group_presets');
+        const stored = _rbtReadOverlayGroupPresetsRaw();
         let obj = stored ? JSON.parse(stored) : {};
         // 确保内置预设始终存在
         if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
@@ -10489,7 +10811,7 @@ function _getOverlayGroupPresetList() {
 
 function _getOverlayPresetDefinition(presetName) {
     try {
-        const groupStored = localStorage.getItem('reels_overlay_group_presets');
+        const groupStored = _rbtReadOverlayGroupPresetsRaw();
         let presets = groupStored ? JSON.parse(groupStored) : {};
         if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
             presets = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presets };
@@ -10524,6 +10846,7 @@ const RBT_OVERLAY_PRESET_RUNTIME_KEYS = new Set([
     'id', '_img', '_imgLoaded', '_templateName', '_selected', '_exporting',
     '_exportDuration', '_renderedW', '_renderedH', '_renderedY',
     '_blobUrl', '_cachedUrl', '_imageEl', '_videoEl', '_dirty',
+    'bind_scroll_overlay_id',
     'image_src_blob', 'image_src_original',
 ]);
 
@@ -10583,6 +10906,10 @@ function _verifyOverlayGroupPresetApplied(task, presetName) {
             if (!_overlayMatchesPresetLayer(overlays[i], def.layers[i])) {
                 return { ok: false, reason: `第 ${i + 1} 层与预设不一致` };
             }
+            const linkedIndex = def.layers.findIndex(layer => layer.id && layer.id === def.layers[i].bind_scroll_overlay_id);
+            if (linkedIndex >= 0 && overlays[i].bind_scroll_overlay_id !== overlays[linkedIndex].id) {
+                return { ok: false, reason: `第 ${i + 1} 层滚动绑定未正确应用` };
+            }
         }
         return { ok: true };
     }
@@ -10603,7 +10930,7 @@ function _promptOverlayPresetOptions(presetName, tasks, callback) {
     let presetHasScroll = false;
     try {
         let presets = {};
-        const groupStored = localStorage.getItem('reels_overlay_group_presets');
+        const groupStored = _rbtReadOverlayGroupPresetsRaw();
         if (groupStored) presets = JSON.parse(groupStored);
         if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
             presets = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presets };
@@ -10638,10 +10965,11 @@ function _promptOverlayPresetOptions(presetName, tasks, callback) {
 
     const title = '文案冲突确认';
     let msg = '';
+    const safePresetName = _escHtml(presetName);
     if (!presetHasScroll) {
-        msg = `当前预设【<span style="color:#4fc1ff;">${presetName}</span>】不包含滚动字幕，但您已经填写了滚动文案。<br><br>请选择如何处理您现有的表格文案：`;
+        msg = `当前预设【<span style="color:#4fc1ff;">${safePresetName}</span>】不包含滚动字幕，但您已经填写了滚动文案。<br><br>请选择如何处理您现有的表格文案：`;
     } else {
-        msg = `当前预设【<span style="color:#4fc1ff;">${presetName}</span>】自带了滚动字幕样式和默认文案。<br><br>请选择如何处理您现有的表格文案：`;
+        msg = `当前预设【<span style="color:#4fc1ff;">${safePresetName}</span>】自带了滚动字幕样式和默认文案。<br><br>请选择如何处理您现有的表格文案：`;
     }
 
     const overlay = document.createElement('div');
@@ -10723,7 +11051,7 @@ function _applyOverlayGroupPresetToTask(task, presetName, opts = { addScroll: fa
     try {
         // Try group presets first
         let presets = {};
-        const groupStored = localStorage.getItem('reels_overlay_group_presets');
+        const groupStored = _rbtReadOverlayGroupPresetsRaw();
         if (groupStored) presets = JSON.parse(groupStored);
         if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
             presets = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presets };
@@ -11883,13 +12211,13 @@ function _batchImportFolder(files) {
         }
     }
 
-    bgFiles.forEach(f => addToGroup(f, 'bg'));
-    audioFiles.forEach(f => addToGroup(f, 'audio'));
-    srtFiles.forEach(f => addToGroup(f, 'srt'));
-    txtFiles.forEach(f => addToGroup(f, 'txt'));
+    bgFiles.sort(_naturalSortByName).forEach(f => addToGroup(f, 'bg'));
+    audioFiles.sort(_naturalSortByName).forEach(f => addToGroup(f, 'audio'));
+    srtFiles.sort(_naturalSortByName).forEach(f => addToGroup(f, 'srt'));
+    txtFiles.sort(_naturalSortByName).forEach(f => addToGroup(f, 'txt'));
 
-    // 按名称排序
-    const sortedKeys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+    // 按名称自然数字排序
+    const sortedKeys = [...groups.keys()].sort(_naturalSortByName);
 
     let created = 0;
     for (const bn of sortedKeys) {
@@ -12048,10 +12376,10 @@ function _scanMaterialGroupFolders(rootDir) {
             else if (ext === 'srt') srtFiles.push(fp);
             else if (ext === 'txt') txtFiles.push(fp);
         }
-        audioFiles.sort((a, b) => _getPathBaseName(a).localeCompare(_getPathBaseName(b)));
-        videoFiles.sort((a, b) => _getPathBaseName(a).localeCompare(_getPathBaseName(b)));
-        srtFiles.sort((a, b) => _getPathBaseName(a).localeCompare(_getPathBaseName(b)));
-        txtFiles.sort((a, b) => _getPathBaseName(a).localeCompare(_getPathBaseName(b)));
+        audioFiles.sort((a, b) => _naturalSortByName(_getPathBaseName(a), _getPathBaseName(b)));
+        videoFiles.sort((a, b) => _naturalSortByName(_getPathBaseName(a), _getPathBaseName(b)));
+        srtFiles.sort((a, b) => _naturalSortByName(_getPathBaseName(a), _getPathBaseName(b)));
+        txtFiles.sort((a, b) => _naturalSortByName(_getPathBaseName(a), _getPathBaseName(b)));
 
         if (!audioFiles.length || !videoFiles.length) {
             return {
@@ -12079,7 +12407,7 @@ function _scanMaterialGroupFolders(rootDir) {
         subDirs = fs.readdirSync(rootDir, { withFileTypes: true })
             .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
             .map(entry => pathMod.join(rootDir, entry.name))
-            .sort((a, b) => _getPathBaseName(a).localeCompare(_getPathBaseName(b)));
+            .sort((a, b) => _naturalSortByName(_getPathBaseName(a), _getPathBaseName(b)));
     } catch (e) {
         return { groups, skipped: [{ name: _getPathBaseName(rootDir), reason: e.message || '无法读取目录' }] };
     }
@@ -12601,7 +12929,7 @@ function _openCoverModal(idx) {
         overlaySel.innerHTML = '<option value="">-- 使用独立卡片配置 --</option>';
         if (window.ReelsOverlay) {
             let presets = {};
-            try { presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (e) { }
+            try { presets = JSON.parse(_rbtReadOverlayGroupPresetsRaw() || '{}'); } catch (e) { }
             if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) {
                 presets = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presets };
             }
@@ -12788,7 +13116,7 @@ async function _batchAssignFiles(files, field) {
         return;
     }
 
-    files.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    files.sort(_naturalSortByName);
 
     const mode = await _showBatchModeDialog(files.length, field);
     if (mode === 'cancel') return;
@@ -12940,7 +13268,7 @@ function _batchAssignTxtFiles(files) {
         return (dot > 0 ? n.substring(0, dot) : n).trim().toLowerCase();
     }
 
-    files.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    files.sort(_naturalSortByName);
 
     let fallbackIdx = 0;
     for (const file of files) {
@@ -13486,7 +13814,9 @@ function _buildBatchAlignSourceTextCandidates(tasks, lbMaxChars) {
             addCandidate(rowIndex, 'aiScript', '人声-原文案', row.querySelector('.rbt-ai-script-input')?.value || '', task);
             addCandidate(rowIndex, 'overlay_title', '覆层标题', row.querySelector('.rbt-title-input')?.value || '', task);
             addCandidate(rowIndex, 'overlay_body', '覆层内容', row.querySelector('.rbt-body-input')?.value || '', task);
-            addCandidate(rowIndex, 'scroll_body', '滚动字幕', row.querySelector('.rbt-scroll-body-input')?.value || '', task);
+            const domScrollBody = row.querySelector('.rbt-scroll-body-input')?.value || '';
+            addCandidate(rowIndex, 'scroll_body', '滚动字幕正文', domScrollBody === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字' ? '' : domScrollBody, task);
+            addCandidate(rowIndex, 'scroll_title', '滚动标题', row.querySelector('.rbt-scroll-title-input')?.value || '', task);
         });
     }
 
@@ -13497,7 +13827,8 @@ function _buildBatchAlignSourceTextCandidates(tasks, lbMaxChars) {
         ['txtPath', 'TXT文件'],
         ['overlay_title', '覆层标题'],
         ['overlay_body', '覆层内容'],
-        ['scroll_body', '滚动字幕'],
+        ['scroll_body', '滚动字幕正文'],
+        ['scroll_title', '滚动标题'],
     ];
 
     (tasks || []).forEach((task, rowIndex) => {
@@ -13512,7 +13843,11 @@ function _buildBatchAlignSourceTextCandidates(tasks, lbMaxChars) {
             }
             if (field === 'overlay_title') rawText = _findBatchTextCardOverlay(task)?.title_text || '';
             if (field === 'overlay_body') rawText = _findBatchTextCardOverlay(task)?.body_text || '';
-            if (field === 'scroll_body') rawText = _findBatchScrollOverlay(task)?.content || '';
+            if (field === 'scroll_body') {
+                const sc = _findBatchScrollOverlay(task)?.content || '';
+                rawText = sc === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字' ? '' : sc;
+            }
+            if (field === 'scroll_title') rawText = _findBatchScrollOverlay(task)?.scroll_title || '';
             addCandidate(rowIndex, field, label, rawText, task);
         });
     });
@@ -14010,6 +14345,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
     const autoDetect = alignOptions.autoDetect ?? (document.getElementById('rbt-align-auto-detect')?.checked || false);
 
     const textSourceCol = document.getElementById('rbt-align-txt-col')?.value || 'txtContent';
+    const allowScrollBlind = (textSourceCol === 'scroll_body' || textSourceCol === 'scroll_title');
+    const effectiveAllowBlind = allowBlind || allowScrollBlind;
 
     const getSourceText = (t) => {
         if (textSourceCol === 'ttsText') return t.ttsText || '';
@@ -14024,9 +14361,24 @@ async function _batchAlignAllTasks(overrideForce = false) {
         }
         if (textSourceCol === 'scroll_body') {
             const sov = _findBatchScrollOverlay(t);
-            return sov ? sov.content || '' : '';
+            const raw = sov ? sov.content || '' : '';
+            return raw === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字' ? '' : raw;
+        }
+        if (textSourceCol === 'scroll_title') {
+            const sov = _findBatchScrollOverlay(t);
+            return sov ? sov.scroll_title || '' : '';
         }
         return '';
+    };
+
+    const setSourceText = (t, val) => {
+        if (!t || val == null) return;
+        const textVal = String(val);
+        if (textSourceCol === 'txtContent') t.txtContent = textVal;
+        else if (textSourceCol === 'ttsText') t.ttsText = textVal;
+        else if (textSourceCol === 'overlay_title' || textSourceCol === 'overlay_body' || textSourceCol === 'scroll_body' || textSourceCol === 'scroll_title') {
+            _applyOverlayField(t, textSourceCol, textVal);
+        }
     };
 
     const getAlignAudioPath = (t) => {
@@ -14080,13 +14432,13 @@ async function _batchAlignAllTasks(overrideForce = false) {
         }
     }
 
-    // 筛选需要对齐的任务: 有音频源 + (选定的文本列有内容/候选池有内容/允许盲转) + (未对齐/无 SRT 或 强制)
+    // 筛选需要对齐的任务: 有音频源 + (选定的文本列有内容/候选池有内容/允许盲转或听译滚动字幕) + (未对齐/无 SRT 或 强制)
     const tasksToAlign = state.tasks.filter(t => {
         const idx = state.tasks.indexOf(t);
         if (targetIndexSet && !targetIndexSet.has(idx)) return false;
         const text = getSourceText(t);
         const canFindSourceFromPool = allSourceTextCandidates.length > 0 && (forceRealign || forceTranscribe || singleTaskMode);
-        if ((!text || !text.trim()) && !allowBlind && !singleTaskMode && !canFindSourceFromPool) return false;
+        if ((!text || !text.trim()) && !effectiveAllowBlind && !singleTaskMode && !canFindSourceFromPool) return false;
         if ((t.aligned || t.srtPath) && !forceRealign && !forceTranscribe && !singleTaskMode) return false;
         return !!getAlignAudioPath(t);
     });
@@ -14111,7 +14463,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
         } else if (alreadyAligned > 0) {
             alert(`没有需要对齐的任务。\n\n📋 当前有 ${alreadyAligned} 个任务已对齐完成。\n\n💡 如需重新生成，请勾选「强制重新查找/对齐」后再点击对齐。`);
         } else {
-            alert('没有需要对齐的任务。\n请确认：\n1. 人声-断行文案列有文案\n2. 有人声-音频文件或背景视频文件\n3. 尚未对齐');
+            alert('没有需要对齐的任务。\n请确认：\n1. 所选文案列有文案（或开启无文本听译/选择滚动字幕正文听译）\n2. 有人声-音频文件或背景视频文件\n3. 尚未对齐');
         }
         return;
     }
@@ -14195,7 +14547,13 @@ async function _batchAlignAllTasks(overrideForce = false) {
             let confirmedRecognizedText = '';
 
             if (strictRefind && sourceTextCandidates.length === 0 && !ownText.trim()) {
-                throw new Error('重找失败：全部任务行文案候选池为空且当前行无文案，无法找到准确文案。');
+                if (effectiveAllowBlind) {
+                    useAutoCandidates = false;
+                    requireAutoSourceMatch = false;
+                    ignoreMismatch = true;
+                } else {
+                    throw new Error('重找失败：全部任务行文案候选池为空且当前行无文案，无法找到准确文案。');
+                }
             }
 
             const audioDir = audioPath.replace(/[\\/][^\\/]+$/, '');
@@ -14256,8 +14614,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                     const matchDesc = matched.exact ? '完全匹配' : `高相似匹配 ${(matched.similarity * 100).toFixed(1)}%`;
                                     console.log(`[BatchAlign] 前端兜底匹配成功(${matchDesc}): ${taskName} -> ${matchedCandidate.label || matchedCandidate.field || '文案'} #${matchedCandidate.rowIndex + 1}`);
                                     sourceText = matchedCandidate.sourceText;
-                                    if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                                    else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                                    setSourceText(task, sourceText);
                                     task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(matchedCandidate);
                                     task.autoMatchedSourceField = matchedCandidate.field || '';
                                     task.autoMatchedSourceLabel = matchedCandidate.label || '';
@@ -14287,8 +14644,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 if (diffResult.action === 'USE_CANDIDATE') {
                                     const picked = diffResult.candidate;
                                     sourceText = picked.sourceText;
-                                    if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                                    else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                                    setSourceText(task, sourceText);
                                     task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(picked);
                                     task.autoMatchedSourceField = picked.field || '';
                                     task.autoMatchedSourceLabel = picked.label || '';
@@ -14318,8 +14674,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                             }
                             if (mismatchChoice === 'USE_RECOGNIZED') {
                                 const newText = mismatchData.recognized_text;
-                                if (textSourceCol === 'txtContent') task.txtContent = newText;
-                                else if (textSourceCol === 'ttsText') task.ttsText = newText;
+                                setSourceText(task, newText);
                                 // 自动断行以便传入对齐
                                 sourceText = _rbtSmartLineBreak(newText, lbMaxChars);
                                 useAutoCandidates = false;
@@ -14360,8 +14715,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                     const matchDesc = matched.exact ? '完全匹配' : `高相似匹配 ${(matched.similarity * 100).toFixed(1)}%`;
                                     console.log(`[BatchAlign] 前端自动匹配兜底成功(${matchDesc}): ${taskName} -> ${matchedCandidate.label || matchedCandidate.field || '文案'} #${matchedCandidate.rowIndex + 1}`);
                                     sourceText = matchedCandidate.sourceText;
-                                    if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                                    else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                                    setSourceText(task, sourceText);
                                     task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(matchedCandidate);
                                     task.autoMatchedSourceField = matchedCandidate.field || '';
                                     task.autoMatchedSourceLabel = matchedCandidate.label || '';
@@ -14388,8 +14742,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 if (diffResult.action === 'USE_CANDIDATE') {
                                     const picked = diffResult.candidate;
                                     sourceText = picked.sourceText;
-                                    if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                                    else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                                    setSourceText(task, sourceText);
                                     task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(picked);
                                     task.autoMatchedSourceField = picked.field || '';
                                     task.autoMatchedSourceLabel = picked.label || '';
@@ -14421,8 +14774,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                             useAutoCandidates = false;
                             if (autoMatchChoice === 'USE_RECOGNIZED') {
                                 const newText = mismatchData.recognized_text || '';
-                                if (textSourceCol === 'txtContent') task.txtContent = newText;
-                                else if (textSourceCol === 'ttsText') task.ttsText = newText;
+                                setSourceText(task, newText);
                                 sourceText = _rbtSmartLineBreak(newText, lbMaxChars);
                                 requireAutoSourceMatch = false;
                                 ignoreMismatch = true;
@@ -14458,8 +14810,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                 autoMatchCount++;
                 foundExactSourceThisRun = true;
                 sourceText = _rbtSmartLineBreak(data.auto_matched_source.source_text || sourceText, lbMaxChars);
-                if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                setSourceText(task, sourceText);
                 task.autoMatchedSourceIndex = data.auto_matched_source.index;
                 const matchedCandidate = sourceTextCandidates[data.auto_matched_source.index];
                 task.autoMatchedSourceField = matchedCandidate?.field || '';
@@ -14491,8 +14842,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                     if (sourceTextCandidates.length === 1) {
                         const onlyCandidate = sourceTextCandidates[0];
                         sourceText = onlyCandidate.sourceText;
-                        if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                        else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                        setSourceText(task, sourceText);
                         task.autoMatchedSourceIndex = 0;
                         task.autoMatchedSourceField = onlyCandidate.field || '';
                         task.autoMatchedSourceLabel = onlyCandidate.label || '';
@@ -14530,8 +14880,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                         const currentNorm = _normalizeStrictSubtitleMatch(sourceText);
                         const matchedNorm = _normalizeStrictSubtitleMatch(matchedCandidate.sourceText);
                         sourceText = matchedCandidate.sourceText;
-                        if (textSourceCol === 'txtContent') task.txtContent = sourceText;
-                        else if (textSourceCol === 'ttsText') task.ttsText = sourceText;
+                        setSourceText(task, sourceText);
                         task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(matchedCandidate);
                         task.autoMatchedSourceField = matchedCandidate.field || '';
                         task.autoMatchedSourceLabel = matchedCandidate.label || '';
@@ -14590,8 +14939,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                     if (diffResult.action === 'USE_CANDIDATE') {
                         const picked = diffResult.candidate;
                         sourceText = _rbtSmartLineBreak(picked.sourceText, lbMaxChars);
-                        if (textSourceCol === 'txtContent') task.txtContent = picked.sourceText;
-                        else if (textSourceCol === 'ttsText') task.ttsText = picked.sourceText;
+                        setSourceText(task, picked.sourceText);
                         task.autoMatchedSourceIndex = sourceTextCandidates.indexOf(picked);
                         task.autoMatchedSourceField = picked.field || '';
                         task.autoMatchedSourceLabel = picked.label || '';
@@ -14623,8 +14971,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                         refindHandled = true;
                     } else if (diffResult.action === 'USE_CURRENT_SOURCE') {
                         sourceText = _rbtSmartLineBreak(userSourceText, lbMaxChars);
-                        if (textSourceCol === 'txtContent') task.txtContent = userSourceText;
-                        else if (textSourceCol === 'ttsText') task.ttsText = userSourceText;
+                        setSourceText(task, userSourceText);
                         confirmedMatchDesc = '使用提供文案';
                         confirmedRecognizedText = recognizedText || '';
                         await _deleteGeneratedSubtitleFiles(data.files, taskName);
@@ -14663,8 +15010,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
 
                 if (!refindHandled) {
                     if (refindChoice === 'USE_RECOGNIZED' && recognizedText && recognizedText !== '[后端未返回识别文案]') {
-                        if (textSourceCol === 'txtContent') task.txtContent = recognizedText;
-                        else if (textSourceCol === 'ttsText') task.ttsText = recognizedText;
+                        setSourceText(task, recognizedText);
                         sourceText = _rbtSmartLineBreak(recognizedText, lbMaxChars);
                         // 用识别文案重新生成 SRT
                         await _deleteGeneratedSubtitleFiles(data.files, taskName);
@@ -14729,6 +15075,17 @@ async function _batchAlignAllTasks(overrideForce = false) {
                     ? ReelsSubtitleProcessor.srtToSegmentsWithWords(rawSegs)
                     : rawSegs;
                 _rbtApplyPendingFirstSubtitleStyle(task);
+
+                // 当目标列（如滚动字幕正文）为空并走听译对齐时，自动将听译/SRT文案回填到所选列
+                if (!getSourceText(task).trim() && (srtPlainText || data.recognized_text)) {
+                    const recognizedLines = rawSegs.map(s => String(s.text || '').trim()).filter(Boolean).join('\n')
+                        || _rbtSmartLineBreak(data.recognized_text || srtPlainText, lbMaxChars);
+                    if (recognizedLines.trim()) {
+                        setSourceText(task, recognizedLines);
+                        sourceText = recognizedLines;
+                        if (!task.alignMatchedText) task.alignMatchedText = '🎙️ 听译自动生成';
+                    }
+                }
 
                 if (isRealignRedo && confirmedMatchedCandidate) {
                         const recognizedForReport = confirmedRecognizedText || data.recognized_text || sourceText;
@@ -14876,12 +15233,20 @@ async function _batchAlignWithMultipleKeys() {
 
     const alignSource = document.getElementById('rbt-align-source')?.value || 'video';
     const textColumn = document.getElementById('rbt-align-txt-col')?.value || 'txtContent';
-    const allowBlind = !!document.getElementById('rbt-allow-blind')?.checked;
+    const allowBlind = !!document.getElementById('rbt-allow-blind')?.checked || textColumn === 'scroll_body' || textColumn === 'scroll_title';
     const forceRealign = !!document.getElementById('rbt-force-realign')?.checked;
     const forceTranscribe = !!document.getElementById('rbt-force-transcribe')?.checked;
-    const textFor = task => textColumn === 'ttsText' ? task.ttsText :
-        textColumn === 'overlay_title' ? _findBatchTextCardOverlay(task)?.title_text :
-        textColumn === 'overlay_body' ? _findBatchTextCardOverlay(task)?.body_text : task.txtContent;
+    const textFor = task => {
+        if (textColumn === 'ttsText') return task.ttsText;
+        if (textColumn === 'overlay_title') return _findBatchTextCardOverlay(task)?.title_text;
+        if (textColumn === 'overlay_body') return _findBatchTextCardOverlay(task)?.body_text;
+        if (textColumn === 'scroll_body') {
+            const raw = _findBatchScrollOverlay(task)?.content || '';
+            return raw === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字' ? '' : raw;
+        }
+        if (textColumn === 'scroll_title') return _findBatchScrollOverlay(task)?.scroll_title;
+        return task.txtContent;
+    };
     const hasAudio = task => alignSource === 'video'
         ? !!(task.bgPath || task.videoPath)
         : !!task.audioPath;
@@ -15645,18 +16010,22 @@ function _injectBatchTableCSS() {
         /* ══ Tab bar ══ */
         .rbt-tabbar {
             display:flex; align-items:stretch; background:#0a0a1e; border-bottom:1px solid #1a1a3a;
-            padding:0 12px; height:36px; min-height:36px; max-height:36px;
-            overflow-x:auto; flex-shrink:0;
+            padding:4px 12px 2px; height:auto !important; min-height:36px; max-height:35vh;
+            overflow-x:hidden; overflow-y:auto; flex-shrink:0; flex-wrap:wrap; gap:4px 8px; width:100%; box-sizing:border-box;
         }
         .rbt-tabs-scroll {
-            display:flex; align-items:stretch; gap:2px; flex:1; min-width:0;
+            display:flex; flex-wrap:wrap !important; align-items:center; align-content:flex-start;
+            gap:4px 4px; flex:1 1 100%; width:100%; min-width:0; overflow:visible;
         }
         .rbt-tab {
             display:flex; align-items:center; gap:6px; padding:0 14px; cursor:pointer;
             font-size:12px; color:#888; border:1px solid transparent; border-bottom:none;
             border-radius:6px 6px 0 0; transition:all .15s; position:relative; white-space:nowrap;
-            background:transparent; user-select:none; height:35px;
+            background:transparent; user-select:none; height:32px;
         }
+        .rbt-tabs-scroll > .rbt-tab { flex:0 0 auto; max-width:100%; box-sizing:border-box; }
+        .rbt-tab-name { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+        .rbt-tab-close { flex-shrink:0; }
         .rbt-tab:hover { color:#ccc; background:rgba(255,255,255,0.05); }
         .rbt-tab-active {
             color:var(--accent) !important; background:#101028 !important;
@@ -16006,6 +16375,7 @@ const BATCH_RUNTIME_KEYS = new Set([
     'videoCanvas',
     'canvas',
     'ctx',
+    'renderPlan',
 ]);
 
 function _isBatchDomLikeValue(value) {
@@ -16031,6 +16401,15 @@ function _serializeBatchValue(value, seen = new WeakSet()) {
     if (typeof value !== 'object') return undefined;
     if (seen.has(value)) return undefined;
     seen.add(value);
+
+    if (typeof value.toJSON === 'function') {
+        const jsonVal = value.toJSON();
+        if (jsonVal !== value) {
+            const res = _serializeBatchValue(jsonVal, seen);
+            seen.delete(value);
+            return res;
+        }
+    }
 
     if (Array.isArray(value)) {
         const arr = [];
@@ -16073,18 +16452,29 @@ function _serializeTasks(tasks) {
 
 /** 自动保存到 localStorage (含所有标签页，如果配置了工程路径则自动写入硬盘) */
 function _batchAutoSave(options = {}) {
+    // Template viewers share Chromium storage with the editor. They may load
+    // an older cached workspace, and must never become workspace writers.
+    if(window.location?.hash?.startsWith('#template='))return true;
     try {
         // 模板封面截图会短暂把预览任务切换为单个队列。这段时间严禁
         // 把临时的 6 条任务反写到完整批量工程。
         if (window._templateThumbnailCaptureActive) return;
         // 外部队列刚被拆成多个标签时，外部列表仍是合并视图；此时不能用它覆盖当前标签。
         if (!options.skipSync) _syncTasksToActiveTab();
+        const defaultProjDir = window.electronAPI?.getDefaultProjectDir?.() || '';
+        if (!_batchTableState.projectDir || String(_batchTableState.projectDir).toLowerCase().includes('portable-data')) {
+            if (defaultProjDir) _batchTableState.projectDir = defaultProjDir;
+        }
+        if (!_batchTableState.projectName) {
+            _batchTableState.projectName = 'UntitledProject.json';
+        }
         const data = {
             timestamp: new Date().toISOString(),
             version: '2.0',
+            uiState:{globalSubtitleStyle:window._reelsState?.globalSubtitleStyle||null,selectedTaskId:window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.id||'',targetWidth:window._reelsState?.targetWidth,targetHeight:window._reelsState?.targetHeight,styleScope:typeof _getSubtitleStyleScope==='function'?_getSubtitleStyleScope():'folder'},
             activeTabId: _batchTableState.activeTabId,
             nextTabId: _batchTableState.nextTabId,
-            projectDir: _batchTableState.projectDir || '',
+            projectDir: _batchTableState.projectDir || defaultProjDir || '',
             projectName: _batchTableState.projectName || 'UntitledProject.json',
             tabs: _batchTableState.tabs.map(tab => ({
                 id: tab.id,
@@ -16097,19 +16487,29 @@ function _batchAutoSave(options = {}) {
             })),
         };
         const jsonStr = JSON.stringify(data);
-        localStorage.setItem(BATCH_CONFIG_KEY, jsonStr);
+        // Persist the workspace independently of named project saves and browser quota.
+        let diskSaved=false,cacheSaved=false;
+        if (window.electronAPI?.saveBatchWorkspace)diskSaved=window.electronAPI.saveBatchWorkspace(jsonStr)===true;
+        if (window.electronAPI?.saveBatchWorkspace && !diskSaved) {
+            console.warn('[BatchTable] Workspace file save failed');
+            if (typeof showToast === 'function') showToast('标签自动保存失败，请检查软件目录是否可写', 'warning', 5000);
+        }
+        try { localStorage.setItem(BATCH_CONFIG_KEY, jsonStr); cacheSaved=true; }
+        catch (e) { console.warn('[BatchTable] Browser cache save failed:', e.message); }
 
-        // 如果设置了工程目录与文件名，同时写入物理硬盘 (Electron环境)
-        if (_batchTableState.projectDir && _batchTableState.projectName && window.electronAPI && window.electronAPI.writeFileText) {
-            // 需要自己拼路径，也可以借助 path.join，但简单拼凑即可，处理一下末尾斜杠
+        // 统一写入安装目录与共享工程目录 (Electron环境)，确保绿色版与安装版完全互通
+        if (_batchTableState.projectName && window.electronAPI?.saveSharedProjectFile) {
+            window.electronAPI.saveSharedProjectFile(_batchTableState.projectName, jsonStr, _batchTableState.projectDir || defaultProjDir);
+        } else if (_batchTableState.projectDir && _batchTableState.projectName && window.electronAPI && window.electronAPI.writeFileText) {
             const dir = _batchTableState.projectDir.replace(/[/\\]$/, '');
             const sep = dir.includes('\\') ? '\\' : '/';
             const fullPath = dir + sep + _batchTableState.projectName;
-            window.electronAPI.writeFileText(fullPath, JSON.stringify(data, null, 2));
+            window.electronAPI.writeFileText(fullPath, jsonStr);
         }
-
+        return window.electronAPI?.saveBatchWorkspace ? diskSaved : cacheSaved;
     } catch (e) {
         console.warn('[BatchTable] Auto-save failed:', e.message);
+        return false;
     }
 }
 
@@ -16135,13 +16535,44 @@ window.reelsClearPersistedBatchTasks = reelsClearPersistedBatchTasks;
 /** 自动恢复 */
 function _batchAutoRestore() {
     try {
-        const raw = localStorage.getItem(BATCH_CONFIG_KEY);
+        let raw = '';
+        try { raw = localStorage.getItem(BATCH_CONFIG_KEY) || ''; } catch (_) { }
+        const diskRaw = window.electronAPI?.readBatchWorkspace?.() || '';
+        let data = null;
+        if (diskRaw) {
+            let cached = null;
+            try { if (raw) cached = JSON.parse(raw); } catch (_) { }
+            let disk = null;
+            try { disk = JSON.parse(diskRaw); } catch (_) { }
+            if (disk && disk.version === '2.0' && Array.isArray(disk.tabs) && disk.tabs.length) {
+                const countTasks = (obj) => Array.isArray(obj?.tabs)
+                    ? obj.tabs.reduce((s, t) => s + (Array.isArray(t?.tasks) ? t.tasks.length : 0), 0)
+                    : (Array.isArray(obj?.tasks) ? obj.tasks.length : 0);
+                const cachedCount = countTasks(cached);
+                const diskCount = countTasks(disk);
+                const cachedTime = Date.parse(cached?.timestamp || '') || 0;
+                const diskTime = Date.parse(disk?.timestamp || '') || 0;
+                if (!cached || (diskTime > 0 && diskTime >= cachedTime) || (diskTime === 0 && cachedTime === 0 && diskCount >= cachedCount)) {
+                    raw = diskRaw;
+                    data = disk;
+                    try { localStorage.setItem(BATCH_CONFIG_KEY, raw); } catch (_) { }
+                } else if (raw) {
+                    data = cached;
+                    try { window.electronAPI?.saveBatchWorkspace?.(raw); } catch (_) { }
+                }
+            }
+        } else if (raw) {
+            try { window.electronAPI?.saveBatchWorkspace?.(raw); } catch (_) { }
+        }
         if (!raw) return;
-        const data = JSON.parse(raw);
+        if (!data) data = JSON.parse(raw);
 
         if (data.version === '2.0' && data.tabs && data.tabs.length > 0) {
             // v2: multi-tab format
-            _batchTableState.projectDir = data.projectDir || '';
+            const defaultProjDir = window.electronAPI?.getDefaultProjectDir?.() || '';
+            _batchTableState.projectDir = (!data.projectDir || String(data.projectDir).toLowerCase().includes('portable-data'))
+                ? (defaultProjDir || data.projectDir || '')
+                : data.projectDir;
             _batchTableState.projectName = data.projectName || 'UntitledProject.json';
             _batchTableState.tabs = data.tabs.map(t => ({
                 id: t.id,
@@ -16153,6 +16584,11 @@ function _batchAutoRestore() {
                 lastRefreshTime: t.lastRefreshTime || null,
                 tasks: t.tasks || [],
             }));
+            if(data.uiState && window._reelsState){
+                if(data.uiState.globalSubtitleStyle)window._reelsState.globalSubtitleStyle=_cloneBatchTasks([data.uiState.globalSubtitleStyle])[0];
+                for(const key of ['targetWidth','targetHeight'])if(data.uiState[key])window._reelsState[key]=data.uiState[key];
+                const scope=document.getElementById('reels-style-scope');if(scope&&data.uiState.styleScope)scope.value=data.uiState.styleScope;
+            }
             _batchTableState.activeTabId = data.activeTabId || _batchTableState.tabs[0].id;
             _batchTableState.nextTabId = data.nextTabId || _batchTableState.tabs.length + 1;
             _normalizeBatchTabState();
@@ -16216,11 +16652,13 @@ function _batchAutoRestore() {
                 window._reelsState.selectedIdx = -1;
                 _batchTableState.appliedTabIds = restoredTabIds;
                 if (typeof _renderTaskList === 'function') _renderTaskList();
+                const selectedId=data.uiState?.selectedTaskId;
+                if(selectedId){const index=restoredTasks.findIndex(t=>t.id===selectedId);if(index>=0 && typeof reelsSelectTask==='function')setTimeout(()=>reelsSelectTask(index),0);}
             }
             console.log(`[BatchTable] Auto-restored ${_batchTableState.tabs.length} tabs, ${restoredTasks.length} unique tasks${duplicateTaskCount ? `, skipped ${duplicateTaskCount} duplicates` : ''}${migratedLegacyStyleCount ? `, migrated ${migratedLegacyStyleCount} legacy styles` : ''} from ${data.timestamp}`);
             if (duplicateTaskCount > 0 || migratedLegacyStyleCount > 0) {
-                // 立即回写清理后的标签数据，避免下次启动还携带重复副本。
-                _batchAutoSave({ skipSync: true });
+                // 延迟回写清理后的标签数据，避免阻塞首屏启动。
+                setTimeout(() => _batchAutoSave({ skipSync: true }), 1500);
             }
         } else if (data.tasks && data.tasks.length > 0) {
             // v1: legacy single-list format — migrate to tab
@@ -16236,10 +16674,25 @@ function _batchAutoRestore() {
     }
 }
 
+/** 获取当前批量工程文件的完整路径 */
+function _getCurrentBatchProjectFilePath() {
+    const dir = (_batchTableState.projectDir || window.electronAPI?.getDefaultProjectDir?.() || '').replace(/[/\\]$/, '');
+    const name = _batchTableState.projectName || 'UntitledProject.json';
+    if (!dir) return '';
+    const sep = dir.includes('\\') ? '\\' : '/';
+    return `${dir}${sep}${name}`;
+}
+window.reelsGetCurrentBatchProjectFilePath = _getCurrentBatchProjectFilePath;
+
 /** 显示工程管理器 */
 async function _showProjectManager() {
     let popup = document.getElementById('rbt-project-mgr-popup');
     if (popup) { popup.remove(); return; }
+
+    const defaultProjDir = window.electronAPI?.getDefaultProjectDir?.() || '';
+    if (!_batchTableState.projectDir && defaultProjDir) {
+        _batchTableState.projectDir = defaultProjDir;
+    }
 
     const overlay = document.createElement('div');
     overlay.id = 'rbt-project-mgr-popup';
@@ -16249,19 +16702,23 @@ async function _showProjectManager() {
         display:flex; justify-content:center; align-items:center;
     `;
 
-    // Fetch projects
+    // Fetch projects (unified across installed & portable directories)
     let projects = [];
     let loadError = null;
-    if (_batchTableState.projectDir && window.electronAPI && window.electronAPI.scanDirectory) {
+    if (window.electronAPI?.listSharedProjectFiles) {
+        try {
+            projects = window.electronAPI.listSharedProjectFiles(_batchTableState.projectDir) || [];
+        } catch (e) {
+            loadError = e.message;
+        }
+    } else if (_batchTableState.projectDir && window.electronAPI && window.electronAPI.scanDirectory) {
         try {
             const files = await window.electronAPI.scanDirectory(_batchTableState.projectDir);
-            // filter *.json
             projects = files.filter(f => f.toLowerCase().endsWith('.json')).map(f => {
                 const sep = f.includes('\\') ? '\\' : '/';
                 const parts = f.split(sep);
                 return { path: f, filename: parts[parts.length - 1] };
             });
-            // sort by filename or basic length
             projects.sort((a, b) => a.filename.localeCompare(b.filename));
         } catch (e) {
             loadError = e.message;
@@ -16272,27 +16729,29 @@ async function _showProjectManager() {
     const projListHtml = projects.length > 0 ? projects.map(p => {
         const isCurrent = p.filename === currentName;
         return `
-            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:${isCurrent ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${isCurrent ? 'var(--accent)' : '#333'}; border-radius:6px; margin-bottom:6px;">
-                <span style="font-size:13px; color:${isCurrent ? '#fff' : '#ccc'};">${_escHtml(p.filename)}${isCurrent ? ' <span style="color:var(--accent);font-size:10px;">(当前)</span>' : ''}</span>
-                <div>
-                    ${!isCurrent ? `<button class="rbt-btn" style="padding:2px 8px; font-size:11px;" onclick="window._extLoadProject('${_escHtml(p.path)}')">📂 加载</button>` : ''}
+            <div class="rbt-proj-mgr-item" data-project-path="${_escHtml(p.path)}" title="右键打开该工程文件所在位置: ${_escHtml(p.path)}" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:${isCurrent ? 'rgba(0,212,255,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${isCurrent ? 'var(--accent)' : '#333'}; border-radius:6px; margin-bottom:6px; cursor:context-menu;">
+                <span style="font-size:13px; color:${isCurrent ? '#fff' : '#ccc'}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:8px;">${_escHtml(p.filename)}${isCurrent ? ' <span style="color:var(--accent);font-size:10px;">(当前)</span>' : ''}</span>
+                <div style="display:flex; gap:6px; flex-shrink:0;">
+                    <button class="rbt-btn rbt-proj-reveal-btn" data-project-path="${_escHtml(p.path)}" style="padding:2px 8px; font-size:11px;" title="打开工程文件所在文件夹">📂 位置</button>
+                    ${!isCurrent ? `<button class="rbt-btn rbt-proj-load-btn" data-project-path="${_escHtml(p.path)}" style="padding:2px 8px; font-size:11px;">📥 加载</button>` : ''}
                 </div>
             </div>
         `;
     }).join('') : `<div style="color:#666; font-size:13px; text-align:center; padding:20px;">没有找到任何 .json 工程文件</div>`;
 
     overlay.innerHTML = `
-        <div style="background:#141420; border:1px solid #2a2a4a; border-radius:10px; width:460px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+        <div style="background:#141420; border:1px solid #2a2a4a; border-radius:10px; width:480px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,0.8);">
             <div style="padding:12px 16px; border-bottom:1px solid #2a2a4a; display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="margin:0; font-size:16px; font-weight:600; color:#eee;">📦 工程管理</h3>
+                <h3 style="margin:0; font-size:16px; font-weight:600; color:#eee;">📦 工程管理 (安装版/绿色版统一共享)</h3>
                 <span class="rbt-close-btn" style="cursor:pointer; color:#888; font-size:18px;">&times;</span>
             </div>
             <div style="padding:16px; overflow-y:auto; flex:1;">
                 
                 <div style="margin-bottom:16px;">
-                    <label style="display:block; font-size:11px; color:#aaa; margin-bottom:4px;">默认工程保存目录 (实时自动写入磁盘)</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="rbt-mgr-dir-input" value="${_escHtml(_batchTableState.projectDir || '')}" class="rbt-input" style="flex:1;" readonly placeholder="未设置目录，仅在浏览器缓存">
+                    <label style="display:block; font-size:11px; color:#aaa; margin-bottom:4px;">默认工程保存目录 (实时自动写入安装目录，绿色版与安装版共享)</label>
+                    <div style="display:flex; gap:6px;">
+                        <input type="text" id="rbt-mgr-dir-input" value="${_escHtml(_batchTableState.projectDir || '')}" class="rbt-input" style="flex:1; cursor:context-menu;" readonly title="右键打开工程保存目录" placeholder="未设置目录，仅在浏览器缓存">
+                        <button class="rbt-btn" id="rbt-mgr-open-dir-btn" title="在资源管理器中打开工程目录">📂 打开目录</button>
                         <button class="rbt-btn" id="rbt-mgr-pick-dir-btn">浏览...</button>
                     </div>
                 </div>
@@ -16303,11 +16762,11 @@ async function _showProjectManager() {
                         <input type="text" id="rbt-mgr-name-input" value="${_escHtml(currentName)}" class="rbt-input" style="flex:1;" placeholder="例如: 项目一.json">
                         <button class="rbt-btn" id="rbt-mgr-new-btn">应用为新工程</button>
                     </div>
-                    <div style="font-size:10px; color:#777; margin-top:4px;">注意：应用后当前界面数据将关联到这个新文件名，并在目录内自动保存。</div>
+                    <div style="font-size:10px; color:#777; margin-top:4px;">注意：应用后当前界面数据将关联到这个新文件名，并在安装目录内自动同步保存。</div>
                 </div>
 
                 <div>
-                    <div style="font-size:12px; color:#ccc; margin-bottom:8px; border-bottom:1px solid #333; padding-bottom:4px;">当前目录下的工程 (${projects.length}) :</div>
+                    <div style="font-size:12px; color:#ccc; margin-bottom:8px; border-bottom:1px solid #333; padding-bottom:4px;">共享工程列表 (${projects.length}) <span style="font-size:10px;color:#888;">(可右键打开工程所在位置)</span>:</div>
                     ${loadError ? `<div style="color:var(--rbt-red); font-size:12px; padding:10px;">读取目录报错: ${_escHtml(loadError)}</div>` : projListHtml}
                 </div>
             </div>
@@ -16317,6 +16776,43 @@ async function _showProjectManager() {
     document.body.appendChild(overlay);
 
     overlay.querySelector('.rbt-close-btn').addEventListener('click', () => overlay.remove());
+
+    const openDirFn = () => {
+        const target = _getCurrentBatchProjectFilePath() || _batchTableState.projectDir || defaultProjDir;
+        if (target && window.electronAPI?.showItemInFolder) {
+            window.electronAPI.showItemInFolder(target);
+        }
+    };
+    overlay.querySelector('#rbt-mgr-open-dir-btn')?.addEventListener('click', openDirFn);
+    overlay.querySelector('#rbt-mgr-dir-input')?.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        openDirFn();
+    });
+
+    overlay.querySelectorAll('.rbt-proj-reveal-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const p = btn.dataset.projectPath;
+            if (p && window.electronAPI?.showItemInFolder) window.electronAPI.showItemInFolder(p);
+        });
+    });
+
+    overlay.querySelectorAll('.rbt-proj-load-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const p = btn.dataset.projectPath;
+            if (p) window._extLoadProject(p);
+        });
+    });
+
+    overlay.querySelectorAll('.rbt-proj-mgr-item').forEach(row => {
+        row.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const p = row.dataset.projectPath;
+            if (p && window.electronAPI?.showItemInFolder) window.electronAPI.showItemInFolder(p);
+        });
+    });
 
     overlay.querySelector('#rbt-mgr-pick-dir-btn').addEventListener('click', async () => {
         if (!window.electronAPI || !window.electronAPI.selectDirectory) {
@@ -16346,6 +16842,367 @@ async function _showProjectManager() {
         }
     });
 }
+
+// ═══════════════════════════════════════════════════════
+// 全局右键菜单：打开背景素材 / 配乐 / 配音 / 工程项目所在位置
+// ═══════════════════════════════════════════════════════
+
+function _revealPathInFolder(targetPath) {
+    const clean = String(targetPath || '').trim();
+    if (!clean) {
+        if (typeof showToast === 'function') showToast('当前未设置文件路径', 'warning', 2000);
+        return false;
+    }
+    if (window.electronAPI?.showItemInFolder) {
+        window.electronAPI.showItemInFolder(clean);
+        return true;
+    }
+    return false;
+}
+window.reelsRevealPathInFolder = _revealPathInFolder;
+
+function _showLocationContextMenu(x, y, items) {
+    document.getElementById('reels-location-context-menu')?.remove();
+    const validItems = (items || []).filter(item => item && (item.path || typeof item.onClick === 'function'));
+    if (!validItems.length) return false;
+
+    const menu = document.createElement('div');
+    menu.id = 'reels-location-context-menu';
+    menu.style.cssText = `
+        position:fixed; z-index:999999; min-width:230px; max-width:420px;
+        background:#181a24; border:1px solid #383e54; border-radius:8px;
+        padding:6px; box-shadow:0 10px 30px rgba(0,0,0,0.75);
+        color:#eee; font-size:12px; user-select:none;
+    `;
+
+    validItems.forEach((item, idx) => {
+        if (item.dividerBefore && idx > 0) {
+            const hr = document.createElement('div');
+            hr.style.cssText = 'height:1px;background:#2d3246;margin:4px 2px;';
+            menu.appendChild(hr);
+        }
+        const btn = document.createElement('div');
+        btn.style.cssText = `
+            display:flex; flex-direction:column; gap:2px; padding:7px 10px;
+            border-radius:5px; cursor:pointer; transition:background 0.12s;
+        `;
+        const shortFile = item.path ? String(item.path).split(/[/\\]/).pop() : '';
+        btn.innerHTML = `
+            <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:#f1f5f9;">
+                <span>${_escHtml(item.label || '📂 打开文件所在位置')}</span>
+            </div>
+            ${item.path ? `<div style="font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_escHtml(item.path)}">${_escHtml(shortFile || item.path)}</div>` : ''}
+        `;
+        btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(0, 212, 255, 0.16)'; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+        btn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            menu.remove();
+            if (typeof item.onClick === 'function') item.onClick();
+            else if (item.path) _revealPathInFolder(item.path);
+        });
+        menu.appendChild(btn);
+    });
+
+    document.body.appendChild(menu);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.min(x, window.innerWidth - rect.width - 8);
+    const top = Math.min(y, window.innerHeight - rect.height - 8);
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+
+    const closeMenu = (ev) => {
+        if (!menu.contains(ev.target)) {
+            menu.remove();
+            document.removeEventListener('mousedown', closeMenu, true);
+            document.removeEventListener('contextmenu', closeMenu, true);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('mousedown', closeMenu, true);
+        document.addEventListener('contextmenu', closeMenu, true);
+    }, 0);
+    return true;
+}
+window.reelsShowLocationContextMenu = _showLocationContextMenu;
+
+function _buildTaskLocationItems(task, preferredField = '') {
+    const items = [];
+    const seen = new Set();
+    const pushItem = (key, label, pathVal, dividerBefore = false) => {
+        const clean = String(pathVal || '').trim();
+        if (!clean || /^(blob:|data:|https?:)/i.test(clean)) return;
+        const dedupKey = `${key}|${clean.toLowerCase()}`;
+        if (seen.has(dedupKey)) return;
+        seen.add(dedupKey);
+        items.push({ key, label, path: clean, dividerBefore });
+    };
+
+    if (task) {
+        // Background media
+        if (task.bgMode === 'multi' && Array.isArray(task.bgClipPool) && task.bgClipPool.length > 0) {
+            pushItem('bg', `🎬 打开背景池首个素材位置 (共${task.bgClipPool.length}个)`, task.bgClipPool[0]);
+            task.bgClipPool.slice(1, 5).forEach((p, idx) => {
+                pushItem('bg', `🎬 打开背景池素材 #${idx + 2} 位置`, p);
+            });
+        } else {
+            pushItem('bg', '🎬 打开背景素材所在位置', task.bgPath || task.videoPath || (Array.isArray(task.bgClipPool) ? task.bgClipPool[0] : ''));
+        }
+        // ClipPool folder
+        if (task.clipPoolDir || task.concatVideoPath) {
+            pushItem('clippool', '🎞️ 打开背景片段池文件夹', task.clipPoolDir || task.concatVideoPath);
+        }
+        // BGM / Music
+        if (task.bgmMode === 'multi' && Array.isArray(task.bgmClipPool) && task.bgmClipPool.length > 0) {
+            pushItem('bgm', `🎵 打开配乐池首个文件位置 (共${task.bgmClipPool.length}首)`, task.bgmClipPool[0]);
+            task.bgmClipPool.slice(1, 5).forEach((p, idx) => {
+                pushItem('bgm', `🎵 打开配乐池 #${idx + 2} 所在位置`, p);
+            });
+        } else if (task.bgmPath || (Array.isArray(task.bgmClipPool) && task.bgmClipPool[0])) {
+            pushItem('bgm', '🎵 打开配乐文件所在位置', task.bgmPath || task.bgmClipPool[0]);
+        }
+        // Voice / Audio
+        if (task.audioPath) {
+            pushItem('audio', '🎙️ 打开人声配音所在位置', task.audioPath);
+        }
+        // Content video
+        if (task.contentVideoPath) {
+            pushItem('contentvideo', '📹 打开内容视频所在位置', task.contentVideoPath);
+        }
+        // SRT subtitle
+        if (task.srtPath) {
+            pushItem('srt', '📝 打开SRT字幕所在位置', task.srtPath);
+        }
+        // Hook / PiP / Cover
+        if (task.hookFile) pushItem('hook', '🪝 打开前置Hook文件位置', task.hookFile);
+        if (task.pipPath) pushItem('pip', '🖼️ 打开图像覆层素材位置', task.pipPath);
+        if (task.cover?.bgPath) pushItem('cover', '🖼️ 打开封面素材所在位置', task.cover.bgPath);
+        if (task.insertMediaFolder) pushItem('insert', '📁 打开停顿插入素材文件夹', task.insertMediaFolder);
+        // Auto-edit project
+        const autoEditProj = task.autoEditProject?.projectDir || task.autoEditProject?.reelsProjectPath || task.autoEditProject?.analysisProjectPath || '';
+        if (autoEditProj) {
+            pushItem('project', '📦 打开该任务二剪工程目录', autoEditProj, true);
+        }
+    }
+
+    // Reorder so preferredField is at the very top
+    if (preferredField) {
+        items.sort((a, b) => (b.key === preferredField ? 1 : 0) - (a.key === preferredField ? 1 : 0));
+    }
+
+    const batchProjPath = _getCurrentBatchProjectFilePath();
+    if (batchProjPath) {
+        pushItem('batch_project', '📦 打开当前工程存储位置', batchProjPath, items.length > 0);
+    }
+    return items;
+}
+
+window.reelsRevealActiveTaskMedia = function(kind = 'bg') {
+    const state = window._reelsState;
+    const task = state?.tasks?.[state.selectedIdx] || state?.tasks?.[0] || null;
+    if (kind === 'bg') {
+        const p = document.getElementById('reels-bg-path-ui')?.value || task?.bgPath || task?.videoPath || task?.bgClipPool?.[0] || '';
+        return _revealPathInFolder(p);
+    }
+    if (kind === 'bgm') {
+        const p = document.getElementById('reels-bgm-path-ui')?.value || task?.bgmPath || task?.bgmClipPool?.[0] || '';
+        return _revealPathInFolder(p);
+    }
+    if (kind === 'cv') {
+        const p = document.getElementById('reels-cv-path-ui')?.value || task?.contentVideoPath || '';
+        return _revealPathInFolder(p);
+    }
+    if (kind === 'project') {
+        return _revealPathInFolder(_getCurrentBatchProjectFilePath());
+    }
+    return false;
+};
+
+if (typeof document !== 'undefined' && !window._reelsGlobalContextMenuBound) {
+    window._reelsGlobalContextMenuBound = true;
+    document.addEventListener('contextmenu', (e) => {
+        const target = e.target;
+        if (!target || typeof target.closest !== 'function') return;
+
+        // 1. Multi-BG / Multi-BGM pool items & Media Pool sidebar items
+        const poolItem = target.closest('.bgpool-item[data-file-path], .bgmpool-item[data-file-path], .rbt-ms-item[data-path]');
+        if (poolItem) {
+            const filePath = poolItem.dataset.filePath || poolItem.dataset.path;
+            if (filePath) {
+                e.preventDefault();
+                e.stopPropagation();
+                _showLocationContextMenu(e.clientX, e.clientY, [
+                    { label: '📂 打开素材文件所在位置', path: filePath },
+                ]);
+                return;
+            }
+        }
+
+        // 2. Current project button (`📦 当前工程: ...`)
+        const projBtn = target.closest('#rbt-project-mgr-btn');
+        if (projBtn) {
+            const projPath = _getCurrentBatchProjectFilePath();
+            if (projPath) {
+                e.preventDefault();
+                e.stopPropagation();
+                _showLocationContextMenu(e.clientX, e.clientY, [
+                    { label: '📦 打开当前工程存储位置', path: projPath },
+                    { label: '⚙️ 打开工程管理器', onClick: () => _showProjectManager() },
+                ]);
+                return;
+            }
+        }
+
+        // 3. Batch Table Tabs (`.rbt-tab[data-tab-id]`)
+        const tabEl = target.closest('.rbt-tab[data-tab-id]');
+        if (tabEl) {
+            const tabId = tabEl.dataset.tabId;
+            const tab = (_batchTableState.tabs || []).find(t => t.id === tabId);
+            if (tab) {
+                const menuItems = [];
+                if (tab.materialDir) {
+                    menuItems.push({ label: `📁 打开标签「${tab.name}」素材目录`, path: tab.materialDir });
+                }
+                const firstTask = (tab.tasks || [])[0] || (tab.id === _batchTableState.activeTabId ? window._reelsState?.tasks?.[0] : null);
+                if (firstTask) {
+                    const bg = firstTask.bgPath || firstTask.videoPath || firstTask.bgClipPool?.[0] || '';
+                    const bgm = firstTask.bgmPath || firstTask.bgmClipPool?.[0] || '';
+                    const audio = firstTask.audioPath || '';
+                    if (bg) menuItems.push({ label: '🎬 打开该组首个背景素材位置', path: bg });
+                    if (bgm) menuItems.push({ label: '🎵 打开该组首个配乐文件位置', path: bgm });
+                    if (audio) menuItems.push({ label: '🎙️ 打开该组首个配音文件位置', path: audio });
+                }
+                const projPath = _getCurrentBatchProjectFilePath();
+                if (projPath) {
+                    menuItems.push({ label: '📦 打开工程存储位置', path: projPath, dividerBefore: menuItems.length > 0 });
+                }
+                if (menuItems.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    _showLocationContextMenu(e.clientX, e.clientY, menuItems);
+                    return;
+                }
+            }
+        }
+
+        // 4. Batch Table Row / Cell (`tr.rbt-row[data-idx]`)
+        const tableRow = target.closest('tr.rbt-row[data-idx]');
+        if (tableRow) {
+            // Allow native contextmenu inside textareas/text inputs for copy/paste unless it's a readonly path input
+            if (target.matches('textarea, input[type="text"]:not([readonly])')) return;
+            const idx = parseInt(tableRow.dataset.idx, 10);
+            const task = window._reelsState?.tasks?.[idx];
+            if (task) {
+                let preferred = '';
+                if (target.closest('.rbt-col-bg')) preferred = 'bg';
+                else if (target.closest('.rbt-col-bgm')) preferred = 'bgm';
+                else if (target.closest('.rbt-col-audio')) preferred = 'audio';
+                else if (target.closest('.rbt-col-contentvideo')) preferred = 'contentvideo';
+                else if (target.closest('.rbt-col-srt')) preferred = 'srt';
+                else if (target.closest('.rbt-col-hook')) preferred = 'hook';
+                else if (target.closest('.rbt-col-pip')) preferred = 'pip';
+                else if (target.closest('.rbt-col-clippool')) preferred = 'clippool';
+                else if (target.closest('.rbt-col-cover-media')) preferred = 'cover';
+
+                const items = _buildTaskLocationItems(task, preferred);
+                if (items.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    _showLocationContextMenu(e.clientX, e.clientY, items);
+                    return;
+                }
+            }
+        }
+
+        // 5. Left Task List in Main Reels View (`.reels-task-item`, `.reels-batch-group-header`, `.reels-folder-queue-header`)
+        const taskItemEl = target.closest('.reels-task-item[data-idx]');
+        if (taskItemEl) {
+            const idx = parseInt(taskItemEl.dataset.idx, 10);
+            const task = window._reelsState?.tasks?.[idx];
+            if (task) {
+                const items = _buildTaskLocationItems(task);
+                if (items.length > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    _showLocationContextMenu(e.clientX, e.clientY, items);
+                    return;
+                }
+            }
+        }
+
+        const groupHeaderEl = target.closest('.reels-batch-group-header[data-tab-id], .reels-folder-queue-header[data-queue-id]');
+        if (groupHeaderEl) {
+            const tabId = groupHeaderEl.dataset.tabId;
+            const queueId = groupHeaderEl.dataset.queueId;
+            const menuItems = [];
+            if (tabId) {
+                const tab = (_batchTableState.tabs || []).find(t => t.id === tabId);
+                if (tab?.materialDir) menuItems.push({ label: `📁 打开分组「${tab.name}」素材目录`, path: tab.materialDir });
+                const firstTask = (window._reelsState?.tasks || []).find(t => t?._batchTabId === tabId) || tab?.tasks?.[0];
+                if (firstTask) {
+                    menuItems.push(..._buildTaskLocationItems(firstTask));
+                }
+            } else if (queueId) {
+                const queue = (window._reelsState?.folderQueues || []).find(q => q.id === queueId);
+                if (queue?.dirPath) menuItems.push({ label: `📁 打开队列「${queue.name}」文件夹`, path: queue.dirPath });
+                const firstTask = (window._reelsState?.tasks || []).find(t => t?._folderQueueId === queueId);
+                if (firstTask) {
+                    menuItems.push(..._buildTaskLocationItems(firstTask));
+                }
+            }
+            if (!menuItems.length) {
+                const projPath = _getCurrentBatchProjectFilePath();
+                if (projPath) menuItems.push({ label: '📦 打开当前工程存储位置', path: projPath });
+            }
+            if (menuItems.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                _showLocationContextMenu(e.clientX, e.clientY, menuItems);
+                return;
+            }
+        }
+
+        // 6. Main Reels Right Inspector inputs/containers for Background Media, Content Video, and BGM
+        const inspectorMediaEl = target.closest(
+            '#reels-bg-path-ui, #reels-bg-single-container, #reels-bg-multi-container, #reels-bg-pool-count, ' +
+            '#reels-bg-clippool-dir-ui, #reels-cv-path-ui, ' +
+            '#reels-bgm-path-ui, #reels-bgm-single-container, #reels-bgm-multi-container, #reels-bgm-pool-count'
+        );
+        if (inspectorMediaEl) {
+            const state = window._reelsState;
+            const task = state?.tasks?.[state.selectedIdx] || state?.tasks?.[0] || null;
+            let preferred = 'bg';
+            if (target.closest('#reels-bgm-path-ui, #reels-bgm-single-container, #reels-bgm-multi-container, #reels-bgm-pool-count')) {
+                preferred = 'bgm';
+            } else if (target.closest('#reels-cv-path-ui')) {
+                preferred = 'contentvideo';
+            } else if (target.closest('#reels-bg-clippool-dir-ui')) {
+                preferred = 'clippool';
+            }
+            const items = _buildTaskLocationItems(task, preferred);
+            const uiBg = document.getElementById('reels-bg-path-ui')?.value?.trim();
+            const uiBgm = document.getElementById('reels-bgm-path-ui')?.value?.trim();
+            const uiCv = document.getElementById('reels-cv-path-ui')?.value?.trim();
+            const uiClip = document.getElementById('reels-bg-clippool-dir-ui')?.value?.trim();
+            if (preferred === 'bg' && uiBg && !items.some(i => i.path === uiBg)) {
+                items.unshift({ key: 'bg', label: '🎬 打开背景素材所在位置', path: uiBg });
+            } else if (preferred === 'bgm' && uiBgm && !items.some(i => i.path === uiBgm)) {
+                items.unshift({ key: 'bgm', label: '🎵 打开配乐文件所在位置', path: uiBgm });
+            } else if (preferred === 'contentvideo' && uiCv && !items.some(i => i.path === uiCv)) {
+                items.unshift({ key: 'contentvideo', label: '📹 打开内容视频所在位置', path: uiCv });
+            } else if (preferred === 'clippool' && uiClip && !items.some(i => i.path === uiClip)) {
+                items.unshift({ key: 'clippool', label: '🎞️ 打开背景片段池文件夹', path: uiClip });
+            }
+            if (items.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                _showLocationContextMenu(e.clientX, e.clientY, items);
+                return;
+            }
+        }
+    }, true);
+}
+
 
 // 全局辅助用于点击加载工程 (只能挂在 window 上因为是在 innerHTML 里生成的 onclick)
 window._extLoadProject = async (pathStr) => {
@@ -16640,20 +17497,23 @@ async function _relocateMissingMaterials() {
     if (statusEl) statusEl.textContent = `✅ 素材查找完成: 修复 ${fixedCount}/${missing.length}`;
 }
 
-/** 导出所有标签页为 JSON 工程文件 */
-function _batchExportConfig() {
+/** 按选择范围导出 JSON 工程；不改变当前标签或其他工程。 */
+function _batchExportConfig(scope = 'current') {
+    if (_batchTableState.visible) _applyBatchTableChanges();
     _syncTasksToActiveTab();
-    const totalTasks = _batchTableState.tabs.reduce((sum, t) => sum + (t.tasks || []).length, 0);
+    const activeTab = _getActiveTab();
+    const tabs = scope === 'all' ? _batchTableState.tabs : (activeTab ? [activeTab] : []);
+    const totalTasks = tabs.reduce((sum, t) => sum + (t.tasks || []).length, 0);
     if (totalTasks === 0) {
-        alert('没有任务可以保存');
+        alert(scope === 'all' ? '没有任务可以保存' : '当前工程没有任务可以保存');
         return;
     }
     const data = {
         version: '2.0',
         timestamp: new Date().toISOString(),
-        activeTabId: _batchTableState.activeTabId,
+        activeTabId: activeTab?.id || tabs[0]?.id,
         nextTabId: _batchTableState.nextTabId,
-        tabs: _batchTableState.tabs.map(tab => ({
+        tabs: tabs.map(tab => ({
             id: tab.id,
             name: tab.name,
             materialDir: tab.materialDir || '',
@@ -16666,64 +17526,80 @@ function _batchExportConfig() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `batch_project_${new Date().toISOString().slice(0, 10)}.json`;
+    const projectLabel = scope === 'all' ? '全部工程' : String(activeTab?.name || '当前工程');
+    const safeLabel = projectLabel.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/g, '').slice(0, 80) || '工程';
+    a.download = `batch_project_${safeLabel}_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    console.log(`[BatchTable] Exported project: ${_batchTableState.tabs.length} tabs, ${totalTasks} tasks`);
+    console.log(`[BatchTable] Exported project: ${tabs.length} tabs, ${totalTasks} tasks`);
 }
 
 /** 从 JSON 文件导入工程配置 */
 function _batchImportConfig(file) {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+        if (window._batchImportInProgress) return;
+        window._batchImportInProgress = true;
         try {
-            const data = JSON.parse(e.target.result);
+            let data = JSON.parse(e.target.result);
+            if (data.version !== '2.0' && Array.isArray(data.tasks)) {
+                data = { version: '2.0', tabs: [{ id: 'legacy', name: (file.name || '导入工程').replace(/\.json$/i, ''), tasks: data.tasks }], activeTabId: 'legacy' };
+            }
+            if (data.version !== '2.0' || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('工程文件中没有有效标签页');
 
             if (data.version === '2.0' && data.tabs && data.tabs.length > 0) {
-                // v2: multi-tab project
-                if (!confirm(`将加载 ${data.tabs.length} 个标签页的工程文件。\n\n确定 = 替换全部\n取消 = 放弃`)) return;
-                _batchTableState.tabs = data.tabs.map(t => ({
-                    id: t.id,
-                    name: t.name,
-                    materialDir: t.materialDir || '',
-                    lastRefreshTime: t.lastRefreshTime || null,
-                    tasks: t.tasks || [],
-                }));
-                _batchTableState.activeTabId = data.activeTabId || _batchTableState.tabs[0].id;
-                _batchTableState.nextTabId = data.nextTabId || _batchTableState.tabs.length + 1;
-                _normalizeBatchTabState();
-                const activeTab = _getActiveTab();
-                _loadTabTasks(activeTab);
-                _skipNextApply = true;
-                _renderBatchTable();
-                const total = _batchTableState.tabs.reduce((s, t) => s + (t.tasks || []).length, 0);
-                alert(`✅ 成功加载工程: ${_batchTableState.tabs.length} 个标签页, ${total} 个任务\n(${data.timestamp || ''})`);
-            } else {
-                // v1: legacy single-task-list
-                const tasks = data.tasks;
-                if (!Array.isArray(tasks) || tasks.length === 0) {
-                    alert('配置文件中没有任务数据');
-                    return;
-                }
-                const mode = (window._reelsState.tasks || []).length > 0
-                    ? confirm(`当前有 ${window._reelsState.tasks.length} 个任务。\n\n确定 = 替换全部\n取消 = 追加到末尾`)
-                        ? 'replace'
-                        : 'append'
-                    : 'replace';
-
-                if (mode === 'replace') {
-                    window._reelsState.tasks = tasks;
-                } else {
-                    window._reelsState.tasks = (window._reelsState.tasks || []).concat(tasks);
-                }
+                // Import into new tabs; loading a file must not replace existing work.
+                if (!data.tabs.every(t => t && Array.isArray(t.tasks))) throw new Error('工程标签页数据无效');
+                const mode = await window.electronAPI.chooseBatchImportMode({ current: _batchTableState.tabs.length, incoming: data.tabs.length });
+                if (mode !== 'append' && mode !== 'replace') return;
+                if (_batchTableState.visible) _applyBatchTableChanges();
                 _syncTasksToActiveTab();
+                _normalizeBatchTabState();
+                if (mode === 'replace') {
+                    const backupDir = _batchTableState.projectDir || await window.electronAPI.getDownloadsPath();
+                    if (!backupDir) throw new Error('无法确定备份目录，已取消覆盖');
+                    const backupPath = backupDir.replace(/[\\/]$/, '') + '/覆盖前工程备份_' + Date.now() + '.json';
+                    const backup = { version: '2.0', timestamp: new Date().toISOString(), activeTabId: _batchTableState.activeTabId, nextTabId: _batchTableState.nextTabId,
+                        tabs: _batchTableState.tabs.map(tab => ({ id: tab.id, name: tab.name, materialDir: tab.materialDir || '', folderQueueId: tab._folderQueueId || '', externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined, lastRefreshTime: tab.lastRefreshTime || null, tasks: _serializeTasks(tab.tasks) })) };
+                    if (!await window.electronAPI.writeFileText(backupPath, JSON.stringify(backup, null, 2))) throw new Error('备份失败，原有工程未覆盖');
+                }
+                const importedTabs = data.tabs.map(t => {
+                    const id = 'tab_' + _batchTableState.nextTabId++;
+                    const queueIds = new Map();
+                    const remapQueue = old => {
+                        if (!old) return '';
+                        if (!queueIds.has(old)) queueIds.set(old, `${id}_import_${Date.now()}_${queueIds.size}`);
+                        return queueIds.get(old);
+                    };
+                    return {
+                        id,
+                        name: t.name || '导入工程',
+                        materialDir: t.materialDir || '',
+                        _folderQueueId: remapQueue(t.folderQueueId || t._folderQueueId),
+                        _externalFolderQueuesCombined: !!(t.externalFolderQueuesCombined || t._externalFolderQueuesCombined),
+                        lastRefreshTime: t.lastRefreshTime || null,
+                        tasks: t.tasks.map(task => {
+                            const imported = _stripBatchGroupMeta(task);
+                            delete imported.id;
+                            _ensureTaskId(imported);
+                            if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
+                            return imported;
+                        }),
+                    };
+                });
+                if (mode === 'replace') _batchTableState.tabs = importedTabs;
+                else _batchTableState.tabs.push(...importedTabs);
+                const activeIndex = Math.max(0, data.tabs.findIndex(t => t.id === data.activeTabId));
+                _batchTableState.activeTabId = importedTabs[activeIndex].id;
+                _loadTabTasks(_getActiveTab());
                 _skipNextApply = true;
                 _renderBatchTable();
-                alert(`成功加载 ${tasks.length} 个任务 (${data.timestamp || ''})`);
+                const total = importedTabs.reduce((sum, t) => sum + t.tasks.length, 0);
+                alert(mode === 'replace' ? `✅ 已覆盖为 ${importedTabs.length} 个工程、${total} 个任务。原工程已备份到工程保存目录。` : `✅ 已新增 ${importedTabs.length} 个工程标签页、${total} 个任务，原有工程已保留。`);
             }
         } catch (err) {
-            alert(`配置文件解析失败: ${err.message}`);
-        }
+            alert(`加载工程未完成: ${err.message}`);
+        } finally { window._batchImportInProgress = false; }
     };
     reader.readAsText(file);
 }
@@ -16733,6 +17609,7 @@ function _batchImportConfig(file) {
 // ═══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', async () => {
+    if(window.location?.hash?.startsWith('#template='))return;
     _batchAutoRestore();
 
     // 如果未设置工程路径，优先使用设置页自定义目录，否则用"下载"文件夹
@@ -16758,18 +17635,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 每30秒自动保存一次（安全网）
     setInterval(() => {
-        if (window._reelsState && (window._reelsState.tasks || []).length > 0) {
+        if (window._reelsState && _batchTableState.tabs.length > 0) {
             _batchAutoSave();
         }
     }, 30000);
 });
 
-// 关闭/刷新前保存
-window.addEventListener('beforeunload', () => {
-    if (window._skipBatchSaveBeforeUnload) return;
-    if (window._reelsState && (window._reelsState.tasks || []).length > 0) {
-        _batchAutoSave();
-    }
+window.reelsFlushWorkspaceBeforeClose=function(){
+    if(window._skipBatchSaveBeforeUnload || window._templateThumbnailCaptureActive)return {ok:true,skipped:true};
+    try{
+        document.activeElement?.blur?.();
+        if(typeof _syncCurrentOverlayEditorToSelectedTask==='function')_syncCurrentOverlayEditorToSelectedTask();
+        if(typeof _getSelectedTask==='function' && _getSelectedTask() && typeof _persistSubtitleStyleByScope==='function')_persistSubtitleStyleByScope(_readStyleFromUI());
+        const ok=_batchAutoSave()===true;
+        return {ok,error:ok?'':'无法写入自动保存文件，请检查软件目录是否可写。'};
+    }catch(error){return {ok:false,error:error.message||String(error)};}
+};
+let _workspaceEditSaveTimer;
+function scheduleWorkspaceEditSave(event){
+    if(!event?.isTrusted || !event.target?.closest?.('#batch-reels-panel, .reels-batch-table-container'))return;
+    window._workspaceCloseAlreadySaved=false;
+    clearTimeout(_workspaceEditSaveTimer);
+    _workspaceEditSaveTimer=setTimeout(()=>{_workspaceEditSaveTimer=null;_batchAutoSave();},1800);
+}
+document.addEventListener('input',scheduleWorkspaceEditSave);
+document.addEventListener('change',scheduleWorkspaceEditSave);
+window.addEventListener('beforeunload',()=>{
+    if(window._workspaceCloseAlreadySaved)return;
+    clearTimeout(_workspaceEditSaveTimer);
+    window.reelsFlushWorkspaceBeforeClose();
 });
 
 // ═══════════════════════════════════════════════════════
@@ -17260,7 +18154,7 @@ function _showClipAbPasteModal() {
     const lastPresetB = localStorage.getItem('rbt_clip_overlay_preset_b') || '';
 
     let presetsMap = {};
-    try { presetsMap = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch (e) {}
+    try { presetsMap = JSON.parse(_rbtReadOverlayGroupPresetsRaw() || '{}'); } catch (e) {}
     if (window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS) presetsMap = { ...window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS, ...presetsMap };
     let presetOptionsHtmlA = '';
     let presetOptionsHtmlB = '';
@@ -18251,4 +19145,66 @@ window.reelsRestoreBatchTableState = function(snapshot) {
 window.reelsGetSelectedBatchTasks = function() {
     const tasks = window._reelsState?.tasks || [];
     return [...(_batchTableState?.selectedRows || [])].map(index => tasks[index]).filter(Boolean);
+};
+
+// Update every task linked to this preset, including tasks in inactive tabs.
+window.reelsRefreshTasksUsingOverlayPreset = function(name, previousPreset = null) {
+    if (!window._reelsState) return 0;
+    if (_batchTableState.visible) _applyBatchTableChanges();
+    _syncTasksToActiveTab();
+    const tasks = new Set([...(window._reelsState.tasks || []), ..._batchTableState.tabs.flatMap(tab => tab.tasks || [])]);
+    const updatedIds = new Set();
+    const previousLayers = Array.isArray(previousPreset) ? previousPreset : previousPreset?.layers;
+    const matchesPrevious = task => {
+        if (!Array.isArray(previousLayers) || !previousLayers.length) return false;
+        const layers = task.overlays || [];
+        if (layers.length !== previousLayers.length) return false;
+        // Identical layer IDs retain provenance in older project copies.
+        if (previousLayers.every((layer, i) => layer.id && layer.id === layers[i]?.id && layer.type === layers[i]?.type)) return true;
+        return previousLayers.every((layer, i) => _overlayMatchesPresetLayer(layers[i], layer)
+            && (!['image', 'video', 'audio'].includes(layer.type) || layers[i]?.content === layer.content));
+    };
+    for (const task of tasks) {
+        if (task._overlayPresetName !== name) {
+            if (task._overlayPresetName || !matchesPrevious(task)) continue;
+            task._overlayPresetName = name;
+        }
+        const result = _applyAndVerifyOverlayGroupPresetToTask(task, name, { addScroll: false, clearText: false });
+        if (result.ok) updatedIds.add(task.id || task);
+        else console.warn('[PresetSync] Failed:', name, result.reason);
+    }
+    if (!updatedIds.size) return 0;
+    _syncSelectedTaskOverlayMgrIfNeeded(window._reelsState.selectedIdx);
+    if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+    _skipNextApply = true;
+    _batchAutoSave({ skipSync: true });
+    if (typeof showToast === 'function') showToast('已同步更新 ' + updatedIds.size + ' 个使用此预设的画面', 'success', 4000);
+    return updatedIds.size;
+};
+
+window.reelsEditWritingTask=function(idx){
+    const task=window._reelsState?.tasks?.[idx];if(!task)return;
+    if(!task.segments?.length){alert('请先导入或匹配 SRT 字幕，再编辑打字机文案。');return;}
+    const style=typeof _resolveSubtitleStyleForTask==='function'?_resolveSubtitleStyleForTask(task):(task.subtitleStyle||{});
+    const parts=getSplitWritingParts(task.segments,style,task.ttsText||task.aiScript||'');
+    const modal=document.createElement('div');modal.style.cssText='position:fixed;inset:0;background:#0009;z-index:99999;display:flex;align-items:center;justify-content:center';
+    const panel=document.createElement('div');panel.style.cssText='background:#1c2030;color:#eee;width:680px;max-width:90vw;max-height:90vh;overflow:auto;padding:20px;border-radius:10px';modal.appendChild(panel);
+    const heading=document.createElement('h3');heading.textContent='打字机标题 / 正文 · SRT 时间匹配';panel.appendChild(heading);
+    const note=document.createElement('p');note.textContent='标题跨 SRT 段自动识别，正文从标题朗诵结束后开始。编辑下方显示文案会保留原字幕时间；朗诵音频保持原文。';panel.appendChild(note);
+    const label=document.createElement('label');label.textContent='标题';panel.appendChild(label);
+    const title=document.createElement('textarea');title.value=parts.title[0]?.text||'';title.rows=3;title.className='input';title.style.width='100%';panel.appendChild(title);
+    const fields=[];
+    for(const seg of parts.body){const l=document.createElement('div');l.textContent=`正文 ${seg.start.toFixed(2)}–${seg.end.toFixed(2)} 秒`;l.style.marginTop='10px';panel.appendChild(l);const input=document.createElement('textarea');input.value=seg.text;input.rows=2;input.className='input';input.style.width='100%';panel.appendChild(input);fields.push({seg,input});}
+    const save=document.createElement('button');save.className='btn btn-primary';save.textContent='保存并刷新画面';save.style.marginTop='14px';panel.appendChild(save);
+    const close=document.createElement('button');close.className='btn btn-secondary';close.textContent='取消';close.style.marginLeft='10px';panel.appendChild(close);close.onclick=()=>modal.remove();
+    save.onclick=()=>{
+        task.writingTitle=title.value.trim();task.writingSplit=true;
+        for(const {seg,input}of fields){if(input.value!==seg.text){const source=task.segments[seg._writingSourceIndex];source.edited_text=seg._writingPrefix+input.value;}}
+        task.subtitleStyle={...style,fullpage_typewriter:true,fullpage_typewriter_split:true,fullpage_typewriter_speech_sync:true,fullpage_typewriter_auto_sequence:true,fullpage_typewriter_title_auto:false,fullpage_typewriter_title_text:task.writingTitle,fullpage_typewriter_title_reveal:'char',fullpage_typewriter_title_delay:0,fullpage_typewriter_body_delay:0};
+        if(typeof _batchAutoSave==='function')_batchAutoSave();
+        if(typeof _renderBatchTable==='function')_renderBatchTable();
+        if(typeof _getSelectedTask==='function'&&_getSelectedTask()===task&&typeof _writeStyleToUI==='function')_writeStyleToUI(task.subtitleStyle);
+        if(typeof reelsRefreshSpeechWritingPreview==='function')reelsRefreshSpeechWritingPreview();modal.remove();
+    };
+    document.body.appendChild(modal);
 };

@@ -28,6 +28,7 @@ async function apiFetch(url, options = {}) {
     // 解析请求数据
     let data = {};
     const method = (options.method || 'GET').toUpperCase();
+    if(method!=='GET'&&/(?:generate|transcribe|download|rename|move|copy|delete|organize|convert|burn|compose|concat)/i.test(endpoint))window.VideoKitGlobalHistory?.noteExternalAction();
 
     if (options.body) {
         if (typeof options.body === 'string') {
@@ -753,6 +754,7 @@ function openPanelByName(tabName) {
 
     tab.classList.add('active');
     panel.classList.add('active');
+    if (tabName === 'voiceover-workflow' && typeof window.initVWPageOnce === 'function') window.initVWPageOnce();
 
     const content = document.querySelector('.content');
     if (content?.scrollTo) {
@@ -22242,6 +22244,7 @@ function openAutoEditTimelineReview() {
     // 审核弹窗拥有独立的编辑历史。它编辑的是自动剪辑审核行，而不是 Reels
     // 工程的任务模型，因此不能借用后者的撤销栈。
     const reviewHistory = [];
+    const reviewRedoHistory = [];
     let pendingTimelineView = null;
     const captureReviewState = () => rows.map(row => ({
         start: row.querySelector('.ae-review-start')?.value || '0',
@@ -22252,6 +22255,7 @@ function openAutoEditTimelineReview() {
     const saveReviewHistory = () => {
         const next = JSON.stringify(captureReviewState());
         if (reviewHistory.length && reviewHistory[reviewHistory.length - 1] === next) return;
+        reviewRedoHistory.length=0;
         reviewHistory.push(next);
         if (reviewHistory.length > 100) reviewHistory.shift();
     };
@@ -22269,6 +22273,7 @@ function openAutoEditTimelineReview() {
     let previewHeight = Math.max(140, Math.min(620, Number(localStorage.getItem('autoedit-review-preview-height')) || 260));
     const modal = document.createElement('div');
     modal.id = 'autoedit-timeline-review-modal';
+    modal.dataset.videokitLocalHistory='true';modal.videokitUndo=undoReview;modal.videokitRedo=redoReview;
     modal.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.85);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:10px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow-y:auto;box-sizing:border-box;';
     const panel = document.createElement('section');
     panel.dataset.role = 'review-panel';
@@ -22342,14 +22347,7 @@ function openAutoEditTimelineReview() {
             : normalizeFilePath(source);
         return `${url}${url.includes('?') ? '&' : '?'}review=${previewRevision}`;
     };
-    function undoReview() {
-        // 栈尾是当前状态；弹出它以后恢复前一个状态。
-        if (reviewHistory.length < 2) {
-            showToast('没有可撤销的审核修改', 'info');
-            return;
-        }
-        reviewHistory.pop();
-        const previous = JSON.parse(reviewHistory[reviewHistory.length - 1]);
+    function restoreReviewSnapshot(previous,message) {
         previous.forEach((state, index) => {
             const row = rows[index];
             if (!row) return;
@@ -22367,7 +22365,17 @@ function openAutoEditTimelineReview() {
         if (typeof persistAutoEditBatchReview === 'function') persistAutoEditBatchReview();
         pendingTimelineView = captureTimelineView();
         render();
-        showToast('已撤销审核修改', 'success');
+        showToast(message,'success');
+    }
+    function undoReview() {
+        if(reviewHistory.length<2){showToast('没有可撤销的审核修改','info');return;}
+        reviewRedoHistory.push(reviewHistory.pop());
+        restoreReviewSnapshot(JSON.parse(reviewHistory[reviewHistory.length-1]),'已撤销审核修改');
+    }
+    function redoReview() {
+        if(!reviewRedoHistory.length){showToast('没有可重做的审核修改','info');return;}
+        const snapshot=reviewRedoHistory.pop();reviewHistory.push(snapshot);
+        restoreReviewSnapshot(JSON.parse(snapshot),'已重做审核修改');
     }
     const render = () => {
         const restoredTimelineView = pendingTimelineView || captureTimelineView();
@@ -26955,7 +26963,7 @@ function batchCutUpdateSubtitle(rowIdx, colIdx, value) {
 // HTML 转义辅助
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // 更新行数据
@@ -28438,8 +28446,8 @@ function _renderUniRenameList() {
     }
     container.innerHTML = _uniRenameFiles.map((f, i) => `
         <div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.name}</span>
-            <span style="color:var(--text-muted);font-size:11px;">${f.ext}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</span>
+            <span style="color:var(--text-muted);font-size:11px;">${escapeHtml(f.ext)}</span>
             <button class="btn" style="padding:1px 5px;font-size:10px;" onclick="_removeUniRenameFile(${i})">✕</button>
         </div>
     `).join('') + `<div style="margin-top:6px;font-size:11px;color:var(--text-muted);">${_uniRenameFiles.length} 个文件</div>`;
@@ -28462,7 +28470,7 @@ function _updateUniRenamePickSelect() {
         ? '<option value="">— 请先添加文件 —</option>'
         : _uniRenameFiles.map((f, i) => {
             const base = f.name.replace(/\.[^.]+$/, '');
-            return `<option value="${i}">${base} (${f.ext})</option>`;
+            return `<option value="${i}">${escapeHtml(base)} (${escapeHtml(f.ext)})</option>`;
         }).join('');
     // 恢复之前的选择
     if (prevVal && sel.querySelector(`option[value="${prevVal}"]`)) {
@@ -28747,7 +28755,7 @@ async function loadHistoryVersions() {
                 itemDiv.style.cssText = 'display: flex; align-items: center; justify-content: space-between; font-size: 11px; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.05);';
                 
                 const label = document.createElement('span');
-                label.innerHTML = `${verName}${isPrerelease} <span style="opacity:0.6;font-size:10px;">(${relDate})</span>`;
+                label.innerHTML = `${escapeHtml(verName)}${isPrerelease} <span style="opacity:0.6;font-size:10px;">(${escapeHtml(relDate)})</span>`;
                 label.style.fontWeight = '500';
                 itemDiv.appendChild(label);
                 
@@ -30519,9 +30527,7 @@ function organizerSourceDrop(event) {
 }
 
 function folderMergeEsc(value) {
-    const node = document.createElement('div');
-    node.textContent = String(value || '');
-    return node.innerHTML;
+    return escapeHtml(value || '');
 }
 
 function folderMergeRenderSources() {
@@ -30735,9 +30741,7 @@ try {
 } catch (_) { }
 
 function organizerEsc(v) {
-    const d = document.createElement('div');
-    d.textContent = String(v || '');
-    return d.innerHTML;
+    return escapeHtml(v || '');
 }
 
 async function organizerChooseFolder() {
@@ -31929,8 +31933,8 @@ window._quickFilterAndAdd = _quickFilterAndAdd;
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
         const organizerTab = document.getElementById('media-organizer-subtab');
-        if (organizerTab && !organizerTab.classList.contains('hidden')) {
-            const tag = document.activeElement?.tagName?.toLowerCase();
+        if (!e.defaultPrevented && document.getElementById('media-panel')?.classList.contains('active') && organizerTab && !organizerTab.classList.contains('hidden')) {
+            const tag = e.target?.tagName?.toLowerCase();
             if (tag !== 'input' && tag !== 'textarea') {
                 e.preventDefault();
                 organizerUndoStep();
@@ -31977,3 +31981,88 @@ if (document.readyState === 'loading') {
 } else {
     initMediaOrganizerDnD();
 }
+
+// Global undo adapters: editable models only; no workers, credentials or media jobs.
+window.VideoKitGlobalHistory.register('app-subtitle',{contexts:['subtitle'],capture:()=>({currentAudioPath,currentSrtSrcPath,currentSrtOrgiPath,currentSrtRefPath,currentSeamlessSrtPath,subtitleBatchTasks}),restore:state=>{if('currentAudioPath' in state)currentAudioPath=state.currentAudioPath;
+if('currentSrtSrcPath' in state)currentSrtSrcPath=state.currentSrtSrcPath;
+if('currentSrtOrgiPath' in state)currentSrtOrgiPath=state.currentSrtOrgiPath;
+if('currentSrtRefPath' in state)currentSrtRefPath=state.currentSrtRefPath;
+if('currentSeamlessSrtPath' in state)currentSeamlessSrtPath=state.currentSeamlessSrtPath;
+if('subtitleBatchTasks' in state)subtitleBatchTasks=state.subtitleBatchTasks;},busy:()=>isSubtitleBatchProcessing,render:()=>{if(document.getElementById('subtitle-batch-list')?.offsetParent!==null&&document.getElementById('subtitle-batch-list')){try{renderSubtitleBatchList();}catch(error){console.warn('[GlobalUndo] Render renderSubtitleBatchList:',error.message);}}
+}});
+window.VideoKitGlobalHistory.register('app-video-download',{contexts:['video-download'],capture:()=>({currentVideoUrl,videoListData,batchLinksData}),restore:state=>{if('currentVideoUrl' in state)currentVideoUrl=state.currentVideoUrl;
+if('videoListData' in state)videoListData=state.videoListData;
+if('batchLinksData' in state)batchLinksData=state.batchLinksData;},busy:()=>isDownloading||isBatchDownloading,render:()=>{if(document.getElementById('batch-links-list'))renderBatchLinksList(batchLinksData);if(document.getElementById('batch-links-count'))document.getElementById('batch-links-count').textContent=batchLinksData.length+' 个链接';if(document.getElementById('batch-links-list-section'))document.getElementById('batch-links-list-section').style.display=batchLinksData.length?'block':'none';}});
+window.VideoKitGlobalHistory.register('app-srt-tools',{contexts:['srt-tools'],capture:()=>({_wrapOriginals,_wrapResults,_batchTxtCells,_batchTxtRawCells,_uniRenameFiles,_batchRenameFiles}),restore:state=>{if('_wrapOriginals' in state)_wrapOriginals=state._wrapOriginals;
+if('_wrapResults' in state)_wrapResults=state._wrapResults;
+if('_batchTxtCells' in state)_batchTxtCells=state._batchTxtCells;
+if('_batchTxtRawCells' in state)_batchTxtRawCells=state._batchTxtRawCells;
+if('_uniRenameFiles' in state)_uniRenameFiles=state._uniRenameFiles;
+if('_batchRenameFiles' in state)_batchRenameFiles=state._batchRenameFiles;},busy:()=>false,render:()=>{if(document.getElementById('txt-wrap-result-tbody')?.offsetParent!==null&&document.getElementById('txt-wrap-result-tbody')){try{_renderWrapTable();}catch(error){console.warn('[GlobalUndo] Render _renderWrapTable:',error.message);}}
+if(document.getElementById('unirename-file-list')?.offsetParent!==null&&document.getElementById('unirename-file-list')){try{_renderUniRenameList();}catch(error){console.warn('[GlobalUndo] Render _renderUniRenameList:',error.message);}}
+if(document.getElementById('batchrename-file-list')?.offsetParent!==null&&document.getElementById('batchrename-file-list')){try{_renderBatchRenameList();}catch(error){console.warn('[GlobalUndo] Render _renderBatchRenameList:',error.message);}}
+}});
+window.VideoKitGlobalHistory.register('app-media',{contexts:['media'],capture:()=>({currentMediaFiles,currentMediaFileInfos,currentAudioCutPoints,mtbState,visualReviewState,visualReviewActiveTabId,smartSplitSegments,smartSplitTargetFile,sceneFiles,sceneResults,sceneOutputDir,sceneWatermarks,selectedSceneWatermarkIndex,smartKfFiles,smartKfOutputDir,smartKfCurrentMode,skfMarkers,skfSelectedIdx,skfCurrentFilePath,skfGridFrames,trimState,autoEditBatchTasks,autoEditBatchScriptCells,autoEditBatchUnmatchedScripts,autoEditActiveBatchIndex,autoEditBatchTaskFilter,autoEditFiles,autoEditCurrentFolder,autoEditOutputDir,autoEditWorkspaces,autoEditWorkspaceIndex,batchCutFilePath,batchCutSegments,batchCutOutputDir,batchCutSubtitleCols,batchCutMultiMode,tableSkipCols,_batchTxtCells,_batchTxtRawCells,_uniRenameFiles,_batchRenameFiles,amSegments,amOffsetMs,folderMergeState,organizerState}),restore:state=>{if('currentMediaFiles' in state)currentMediaFiles=state.currentMediaFiles;
+if('currentMediaFileInfos' in state)currentMediaFileInfos=state.currentMediaFileInfos;
+if('currentAudioCutPoints' in state)currentAudioCutPoints=state.currentAudioCutPoints;
+if('mtbState' in state){const target=mtbState,source=state.mtbState;if(Array.isArray(target))target.splice(0,target.length,...source);else if(target instanceof Map){target.clear();for(const[k,v]of source)target.set(k,v);}else{for(const k of Object.keys(target))delete target[k];Object.assign(target,source);}}
+if('visualReviewState' in state){const target=visualReviewState,source=state.visualReviewState;if(Array.isArray(target))target.splice(0,target.length,...source);else if(target instanceof Map){target.clear();for(const[k,v]of source)target.set(k,v);}else{for(const k of Object.keys(target))delete target[k];Object.assign(target,source);}}
+if('visualReviewActiveTabId' in state)visualReviewActiveTabId=state.visualReviewActiveTabId;
+if('smartSplitSegments' in state)smartSplitSegments=state.smartSplitSegments;
+if('smartSplitTargetFile' in state)smartSplitTargetFile=state.smartSplitTargetFile;
+if('sceneFiles' in state)sceneFiles=state.sceneFiles;
+if('sceneResults' in state)sceneResults=state.sceneResults;
+if('sceneOutputDir' in state)sceneOutputDir=state.sceneOutputDir;
+if('sceneWatermarks' in state)sceneWatermarks=state.sceneWatermarks;
+if('selectedSceneWatermarkIndex' in state)selectedSceneWatermarkIndex=state.selectedSceneWatermarkIndex;
+if('smartKfFiles' in state)smartKfFiles=state.smartKfFiles;
+if('smartKfOutputDir' in state)smartKfOutputDir=state.smartKfOutputDir;
+if('smartKfCurrentMode' in state)smartKfCurrentMode=state.smartKfCurrentMode;
+if('skfMarkers' in state)skfMarkers=state.skfMarkers;
+if('skfSelectedIdx' in state)skfSelectedIdx=state.skfSelectedIdx;
+if('skfCurrentFilePath' in state)skfCurrentFilePath=state.skfCurrentFilePath;
+if('skfGridFrames' in state)skfGridFrames=state.skfGridFrames;
+if('trimState' in state)trimState=state.trimState;
+if('autoEditBatchTasks' in state)autoEditBatchTasks=state.autoEditBatchTasks;
+if('autoEditBatchScriptCells' in state)autoEditBatchScriptCells=state.autoEditBatchScriptCells;
+if('autoEditBatchUnmatchedScripts' in state)autoEditBatchUnmatchedScripts=state.autoEditBatchUnmatchedScripts;
+if('autoEditActiveBatchIndex' in state)autoEditActiveBatchIndex=state.autoEditActiveBatchIndex;
+if('autoEditBatchTaskFilter' in state)autoEditBatchTaskFilter=state.autoEditBatchTaskFilter;
+if('autoEditFiles' in state)autoEditFiles=state.autoEditFiles;
+if('autoEditCurrentFolder' in state)autoEditCurrentFolder=state.autoEditCurrentFolder;
+if('autoEditOutputDir' in state)autoEditOutputDir=state.autoEditOutputDir;
+if('autoEditWorkspaces' in state){const target=autoEditWorkspaces,source=state.autoEditWorkspaces;if(Array.isArray(target))target.splice(0,target.length,...source);else if(target instanceof Map){target.clear();for(const[k,v]of source)target.set(k,v);}else{for(const k of Object.keys(target))delete target[k];Object.assign(target,source);}}
+if('autoEditWorkspaceIndex' in state)autoEditWorkspaceIndex=state.autoEditWorkspaceIndex;
+if('batchCutFilePath' in state)batchCutFilePath=state.batchCutFilePath;
+if('batchCutSegments' in state)batchCutSegments=state.batchCutSegments;
+if('batchCutOutputDir' in state)batchCutOutputDir=state.batchCutOutputDir;
+if('batchCutSubtitleCols' in state)batchCutSubtitleCols=state.batchCutSubtitleCols;
+if('batchCutMultiMode' in state)batchCutMultiMode=state.batchCutMultiMode;
+if('tableSkipCols' in state)tableSkipCols=state.tableSkipCols;
+if('_batchTxtCells' in state)_batchTxtCells=state._batchTxtCells;
+if('_batchTxtRawCells' in state)_batchTxtRawCells=state._batchTxtRawCells;
+if('_uniRenameFiles' in state)_uniRenameFiles=state._uniRenameFiles;
+if('_batchRenameFiles' in state)_batchRenameFiles=state._batchRenameFiles;
+if('amSegments' in state)amSegments=state.amSegments;
+if('amOffsetMs' in state)amOffsetMs=state.amOffsetMs;
+if('folderMergeState' in state)folderMergeState=state.folderMergeState;
+if('organizerState' in state)organizerState=state.organizerState;},busy:()=>autoEditBatchRunning,render:()=>{if(document.getElementById('mtb-tool-grid')?.offsetParent && document.querySelector('.mtb-tool-card.active')?.dataset.mtbTool!==mtbState.selectedToolId)mtbSelectTool(mtbState.selectedToolId);
+if(document.getElementById('audio-split-file-list')?.offsetParent!==null&&document.getElementById('audio-split-file-list')){try{renderAudioSplitFileList();}catch(error){console.warn('[GlobalUndo] Render renderAudioSplitFileList:',error.message);}}
+if(document.getElementById('mtb-file-list')?.offsetParent!==null&&document.getElementById('mtb-file-list')){try{mtbRenderFileList();}catch(error){console.warn('[GlobalUndo] Render mtbRenderFileList:',error.message);}}
+if(document.getElementById('media-visual-review')?.offsetParent!==null&&document.getElementById('media-visual-review')){try{visualReviewRender();}catch(error){console.warn('[GlobalUndo] Render visualReviewRender:',error.message);}}
+if(document.getElementById('mtb-visual-review')?.offsetParent!==null&&document.getElementById('mtb-visual-review')){try{visualReviewRender();}catch(error){console.warn('[GlobalUndo] Render visualReviewRender:',error.message);}}
+if(document.getElementById('scene-file-cards')?.offsetParent!==null&&document.getElementById('scene-file-cards')){try{renderSceneFileCards();}catch(error){console.warn('[GlobalUndo] Render renderSceneFileCards:',error.message);}}
+if(document.getElementById('scene-watermark-list')?.offsetParent!==null&&document.getElementById('scene-watermark-list')){try{renderSceneWatermarkList();}catch(error){console.warn('[GlobalUndo] Render renderSceneWatermarkList:',error.message);}}
+if(document.getElementById('skf-video-path')?.offsetParent!==null&&document.getElementById('skf-video-path')){try{updateSmartKfFileDisplay();}catch(error){console.warn('[GlobalUndo] Render updateSmartKfFileDisplay:',error.message);}}
+if(document.getElementById('autoedit-file-list')?.offsetParent!==null&&document.getElementById('autoedit-file-list')){try{renderAutoEditFiles();}catch(error){console.warn('[GlobalUndo] Render renderAutoEditFiles:',error.message);}}
+if(document.getElementById('autoedit-batch-tasks')?.offsetParent!==null&&document.getElementById('autoedit-batch-tasks')){try{renderAutoEditBatchTasks();}catch(error){console.warn('[GlobalUndo] Render renderAutoEditBatchTasks:',error.message);}}
+if(document.getElementById('autoedit-workspace-tabs')?.offsetParent!==null&&document.getElementById('autoedit-workspace-tabs')){try{renderAutoEditWorkspaceTabs();}catch(error){console.warn('[GlobalUndo] Render renderAutoEditWorkspaceTabs:',error.message);}}
+if(document.getElementById('txt-wrap-result-tbody')?.offsetParent!==null&&document.getElementById('txt-wrap-result-tbody')){try{_renderWrapTable();}catch(error){console.warn('[GlobalUndo] Render _renderWrapTable:',error.message);}}
+if(document.getElementById('unirename-file-list')?.offsetParent!==null&&document.getElementById('unirename-file-list')){try{_renderUniRenameList();}catch(error){console.warn('[GlobalUndo] Render _renderUniRenameList:',error.message);}}
+if(document.getElementById('batchrename-file-list')?.offsetParent!==null&&document.getElementById('batchrename-file-list')){try{_renderBatchRenameList();}catch(error){console.warn('[GlobalUndo] Render _renderBatchRenameList:',error.message);}}
+if(document.getElementById('skf-markers-container')?.offsetParent){try{_skfRenderMarkers();}catch(error){console.warn('[GlobalUndo] Render _skfRenderMarkers:',error.message);}}
+if(document.getElementById('batchcut-segment-list')?.offsetParent){try{renderBatchCutSegments();}catch(error){console.warn('[GlobalUndo] Render renderBatchCutSegments:',error.message);}}
+if(document.getElementById('autoedit-batch-task-list')?.offsetParent){try{renderAutoEditBatchTasks();}catch(error){console.warn('[GlobalUndo] Render renderAutoEditBatchTasks:',error.message);}}
+if(document.getElementById('organizer-rules-list')?.offsetParent){try{_renderOrganizerRulesList();}catch(error){console.warn('[GlobalUndo] Render _renderOrganizerRulesList:',error.message);}}
+if(organizerState.plan&&document.getElementById('organizer-groups')?.offsetParent){_renderOrganizerSummary();_renderOrganizerGroups();}}});
+window.VideoKitGlobalHistory.register('theme-settings',{contexts:['settings'],capture:()=>({theme:localStorage.getItem(THEME_KEY)||'dark',custom:localStorage.getItem(CUSTOM_THEME_KEY)}),restore:s=>{applyTheme(s.theme,s.custom?JSON.parse(s.custom):undefined);}});

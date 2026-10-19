@@ -71,19 +71,40 @@ async function _saveNamedQueue() {
 
 async function _openQueueLibrary() {
     const dialog = _queueDialog('调用已保存队列');
-    dialog.insertAdjacentHTML('beforeend', '<p>选择队列可恢复全部标签页、字幕及素材配置。音视频数量按不同文件统计。</p><p data-message role="status">正在读取…</p><div data-list></div>');
+    dialog.insertAdjacentHTML('beforeend', '<p>选择队列可恢复全部标签页、字幕及素材配置（右键或点击“📂 打开位置”可查看工程存储目录）。</p><p data-message role="status">正在读取…</p><div data-list></div>');
     const message = dialog.querySelector('[data-message]');
     try {
         const { queues } = await _queueRequest('queue-library/list');
         message.textContent = queues.length ? `共 ${queues.length} 个队列，按保存时间排列` : '还没有保存的队列，请先点击“保存队列”。';
         for (const entry of queues) {
             const row = document.createElement('section');
-            row.style.cssText = 'padding:16px;margin-top:10px;border:1px solid #454b59;border-radius:8px;';
+            row.style.cssText = 'padding:16px;margin-top:10px;border:1px solid #454b59;border-radius:8px;cursor:context-menu;';
+            row.title = entry.filePath ? `右键打开存储位置: ${entry.filePath}` : '右键打开存储位置';
             const title = document.createElement('strong'); title.textContent = entry.name;
             const detail = document.createElement('p');
             const c = entry.counts;
             detail.textContent = `${new Date(entry.savedAt).toLocaleString()} · ${c.tabs} 个标签页 · ${c.tasks} 个任务 · ${c.audio} 个音频 · ${c.video} 个视频 · ${c.subtitles} 个字幕任务`;
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
             const load = document.createElement('button'); load.className = 'rbt-btn rbt-btn-primary'; load.textContent = '调用此队列';
+            const revealBtn = document.createElement('button');
+            revealBtn.className = 'rbt-btn';
+            revealBtn.textContent = '📂 打开存储位置';
+            const openQueueLocation = () => {
+                const targetPath = entry.filePath || (window.electronAPI?.getDefaultProjectDir ? window.electronAPI.getDefaultProjectDir() : '');
+                if (targetPath && window.electronAPI?.showItemInFolder) {
+                    window.electronAPI.showItemInFolder(targetPath);
+                }
+            };
+            revealBtn.onclick = (e) => {
+                e.stopPropagation();
+                openQueueLocation();
+            };
+            row.oncontextmenu = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openQueueLocation();
+            };
             load.onclick = async () => {
                 load.disabled = true;
                 try {
@@ -102,8 +123,8 @@ async function _openQueueLibrary() {
                         _batchTabOrder: tabOrder, _batchTaskOrder: taskOrder,
                     })));
                     const batchTable = { ...snapshot, appliedTabIds: snapshot.tabs.map(tab => tab.id), selectedRows: [] };
-                    // Detach from any old auto-save project before rendering the restored queue.
-                    _batchTableState.projectDir = '';
+                    // Use unified installed projectDir before rendering the restored queue.
+                    _batchTableState.projectDir = window.electronAPI?.getDefaultProjectDir?.() || '';
                     _batchTableState.projectName = 'UntitledProject.json';
                     applyRestoredProject({ ...snapshot.project, tasks, batchTable, selectedIdx: -1 });
                     _batchAutoSave({ skipSync: true });
@@ -113,7 +134,8 @@ async function _openQueueLibrary() {
                 } catch (error) { message.textContent = `调用失败：${error.message}`; }
                 finally { load.disabled = false; }
             };
-            row.append(title, detail, load);
+            btnRow.append(load, revealBtn);
+            row.append(title, detail, btnRow);
             dialog.querySelector('[data-list]').append(row);
         }
     } catch (error) { message.textContent = `读取失败：${error.message}`; }

@@ -29,6 +29,30 @@ function domainOf(trackType) {
 // 2. MediaSource — 媒体源
 // ═══════════════════════════════════════════════════════
 
+function _flattenExtra(data) {
+    if (!data || typeof data !== 'object') return {};
+    if (!data._extra || typeof data._extra !== 'object') return data;
+    const layers = [];
+    let cur = data;
+    const seen = new Set();
+    while (cur && typeof cur === 'object' && !seen.has(cur)) {
+        seen.add(cur);
+        layers.push(cur);
+        cur = cur._extra;
+    }
+    const merged = {};
+    for (const layer of layers) {
+        for (const [k, v] of Object.entries(layer)) {
+            if (k === '_extra' || v === undefined) continue;
+            merged[k] = v;
+        }
+    }
+    if (Array.isArray(data.clips)) merged.clips = data.clips;
+    if (Array.isArray(data.tracks)) merged.tracks = data.tracks;
+    if (data.sources && typeof data.sources === 'object') merged.sources = data.sources;
+    return merged;
+}
+
 class MediaSource {
     constructor(path) {
         this.id = _uuid();
@@ -48,11 +72,12 @@ class MediaSource {
         };
     }
 
-    static fromJSON(data) {
+    static fromJSON(raw) {
+        const data = _flattenExtra(raw);
         const s = new MediaSource(data.path || '');
         s.id = data.id || _uuid();
-        s.hasVideo = data.has_video !== false;
-        s.hasAudio = data.has_audio !== false;
+        s.hasVideo = (data.has_video ?? data.hasVideo) !== false;
+        s.hasAudio = (data.has_audio ?? data.hasAudio) !== false;
         s.duration = data.duration || 0;
         return s;
     }
@@ -164,8 +189,13 @@ class Clip {
         return data;
     }
 
-    static fromJSON(data) {
-        const c = new Clip(data.source_id, data.in_t || 0, data.out_t || 0, data.start_t || 0);
+    static fromJSON(raw) {
+        const data = _flattenExtra(raw);
+        const sourceId = data.source_id ?? data.sourceId;
+        const inT = data.in_t ?? data.inT ?? 0;
+        const outT = data.out_t ?? data.outT ?? 0;
+        const startT = data.start_t ?? data.startT ?? 0;
+        const c = new Clip(sourceId, inT, outT, startT);
         c.id = data.id || _uuid();
         const map = {
             fit_mode: 'fitMode', blend_mode: 'blendMode',
@@ -180,9 +210,15 @@ class Clip {
             link_group_id: 'linkGroupId', follow_ripple: 'followRipple',
         };
         for (const [jsonKey, propKey] of Object.entries(map)) {
-            if (jsonKey in data) c[propKey] = data[jsonKey];
+            if (jsonKey in data && data[jsonKey] !== undefined) c[propKey] = data[jsonKey];
+            else if (propKey in data && data[propKey] !== undefined) c[propKey] = data[propKey];
         }
-        const knownKeys = new Set(['id', 'source_id', 'in_t', 'out_t', 'start_t', ...Object.keys(map)]);
+        const knownKeys = new Set([
+            'id', 'source_id', 'sourceId', 'in_t', 'inT', 'out_t', 'outT', 'start_t', 'startT',
+            '_matchTargetDur', '_extra',
+            ...Object.keys(map),
+            ...Object.values(map),
+        ]);
         c._extra = {};
         for (const [key, value] of Object.entries(data)) {
             if (!knownKeys.has(key)) c._extra[key] = value;
@@ -231,21 +267,26 @@ class Track {
         return d;
     }
 
-    static fromJSON(data) {
+    static fromJSON(raw) {
+        const data = _flattenExtra(raw);
         const t = new Track(data.type || 'video');
         if (data.id) t.id = data.id;
-        t.enableBatch = !!data.enable_batch;
-        t.isMainVideo = !!data.is_main_video;
+        t.enableBatch = !!(data.enable_batch ?? data.enableBatch);
+        t.isMainVideo = !!(data.is_main_video ?? data.isMainVideo);
         t.domain = data.domain || t.domain;
         t.visible = data.visible !== false;
         t.locked = !!data.locked;
         t.order = data.order || 0;
         t.pinned = !!data.pinned;
-        t.blendMode = data.blend_mode || 'normal';
+        t.blendMode = data.blend_mode || data.blendMode || 'normal';
 
         const knownKeys = new Set([
-            'id', 'type', 'domain', 'visible', 'locked', 'enable_batch',
-            'is_main_video', 'order', 'pinned', 'blend_mode', 'clips',
+            'id', 'type', 'domain', 'visible', 'locked',
+            'enable_batch', 'enableBatch',
+            'is_main_video', 'isMainVideo',
+            'order', 'pinned',
+            'blend_mode', 'blendMode',
+            'clips', '_extra',
         ]);
         t._extra = {};
         for (const [k, v] of Object.entries(data)) {
@@ -514,14 +555,15 @@ class Timeline {
         return data;
     }
 
-    static fromJSON(data) {
-        if (!data || typeof data !== 'object') return new Timeline();
+    static fromJSON(raw) {
+        if (!raw || typeof raw !== 'object') return new Timeline();
+        const data = _flattenExtra(raw);
         const tl = new Timeline(
             data.width || 1920,
             data.height || 1080,
             data.fps || 30,
         );
-        const knownKeys = new Set(['width', 'height', 'fps', 'sources', 'tracks']);
+        const knownKeys = new Set(['width', 'height', 'fps', 'sources', 'tracks', '_extra']);
         for (const [key, value] of Object.entries(data)) {
             if (!knownKeys.has(key)) tl._extra[key] = value;
         }
@@ -529,9 +571,29 @@ class Timeline {
         for (const [sid, s] of Object.entries(data.sources || {})) {
             tl.sources[sid] = s instanceof MediaSource ? s : MediaSource.fromJSON(s);
         }
-        // Tracks
+        // Tracks (with auto-deduplication for corrupted repeated role tracks)
+        const roleTrackMap = new Map();
+        const SINGLETON_ROLES = new Set(['background', 'source_audio', 'voice', 'bgm', 'content_video', 'insert_video', 'subs']);
         for (const tr of (data.tracks || [])) {
-            tl.tracks.push(tr instanceof Track ? tr : Track.fromJSON(tr));
+            const track = tr instanceof Track ? tr : Track.fromJSON(tr);
+            // Drop broken clips whose sourceId is missing
+            if (track.type !== 'subs' && Array.isArray(track.clips)) {
+                track.clips = track.clips.filter(c => c && c.sourceId);
+            }
+            const role = track._extra?.trackRole || (track.type === 'subs' ? 'subs' : '');
+            if (role && SINGLETON_ROLES.has(role)) {
+                // Keep the latest non-empty track for this role (or the first if all empty)
+                const prevIdx = roleTrackMap.get(role);
+                if (prevIdx !== undefined) {
+                    const prevTrack = tl.tracks[prevIdx];
+                    if ((track.clips && track.clips.length > 0) || !prevTrack.clips || prevTrack.clips.length === 0) {
+                        tl.tracks[prevIdx] = track;
+                    }
+                    continue;
+                }
+                roleTrackMap.set(role, tl.tracks.length);
+            }
+            tl.tracks.push(track);
         }
         return tl;
     }

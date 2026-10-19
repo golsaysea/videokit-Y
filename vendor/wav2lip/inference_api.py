@@ -17,7 +17,7 @@ if platform.system() == 'Darwin':
         import certifi
         os.environ['SSL_CERT_FILE'] = certifi.where()
     except ImportError:
-        ssl._create_default_https_context = ssl._create_unverified_context
+        pass
 
 import numpy as np
 import cv2

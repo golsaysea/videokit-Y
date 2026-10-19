@@ -445,7 +445,13 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
         case 'queue-library/save':
         case 'queue-library/load': {
             const { createQueueLibrary } = require('./services/queueLibrary');
-            const library = createQueueLibrary(path.join(require('electron').app.getPath('userData'), 'queue-library'));
+            const sharedProfile = require('./services/sharedProfile');
+            const primaryRoot = path.join(
+                sharedProfile.getPrimarySharedProfileDir() || require('electron').app.getPath('userData'),
+                'queue-library',
+            );
+            const extraRoots = sharedProfile.getCandidateQueueLibraryDirs();
+            const library = createQueueLibrary(primaryRoot, extraRoots);
             if (ep.endsWith('/list')) return { queues: library.list() };
             if (ep.endsWith('/save')) return library.save(data.name, data.snapshot);
             return library.load(data.id);
@@ -751,6 +757,15 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
 
         case 'edge-tts/voices':
             return await require('./services/edgeTts').listVoices(!!data.refresh);
+
+        case 'edge-tts/preview':
+            return await require('./services/edgeTts').preview(data);
+
+        case 'edge-tts/save-item':
+            return await require('./services/edgeTts').saveItem(data);
+
+        case 'edge-tts/create-zip':
+            return await require('./services/edgeTts').createZip(data);
 
         case 'tts/workflow':
         case 'elevenlabs/tts-workflow':
@@ -2472,7 +2487,12 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                     }
                     if (checkPath.startsWith('Assets/')) {
                         const rel = checkPath.replace('Assets/', '');
-                        return `${prefix}${path.join(permAssetsDir, rel)}`;
+                        const resolvedAsset = path.resolve(permAssetsDir, rel);
+                        const relToBase = path.relative(permAssetsDir, resolvedAsset);
+                        if (relToBase.startsWith('..') || path.isAbsolute(relToBase)) {
+                            return `${prefix}${path.join(permAssetsDir, path.basename(rel))}`;
+                        }
+                        return `${prefix}${resolvedAsset}`;
                     }
                     return obj;
                 }
@@ -2601,18 +2621,19 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
  */
 async function routeUpload(endpoint, fileBuffer, fileName, formData) {
     const ep = endpoint.replace(/^\/?(api\/)?/, '');
+    const safeFileName = path.basename(String(fileName || 'upload.bin')).replace(/[\x00-\x1f]/g, '_') || 'upload.bin';
 
     switch (ep) {
         case 'upload-image':
         case 'upload': {
-            const result = settingsService.uploadFile(Buffer.from(fileBuffer), fileName);
+            const result = settingsService.uploadFile(Buffer.from(fileBuffer), safeFileName);
             return result;
         }
 
         case 'subtitle/generate-with-file': {
             // 保存临时文件
             const tempDir = settingsService.getSecureTmpDir();
-            const tempPath = path.join(tempDir, `batch_${crypto.randomUUID()}_${fileName}`);
+            const tempPath = path.join(tempDir, `batch_${crypto.randomUUID()}_${safeFileName}`);
             fs.writeFileSync(tempPath, Buffer.from(fileBuffer));
 
             try {
@@ -2623,14 +2644,14 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
                 const langInput = formData.language || 'en';
 
                 // 确定语言
-                let currentLanguage = langInput;
+                let currentLanguage = String(langInput || 'en').replace(/[^a-zA-Z0-9_-]/g, '') || 'en';
                 for (const [code, info] of Object.entries(subtitleUtils.LANGUAGES)) {
                     if (info.name === langInput || info.code === langInput) { currentLanguage = code; break; }
                 }
                 const langEnName = subtitleUtils.getLanguage(currentLanguage);
 
                 // 构建日志路径
-                const baseName = path.parse(fileName).name;
+                const baseName = path.parse(safeFileName).name;
                 const logDir = settingsService.getSecureTmpDir('videokit_log');
                 fs.mkdirSync(logDir, { recursive: true });
                 const audioCacheKey = buildAudioCacheKey(tempPath);
@@ -2763,7 +2784,7 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
         case 'audio/smart-split-analyze': {
             // 保存上传的音频文件到临时目录
             const tempDir = settingsService.getSecureTmpDir();
-            const tempPath = path.join(tempDir, `smart_split_${crypto.randomUUID()}_${fileName}`);
+            const tempPath = path.join(tempDir, `smart_split_${crypto.randomUUID()}_${safeFileName}`);
             fs.writeFileSync(tempPath, Buffer.from(fileBuffer));
 
             try {

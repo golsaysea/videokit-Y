@@ -54,7 +54,7 @@ class SFDDetector(FaceDetector):
         elif local_path:
             model_weights = torch.load(local_path, map_location=device, weights_only=True)
         else:
-            model_weights = load_url(models_urls['s3fd'])
+            model_weights = load_url(models_urls['s3fd'], check_hash=True)
 
         self.face_detector = s3fd()
         self.face_detector.load_state_dict(model_weights)

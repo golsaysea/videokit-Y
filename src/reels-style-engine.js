@@ -39,8 +39,11 @@ const DEFAULT_SUBTITLE_STYLE = {
     // ── Colors ──
     color_text: '#FFFFFF',
     text_gradient_direction: 'horizontal',
+    text_gradient_scope: 'line', // 'line' (整句渐变) | 'word' (每个单词独立渐变)
     color_high: '#FFD700',      // current-word highlight color
     high_gradient_direction: 'horizontal',
+    high_gradient_scope: 'word',
+    highlight_enabled: true,    // 朗读高亮开关
     color_bg: '#000000',
     color_shadow: '#000000',
     opacity_bg: 150,
@@ -53,6 +56,9 @@ const DEFAULT_SUBTITLE_STYLE = {
     box_radius: 8,
     box_blur: 0,
     box_adaptive_width: false,
+    box_connected: true,        // 连体贴合背景
+    box_concave_radius: 10,     // 连体背景内凹圆角
+    box_snap_threshold: 18,     // 相邻行宽度接近自动对齐阈值(px)
     box_brush_style: 'rect',
     box_brush_color_mode: 'tint',
     box_custom_brush_data: '',
@@ -69,7 +75,7 @@ const DEFAULT_SUBTITLE_STYLE = {
     color_outline: '#3E2723',
 
     // ── Dynamic highlight box ──
-    karaoke_highlight: false,
+    karaoke_highlight: true,
     dynamic_box: false,
     color_high_bg: '#FFD700',
     opacity_high_bg: 0.3,
@@ -79,6 +85,7 @@ const DEFAULT_SUBTITLE_STYLE = {
 
     // ── Advanced Typography ──
     text_transform: 'none',
+    uppercase: false,
 
     // ── Scrolling Lyrics Mode ──
     scrolling_mode: false,
@@ -139,6 +146,51 @@ const DEFAULT_SUBTITLE_STYLE = {
     fullpage_typewriter_reveal_type: 'char',
     fullpage_typewriter_align: 'center',
     fullpage_typewriter_cursor: true,
+    fullpage_typewriter_keep_background: true,
+    fullpage_typewriter_title_font_follow: true,
+    fullpage_typewriter_title_stroke_independent: false,
+    fullpage_typewriter_title_stroke_enabled: true,
+    fullpage_typewriter_title_stroke_color: '#3e2723',
+    fullpage_typewriter_title_stroke_width: 3,
+    fullpage_typewriter_title_stroke_opacity: 255,
+    fullpage_typewriter_title_box_enabled: true,
+    fullpage_typewriter_title_box_color: "#000000",
+    fullpage_typewriter_title_box_opacity: 180,
+    fullpage_typewriter_body_stroke_independent: false,
+    fullpage_typewriter_body_stroke_enabled: true,
+    fullpage_typewriter_body_stroke_color: '#3e2723',
+    fullpage_typewriter_body_stroke_width: 3,
+    fullpage_typewriter_body_stroke_opacity: 255,
+    fullpage_typewriter_body_box_enabled: true,
+    fullpage_typewriter_body_box_color: "#000000",
+    fullpage_typewriter_body_box_opacity: 180,
+    fullpage_typewriter_auto_sequence: true,
+    fullpage_typewriter_split: false,
+    fullpage_typewriter_title_auto: true,
+    fullpage_typewriter_title_text: "",
+    fullpage_typewriter_title_font: "",
+    fullpage_typewriter_title_size: 56,
+    fullpage_typewriter_title_weight: "700",
+    fullpage_typewriter_title_color: "#FFD700",
+    fullpage_typewriter_title_x: 50,
+    fullpage_typewriter_title_y: 20,
+    fullpage_typewriter_title_delay: 0,
+    fullpage_typewriter_title_reveal: "char",
+    fullpage_typewriter_title_cursor: true,
+    fullpage_typewriter_body_reveal: "sentence",
+    fullpage_typewriter_body_delay: 0,
+    fullpage_typewriter_body_x: 50,
+    fullpage_typewriter_body_y: 60,
+    fullpage_typewriter_body_cursor: true,
+    fullpage_typewriter_cursor_image: '',
+    fullpage_typewriter_cursor_image_anchor_x: 50,
+    fullpage_typewriter_cursor_image_anchor_y: 50,
+    fullpage_typewriter_cursor_kind: 'char',
+    fullpage_typewriter_speech_sync: true,
+    fullpage_typewriter_cursor_scale: 1,
+    fullpage_typewriter_cursor_offset_x: 0,
+    fullpage_typewriter_cursor_offset_y: 0,
+    fullpage_typewriter_cursor_angle: 0,
     fullpage_typewriter_cursor_char: '|',
     fullpage_typewriter_cursor_color: '#FFD700',
     fullpage_typewriter_first_line_bold: true,
@@ -158,9 +210,12 @@ const DEFAULT_SUBTITLE_STYLE = {
     scatter_area_top: 25,
     scatter_area_bottom: 75,
 
-    // ── Character bounce ──
+    // ── Character bounce & Extended Per-Char Animations ──
     char_bounce_height: 20,
     char_bounce_stagger: 0.05,
+    char_anim_intensity: 1.0,
+    char_anim_duration: 0.28,
+    char_anim_stagger: 0.04,
 
     // ── Dynamic box animation ──
     dyn_box_anim: false,
@@ -459,6 +514,8 @@ function prepareSubtitlePresetBatchImport(bundles, existingPresets = {}) {
 // ───────────────────────────────────────────────────────
 
 const PRESET_STORAGE_KEY = 'reels_subtitle_presets';
+let _lastSubtitlePresetSaveError = '';
+function getLastPresetSaveError() { return _lastSubtitlePresetSaveError; }
 const MAX_PRESETS = 200;
 
 const BUILTIN_PRESETS = {
@@ -810,30 +867,35 @@ function getPresetsByCategory() {
 
 function _loadPresetsFromStorage() {
     try {
-        const raw = localStorage.getItem(PRESET_STORAGE_KEY);
+        const raw = typeof window !== 'undefined' && window.electronAPI?.readSubtitlePresets ? window.electronAPI.readSubtitlePresets() : localStorage.getItem(PRESET_STORAGE_KEY);
         if (!raw) {
             console.warn('[StyleEngine] localStorage 中无预设数据 (key:', PRESET_STORAGE_KEY, ')');
-            return { default: {}, presets: {} };
+            return { default: {}, presets: {}, presetGroups: {} };
         }
         const data = JSON.parse(raw);
-        if (typeof data !== 'object') return { default: {}, presets: {} };
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return { default: {}, presets: {}, presetGroups: {} };
         data.default = data.default || {};
         data.presets = data.presets || {};
         data.presetGroups = data.presetGroups || {};
         return data;
     } catch (e) {
         console.error('[StyleEngine] 读取预设失败:', e);
-        return { default: {}, presets: {} };
+        return { default: {}, presets: {}, presetGroups: {} };
     }
 }
 
 function _savePresetsToStorage(data) {
+    _lastSubtitlePresetSaveError = '';
     try {
         const json = JSON.stringify(data);
-        localStorage.setItem(PRESET_STORAGE_KEY, json);
+        if(typeof window !== 'undefined' && window.electronAPI?.saveSubtitlePresets) {
+            const result=window.electronAPI.saveSubtitlePresets(json);
+            if(!result?.ok){_lastSubtitlePresetSaveError=result?.error||'无法写入字幕预设库';return false;}
+        }else localStorage.setItem(PRESET_STORAGE_KEY, json);
         console.log(`[StyleEngine] 预设已保存 (${(json.length / 1024).toFixed(1)}KB, ${Object.keys(data.presets || {}).length}个预设)`);
         return true;
     } catch (e) {
+        _lastSubtitlePresetSaveError = e.message || String(e);
         console.error(`[StyleEngine] 保存预设失败:`, e);
         return false;
     }
@@ -868,10 +930,12 @@ function saveDefaultSubtitleStyle(style) {
 }
 
 function saveNamedSubtitlePreset(name, style, group = '') {
-    if (!name || typeof name !== 'string') return false;
+    _lastSubtitlePresetSaveError = '';
+    if (typeof name !== 'string' || !name.trim()) {_lastSubtitlePresetSaveError='请输入非空的字幕预设名称';return false;}
+    name=name.trim();
     const data = _loadPresetsFromStorage();
     const presets = data.presets || {};
-    if (!(name in presets) && Object.keys(presets).length >= MAX_PRESETS) return false;
+    if (!Object.prototype.hasOwnProperty.call(presets,name) && Object.keys(presets).length >= MAX_PRESETS) {_lastSubtitlePresetSaveError=`自存字幕预设已达到 ${MAX_PRESETS} 个，可覆盖已有预设或删除不用的预设后再保存`;return false;}
     presets[name] = extractStyleKeys(style);
     data.presets = presets;
     if (group) data.presetGroups[name] = String(group).trim() || '我的预设';
@@ -1003,6 +1067,7 @@ const ReelsStyleEngine = {
     DEFAULT_SUBTITLE_STYLE,
     STYLE_KEYS,
     MAX_PRESETS,
+    getLastPresetSaveError,
     // Utils
     copyStyle,
     mergeStyle,

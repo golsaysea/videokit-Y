@@ -2107,14 +2107,22 @@ function _bcEditTemplateOverlays(ti) {
 
     get('[data-time]').oninput = () => { video.currentTime = Math.max(0, Number(get('[data-time]').value) || 0); draw(); };
     get('[data-play]').onclick = () => video.paused ? video.play().catch(() => {}) : video.pause();
-    get('[data-tpl-name]').onchange = e => {
-        const val = (e.target.value || '').trim();
-        if (val) {
-            tpl.label = val;
-            get('[data-tpl-label]').textContent = val;
-            _bcScheduleDraftSave();
-        }
-    };
+    const tplNameInput = get('[data-tpl-name]');
+    if (tplNameInput) {
+        const syncTplName = (e) => {
+            const rawVal = e.target.value || '';
+            const val = rawVal.trim();
+            if (val) {
+                tpl.label = val;
+                const lbl = get('[data-tpl-label]');
+                if (lbl) lbl.textContent = val;
+                _bcScheduleDraftSave();
+            }
+        };
+        tplNameInput.oninput = syncTplName;
+        tplNameInput.onchange = syncTplName;
+        tplNameInput.addEventListener('keydown', e => e.stopPropagation());
+    }
     get('[data-save-preset]').onclick = () => {
         const name = prompt('输入预设名称：', tpl.label);
         if (!name || !name.trim()) return;

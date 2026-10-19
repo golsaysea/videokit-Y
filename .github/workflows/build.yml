@@ -30,6 +30,9 @@ env:
   PYTHON_EMBED_VERSION: "3.11.9"
   FFMPEG_VERSION: "7.1"
 
+permissions:
+  contents: read
+
 jobs:
   # ==================== macOS 打包 ====================
   build-mac:

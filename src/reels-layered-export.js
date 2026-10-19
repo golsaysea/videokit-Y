@@ -176,6 +176,7 @@ function _drawCroppedVideoCover(ctx, videoEl, cropX, cropY, cropW, cropH, target
  * 主导出函数：分层 PNG 序列导出
  */
 async function reelsLayeredExport(params) {
+    params={...params,style:getWritingVisualStyle(params.style)};
     let {
         canvas,
         style,
@@ -501,6 +502,14 @@ async function reelsLayeredExport(params) {
     const subtitleRenderer = new ReelsCanvasRenderer(subtitleCanvas);
 
     try {
+        await subtitleRenderer.prepareWritingCursorImage(style);
+        if (Array.isArray(taskOverlays) && window.ReelsOverlay?.prepareScrollWritingCursorImage) {
+            for (const ov of taskOverlays) {
+                if (ov && !ov.disabled && ov.type === 'scroll') {
+                    await window.ReelsOverlay.prepareScrollWritingCursorImage(ov);
+                }
+            }
+        }
         for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
             if (isCancelled && isCancelled()) {
                 log('用户取消导出');
@@ -650,9 +659,11 @@ async function reelsLayeredExport(params) {
                         ov._selected = false;
                         ov._exporting = true;
                         ov._exportDuration = duration;
+                        ov._taskSegments = segments;
                         ReelsOverlay.drawOverlay(ctx, ov, t, targetWidth, targetHeight);
                         ov._selected = origSelected;
                         ov._exporting = false;
+                        delete ov._taskSegments;
                     }
                 }
             }
@@ -690,7 +701,7 @@ async function reelsLayeredExport(params) {
                     activeSeg = best;
                 }
                 if (activeSeg) {
-                    subtitleRenderer.setContextSegments(segments);
+                    subtitleRenderer.setContextSegments(segments, originalScript);
                     subtitleRenderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);
                 }
             }

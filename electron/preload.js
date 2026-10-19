@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer, webUtils, webFrame, clipboard } = require('e
 // 那套数据库就可能不可见。启动时同步从 userData/videokit-presets 恢复，随后
 // 定期镜像回文件。只收集预设/模板相关键，绝不触碰 API Key 等设置。
 const _persistentPresetKey = (key) => /(?:preset|template|watermark|brush)/i.test(String(key || ''));
+const _persistentPresetOverrides = new Map();
+let _workspaceLastHash='',_workspaceLastBackupAt=0;
 const _readPersistentPresetValues = () => {
     const values = {};
     try {
@@ -12,12 +14,18 @@ const _readPersistentPresetValues = () => {
             if (key && _persistentPresetKey(key)) values[key] = localStorage.getItem(key);
         }
     } catch (_) { }
+    for (const [key, value] of _persistentPresetOverrides) values[key] = value;
     return values;
 };
 try {
     const response = ipcRenderer.sendSync('persistent-presets:hydrate', _readPersistentPresetValues());
     if (response?.ok) {
-        for (const [key, value] of Object.entries(response.values || {})) localStorage.setItem(key, value);
+        for (const [key, value] of Object.entries(response.values || {})) {
+            try { localStorage.setItem(key, value); } catch (error) {
+                if (['reels_overlay_group_presets','reels_subtitle_presets'].includes(key)) _persistentPresetOverrides.set(key, value);
+                console.warn('[Presets] Cache restore failed:', error.message);
+            }
+        }
     }
 } catch (_) { /* The main process may not have registered during an abnormal early startup. */ }
 let _persistentPresetLast = '';
@@ -25,8 +33,10 @@ const _savePersistentPresets = () => {
     const values = _readPersistentPresetValues();
     const serialised = JSON.stringify(values);
     if (serialised === _persistentPresetLast) return;
-    _persistentPresetLast = serialised;
-    ipcRenderer.invoke('persistent-presets:save', values).catch(() => {});
+    ipcRenderer.invoke('persistent-presets:save', values).then(response => {
+        if (response?.ok) _persistentPresetLast = serialised;
+        else console.warn('[Presets] Disk save failed:', response?.error);
+    }).catch(error => console.warn('[Presets] Disk save failed:', error.message));
 };
 setInterval(_savePersistentPresets, 2000);
 window.addEventListener('beforeunload', _savePersistentPresets);
@@ -49,6 +59,65 @@ window.addEventListener('drop', (event) => {
 }, true);
 const fs = require('fs');
 const path = require('path');
+const sharedProfile = require('./services/sharedProfile');
+
+// Rebase profile-owned paths when moving this personal portable copy,
+// without breaking valid paths that point to an existing installed profile.
+try {
+    const portableRoot = path.dirname(process.execPath);
+    if (fs.existsSync(path.join(portableRoot, 'portable.flag'))) {
+        const profile = path.join(portableRoot, 'portable-data');
+        const marker = path.join(profile, 'portable-location.json');
+        const previous = fs.existsSync(marker) ? JSON.parse(fs.readFileSync(marker, 'utf8')).root : '';
+        const installedUserData = sharedProfile.getPrimarySharedProfileDir() || path.join(process.env.APPDATA || '', 'videokit');
+        const unifiedProjectsDir = path.join(installedUserData, 'projects');
+        try { fs.mkdirSync(unifiedProjectsDir, { recursive: true }); } catch (_) {}
+        const installedResources = path.join(process.env.LOCALAPPDATA || '', 'Programs', 'videokit', 'resources');
+        const replacements = [
+            ...(!fs.existsSync(installedUserData) ? [[installedUserData, profile]] : []),
+            ...(!fs.existsSync(installedResources) ? [[installedResources, path.join(portableRoot, 'resources')]] : []),
+            ...(previous && previous !== portableRoot && !fs.existsSync(previous) ? [[previous, portableRoot]] : []),
+        ];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const oldValue = localStorage.getItem(key);
+            let value = oldValue;
+            for (const [from, to] of replacements) {
+                for (const [a, b] of [[JSON.stringify(from).slice(1,-1), JSON.stringify(to).slice(1,-1)], [from, to], [from.replaceAll('\\','/'), to.replaceAll('\\','/')]]) {
+                    if (a && a !== b) value = value.split(a).join(b);
+                }
+            }
+            if (key === 'reels_batch_config_autosave') {
+                const data = JSON.parse(value);
+                if (!data.projectDir || !fs.existsSync(data.projectDir) || String(data.projectDir).toLowerCase().includes('portable-data')) {
+                    data.projectDir = unifiedProjectsDir;
+                }
+                value = JSON.stringify(data);
+            }
+            if (value !== oldValue) localStorage.setItem(key, value);
+        }
+        fs.mkdirSync(profile, { recursive: true });
+        fs.writeFileSync(marker, JSON.stringify({root:portableRoot}), 'utf8');
+    }
+} catch (error) { console.error('[Portable] Profile migration failed:', error); }
+
+
+// Consume an explicitly staged recovery once, before renderer autosave starts.
+try {
+    const pendingRecovery = path.join(__dirname, '..', '..', 'reels-recovery-pending.json');
+    if (fs.existsSync(pendingRecovery) && location.pathname.endsWith('/dist/index.html')) {
+        const recoveryRaw = fs.readFileSync(pendingRecovery, 'utf8');
+        const recovery = JSON.parse(recoveryRaw);
+        if (recovery.version !== '2.0' || !Array.isArray(recovery.tabs) || !recovery.tabs.length) throw new Error('Invalid recovery');
+        const previous = localStorage.getItem('reels_batch_config_autosave');
+        if (previous) fs.writeFileSync(pendingRecovery + '.previous.json', previous, 'utf8');
+        localStorage.setItem('reels_batch_config_autosave', recoveryRaw);
+        if (localStorage.getItem('reels_batch_config_autosave') !== recoveryRaw) throw new Error('Recovery verification failed');
+        fs.renameSync(pendingRecovery, pendingRecovery + '.applied');
+        console.log('[Recovery] Restored batch tabs:', recovery.tabs.length);
+    }
+} catch (error) { console.error('[Recovery] Failed:', error); }
+
 const { pathToFileURL, fileURLToPath } = require('url');
 
 function resolveAssetUrl(fileName) {
@@ -87,6 +156,7 @@ function toFileUrl(filePath) {
         } else if (/^file:\/\//i.test(nativePath)) {
             nativePath = fileURLToPath(nativePath);
         }
+        nativePath = sharedProfile.resolveSharedProfileFilePath(nativePath);
         // Node 自带的 URL 转换会正确处理 Windows 盘符、UNC、中文、空格和 #/%。
         return pathToFileURL(nativePath).href.replace(/^file:/i, 'local-media:') + suffix;
     } catch (_) {
@@ -109,7 +179,7 @@ function fileExists(filePath) {
     if (!p || /^blob:|^data:|^https?:/i.test(p)) return true;
     p = localMediaUrlToPath(p);
     try {
-        const resolved = path.resolve(p);
+        const resolved = sharedProfile.resolveSharedProfileFilePath(path.resolve(p));
         return fs.existsSync(resolved);
     } catch {
         return false;
@@ -117,9 +187,22 @@ function fileExists(filePath) {
 }
 
 // 暴露 API 给渲染进程
-const _autoSaveDir = path.join(require('os').homedir(), '.videokit');
+const _autoSaveDir = sharedProfile.getPrimarySharedProfileDir() || path.join(require('os').homedir(), '.videokit');
 const _autoSavePath = path.join(_autoSaveDir, 'autosave.json');
 try { if (!fs.existsSync(_autoSaveDir)) fs.mkdirSync(_autoSaveDir, { recursive: true }); } catch (_) {}
+const _getProfileDataDir = () => {
+    return sharedProfile.getPrimarySharedProfileDir() || _autoSaveDir;
+};
+const _getAllProfileDataDirs = () => {
+    const primary = _getProfileDataDir();
+    const candidates = sharedProfile.getCandidateProfileDirs();
+    return [...new Set([primary, ...candidates].filter(Boolean))];
+};
+const _getDefaultProjectDir = () => {
+    const dir = path.join(_getProfileDataDir(), 'projects');
+    try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    return dir;
+};
 
 const _reelsFramePipelineRequests = new Map();
 const _reelsFramePipelines = new Map();
@@ -159,11 +242,14 @@ const safeOpenPath = async (targetPath) => {
 };
 
 const safeOpenExternal = async (url) => {
+    if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) {
+        return { success: false, error: 'Blocked non-HTTP(S) external URL' };
+    }
     try {
-        return await ipcRenderer.invoke('open-external', url);
+        return await ipcRenderer.invoke('open-external', url.trim());
     } catch (err) {
         if (err?.message?.includes('No handler registered')) {
-            return await ipcRenderer.invoke('open-external-url', url);
+            return await ipcRenderer.invoke('open-external-url', url.trim());
         }
         throw err;
     }
@@ -258,6 +344,63 @@ const localFilesBridge = {
 };
 
 contextBridge.exposeInMainWorld('electronAPI', {
+    readReelsOutputDirectory: () => {
+        for (const profile of _getAllProfileDataDirs()) {
+            try {
+                const file = path.join(profile, 'ui-preferences.json');
+                const dir = JSON.parse(fs.readFileSync(file, 'utf8')).reelsOutputDir || '';
+                if (dir) return dir;
+            } catch (_) { }
+        }
+        return '';
+    },
+    saveReelsOutputDirectory: (dir) => {
+        try {
+            if (typeof dir !== 'string' || !dir.trim()) throw new Error('目录不能为空');
+            const trimmed = dir.trim();
+            for (const profile of _getAllProfileDataDirs()) {
+                try {
+                    fs.mkdirSync(profile, { recursive: true });
+                    const file = path.join(profile, 'ui-preferences.json');
+                    let values = {};
+                    try { values = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { }
+                    values.reelsOutputDir = trimmed;
+                    const temp = file + '.' + process.pid + '.tmp';
+                    fs.writeFileSync(temp, JSON.stringify(values), 'utf8');
+                    fs.renameSync(temp, file);
+                } catch (_) { }
+            }
+            return { ok: true };
+        } catch (error) { return { ok: false, error: error.message }; }
+    },
+    readOverlayGroupPresets: () => _persistentPresetOverrides.get('reels_overlay_group_presets') ?? localStorage.getItem('reels_overlay_group_presets') ?? '{}',
+    saveOverlayGroupPresets: (value) => {
+        const response = ipcRenderer.sendSync('persistent-presets:set', 'reels_overlay_group_presets', value);
+        if (response?.ok) {
+            try {
+                localStorage.setItem('reels_overlay_group_presets', value);
+                _persistentPresetOverrides.delete('reels_overlay_group_presets');
+            } catch (error) {
+                _persistentPresetOverrides.set('reels_overlay_group_presets', value);
+                console.warn('[Presets] Cache save failed:', error.message);
+            }
+        }
+        return response;
+    },
+    readSubtitlePresets: () => _persistentPresetOverrides.get('reels_subtitle_presets') ?? localStorage.getItem('reels_subtitle_presets') ?? '{}',
+    saveSubtitlePresets: (value) => {
+        const response = ipcRenderer.sendSync('persistent-presets:set', 'reels_subtitle_presets', value);
+        if (response?.ok) {
+            try {
+                localStorage.setItem('reels_subtitle_presets', value);
+                _persistentPresetOverrides.delete('reels_subtitle_presets');
+            } catch (error) {
+                _persistentPresetOverrides.set('reels_subtitle_presets', value);
+                console.warn('[Presets] Cache save failed:', error.message);
+            }
+        }
+        return response;
+    },
     // 平台信息
     platform: process.platform,
     autoSavePath: _autoSavePath,
@@ -342,6 +485,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 选择目录
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     selectDirectories: () => ipcRenderer.invoke('select-directories'),
+    readWritingCursorImage: (source) => new Uint8Array(fs.readFileSync(sharedProfile.resolveSharedProfileFilePath(source))),
+    importWritingCursorImage: (source) => {
+        try{
+            const ext=path.extname(source).toLowerCase();
+            if(!['.png','.jpg','.jpeg','.webp','.gif'].includes(ext))throw new Error('请选择 PNG、JPG、WebP 或 GIF 图片');
+            const bytes=fs.readFileSync(source),hash=require('crypto').createHash('sha256').update(bytes).digest('hex');
+            const root=path.join(_getProfileDataDir(),'videokit-presets','writing-images');
+            fs.mkdirSync(root,{recursive:true});const target=path.join(root,hash+ext);
+            if(!fs.existsSync(target))fs.writeFileSync(target,bytes,{flag:'wx'});
+            for (const dir of _getAllProfileDataDirs()) {
+                try {
+                    const mirrorRoot = path.join(dir, 'videokit-presets', 'writing-images');
+                    fs.mkdirSync(mirrorRoot, { recursive: true });
+                    const mirrorTarget = path.join(mirrorRoot, hash + ext);
+                    if (!fs.existsSync(mirrorTarget)) fs.writeFileSync(mirrorTarget, bytes, { flag: 'wx' });
+                } catch (_) { }
+            }
+            return {ok:true,path:target};
+        }catch(error){return {ok:false,error:error.message};}
+    },
     selectFiles: (options) => ipcRenderer.invoke('select-files', options),
     saveFile: (options) => ipcRenderer.invoke('save-file', options),
 
@@ -440,14 +603,171 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanFonts: () => ipcRenderer.invoke('scan-fonts'),
     fetchGoogleFonts: () => ipcRenderer.invoke('fetch-google-fonts'),
 
-    // 读取文件内容
+    // 读取文件内容（支持跨安装版/绿色版共享目录解析）
     readFileText: (filePath) => {
-        try { return fs.readFileSync(filePath, 'utf-8'); } catch { return ''; }
+        try {
+            const resolved = sharedProfile.resolveSharedProfileFilePath(filePath);
+            return fs.readFileSync(resolved, 'utf-8');
+        } catch {
+            return '';
+        }
+    },
+
+    // 统一工程目录（优先指向安装版 %APPDATA%/videokit/projects，绿色版/开发版共享同一目录）
+    getDefaultProjectDir: () => _getDefaultProjectDir(),
+    getCandidateProjectDirs: () => sharedProfile.getCandidateProjectDirs(),
+    listSharedProjectFiles: (customDir = '') => {
+        try {
+            const primaryDir = _getDefaultProjectDir();
+            const candidateDirs = [...new Set([
+                primaryDir,
+                ...(customDir ? [path.resolve(customDir)] : []),
+                ...sharedProfile.getCandidateProjectDirs(),
+            ].filter(Boolean))];
+            const byName = new Map();
+            for (const dir of candidateDirs) {
+                if (!fs.existsSync(dir)) continue;
+                let entries = [];
+                try { entries = fs.readdirSync(dir); } catch (_) { continue; }
+                for (const fname of entries) {
+                    if (!fname.toLowerCase().endsWith('.json')) continue;
+                    if (/^workspace-previous-\d+\.json$/i.test(fname)) continue;
+                    const fullPath = path.join(dir, fname);
+                    let stat = null;
+                    try {
+                        stat = fs.statSync(fullPath);
+                        if (!stat.isFile()) continue;
+                    } catch (_) { continue; }
+                    const key = fname.toLowerCase();
+                    const existing = byName.get(key);
+                    if (!existing || stat.mtimeMs > existing.mtimeMs + 500) {
+                        byName.set(key, {
+                            filename: fname,
+                            path: fullPath,
+                            mtimeMs: stat.mtimeMs,
+                            size: stat.size,
+                        });
+                    }
+                }
+            }
+            // Ensure any project found only in portable-data is also synced into primary installed projects dir
+            for (const item of byName.values()) {
+                if (primaryDir && path.resolve(path.dirname(item.path)).toLowerCase() !== path.resolve(primaryDir).toLowerCase()) {
+                    const targetInPrimary = path.join(primaryDir, item.filename);
+                    try {
+                        if (!fs.existsSync(targetInPrimary) || fs.statSync(targetInPrimary).mtimeMs < item.mtimeMs - 500) {
+                            fs.mkdirSync(primaryDir, { recursive: true });
+                            fs.copyFileSync(item.path, targetInPrimary);
+                        }
+                        item.path = targetInPrimary;
+                    } catch (_) { }
+                }
+            }
+            return Array.from(byName.values()).sort((a, b) => a.filename.localeCompare(b.filename));
+        } catch (e) {
+            console.warn('[Projects] listSharedProjectFiles failed:', e.message);
+            return [];
+        }
+    },
+    saveSharedProjectFile: (fileName, content, customDir = '') => {
+        try {
+            const safeName = path.basename(String(fileName || 'UntitledProject.json').trim() || 'UntitledProject.json');
+            const primaryDir = _getDefaultProjectDir();
+            const targetDirs = [...new Set([
+                ...(customDir ? [path.resolve(customDir)] : []),
+                primaryDir,
+                ...sharedProfile.getCandidateProjectDirs(),
+            ].filter(Boolean))];
+            let savedPrimary = false;
+            const now = Date.now();
+            for (const dir of targetDirs) {
+                try {
+                    fs.mkdirSync(dir, { recursive: true });
+                    const targetFile = path.join(dir, safeName);
+                    const tempFile = `${targetFile}.${process.pid}.${now}.tmp`;
+                    fs.writeFileSync(tempFile, content, 'utf8');
+                    fs.renameSync(tempFile, targetFile);
+                    if (path.resolve(dir).toLowerCase() === path.resolve(primaryDir).toLowerCase()) {
+                        savedPrimary = true;
+                    }
+                } catch (_) { }
+            }
+            return savedPrimary;
+        } catch (e) {
+            console.error('[Projects] saveSharedProjectFile failed:', e.message);
+            return false;
+        }
     },
 
     // 写入文件内容 (用于保存工程)
+    readBatchWorkspace: () => {
+        if (location.hash.startsWith('#template=')) return '';
+        try {
+            const raw = sharedProfile.readUnifiedBatchWorkspace();
+            if (raw) {
+                try {
+                    _workspaceLastHash = require('crypto').createHash('sha256').update(raw.replace(/"timestamp":"[^"]*",?/, '')).digest('hex');
+                } catch (_) { }
+            }
+            return raw;
+        } catch (e) { console.warn('[Workspace] Read failed:', e.message); }
+        return '';
+    },
+    saveBatchWorkspace: (content) => {
+        if (location.hash.startsWith('#template=')) return true;
+        try {
+            const data = JSON.parse(content);
+            if (data.version !== '2.0' || !Array.isArray(data.tabs) || !data.tabs.length) return false;
+            const profile = _getProfileDataDir();
+            if (!profile) return false;
+            const dir = path.join(profile, 'projects');
+            fs.mkdirSync(dir, { recursive: true });
+            const file = path.join(dir, 'workspace-autosave.json');
+            const hash = require('crypto').createHash('sha256').update(content.replace(/"timestamp":"[^"]*",?/, '')).digest('hex');
+            if (hash === _workspaceLastHash && fs.existsSync(file)) {
+                return true;
+            }
+            const now = Date.now();
+            if (hash !== _workspaceLastHash && fs.existsSync(file) && (!_workspaceLastBackupAt || now - _workspaceLastBackupAt > 30000)) {
+                for (let i = 4; i >= 1; i--) {
+                    const old = path.join(dir, 'workspace-previous-' + i + '.json');
+                    const next = path.join(dir, 'workspace-previous-' + (i + 1) + '.json');
+                    if (fs.existsSync(old)) fs.copyFileSync(old, next);
+                }
+                fs.copyFileSync(file, path.join(dir, 'workspace-previous-1.json'));
+                _workspaceLastBackupAt = now;
+            }
+            const writeAtomic = (targetFile) => {
+                fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+                const temp = targetFile + '.' + process.pid + '.' + now + '.tmp';
+                fs.writeFileSync(temp, content, 'utf8');
+                fs.renameSync(temp, targetFile);
+            };
+            writeAtomic(file);
+            for (const otherProfile of _getAllProfileDataDirs()) {
+                const otherFile = path.join(otherProfile, 'projects', 'workspace-autosave.json');
+                if (path.resolve(otherFile) === path.resolve(file)) continue;
+                fs.promises.mkdir(path.dirname(otherFile), { recursive: true })
+                    .then(() => {
+                        const temp = otherFile + '.' + process.pid + '.' + now + '.tmp';
+                        return fs.promises.writeFile(temp, content, 'utf8').then(() => fs.promises.rename(temp, otherFile));
+                    })
+                    .catch(() => { });
+            }
+            _workspaceLastHash = hash;
+            return true;
+        } catch (e) { console.error('[Workspace] Save failed:', e.message); return false; }
+    },
+    chooseBatchImportMode: (counts) => ipcRenderer.invoke('batch-project:choose-import-mode', counts),
     writeFileText: (filePath, content) => {
-        try { fs.writeFileSync(filePath, content, 'utf-8'); return true; } catch (e) { console.error('Write File Error:', e); return false; }
+        try {
+            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            fs.writeFileSync(filePath, content, 'utf-8');
+            return true;
+        } catch (e) {
+            console.error('Write File Error:', e);
+            return false;
+        }
     },
 
     // ==================== 统一 API 调用接口 ====================

@@ -9,8 +9,8 @@ where npm.cmd >nul 2>&1
 if errorlevel 1 goto missingnode
 set "ELECTRON_RUN_AS_NODE="
 if not defined VITE_PORT set "VITE_PORT=5173"
-if not defined FFMPEG_PATH if exist "%~dp0..\ffmpeg.exe" set "FFMPEG_PATH=%~dp0..\ffmpeg.exe"
-if not defined FFPROBE_PATH if exist "%~dp0..\ffprobe.exe" set "FFPROBE_PATH=%~dp0..\ffprobe.exe"
+if not defined FFMPEG_PATH if exist "%~dp0vendor\win32\ffmpeg.exe" set "FFMPEG_PATH=%~dp0vendor\win32\ffmpeg.exe"
+if not defined FFPROBE_PATH if exist "%~dp0vendor\win32\ffprobe.exe" set "FFPROBE_PATH=%~dp0vendor\win32\ffprobe.exe"
 if not exist "node_modules\electron\dist\electron.exe" goto install
 if not exist "node_modules\.bin\vite.cmd" goto install
 goto ready

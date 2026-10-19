@@ -178,16 +178,41 @@ const POPULAR_GOOGLE_FONTS = [
 // 2. FontManager Class
 // ═══════════════════════════════════════════════════════
 
+const UNIFIED_FONT_SELECT_IDS = [
+    'reels-font-family',
+    'reels-fullpage-typewriter-title-font',
+    'rop-font',
+    'rop-title-font',
+    'rop-body-font',
+    'rop-footer-font',
+    'rop-scroll-title-font',
+    'rop-scroll-font',
+];
+
 class ReelsFontManager {
     constructor() {
         this._registered = false;
+        this._registerPromise = null;
         this._allowedFonts = [...BUILTIN_FONTS];
         this._customFonts = [];   // 用户上传的自定义字体
         this._systemFonts = new Set();   // 系统扫描到的字体
         this._embeddedFonts = new Set(); // 内置 assets/fonts 字体
+        this._registeredEmbeddedPaths = new Set();
         this._fontCache = {};
         this._loadedGoogleFonts = new Set();
+        this._loadingGoogleFontPromises = new Map();
+        this._injectedStylesheetUrls = new Set();
         this._fontVariants = new Map(); // family -> Set of "weight|style"
+        this._catalogSignature = '';
+        this._lastDirCheckAt = 0;
+
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('focus', () => {
+                if (this._registered) {
+                    this.refreshCatalogIfChanged().catch(() => {});
+                }
+            });
+        }
     }
 
     /**
@@ -198,6 +223,20 @@ class ReelsFontManager {
      *   - 内置字体：通过 FontFace API 注册（确保可用）
      */
     async register() {
+        if (this._registered) {
+            await this.refreshCatalogIfChanged();
+            return true;
+        }
+        if (this._registerPromise) {
+            return this._registerPromise;
+        }
+        this._registerPromise = this._doRegister().finally(() => {
+            this._registerPromise = null;
+        });
+        return this._registerPromise;
+    }
+
+    async _doRegister() {
         // 检测白名单字体可用性
         const available = [];
         for (const font of BUILTIN_FONTS) {
@@ -209,7 +248,7 @@ class ReelsFontManager {
         }
 
         // 加载 Electron 扫描的字体 (内置 + 系统)
-        if (window.electronAPI && window.electronAPI.scanFonts) {
+        if (typeof window !== 'undefined' && window.electronAPI && window.electronAPI.scanFonts) {
             try {
                 const scannedFonts = await window.electronAPI.scanFonts();
                 if (Array.isArray(scannedFonts)) {
@@ -267,10 +306,65 @@ class ReelsFontManager {
 
         this._allowedFonts = Array.from(merged);
         this._registered = true;
+        this._lastDirCheckAt = Date.now();
+        this._catalogSignature = this.getAllFonts().join('|');
+        this.refreshAllFontSelects();
 
         const googleCount = this._googleFontsFull ? this._googleFontsFull.size : GOOGLE_FONTS.length;
         console.log(`[FontManager] ✅ Registered ${this._allowedFonts.length} fonts total — 💻 系统:${this._systemFonts.size} | 🌐 Google:${googleCount} | 📦 内置:${this._embeddedFonts.size} | 📤 自定义:${this._customFonts.length}`);
         return true;
+    }
+
+    /**
+     * 检查字体目录是否有新增/变化，并在变化时自动刷新所有字体选择器（不会重新扫描 Windows 系统字体）。
+     */
+    async refreshCatalogIfChanged(force = false) {
+        const now = Date.now();
+        if (!force && now - this._lastDirCheckAt < 3000) return false;
+        this._lastDirCheckAt = now;
+
+        if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.scanFonts === 'function') {
+            try {
+                const scannedFonts = await window.electronAPI.scanFonts({ skipSystemRescan: true });
+                if (Array.isArray(scannedFonts)) {
+                    let addedLocal = false;
+                    for (const fontInfo of scannedFonts) {
+                        if (!fontInfo || !fontInfo.family) continue;
+                        if (fontInfo.system) {
+                            if (!this._systemFonts.has(fontInfo.family)) {
+                                this._systemFonts.add(fontInfo.family);
+                                if (!this._allowedFonts.includes(fontInfo.family)) {
+                                    this._allowedFonts.push(fontInfo.family);
+                                }
+                                this._recordVariant(fontInfo.family, fontInfo.weight || '400', fontInfo.style || 'normal');
+                            }
+                        } else {
+                            if (!this._registeredEmbeddedPaths.has(fontInfo.path)) {
+                                await this._registerLocalFont(fontInfo);
+                                addedLocal = true;
+                            }
+                            if (!this._embeddedFonts.has(fontInfo.family)) {
+                                this._embeddedFonts.add(fontInfo.family);
+                                addedLocal = true;
+                            }
+                            if (!this._allowedFonts.includes(fontInfo.family)) {
+                                this._allowedFonts.push(fontInfo.family);
+                                addedLocal = true;
+                            }
+                        }
+                    }
+                    const nextSig = this.getAllFonts().join('|');
+                    if (addedLocal || nextSig !== this._catalogSignature) {
+                        this._catalogSignature = nextSig;
+                        this.refreshAllFontSelects();
+                        return true;
+                    }
+                }
+            } catch (err) {
+                console.warn('[FontManager] refreshCatalogIfChanged failed:', err);
+            }
+        }
+        return false;
     }
 
     /**
@@ -364,6 +458,13 @@ class ReelsFontManager {
      */
     async _registerLocalFont(fontInfo) {
         if (!fontInfo.path || !fontInfo.family) return;
+        if (this._registeredEmbeddedPaths.has(fontInfo.path)) {
+            if (!this._allowedFonts.includes(fontInfo.family)) {
+                this._allowedFonts.push(fontInfo.family);
+            }
+            this._recordVariant(fontInfo.family, String(fontInfo.weight || '400'), String(fontInfo.style || 'normal'));
+            return;
+        }
         try {
             const fontUrl = (window.electronAPI && window.electronAPI.toFileUrl)
                 ? window.electronAPI.toFileUrl(fontInfo.path)
@@ -375,6 +476,7 @@ class ReelsFontManager {
             const fontFace = new FontFace(fontInfo.family, `url("${fontUrl}")`, descriptors);
             await fontFace.load();
             document.fonts.add(fontFace);
+            this._registeredEmbeddedPaths.add(fontInfo.path);
 
             if (!this._allowedFonts.includes(fontInfo.family)) {
                 this._allowedFonts.push(fontInfo.family);
@@ -386,18 +488,25 @@ class ReelsFontManager {
     }
 
     /**
-     * 按需从 Google Fonts 加载字体。
+     * 按需从 Google Fonts 加载字体（带内存与样式表缓存、并发去重）。
      * 仅在联网且字体未通过系统/本地注册时才从 CDN 加载。
      */
     async loadGoogleFont(fontFamily) {
+        if (!fontFamily) return;
+        fontFamily = String(fontFamily).trim();
+        if (!fontFamily || fontFamily.includes(',')) return;
         if (this._loadedGoogleFonts.has(fontFamily)) return;
+        if (this._loadingGoogleFontPromises.has(fontFamily)) {
+            return this._loadingGoogleFontPromises.get(fontFamily);
+        }
+
         // 允许加载硬编码列表或动态拉取的全量目录中的字体
         const isGoogleFont = GOOGLE_FONTS.includes(fontFamily) ||
             (this._googleFontsFull && this._googleFontsFull.has(fontFamily));
         if (!isGoogleFont) return;
 
-        // 如果已通过系统字体注册，无需从 CDN 加载
-        if (this._customFonts.includes(fontFamily) || this._isFontAvailable(fontFamily)) {
+        // 如果已通过系统/内置/上传字体注册，无需从 CDN 加载
+        if (this._customFonts.includes(fontFamily) || this._systemFonts.has(fontFamily) || this._embeddedFonts.has(fontFamily) || this._isFontAvailable(fontFamily)) {
             this._loadedGoogleFonts.add(fontFamily);
             return;
         }
@@ -408,46 +517,65 @@ class ReelsFontManager {
             return;
         }
 
-        try {
-            const encoded = fontFamily.replace(/ /g, '+');
+        const loadPromise = (async () => {
             try {
-                await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}:wght@100;200;300;400;500;600;700;800;900&display=block`);
-            } catch (_) {
-                // 降级：部分单字重字体（如 Anton, Bebas Neue）不支持 wght 范围，使用默认无参数请求
-                await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}&display=block`);
-            }
+                const encoded = fontFamily.replace(/ /g, '+');
+                try {
+                    await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}:wght@100;200;300;400;500;600;700;800;900&display=swap`);
+                } catch (_) {
+                    // 降级：部分单字重字体（如 Anton, Bebas Neue）不支持 wght 范围，使用默认无参数请求
+                    await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}&display=swap`);
+                }
 
-            if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.load === 'function') {
-                await Promise.all(['100', '200', '300', '400', '500', '600', '700', '800', '900'].map((weight) =>
-                    document.fonts.load(`${weight} 16px "${fontFamily}"`).catch(() => {})
-                ));
-            }
-            this._loadedGoogleFonts.add(fontFamily);
+                if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.load === 'function') {
+                    await Promise.race([
+                        Promise.all(['400', '700'].map((weight) =>
+                            document.fonts.load(`${weight} 16px "${fontFamily}"`).catch(() => {})
+                        )),
+                        new Promise(r => setTimeout(r, 1500)),
+                    ]);
+                }
+                this._loadedGoogleFonts.add(fontFamily);
 
-            if (!this._allowedFonts.includes(fontFamily)) {
-                this._allowedFonts.push(fontFamily);
-            }
-            for (const w of ['100', '200', '300', '400', '500', '600', '700', '800', '900']) {
-                this._recordVariant(fontFamily, w, 'normal');
-                this._recordVariant(fontFamily, w, 'italic');
-            }
+                if (!this._allowedFonts.includes(fontFamily)) {
+                    this._allowedFonts.push(fontFamily);
+                }
+                for (const w of ['100', '200', '300', '400', '500', '600', '700', '800', '900']) {
+                    this._recordVariant(fontFamily, w, 'normal');
+                    this._recordVariant(fontFamily, w, 'italic');
+                }
 
-            console.log(`[FontManager] Loaded Google Font: ${fontFamily}`);
-        } catch (err) {
-            console.warn(`[FontManager] Failed to load Google Font: ${fontFamily}`, err);
-        }
+                console.log(`[FontManager] Loaded Google Font: ${fontFamily}`);
+            } catch (err) {
+                console.warn(`[FontManager] Failed to load Google Font: ${fontFamily}`, err);
+            } finally {
+                this._loadingGoogleFontPromises.delete(fontFamily);
+            }
+        })();
+
+        this._loadingGoogleFontPromises.set(fontFamily, loadPromise);
+        return loadPromise;
     }
 
     /**
-     * 辅助插入 Google Fonts CSS 规则并等待加载
+     * 辅助插入 Google Fonts CSS 规则并等待加载（复用已注入的 link 标签）
      */
     _injectGoogleFontStylesheet(url) {
+        if (this._injectedStylesheetUrls.has(url)) return Promise.resolve();
         return new Promise((resolve, reject) => {
-            if (typeof document === 'undefined') return resolve();
+            if (typeof document === 'undefined' || !document.head) return resolve();
+            const existing = document.head.querySelector(`link[rel="stylesheet"][href="${url}"]`);
+            if (existing) {
+                this._injectedStylesheetUrls.add(url);
+                return resolve();
+            }
             const link = document.createElement('link');
             link.rel = 'stylesheet';
             link.href = url;
-            link.onload = () => resolve();
+            link.onload = () => {
+                this._injectedStylesheetUrls.add(url);
+                resolve();
+            };
             link.onerror = () => {
                 link.remove();
                 reject(new Error(`Google Fonts stylesheet failed: ${url}`));
@@ -548,6 +676,8 @@ class ReelsFontManager {
                 this._allowedFonts.push(familyName);
             }
             this._recordVariant(familyName, '100 900', 'normal');
+            this._catalogSignature = this.getAllFonts().join('|');
+            this.refreshAllFontSelects({ [familyName]: familyName });
 
             console.log(`[FontManager] Uploaded custom font: ${familyName}`);
             return familyName;
@@ -582,7 +712,7 @@ class ReelsFontManager {
     _recordVariant(fontFamily, weight = '400', style = 'normal') {
         if (!fontFamily) return;
         if (!this._fontVariants.has(fontFamily)) this._fontVariants.set(fontFamily, new Set());
-        this._fontVariants.get(fontFamily).add(`${String(weight)}|${String(style)}`);
+        this._fontVariants.get(fontFamily).add(`${String(weight)}|String(style)`.replace('String(style)', String(style)));
     }
 
     _weightLabel(weight) {
@@ -724,23 +854,11 @@ class ReelsFontManager {
     }
 
     /**
-     * 刷新字体下拉框 — 带分类分组。
-     * @param {string|HTMLSelectElement} selectTarget - <select> 的 ID 或实际元素
-     * @param {string} currentValue - 当前选中值
+     * 获取统一的字体目录分组与显示名称，供 T 字幕、普通文字覆层、文本卡片标题/正文/页脚、滚动字幕共用。
      */
-    refreshFontSelect(selectTarget, currentValue) {
-        // 覆层批量预览会同时打开第二个面板，两个面板都有同名的 select ID。
-        // 接收实际元素才能保证刷新的是调用者所在面板，而不是 document 中第一个。
-        const select = typeof selectTarget === 'string'
-            ? document.getElementById(selectTarget)
-            : selectTarget;
-        if (!select) return;
-
+    getUnifiedFontCatalog() {
         const fonts = this.getAllFonts();
-        const oldValue = select.value;
-
-        // 中文显示名称映射
-        const DISPLAY_NAMES = {
+        const displayNames = {
             'Microsoft YaHei': '微软雅黑', '微软雅黑': '微软雅黑',
             'SimHei': '黑体', '黑体': '黑体',
             'SimSun': '宋体', '宋体': '宋体',
@@ -779,7 +897,6 @@ class ReelsFontManager {
             'Press Start 2P': 'Press Start 2P (像素)',
         };
 
-        // ── 分类字体 ──
         const googleFontsSet = this._googleFontsFull || new Set(GOOGLE_FONTS);
         const groups = {
             system: [],   // 系统自带
@@ -819,6 +936,54 @@ class ReelsFontManager {
             { key: 'embedded', label: '📦 内置字体', emoji: '📦' },
             { key: 'custom',   label: '📤 用户上传', emoji: '📤' },
         ];
+
+        return {
+            fonts,
+            groups,
+            groupDefs,
+            displayNames,
+            signature: fonts.join('|'),
+        };
+    }
+
+    /**
+     * 刷新页面内所有已知的字体选择器（包含 T 字幕、全屏打字机标题、普通文字覆层、文本卡片标题/正文/页脚、滚动字幕标题/正文，以及多面板实例）。
+     */
+    refreshAllFontSelects(preferredValues = {}) {
+        if (typeof document === 'undefined') return;
+        const targets = new Set();
+        for (const id of UNIFIED_FONT_SELECT_IDS) {
+            document.querySelectorAll(`#${id}`).forEach(el => targets.add(el));
+        }
+        document.querySelectorAll('select.fp-hidden-select').forEach(el => targets.add(el));
+        for (const selectEl of targets) {
+            const id = selectEl.id || '';
+            const val = Object.prototype.hasOwnProperty.call(preferredValues, id)
+                ? preferredValues[id]
+                : selectEl.value;
+            this.refreshFontSelect(selectEl, val);
+        }
+        if (this._advModal && typeof this._advModal.refreshCatalog === 'function') {
+            const catalog = this.getUnifiedFontCatalog();
+            this._advModal.refreshCatalog(catalog.displayNames, catalog.groups);
+        }
+    }
+
+    /**
+     * 刷新字体下拉框 — 带分类分组。
+     * @param {string|HTMLSelectElement} selectTarget - <select> 的 ID 或实际元素
+     * @param {string} currentValue - 当前选中值
+     */
+    refreshFontSelect(selectTarget, currentValue) {
+        // 覆层批量预览会同时打开第二个面板，两个面板都有同名的 select ID。
+        // 接收实际元素才能保证刷新的是调用者所在面板，而不是 document 中第一个。
+        const select = typeof selectTarget === 'string'
+            ? (typeof document !== 'undefined' ? document.getElementById(selectTarget) : null)
+            : selectTarget;
+        if (!select) return;
+
+        const { fonts, groups, groupDefs, displayNames: DISPLAY_NAMES } = this.getUnifiedFontCatalog();
+        const oldValue = select.value;
 
         // ── 填充隐藏 <select>（保证 form 兼容 + .value 正常工作）──
         select.innerHTML = '';
@@ -1123,7 +1288,7 @@ class ReelsFontManager {
             wrap.insertBefore(btn, select);
             
             btn.addEventListener('click', () => {
-                this._openAdvancedFontPicker(select, displayNames, groups);
+                this._openAdvancedFontPicker(select);
             });
         }
         
@@ -1142,7 +1307,12 @@ class ReelsFontManager {
         if (!this._advModal) {
             this._advModal = this._createAdvancedModal();
         }
-        this._advModal.show(selectEl, displayNames, groups);
+        const catalog = this.getUnifiedFontCatalog();
+        this._advModal.show(selectEl, catalog.displayNames, catalog.groups);
+        // 异步检查本地字体目录是否有变更（不会重新扫描 Windows 字体）
+        if (this._registered) {
+            this.refreshCatalogIfChanged().catch(() => {});
+        }
     }
 
     _createAdvancedModal() {
@@ -1635,6 +1805,14 @@ class ReelsFontManager {
         });
         
         return {
+            refreshCatalog: (displayNames, groups) => {
+                currentDisplayNames = displayNames || currentDisplayNames;
+                currentGroups = groups || currentGroups;
+                if (overlay.classList.contains('fp-open')) {
+                    renderInspector();
+                    renderGrid();
+                }
+            },
             show: (selectEl, displayNames, groups) => {
                 currentSelect = selectEl;
                 currentDisplayNames = displayNames;
@@ -1648,9 +1826,9 @@ class ReelsFontManager {
                 activeSource = null;
                 activeUseCase = null;
                 selectedItalic = false;
-                portableOnly = true;
-                portableToggle.classList.add('fp-active-filter');
-                portableToggle.textContent = '仅可分享';
+                portableOnly = false;
+                portableToggle.classList.remove('fp-active-filter');
+                portableToggle.textContent = '全部来源';
                 searchInput.value = '';
                 sideItems.forEach(i => i.classList.toggle('fp-active', i.dataset.cat === 'all'));
                 recoTags.forEach(t => t.classList.remove('fp-active-filter'));
@@ -1687,7 +1865,8 @@ if (typeof window !== 'undefined') {
     window.DEFAULT_FONT_FAMILY = DEFAULT_FONT_FAMILY;
     window.BUILTIN_FONTS = BUILTIN_FONTS;
     window.GOOGLE_FONTS = GOOGLE_FONTS;
+    window.UNIFIED_FONT_SELECT_IDS = UNIFIED_FONT_SELECT_IDS;
 }
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { ReelsFontManager, getFontManager, DEFAULT_FONT_FAMILY, BUILTIN_FONTS, GOOGLE_FONTS };
+    module.exports = { ReelsFontManager, getFontManager, DEFAULT_FONT_FAMILY, BUILTIN_FONTS, GOOGLE_FONTS, UNIFIED_FONT_SELECT_IDS };
 }
