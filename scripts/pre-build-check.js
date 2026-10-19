@@ -318,6 +318,11 @@ function checkCoreFeatureRegressions() {
             patterns: ['classifyVideoColorProfile', 'buildBt709ConversionFilter'],
             desc: '宽色域 (HLG/PQ/BT.2020/P3) 自动识别与 BT.709 转换',
         },
+        {
+            file: 'electron/services/codeCacheGuard.js',
+            patterns: ['rotateCodeCacheDir', 'ensureFreshCodeCacheOnStartup', 'Code Cache.before-videokit-repair-'],
+            desc: '更新后自动备份重建 Code Cache 防白屏机制（保留全部工程与预设）',
+        },
     ];
 
     for (const item of checks) {

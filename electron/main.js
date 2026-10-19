@@ -18,6 +18,7 @@ const { registerAPIHandlers } = require('./apiRouter');
 const persistentPresetStore = require('./services/persistentPresetStore');
 const overlayPresetPackage = require('./services/overlayPresetPackage');
 const sharedProfile = require('./services/sharedProfile');
+const codeCacheGuard = require('./services/codeCacheGuard');
 
 let mainWindow;
 let appIsReady = false;
@@ -521,6 +522,24 @@ function log(message) {
     }
 }
 
+// ── 自动处理更新后 Code Cache 导致的白屏（必须在 app.ready 前执行，保留全部工程/预设/配置）──
+let _startupCodeCacheStatus = { rotated: false, needsSessionCacheClear: false };
+if (_workspaceInstanceOwner) {
+    try {
+        _startupCodeCacheStatus = codeCacheGuard.ensureFreshCodeCacheOnStartup({
+            userDataDir: app.getPath('userData'),
+            appVersion: app.getVersion(),
+            appPath: app.getAppPath(),
+            electronVersion: process.versions.electron,
+            chromeVersion: process.versions.chrome,
+            isPackaged: app.isPackaged,
+            log,
+        });
+    } catch (e) {
+        log(`[CodeCacheGuard] 启动前检查异常: ${e.message}`);
+    }
+}
+
 // 获取资源路径
 function getResourcePath(relativePath) {
     if (app.isPackaged) {
@@ -806,7 +825,58 @@ function createWindow() {
             }
         }
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+        const userDataDir = app.getPath('userData');
+        const distHtmlPath = path.join(__dirname, '../dist/index.html');
+        let packagedCacheRetried = false;
+
+        codeCacheGuard.markRendererBootPending(userDataDir, {
+            appVersion: app.getVersion(),
+        });
+
+        const recoverFromWhiteScreen = async (reason) => {
+            if (packagedCacheRetried || !mainWindow || mainWindow.isDestroyed()) return;
+            packagedCacheRetried = true;
+            log(`[CodeCacheGuard] 检测到渲染异常或白屏 (${reason})，正在自动清理 Code Cache 并重载...`);
+            try {
+                await mainWindow.webContents.session.clearCodeCaches({});
+                await mainWindow.webContents.session.clearCache();
+            } catch (_) {}
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.reloadIgnoringCache();
+            }
+        };
+
+        mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+            recoverFromWhiteScreen(`did-fail-load:${errorCode}:${errorDescription}`);
+        });
+
+        mainWindow.webContents.on('did-finish-load', async () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            try {
+                const domHealthy = await mainWindow.webContents.executeJavaScript(
+                    'Boolean(document.body && document.body.children && document.body.children.length > 0)',
+                    true
+                );
+                if (domHealthy) {
+                    codeCacheGuard.markRendererBootComplete(userDataDir);
+                } else {
+                    await recoverFromWhiteScreen('empty-dom-after-load');
+                }
+            } catch (err) {
+                await recoverFromWhiteScreen(`dom-check-error:${err.message}`);
+            }
+        });
+
+        (async () => {
+            if (_startupCodeCacheStatus?.needsSessionCacheClear && mainWindow && !mainWindow.isDestroyed()) {
+                try {
+                    await mainWindow.webContents.session.clearCodeCaches({});
+                } catch (_) {}
+            }
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.loadFile(distHtmlPath);
+            }
+        })();
     }
 
     let workspaceCloseApproved=false,workspaceCloseSaving=false;
