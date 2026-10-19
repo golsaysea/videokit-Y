@@ -1,17 +1,20 @@
-# VideoKit 4.4.43
+# VideoKit 4.4.43-fix
 
 更新仓库：golsaysea/videokit-Y。
 
 ## 下载
 
-- **Windows x64**：`VideoKit-Setup-4.4.43.exe` 安装版，或 `VideoKit-Setup-4.4.43.zip` 便携版。
-- **macOS Apple Silicon（M 系列）**：`VideoKit-4.4.43-macOS-arm64.dmg` / `.zip`。
-- **macOS Intel**：`VideoKit-4.4.43-macOS-x64.dmg` / `.zip`。
-- **Linux x64**：`VideoKit-4.4.43-Linux-x64.AppImage`、`VideoKit-4.4.43-Linux-x64.deb`、`VideoKit-4.4.43-Linux-x64.tar.gz`。
+- **Windows x64**：`VideoKit-Setup-4.4.43-fix.exe` 安装版，或 `VideoKit-Setup-4.4.43-fix.zip` 便携版。
+- **macOS Apple Silicon（M 系列）**：`VideoKit-4.4.43-fix-macOS-arm64.dmg` / `.zip`。
+- **macOS Intel**：`VideoKit-4.4.43-fix-macOS-x64.dmg` / `.zip`。
+- **Linux x64**：`VideoKit-4.4.43-fix-Linux-x64.AppImage`、`VideoKit-4.4.43-fix-Linux-x64.deb`、`VideoKit-4.4.43-fix-Linux-x64.tar.gz`。
 - 同时发布 Windows、macOS、Linux 自动更新元数据和 SHA256 校验清单。
 
 ## 本次更新
 
+- **4.4.43-fix 紧急修复**：
+  - 修复拖拽多段人声音频导入时原生路径与自然数字排序的绑定顺序问题（`001`、`002`...`023` 严格升序排列）。
+  - 修复 `ReelsOverlayPanel._esc` 缺失导致的覆层组预设库下拉框/弹窗不显示及添加滚动字幕后右侧图层与滚动正文编辑面板未展开问题。
 - **批量 Reels 与时间轴交互升级**：
   - 支持导入音频与字幕时按自然数字排序，支持将单个或多个视频/图片直接拖拽至指定任务行，修复清空任务后重载恢复旧数据问题。
   - 批量表格视频预览改为静态缩略图缓存 + 单实例悬停动态预览，大幅降低大批量任务时的显存与解码开销。
@@ -25,3 +28,4 @@
   - 修复覆层模板名称输入时失去焦点问题；滚动覆层新增大写转换与字间距实时预览同步。
 - **全面应用安全加固**：
   - 加固 `yt-dlp` 参数校验、DaVinci Resolve / FCPXML 导出脚本序列化、`open-external` / `openFolder` 协议与目录校验、`local-media://` 敏感文件隔离、API Key 本地 `safeStorage` 加密存储及前端 DOM XSS 防护。
+

@@ -130,7 +130,7 @@ jobs:
           path: |
             dist-electron/*.zip
             dist-electron/*.exe
-            dist-electron/latest.yml
+            dist-electron/*.yml
             dist-electron/RELEASE_NOTES.md
             dist-electron/*.blockmap
           retention-days: 30
@@ -169,7 +169,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Preserve architecture-specific update metadata
-        run: node -e "const fs=require('fs'),yaml=require('js-yaml'); fs.writeFileSync('dist-electron/latest-mac-${{ matrix.arch }}.json',JSON.stringify(yaml.load(fs.readFileSync('dist-electron/latest-mac.yml','utf8'))))"
+        run: node -e "const fs=require('fs'),path=require('path'),yaml=require('js-yaml'); const ymlName=fs.readdirSync('dist-electron').find(f=>f.endsWith('-mac.yml')||f==='latest-mac.yml'); fs.writeFileSync('dist-electron/latest-mac-${{ matrix.arch }}.json',JSON.stringify(yaml.load(fs.readFileSync(path.join('dist-electron',ymlName),'utf8'))))"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-${{ matrix.arch }}-builds

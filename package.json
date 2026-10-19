@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.4.43",
+  "version": "4.4.43-fix",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -51,7 +51,8 @@
       {
         "provider": "github",
         "owner": "golsaysea",
-        "repo": "videokit-Y"
+        "repo": "videokit-Y",
+        "channel": "latest"
       }
     ],
     "directories": {
