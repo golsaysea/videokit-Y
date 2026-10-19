@@ -305,8 +305,8 @@ function checkCoreFeatureRegressions() {
         },
         {
             file: 'src/reels-overlay-panel.js',
-            patterns: ['ropEditorEventGuard', 'rop-tpl-name-input', 'scroll_uppercase', 'scroll_letter_spacing'],
-            desc: '覆层模板名称输入焦点保护与滚动文字实时预览刷新',
+            patterns: ['_esc(', 'ropEditorEventGuard', 'rop-tpl-name-input', 'scroll_uppercase', 'scroll_letter_spacing'],
+            desc: '覆层面板 HTML 转义 (_esc)、模板名称输入焦点保护与滚动文字实时预览刷新',
         },
         {
             file: 'src/reels-batch-table.js',

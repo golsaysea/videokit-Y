@@ -35,6 +35,15 @@ class ReelsOverlayPanel {
         this._init();
     }
 
+    _esc(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     _requestRender() {
         if (!this.videoCanvas) return;
         if (this._renderRaf) cancelAnimationFrame(this._renderRaf);
