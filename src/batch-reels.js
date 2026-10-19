@@ -7733,9 +7733,26 @@ function _queueTxtFile(file) {
 }
 
 function _naturalCompareFileNames(a, b) {
-    const nameA = String(a?.name || a?.baseName || a?.path || a || '');
-    const nameB = String(b?.name || b?.baseName || b?.path || b || '');
-    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    const extractBase = (item) => {
+        if (item && typeof item === 'object') {
+            const rawPath = item._nativePath || item.path || '';
+            if (rawPath) {
+                const base = String(rawPath).replace(/\\/g, '/').split('/').pop();
+                if (base) return base;
+            }
+            if (item.name) return String(item.name);
+            if (item.baseName) return String(item.baseName);
+        }
+        const s = String(item || '');
+        return s.replace(/\\/g, '/').split('/').pop() || s;
+    };
+    const nameA = extractBase(a);
+    const nameB = extractBase(b);
+    const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+    const fullA = String(a?._nativePath || a?.path || a?.name || a?.baseName || a || '');
+    const fullB = String(b?._nativePath || b?.path || b?.name || b?.baseName || b || '');
+    return fullA.localeCompare(fullB, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function _onTxtFilesSelected(e) {
@@ -8190,7 +8207,7 @@ function _scanDroppedReelsTaskFolder(dirPath, maxDepth = 20) {
         }
     };
     walk(dirPath, 0);
-    return files.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
+    return files.sort(_naturalCompareFileNames);
 }
 
 function _reelsPathParent(filePath) {

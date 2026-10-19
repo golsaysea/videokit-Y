@@ -148,8 +148,12 @@ function _resolveDuplicateTaskNames(tasks) {
 function _naturalSortByName(a, b) {
     const extractName = (item) => {
         if (item && typeof item === 'object') {
+            const rawPath = item._nativePath || item.path || '';
+            if (rawPath) {
+                const base = String(rawPath).replace(/\\/g, '/').split('/').pop();
+                if (base) return base;
+            }
             if (item.name) return String(item.name);
-            if (item.path) return String(item.path).replace(/\\/g, '/').split('/').pop() || String(item.path);
         }
         const s = String(item || '');
         return s.replace(/\\/g, '/').split('/').pop() || s;
@@ -161,7 +165,9 @@ function _naturalSortByName(a, b) {
         sensitivity: 'base',
     });
     if (cmp !== 0) return cmp;
-    return String(a?.path || a?.name || a || '').localeCompare(String(b?.path || b?.name || b || ''), undefined, {
+    const fullA = String(a?._nativePath || a?.path || a?.name || a || '');
+    const fullB = String(b?._nativePath || b?.path || b?.name || b || '');
+    return fullA.localeCompare(fullB, undefined, {
         numeric: true,
         sensitivity: 'base',
     });
@@ -4893,18 +4899,23 @@ function _bindBatchTableEvents() {
         // 如果是内部行拖拽排序（无文件），不拦截，让 tbody 的 drop 处理
         if (_dragSrcIdx != null) return;
 
-        const files = Array.from(e.dataTransfer.files || []).sort(_naturalSortByName);
-        if (!files.length) return;
-        e.preventDefault();
-
-        // In Electron with context isolation, a File passed from the renderer
-        // to preload may no longer be accepted by webUtils.getPathForFile().
-        // Preload captures native paths from the original drop event; attach
-        // them to these renderer-side File objects before any routing occurs.
+        const rawFiles = Array.from(e.dataTransfer.files || []);
         const droppedPaths = window.electronAPI?.consumeDroppedFilePaths?.() || [];
-        files.forEach((file, index) => {
+        rawFiles.forEach((file, index) => {
             if (!file._nativePath && droppedPaths[index]) file._nativePath = droppedPaths[index];
         });
+        const knownDroppedPaths = new Set(rawFiles.map(file => file._nativePath).filter(Boolean));
+        for (const nativePath of droppedPaths) {
+            if (!nativePath || knownDroppedPaths.has(nativePath)) continue;
+            rawFiles.push({
+                name: String(nativePath).split(/[\\/]/).pop() || nativePath,
+                _nativePath: nativePath,
+                path: nativePath,
+            });
+        }
+        const files = rawFiles.sort(_naturalSortByName);
+        if (!files.length) return;
+        e.preventDefault();
 
         // ── Check if any directory was dropped ──
         const paths = files.map(_rbtGetNativeFilePath).filter(Boolean);
@@ -4972,8 +4983,12 @@ function _bindBatchTableEvents() {
             return;
         }
 
-        // ── 精确落到 audio 单元格时，直接设为人声 ──
+        // ── 精确落到 audio 单元格时，单文件设当前行，多文件按顺序批量分配 ──
         if (dropCell && dropCell.dataset.field === 'audio') {
+            if (files.length > 1) {
+                await _batchAssignFiles(files, 'audio');
+                return;
+            }
             const row = dropCell.closest('.rbt-row');
             if (row && files[0]) {
                 const idx = parseInt(row.dataset.idx);
@@ -4988,8 +5003,12 @@ function _bindBatchTableEvents() {
             return;
         }
 
-        // ── 精确落到 srt 单元格时 ──
+        // ── 精确落到 srt 单元格时，单文件设当前行，多文件按顺序批量分配 ──
         if (dropCell && dropCell.dataset.field === 'srt') {
+            if (files.length > 1) {
+                await _batchAssignFiles(files, 'srt');
+                return;
+            }
             const row = dropCell.closest('.rbt-row');
             if (row && files[0]) {
                 const idx = parseInt(row.dataset.idx);
@@ -5668,7 +5687,7 @@ function _bindBatchTableEvents() {
                     const ext = (f.name || '').split('.').pop().toLowerCase();
                     return validExts.has(ext);
                 })
-                .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true }));
+                .sort(_naturalSortByName);
 
             if (matched.length === 0) {
                 showToast(`文件夹中没有找到匹配的文件`, 'error');
@@ -8924,7 +8943,7 @@ function _showBgPoolDialog(taskIdx) {
         const fileInput = box.querySelector('#bgpool-file-input');
         box.querySelector('#bgpool-add-files')?.addEventListener('click', () => fileInput?.click());
         fileInput?.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
+            const files = Array.from(e.target.files).sort(_naturalSortByName);
             for (const f of files) {
                 const path = typeof getFileNativePath === 'function' ? getFileNativePath(f) : (f.path || f.name);
                 if (path && !task.bgClipPool.includes(path)) task.bgClipPool.push(path);
@@ -8937,7 +8956,7 @@ function _showBgPoolDialog(taskIdx) {
         const folderInput = box.querySelector('#bgpool-folder-input');
         box.querySelector('#bgpool-add-folder')?.addEventListener('click', () => folderInput?.click());
         folderInput?.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
+            const files = Array.from(e.target.files).sort(_naturalSortByName);
             const mediaExt = /\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp|gif|bmp)$/i;
             for (const f of files) {
                 if (!mediaExt.test(f.name)) continue;
@@ -8974,11 +8993,16 @@ function _showBgPoolDialog(taskIdx) {
                 e.preventDefault();
                 dropzone.style.borderColor = '#333';
                 dropzone.style.color = '#555';
-                const files = Array.from(e.dataTransfer.files);
+                const rawFiles = Array.from(e.dataTransfer.files || []);
+                const droppedPaths = window.electronAPI?.consumeDroppedFilePaths?.();
+                if (Array.isArray(droppedPaths) && droppedPaths.length === rawFiles.length) {
+                    rawFiles.forEach((f, idx) => { f._nativePath = droppedPaths[idx]; });
+                }
+                const files = rawFiles.sort(_naturalSortByName);
                 const mediaExt = /\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp|gif|bmp)$/i;
                 for (const f of files) {
                     if (!mediaExt.test(f.name)) continue;
-                    const path = typeof getFileNativePath === 'function' ? getFileNativePath(f) : (f.path || f.name);
+                    const path = f._nativePath || (typeof getFileNativePath === 'function' ? getFileNativePath(f) : (f.path || f.name));
                     if (path && !task.bgClipPool.includes(path)) task.bgClipPool.push(path);
                 }
                 _renderPoolUI();
@@ -9278,7 +9302,7 @@ function _showBgmPoolDialog(taskIdx) {
                     properties: ['openFile', 'multiSelections']
                 });
                 if (filePaths && filePaths.length > 0) {
-                    filePaths.forEach(p => {
+                    filePaths.slice().sort(_naturalSortByName).forEach(p => {
                         if (!task.bgmClipPool.includes(p)) task.bgmClipPool.push(p);
                     });
                     _renderBgmPoolUI();
@@ -9364,14 +9388,19 @@ function _showBgmPoolDialog(taskIdx) {
     });
     box.addEventListener('drop', async (e) => {
         e.preventDefault();
-        const files = Array.from(e.dataTransfer.files || []);
+        const rawFiles = Array.from(e.dataTransfer.files || []);
+        const droppedPaths = window.electronAPI?.consumeDroppedFilePaths?.();
+        if (Array.isArray(droppedPaths) && droppedPaths.length === rawFiles.length) {
+            rawFiles.forEach((f, idx) => { f._nativePath = droppedPaths[idx]; });
+        }
+        const files = rawFiles.sort(_naturalSortByName);
         if (files.length > 0) {
             const audioExts = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg']);
             const added = [];
             for (const f of files) {
                 const ext = (f.name || '').split('.').pop().toLowerCase();
                 if (audioExts.has(ext)) {
-                    let fpath = f.path;
+                    let fpath = f._nativePath || f.path;
                     if (!fpath && window.electronAPI && window.electronAPI.getFilePath) {
                         try { fpath = window.electronAPI.getFilePath(f); } catch (_) {}
                     }
@@ -18872,21 +18901,23 @@ function _bindMediaSidebarEvents(container) {
 
     const _addFilesByPath = (filePaths) => {
         if (!filePaths || filePaths.length === 0) return;
+        const sortedPaths = Array.from(filePaths).filter(Boolean).sort(_naturalSortByName);
+        if (sortedPaths.length === 0) return;
         const pathMod = window.require ? window.require('path') : null;
-        for (const fp of filePaths) {
+        for (const fp of sortedPaths) {
             const name = pathMod ? pathMod.basename(fp) : fp.split(/[\\/]/).pop();
             const cls = _classifyFile(name);
             window._mediaPool.items.push({ name, path: fp, size: 0, file: null, type: 'file', role: '', ...cls });
         }
         _renderPoolItems();
-        if (typeof showToast === 'function') showToast(`📥 已导入 ${filePaths.length} 个文件到素材池`, 'success');
-        console.log(`[MediaPool] Ingested ${filePaths.length} files (abs path), pool size: ${window._mediaPool.items.length}`);
+        if (typeof showToast === 'function') showToast(`📥 已导入 ${sortedPaths.length} 个文件到素材池`, 'success');
+        console.log(`[MediaPool] Ingested ${sortedPaths.length} files (abs path), pool size: ${window._mediaPool.items.length}`);
     };
 
     const handleFiles = (files) => {
         if (!files || files.length === 0) return;
         _addFilesByPath(Array.from(files).map(f => {
-            const p = (typeof getFileNativePath === 'function') ? getFileNativePath(f) : (f.path || f.name);
+            const p = f?._nativePath || ((typeof getFileNativePath === 'function') ? getFileNativePath(f) : (f?.path || f?.name));
             return p;
         }).filter(p => Boolean(p)));
     };
@@ -19066,12 +19097,26 @@ function _bindMediaSidebarEvents(container) {
             e.stopPropagation();
             poolArea.style.background = '';
             poolArea.style.boxShadow = '';
-            const files = Array.from(e.dataTransfer.files || []);
+            const rawFiles = Array.from(e.dataTransfer.files || []);
+            const droppedPaths = window.electronAPI?.consumeDroppedFilePaths?.() || [];
+            rawFiles.forEach((file, index) => {
+                if (!file._nativePath && droppedPaths[index]) file._nativePath = droppedPaths[index];
+            });
+            const knownDroppedPaths = new Set(rawFiles.map(file => file._nativePath).filter(Boolean));
+            for (const nativePath of droppedPaths) {
+                if (!nativePath || knownDroppedPaths.has(nativePath)) continue;
+                rawFiles.push({
+                    name: String(nativePath).split(/[\\/]/).pop() || nativePath,
+                    _nativePath: nativePath,
+                    path: nativePath,
+                });
+            }
+            const files = rawFiles.sort(_naturalSortByName);
             if (files.length > 0) {
                 const paths = files.map(f => {
-                    const p = (typeof getFileNativePath === 'function') ? getFileNativePath(f) : (f.path || f.name);
+                    const p = f._nativePath || ((typeof getFileNativePath === 'function') ? getFileNativePath(f) : (f.path || f.name));
                     return p;
-                }).filter(Boolean);
+                }).filter(Boolean).sort(_naturalSortByName);
                 const dirs = paths.filter(p => _isDirectoryPath(p));
                 if (dirs.length > 0) {
                     await _importFoldersAsFileTaskTabs(dirs);
