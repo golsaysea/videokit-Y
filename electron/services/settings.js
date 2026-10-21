@@ -310,10 +310,28 @@ const DEFAULT_GEMINI_PROMPT = "ElevenLabs 配音文案格式化助手 — 为祷
 
 function getGeminiKeysPath() { return path.join(getBackendDir(), 'gemini_keys.json'); }
 function loadGeminiKeys() {
-    const data = readJSON(getGeminiKeysPath()) || { keys: [] };
-    if (data && Array.isArray(data.keys)) {
-        data.keys = data.keys.map(k => typeof k === 'string' ? k.trim() : '').filter(Boolean);
+    const data = readJSON(getGeminiKeysPath()) || { keys: [], tts_keys: [] };
+    const mergedKeys = [];
+    const mergedTtsKeys = [];
+    const addClean = (arr, target) => {
+        if (!Array.isArray(arr)) return;
+        for (const k of arr) {
+            const clean = typeof k === 'string' ? k.trim() : '';
+            if (clean && !target.includes(clean)) target.push(clean);
+        }
+    };
+    addClean(data.keys, mergedKeys);
+    addClean(data.tts_keys, mergedTtsKeys);
+    for (const dir of getAllCandidateBackendDirs()) {
+        const candidate = readJSON(path.join(dir, 'gemini_keys.json'));
+        if (candidate) {
+            addClean(candidate.keys, mergedKeys);
+            addClean(candidate.tts_keys, mergedTtsKeys);
+        }
     }
+    data.keys = mergedKeys;
+    data.tts_keys = mergedTtsKeys.length ? mergedTtsKeys : [...mergedKeys];
+    if (!data.tts_model) data.tts_model = 'gemini-2.5-flash-preview-tts';
     // 迁移旧版界面曾保存的无效/非标准模型 ID。
     const legacyModelMap = {
         'gemini-3.1-pro': 'gemini-3.1-pro-preview',
@@ -328,10 +346,15 @@ function loadGeminiKeys() {
     return data;
 }
 function saveGeminiKeys(data) {
-    if (data && Array.isArray(data.keys)) {
-        data.keys = data.keys.map(k => typeof k === 'string' ? k.trim() : '').filter(Boolean);
+    const existing = readJSON(getGeminiKeysPath()) || {};
+    const next = { ...existing, ...data };
+    if (Array.isArray(next.keys)) {
+        next.keys = next.keys.map(k => typeof k === 'string' ? k.trim() : '').filter(Boolean);
     }
-    writeJSON(getGeminiKeysPath(), data);
+    if (Array.isArray(next.tts_keys)) {
+        next.tts_keys = next.tts_keys.map(k => typeof k === 'string' ? k.trim() : '').filter(Boolean);
+    }
+    writeJSON(getGeminiKeysPath(), next);
 }
 
 // ElevenLabs Settings

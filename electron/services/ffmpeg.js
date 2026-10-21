@@ -189,6 +189,32 @@ async function getDuration(filePath) {
             }
         }
     }
+    // 针对视频容器：优先同时读取 v:0 视频流时长与容器总时长，取较小有效值。
+    // 某些合并视频（如视频轨 8s、音频轨 15.85s）的 format.duration 为音频长度，
+    // 若直接返回 15.85s 会导致背景循环点计算在 14.85s，而视频流在 8s (第 240 帧) 就已 EOF。
+    const isVideoExt = /\.(mp4|mov|mkv|webm|avi|m4v|flv|wmv|ts|3gp)$/i.test(filePath);
+    if (isVideoExt) {
+        try {
+            const { stdout } = await runCommand('ffprobe', [
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=duration:format=duration',
+                '-of', 'json',
+                filePath
+            ], { timeout: PROBE_TIMEOUT });
+            const parsed = JSON.parse(stdout || '{}');
+            const streamDur = parseFloat(parsed?.streams?.[0]?.duration);
+            const formatDur = parseFloat(parsed?.format?.duration);
+            if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
+                return Math.min(streamDur, formatDur);
+            }
+            if (Number.isFinite(streamDur) && streamDur > 0) return streamDur;
+            if (Number.isFinite(formatDur) && formatDur > 0) return formatDur;
+        } catch (e) {
+            console.warn(`[getDuration] 视频流时长探测失败，回退常规探测: ${e.message}`);
+        }
+    }
+
     // 方法1: 通过 format=duration 获取
     try {
         const { stdout, stderr } = await runCommand('ffprobe', [

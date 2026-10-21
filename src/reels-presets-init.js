@@ -941,6 +941,21 @@ const REELS_BUILTIN_PRESETS = {
 // 内置覆层组预设（文字卡片模版）
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// Each preset is a complete style override; switching presets resets mixed_layout
+// through DEFAULT_SUBTITLE_STYLE, and custom preset serialization retains it.
+for (const [label, layout] of [
+    ['自动轮换', 'cycle'], ['首尾大字', 'stack'], ['中间强调', 'focus'],
+    ['大小拼接', 'collage'], ['阶梯错位', 'stairs'],
+]) {
+    REELS_BUILTIN_PRESETS[`动态混排 · ${label}`] = {
+        mixed_layout: layout, font_family: 'Arimo', fontsize: 74, font_weight: 700,
+        bold: true, italic: false, color_text: '#FFFFFF', color_high: '#FFD700', color_shadow: '#000000',
+        shadow_blur: 5, shadow_offset_x: 2, shadow_offset_y: 4, opacity_shadow: 210,
+        use_stroke: false, use_box: false, dynamic_box: false, karaoke_highlight: true,
+        highlight_enabled: true, pos_x: 0.5, pos_y: 0.48, wrap_width_percent: 80,
+        anim_in_type: 'none', anim_out_type: 'none',
+    };
+}
 window.REELS_BUILTIN_PRESETS = REELS_BUILTIN_PRESETS;
 
 const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {

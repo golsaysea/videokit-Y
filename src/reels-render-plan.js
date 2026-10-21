@@ -77,8 +77,29 @@
             bgm: task.bgmPath || task.bgm_path || (typeof task.bgm === 'string' ? task.bgm : (task.bgm?.path || '')) || '',
             content_video: task.contentVideoPath || task.content_video_path || '',
         };
+        const removeRoleClips = (role) => {
+            timeline.tracks.forEach((track) => {
+                if (Array.isArray(track.clips)) {
+                    track.clips = track.clips.filter(clip => clip?._extra?.role !== role);
+                }
+            });
+        };
         const ensureRole = (type, role, path, config = {}) => {
-            if (!path || clipsByRole(timeline, role).length) return clipsByRole(timeline, role)[0] || null;
+            if (!path) {
+                removeRoleClips(role);
+                return null;
+            }
+            const existing = clipsByRole(timeline, role);
+            if (existing.length) {
+                const allMatch = existing.every(clip => (timeline.sources[clip.sourceId]?.path || '') === path);
+                if (allMatch) return existing[0] || null;
+                removeRoleClips(role);
+                if (role === 'background') {
+                    removeRoleClips('source_audio');
+                    timeline._extra.backgroundSegmentKey = '';
+                    if (task) delete task.timelineBackgroundTrim;
+                }
+            }
             const track = trackFor(timeline, type, config.label, config.trackRole || role);
             const candidate = track.clips.find(clip => timeline.sources[clip.sourceId]?.path === path);
             if (candidate) {
@@ -127,12 +148,18 @@
                 originalAudio.isMain = true;
                 originalAudio._extra.role = 'source_audio';
                 originalAudio._extra.sequenceIndex = index;
-                originalAudio._extra.loopIndex = segment.loopIndex ?? null;
+                originalAudio._extra.loopIndex = index;
                 audioTrack.clips.push(originalAudio);
             });
             timeline._extra.backgroundSegmentKey = segmentKey;
             background = videoTrack.clips[0] || null;
         } else {
+            if (!paths.background) {
+                removeRoleClips('background');
+                removeRoleClips('source_audio');
+                timeline._extra.backgroundSegmentKey = '';
+                if (task) delete task.timelineBackgroundTrim;
+            }
             background = ensureRole('video', 'background', paths.background, { label: '主视频' });
         }
         if (background && !backgroundSegments.length && !clipsByRole(timeline, 'source_audio').length) {
@@ -147,6 +174,8 @@
             ensureRole('video', 'content_video', paths.content_video, {
                 label: '内容视频', inT: finite(task.contentVideoTrimStart), outT: finite(task.contentVideoTrimEnd, duration),
             });
+        } else {
+            removeRoleClips('content_video');
         }
         // 插入素材永远属于当前任务，不与背景素材池共用。时间线只是它的可视
         // 编辑投影；sourceTrim/timelineStart 等编辑后会同步回 task.insertClips。

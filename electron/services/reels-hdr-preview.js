@@ -212,11 +212,43 @@ function createPreviewService(runCommand, getCacheDir) {
         pending.set(key, job);
         try { return await job; } finally { pending.delete(key); }
     }
+    prepare.clearCache = function clearCache(paths = [], clearAll = false) {
+        let removed = 0;
+        try {
+            checked.clear();
+            const dir = getCacheDir();
+            if (!dir || !fs.existsSync(dir)) return 0;
+            if (clearAll || !Array.isArray(paths) || paths.length === 0) {
+                for (const file of fs.readdirSync(dir)) {
+                    if (/\.mp4$/i.test(file)) {
+                        try { fs.unlinkSync(path.join(dir, file)); removed++; } catch (_) {}
+                    }
+                }
+                return removed;
+            }
+            for (const rawPath of paths) {
+                if (!rawPath) continue;
+                try {
+                    const source = path.resolve(String(rawPath));
+                    if (!fs.existsSync(source)) continue;
+                    const stat = fs.statSync(source);
+                    const key = crypto.createHash('sha256').update(`reels-hdr-preview-v3-widegamut|${source}|${stat.size}|${stat.mtimeMs}`).digest('hex');
+                    const output = path.join(dir, key + '.mp4');
+                    if (fs.existsSync(output)) {
+                        fs.unlinkSync(output);
+                        removed++;
+                    }
+                } catch (_) {}
+            }
+        } catch (_) {}
+        return removed;
+    };
     return prepare;
 }
 const prepareReelsPreview = createPreviewService(
     (...args) => require('./ffmpeg').runCommand(...args),
     () => require('./settings').getSecureTmpDir('reels-hdr-preview')
 );
-module.exports = { prepareReelsPreview, createPreviewService, classifyVideoColorProfile, buildBt709ConversionFilter };
+const clearReelsPreviewCache = (...args) => prepareReelsPreview.clearCache(...args);
+module.exports = { prepareReelsPreview, clearReelsPreviewCache, createPreviewService, classifyVideoColorProfile, buildBt709ConversionFilter };
 

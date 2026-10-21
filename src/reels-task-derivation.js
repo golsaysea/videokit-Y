@@ -32,6 +32,14 @@
         task.alignManualConfirmed = false;
         task.alignManualConfirmReason = '';
         task.alignReviewPending = false;
+        delete task.timeline;
+        delete task.renderPlan;
+        delete task.timelineBackgroundTrim;
+        delete task.autoMatchedSourceIndex;
+        delete task.autoMatchedSourceRow;
+        delete task.autoMatchedSourceField;
+        delete task.autoMatchedSourceLabel;
+        delete task.timingCalibration;
         delete task._bulkCreateSrtError;
         return task;
     }

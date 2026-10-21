@@ -5226,20 +5226,14 @@ function _bindBatchTableEvents() {
                 task.hook.path = '';
                 break;
             case 'bg':
-                task.bgPath = '';
-                task.videoPath = '';
-                task.bgSrcUrl = '';
-                task.bgMode = 'single';
-                task.bgClipPool = [];
-                task.bgClipActivePool = [];
-                task.bgClipOrder = 'random';
-                task.bgTransition = 'crossfade';
+                _rbtPurgeTaskBackgroundMedia(task, { purgeCache: false });
                 break;
             case 'clipPool':
                 task.clipPoolDir = '';
                 task.clipPool = [];
                 task.concatVideoPath = '';
                 task.concatStatus = '';
+                _rbtResetTaskBackgroundTimeline(task);
                 break;
             case 'tts_text':
                 task.ttsText = '';
@@ -5252,6 +5246,18 @@ function _bindBatchTableEvents() {
                 break;
             case 'audio':
                 task.audioPath = '';
+                if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                    task.timeline.tracks.forEach((tr) => {
+                        if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'voice');
+                    });
+                }
+                if ((document.getElementById('rbt-align-source')?.value || 'video') === 'audio') {
+                    task.aligned = false;
+                    task.srtPath = '';
+                    task.segments = [];
+                    task.alignSource = '';
+                    task.alignMatchedText = '';
+                }
                 break;
             case 'srt':
                 task.srtPath = '';
@@ -5268,11 +5274,21 @@ function _bindBatchTableEvents() {
                 break;
             case 'bgm':
                 task.bgmPath = '';
+                if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                    task.timeline.tracks.forEach((tr) => {
+                        if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'bgm');
+                    });
+                }
                 break;
             case 'contentvideo':
                 task.contentVideoPath = '';
                 task.contentVideoTrimStart = null;
                 task.contentVideoTrimEnd = null;
+                if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                    task.timeline.tracks.forEach((tr) => {
+                        if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'content_video');
+                    });
+                }
                 task.contentVideoScale = 100;
                 task.contentVideoX = 'center';
                 task.contentVideoY = 'center';
@@ -5504,7 +5520,26 @@ function _bindBatchTableEvents() {
         if (!state || indices.length === 0) return;
         const fieldLabel = labelMap[baseField] || '该列';
         if (!confirm(`确定清空${label}的${fieldLabel}？`)) return;
-        for (const idx of indices) _clearTaskField(state.tasks[idx], field);
+        const purgedMediaPaths = [];
+        const isClearingBgOrAudio = baseField === 'bg' || baseField === 'clipPool' || baseField === 'audio';
+        for (const idx of indices) {
+            const t = state.tasks[idx];
+            if (!t) continue;
+            if (baseField === 'bg' || baseField === 'clipPool') {
+                purgedMediaPaths.push(..._rbtCollectTaskBackgroundPaths(t));
+            } else if (baseField === 'audio' && t.audioPath) {
+                purgedMediaPaths.push(t.audioPath);
+            }
+            _clearTaskField(t, field);
+        }
+        if (isClearingBgOrAudio) {
+            const clearAll = (baseField === 'bg' || baseField === 'clipPool') && indices.length === state.tasks.length;
+            _rbtPurgeMediaCaches(purgedMediaPaths, { clearAll });
+            if (state.selectedIdx >= 0 && indices.includes(state.selectedIdx)) {
+                if (typeof reelsSelectTask === 'function') reelsSelectTask(state.selectedIdx);
+                else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+            }
+        }
 
         const scrollWrap = container.querySelector('.rbt-table-wrap');
         const scrollTop = scrollWrap ? scrollWrap.scrollTop : 0;
@@ -5517,7 +5552,10 @@ function _bindBatchTableEvents() {
             newScrollWrap.scrollLeft = scrollLeft;
         }
 
-        if (typeof showToast === 'function') showToast(`✅ 已清空${label}的${fieldLabel}`, 'success');
+        if (typeof showToast === 'function') {
+            const cacheSuffix = (baseField === 'bg' || baseField === 'clipPool') ? '（已同步清理识别与视频缓存）' : '';
+            showToast(`✅ 已清空${label}的${fieldLabel}${cacheSuffix}`, 'success');
+        }
     });
 
     // ── 列标题粘贴按钮 ──
@@ -6324,25 +6362,60 @@ function _bindBatchTableEvents() {
                         task.hook.enabled = false;
                         task.hook.path = '';
                         break;
-                    case 'clipPool':
+                    case 'clipPool': {
+                        const oldPaths = _rbtCollectTaskBackgroundPaths(task);
                         task.clipPoolDir = '';
                         task.clipPool = [];
                         task.concatVideoPath = '';
                         task.concatStatus = '';
+                        _rbtResetTaskBackgroundTimeline(task);
+                        _rbtPurgeMediaCaches(oldPaths);
                         break;
-                    case 'bg': task.bgPath = ''; task.videoPath = ''; task.bgSrcUrl = ''; task.bgMode = 'single'; task.bgClipPool = []; task.bgClipActivePool = []; task.bgClipOrder = 'random'; task.bgTransition = 'crossfade'; task.bgTransDur = 0.5; break;
+                    }
+                    case 'bg':
+                        _rbtPurgeTaskBackgroundMedia(task, { purgeCache: true });
+                        task.bgTransDur = 0.5;
+                        break;
                     case 'bgClipSettings': task.bgClipSettings = {}; break;
-                    case 'bgm': task.bgmPath = ''; task.bgmStart = 0; task.bgmMode = 'single'; task.bgmClipPool = []; task.bgmClipActivePool = []; task.bgmClipOrder = 'random'; break;
-                    case 'contentvideo': task.contentVideoPath = ''; task.contentVideoTrimStart = null; task.contentVideoTrimEnd = null; task.contentVideoScale = 100; task.contentVideoX = 'center'; task.contentVideoY = 'center'; task.contentVideoCrop = ''; task.contentVideoBlurBg = false; task.contentVideoDirectBg = false; break;
+                    case 'bgm':
+                        task.bgmPath = ''; task.bgmStart = 0; task.bgmMode = 'single'; task.bgmClipPool = []; task.bgmClipActivePool = []; task.bgmClipOrder = 'random';
+                        if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                            task.timeline.tracks.forEach((tr) => { if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'bgm'); });
+                        }
+                        break;
+                    case 'contentvideo':
+                        task.contentVideoPath = ''; task.contentVideoTrimStart = null; task.contentVideoTrimEnd = null; task.contentVideoScale = 100; task.contentVideoX = 'center'; task.contentVideoY = 'center'; task.contentVideoCrop = ''; task.contentVideoBlurBg = false; task.contentVideoDirectBg = false;
+                        if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                            task.timeline.tracks.forEach((tr) => { if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'content_video'); });
+                        }
+                        break;
                     case 'tts_text': task.ttsText = ''; break;
                     case 'pip': task.pipPath = ''; break;
-                    case 'audio': task.audioPath = ''; break;
+                    case 'audio': {
+                        const oldAudio = task.audioPath || '';
+                        task.audioPath = '';
+                        if (task.timeline && Array.isArray(task.timeline.tracks)) {
+                            task.timeline.tracks.forEach((tr) => { if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'voice'); });
+                        }
+                        if ((document.getElementById('rbt-align-source')?.value || 'video') === 'audio') {
+                            task.aligned = false; task.srtPath = ''; task.segments = []; task.alignSource = ''; task.alignMatchedText = '';
+                        }
+                        if (oldAudio) _rbtPurgeMediaCaches([oldAudio]);
+                        break;
+                    }
                     case 'srt': task.srtPath = ''; task.aligned = false; task.segments = []; break;
                     case 'txt': task.txtContent = ''; task.aligned = false; task.segments = []; break;
                     case 'ai_script': task.aiScript = ''; break;
                 }
+                if ((field === 'bg' || field === 'clipPool') && window._reelsState?.selectedIdx === idx) {
+                    if (typeof reelsSelectTask === 'function') reelsSelectTask(idx);
+                    else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+                }
                 _renderBatchTable();
                 if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+                if ((field === 'bg' || field === 'clipPool') && typeof showToast === 'function') {
+                    showToast(`✅ 已清除第 ${idx + 1} 行背景素材及缓存`, 'success');
+                }
                 return;
             }
             // SRT Edit button
@@ -8970,9 +9043,12 @@ function _showBgPoolDialog(taskIdx) {
         // Clear all
         box.querySelector('#bgpool-clear-all')?.addEventListener('click', () => {
             if (confirm('确定清空所有素材？')) {
+                const oldPaths = _rbtCollectTaskBackgroundPaths(task);
                 task.bgClipPool = [];
                 task.bgClipActivePool = [];
                 task.bgClipOrder = 'random';
+                _rbtResetTaskBackgroundTimeline(task);
+                _rbtPurgeMediaCaches(oldPaths);
                 _renderPoolUI();
             }
         });
@@ -9421,24 +9497,188 @@ window.reelsShowBgmPoolDialog = _showBgmPoolDialog;
 window.reelsPickClipPool = _rbtPickClipPool;
 window.reelsConcatTaskClipPool = _rbtConcatTaskClipPool;
 
+function _rbtCollectTaskBackgroundPaths(task) {
+    if (!task || typeof task !== 'object') return [];
+    const paths = new Set();
+    const add = (p) => {
+        const clean = String(p || '').trim();
+        if (clean && !clean.startsWith('blob:')) paths.add(clean);
+    };
+    add(task.bgPath);
+    add(task.videoPath);
+    add(task.concatVideoPath);
+    if (Array.isArray(task.bgClipPool)) task.bgClipPool.forEach(add);
+    if (Array.isArray(task.bgClipActivePool)) task.bgClipActivePool.forEach(add);
+    if (Array.isArray(task.clipPool)) task.clipPool.forEach(add);
+    if (task.timeline && task.timeline.sources && Array.isArray(task.timeline.tracks)) {
+        task.timeline.tracks.forEach((tr) => {
+            (tr.clips || []).forEach((c) => {
+                if (c?._extra?.role === 'background' || c?._extra?.role === 'source_audio') {
+                    add(task.timeline.sources[c.sourceId]?.path);
+                }
+            });
+        });
+    }
+    return [...paths];
+}
+
+function _rbtResetTaskBackgroundTimeline(task) {
+    if (!task || typeof task !== 'object') return;
+    delete task.timelineBackgroundTrim;
+    delete task.renderPlan;
+    if (task.timeline && typeof task.timeline === 'object') {
+        if (Array.isArray(task.timeline.tracks)) {
+            task.timeline.tracks.forEach((tr) => {
+                if (Array.isArray(tr.clips)) {
+                    tr.clips = tr.clips.filter(
+                        c => c?._extra?.role !== 'background' && c?._extra?.role !== 'source_audio'
+                    );
+                }
+            });
+        }
+        if (task.timeline._extra && typeof task.timeline._extra === 'object') {
+            task.timeline._extra.backgroundSegmentKey = '';
+        }
+    }
+}
+
+function _rbtResetTaskVideoRecognitionState(task, options = {}) {
+    if (!task || typeof task !== 'object' || options.keepSubtitles === true) return;
+    const alignSourceVal = typeof document !== 'undefined'
+        ? (document.getElementById('rbt-align-source')?.value || 'video')
+        : 'video';
+    const workModeVal = typeof document !== 'undefined'
+        ? (document.getElementById('reels-work-mode')?.value || '')
+        : '';
+    const usesVideoRecognition = options.forceResetRecognition === true
+        || !task.audioPath
+        || alignSourceVal === 'video'
+        || workModeVal === 'voiced_bg';
+    if (!usesVideoRecognition) return;
+
+    task.aligned = false;
+    task.alignedAt = '';
+    task.alignSource = '';
+    task.alignMatchedText = '';
+    delete task.autoMatchedSourceIndex;
+    delete task.autoMatchedSourceRow;
+    delete task.autoMatchedSourceField;
+    delete task.autoMatchedSourceLabel;
+    delete task.timingCalibration;
+    delete task.alignManualConfirmed;
+    delete task.alignManualConfirmReason;
+    delete task.alignReviewPending;
+    delete task.alignRecognitionDifference;
+
+    if (!task.audioPath || alignSourceVal === 'video' || workModeVal === 'voiced_bg' || /_source\.srt$|_aligned\.srt$/i.test(String(task.srtPath || ''))) {
+        task.srtPath = '';
+        task.segments = [];
+    }
+}
+
+function _rbtPurgeMediaCaches(paths = [], options = {}) {
+    const uniquePaths = [...new Set((Array.isArray(paths) ? paths : [paths]).map(p => String(p || '').trim()).filter(Boolean))];
+    const state = typeof window !== 'undefined' ? window._reelsState : null;
+    for (const p of uniquePaths) {
+        if (state && state._mediaDurations) {
+            delete state._mediaDurations[p];
+        }
+        if (typeof _rbtVideoThumbCache !== 'undefined') {
+            _rbtVideoThumbCache.delete(p);
+        }
+        if (typeof _rbtVideoThumbInflight !== 'undefined') {
+            _rbtVideoThumbInflight.delete(p);
+        }
+    }
+    if (options.clearAll) {
+        if (typeof _rbtVideoThumbCache !== 'undefined') _rbtVideoThumbCache.clear();
+        if (typeof _rbtVideoThumbInflight !== 'undefined') _rbtVideoThumbInflight.clear();
+    }
+    if ((uniquePaths.length > 0 || options.clearAll) && typeof apiFetch === 'function' && typeof API_BASE !== 'undefined') {
+        const language = (typeof document !== 'undefined' && document.getElementById('rbt-align-lang')?.value) || '英语';
+        apiFetch(`${API_BASE}/subtitle/clear-cache`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                audio_paths: uniquePaths,
+                clear_all: !!options.clearAll,
+                language,
+            }),
+        }).catch((err) => {
+            console.warn('[BatchTable] 自动清理素材识别缓存失败:', err);
+        });
+    }
+}
+
+function _rbtPurgeTaskBackgroundMedia(task, options = {}) {
+    if (!task || typeof task !== 'object') return [];
+    const oldPaths = _rbtCollectTaskBackgroundPaths(task);
+    if (task.bgSrcUrl && String(task.bgSrcUrl).startsWith('blob:')) {
+        try { URL.revokeObjectURL(task.bgSrcUrl); } catch (_) {}
+    }
+    if (task.srcUrl && String(task.srcUrl).startsWith('blob:')) {
+        try { URL.revokeObjectURL(task.srcUrl); } catch (_) {}
+    }
+    task.bgPath = '';
+    task.videoPath = '';
+    task.bgSrcUrl = '';
+    task.srcUrl = '';
+    task.bgMode = 'single';
+    task.bgClipPool = [];
+    task.bgClipActivePool = [];
+    task.bgClipOrder = 'random';
+    task.bgTransition = 'crossfade';
+    task.concatVideoPath = '';
+    task.concatStatus = '';
+
+    _rbtResetTaskBackgroundTimeline(task);
+    _rbtResetTaskVideoRecognitionState(task, options);
+
+    if (options.purgeCache !== false && (oldPaths.length > 0 || options.clearAll)) {
+        _rbtPurgeMediaCaches(oldPaths, options);
+    }
+    return oldPaths;
+}
+window.reelsPurgeTaskBackgroundMedia = _rbtPurgeTaskBackgroundMedia;
+window.reelsPurgeMediaCaches = _rbtPurgeMediaCaches;
+
 function _setTaskSingleBackground(task, filePath, options = {}) {
     if (!task) return;
     const path = filePath || '';
     const detectImage = options.detectImage === true;
     const isImage = detectImage && /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(path);
+    const prevPaths = _rbtCollectTaskBackgroundPaths(task);
+    const prevPrimary = task.bgPath || task.videoPath || '';
+
+    if (task.bgSrcUrl && String(task.bgSrcUrl).startsWith('blob:')) {
+        try { URL.revokeObjectURL(task.bgSrcUrl); } catch (_) {}
+    }
+    if (task.srcUrl && String(task.srcUrl).startsWith('blob:')) {
+        try { URL.revokeObjectURL(task.srcUrl); } catch (_) {}
+    }
 
     task.bgPath = path;
     task.videoPath = isImage ? '' : path;
     if (Object.prototype.hasOwnProperty.call(options, 'bgSrcUrl')) {
-        task.bgSrcUrl = options.bgSrcUrl;
-    } else if (options.clearBgSrcUrl) {
+        task.bgSrcUrl = options.bgSrcUrl || '';
+        task.srcUrl = options.bgSrcUrl || '';
+    } else {
         task.bgSrcUrl = '';
+        task.srcUrl = '';
     }
 
     task.bgMode = 'single';
     task.bgClipPool = [];
     task.bgClipActivePool = [];
     task.bgClipOrder = 'random';
+
+    if (prevPrimary !== path || prevPaths.some(p => p !== path)) {
+        _rbtResetTaskBackgroundTimeline(task);
+        if (prevPrimary && prevPrimary !== path) {
+            _rbtResetTaskVideoRecognitionState(task, options);
+            _rbtPurgeMediaCaches(prevPaths.filter(p => p !== path));
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -9957,6 +10197,8 @@ function _applyCycleItemsAsBgPool(items, order, scope) {
         task.bgPath = '';
         task.videoPath = '';
         task.bgSrcUrl = '';
+        task.srcUrl = '';
+        _rbtResetTaskBackgroundTimeline(task);
     }
 
     _skipNextApply = true;
@@ -19001,8 +19243,11 @@ function _bindMediaSidebarEvents(container) {
     // ━━━ Clear pool ━━━
     sidebar.querySelector('#rbt-ms-clear')?.addEventListener('click', () => {
         if (confirm('确定清空素材池？')) {
+            const oldPoolPaths = (window._mediaPool?.items || []).map(it => it?.path).filter(Boolean);
             window._mediaPool.items = [];
+            _rbtPurgeMediaCaches(oldPoolPaths);
             _renderPoolItems();
+            if (typeof showToast === 'function') showToast('✅ 已清空素材池及相关缓存', 'success');
         }
     });
 

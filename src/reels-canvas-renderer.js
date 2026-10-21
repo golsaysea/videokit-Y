@@ -561,6 +561,11 @@ class ReelsCanvasRenderer {
         ctx.direction = textDirection;
         ctx.textAlign = 'left';
 
+        if (!_isSubCall && s.mixed_layout && s.mixed_layout !== 'none') {
+            this._renderMixedLayout(s, segment, currentTime, videoW, videoH);
+            return;
+        }
+
         if (!_isSubCall && s.fullpage_typewriter) {
             this._renderFullpageTypewriter(s, currentTime, videoW, videoH);
             return;
@@ -745,8 +750,11 @@ class ReelsCanvasRenderer {
         }
 
         const wordsInfo = segment.words || [];
-        const flatWords = wordsInfo.length > 0
-            ? wordsInfo.map(w => this._applyTextTransform(w.word || '', s)).filter(Boolean)
+        const mappedWords = wordsInfo.length > 0
+            ? wordsInfo.map(w => this._applyTextTransform(w?.word ?? w?.text ?? '', s)).filter(Boolean)
+            : [];
+        const flatWords = mappedWords.length > 0
+            ? mappedWords
             : text.split(/\s+/).filter(Boolean);
         const words = flatWords;
         const joiner = ' ';
@@ -1488,6 +1496,41 @@ class ReelsCanvasRenderer {
             ? visibleLines.reduce((sum, ln) => sum + ln.split(/\s+/).filter(Boolean).reduce((c, w) => c + Array.from(w).length, 0), 0)
             : 0;
 
+        const totalWordCount = Math.max(1, words.length);
+        const segDur = Math.max(0.001, segEnd - segStart);
+        const resolvedWordTimings = Array.from({ length: totalWordCount }, (_, idx) => {
+            const wInfo = idx < wordsInfo.length ? wordsInfo[idx] : null;
+            const fbStart = segStart + segDur * (idx / totalWordCount);
+            const fbEnd = segStart + segDur * ((idx + 1) / totalWordCount);
+            const rawStart = wInfo ? Number(wInfo.start) : NaN;
+            const rawEnd = wInfo ? Number(wInfo.end) : NaN;
+            let ws = Number.isFinite(rawStart) ? rawStart : fbStart;
+            let we = Number.isFinite(rawEnd) ? rawEnd : fbEnd;
+            if (wordPopGroups && idx < wordPopGroups.starts.length) {
+                ws = wordPopGroups.starts[idx];
+                we = wordPopGroups.ends[idx];
+            }
+            return { start: ws, end: we };
+        });
+
+        let activeHighlightIdx = -1;
+        if (highlightEnabled && currentTime != null && currentTime >= segStart - 1e-6 && currentTime <= segEnd + 1e-6) {
+            activeHighlightIdx = resolvedWordTimings.findIndex((wt, idx) =>
+                currentTime >= wt.start && (idx === totalWordCount - 1 ? currentTime <= wt.end : currentTime < wt.end)
+            );
+            if (activeHighlightIdx < 0) {
+                for (let k = totalWordCount - 1; k >= 0; k--) {
+                    if (currentTime >= resolvedWordTimings[k].start - 1e-6) {
+                        activeHighlightIdx = k;
+                        break;
+                    }
+                }
+                if (activeHighlightIdx < 0 && totalWordCount > 0) {
+                    activeHighlightIdx = 0;
+                }
+            }
+        }
+
         for (let i = 0; i < visibleLines.length; i++) {
             const line = visibleLines[i];
             const lineW = lineWidths[i];
@@ -1545,26 +1588,25 @@ class ReelsCanvasRenderer {
                 const baseSpaceW = ctx.measureText(' ').width + wordSpacing;
 
                 // Current word timing & highlight
-                let wInfo = null;
-                if (wordCounter < wordsInfo.length) {
-                    wInfo = wordsInfo[wordCounter];
-                }
                 wordCounter++;
                 const wordIdx = wordCounter - 1;
-                const totalWordCount = Math.max(1, words.length);
-                const segDur = Math.max(0.001, segEnd - segStart);
-                const fallbackStart = segStart + segDur * (wordIdx / totalWordCount);
-                const fallbackEnd = segStart + segDur * ((wordIdx + 1) / totalWordCount);
-                let wordStart = (wInfo && Number.isFinite(wInfo.start)) ? wInfo.start : fallbackStart;
-                let wordEnd = (wInfo && Number.isFinite(wInfo.end)) ? wInfo.end : fallbackEnd;
-                if (wordPopGroups && wordIdx < wordPopGroups.starts.length) {
-                    wordStart = wordPopGroups.starts[wordIdx];
-                    wordEnd = wordPopGroups.ends[wordIdx];
-                }
+                const wt = resolvedWordTimings[wordIdx] || {
+                    start: segStart + segDur * (wordIdx / totalWordCount),
+                    end: segStart + segDur * ((wordIdx + 1) / totalWordCount),
+                };
+                const wordStart = wt.start;
+                const wordEnd = wt.end;
 
                 let isHighlight = false;
-                if (highlightEnabled && currentTime != null && currentTime >= wordStart && currentTime <= wordEnd) {
-                    isHighlight = true;
+                if (highlightEnabled && activeHighlightIdx >= 0) {
+                    if (wordPopGroups) {
+                        const activeTiming = resolvedWordTimings[activeHighlightIdx];
+                        isHighlight = activeTiming != null
+                            && Math.abs(wordStart - activeTiming.start) < 1e-6
+                            && Math.abs(wordEnd - activeTiming.end) < 1e-6;
+                    } else {
+                        isHighlight = wordIdx === activeHighlightIdx;
+                    }
                 }
 
                 let allocScale = 1.0;
@@ -1697,7 +1739,7 @@ class ReelsCanvasRenderer {
                         } else {
                             // Do not override the user's normal text/stroke
                             // settings with the legacy typewriter defaults.
-                            wordColor = s.tw_revealed_color || textColor;
+                            wordColor = isHighlight ? highColor : (s.tw_revealed_color || textColor);
                             wordStrokeColor = s.tw_revealed_stroke_color || outlineColor;
                         }
                         if (typewriterRevealType === 'char' && revealedUnits > 0 && revealedUnits < wordUnits) {
@@ -1712,7 +1754,7 @@ class ReelsCanvasRenderer {
 
                 if (isMetronome) {
                     if (metroVisible) {
-                        wordColor = s.metro_read_color || textColor;
+                        wordColor = isHighlight ? highColor : (s.metro_read_color || textColor);
                         wordStrokeColor = s.metro_read_stroke_color || outlineColor;
                     } else {
                         wordColor = s.metro_unread_color || '#808080';
@@ -3816,6 +3858,1075 @@ class ReelsCanvasRenderer {
         }));
     }
 
+    // ── 智能动态混排 (Smart Copy-Adaptive Mixed Typography Engine) ──
+    _scoreMixedLayoutToken(token, idx, total) {
+        const raw = String(token?.text || '').trim();
+        const clean = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+        if (!clean) return 0.1;
+
+        const stopWords = new Set([
+            'a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'by', 'from',
+            'and', 'or', 'but', 'so', 'nor', 'yet', 'is', 'am', 'are', 'was', 'were',
+            'be', 'been', 'being', 'as', 'if', 'it', 'its', 'that', 'this', 'these', 'those',
+            'my', 'your', 'his', 'her', 'our', 'their', 'i', 'you', 'he', 'she', 'we', 'they',
+            'me', 'him', 'us', 'them', 'do', 'does', 'did', 'have', 'has', 'had', 'will',
+            'would', 'can', 'could', 'should', 'may', 'might', 'must', 'into', 'onto', 'upon',
+            '的', '了', '着', '过', '和', '与', '及', '在', '是', '把', '被', '让', '给', '向', '往', '于', '而', '或',
+        ]);
+        if (stopWords.has(clean)) return 0.25;
+
+        const impactWords = new Set([
+            'god', 'jesus', 'lord', 'christ', 'amen', 'pray', 'prayer', 'miracle', 'blessing',
+            'blessed', 'faith', 'grace', 'mercy', 'spirit', 'holy', 'heaven', 'angel', 'cross',
+            'never', 'always', 'stop', 'watch', 'wait', 'listen', 'warning', 'today', 'tonight',
+            'now', 'immediately', 'forever', 'everything', 'nothing', 'everyone', 'no', 'yes',
+            'love', 'peace', 'power', 'heal', 'healed', 'healing', 'breakthrough', 'victory',
+            'protect', 'saved', 'free', 'danger', 'enemy', 'curse', 'family', 'daughter', 'son',
+            'mother', 'father', 'child', 'children', 'heart', 'soul', 'life', 'secret', 'truth',
+        ]);
+
+        let score = 1.0;
+        if (impactWords.has(clean)) score += 1.5;
+        if (/[!?！？]/u.test(raw)) score += 0.9;
+        if (/\d/.test(clean)) score += 0.8;
+        if (clean.length >= 5 && clean.length <= 10) score += 0.45;
+        else if (clean.length >= 11) score += 0.25;
+        else if (clean.length <= 2 && !/\p{Script=Han}/u.test(clean)) score -= 0.35;
+
+        // Slight natural emphasis on the opening hook or final punchline word
+        if (idx === total - 1 && total >= 2) score += 0.3;
+        else if (idx === 0 && total >= 3) score += 0.15;
+
+        return Math.max(0.15, score);
+    }
+
+    _partitionMixedLayoutGroups(tokens) {
+        if (!Array.isArray(tokens) || tokens.length === 0) return [];
+        const isMostlyCjk = tokens.filter(t => t.isCjk).length > tokens.length * 0.5;
+        const unpunctuatedMax = isMostlyCjk ? 12 : 10;
+        const idealMax = isMostlyCjk ? 10 : 8;
+        const hardMax = isMostlyCjk ? 12 : 10;
+        const minGroupSize = isMostlyCjk ? 3 : 2;
+
+        const leadConnectors = new Set([
+            'and', 'but', 'or', 'so', 'because', 'when', 'while', 'if', 'that', 'which',
+            'who', 'where', 'before', 'after', 'until', 'since', 'though', 'although',
+            'to', 'for', 'with', 'in', 'on', 'at', 'from', 'by', 'as', 'into', 'through',
+        ]);
+
+        // Keep <= 10 words on a single screen unless there is a clear mid-sentence punctuation break
+        if (tokens.length <= unpunctuatedMax) {
+            const midBreak = tokens.findIndex((t, idx) =>
+                idx >= minGroupSize &&
+                idx <= tokens.length - minGroupSize - 1 &&
+                (t.hasStrongBreak || (tokens.length >= 8 && t.hasClauseBreak))
+            );
+            if (midBreak >= 0 && tokens.length >= 6) {
+                return [
+                    tokens.slice(0, midBreak + 1),
+                    tokens.slice(midBreak + 1),
+                ];
+            }
+            return [tokens];
+        }
+
+        const groups = [];
+        let cursor = 0;
+        while (cursor < tokens.length) {
+            const remaining = tokens.length - cursor;
+            if (remaining <= unpunctuatedMax) {
+                groups.push(tokens.slice(cursor));
+                break;
+            }
+
+            // Target a balanced split so the remainder never becomes a 1-word orphan
+            const targetLen = remaining <= hardMax + minGroupSize
+                ? Math.ceil(remaining / 2)
+                : idealMax;
+            const searchMin = Math.max(minGroupSize, Math.min(targetLen - 2, remaining - minGroupSize));
+            const searchMax = Math.min(hardMax, remaining - minGroupSize);
+
+            let bestSplit = cursor + Math.max(minGroupSize, Math.min(targetLen, searchMax));
+            let bestScore = -Infinity;
+
+            for (let i = searchMin; i <= searchMax; i++) {
+                const idx = cursor + i - 1;
+                const tok = tokens[idx];
+                const nextTok = tokens[idx + 1];
+                let score = 0;
+
+                // Distance from ideal target length
+                score -= Math.abs(i - targetLen) * 0.35;
+
+                // Punctuation & speech pause boundaries
+                if (tok.hasStrongBreak) score += 4.0;
+                else if (tok.hasClauseBreak) score += 2.6;
+
+                const timeGap = (Number(nextTok?.start) || 0) - (Number(tok?.end) || 0);
+                if (timeGap >= 0.25) score += 2.2;
+                else if (timeGap >= 0.12) score += 1.0;
+
+                // Prefer breaking right before a connector/preposition, never right after an article/preposition
+                if (nextTok && leadConnectors.has(nextTok.clean)) score += 1.1;
+                if (tok.weight <= 0.3) score -= 1.8;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestSplit = cursor + i;
+                }
+            }
+
+            groups.push(tokens.slice(cursor, bestSplit));
+            cursor = bestSplit;
+        }
+
+        return groups;
+    }
+
+    /**
+     * Checks whether a 4-token group consists exclusively of short, visually
+     * balanced words (no long word paired with a short word), which is the
+     * ONLY case where the 4-row Left-Right-Left-Right interleaved pattern
+     *   [词1]
+     *          [词2]
+     *   [词3]
+     *          [词4]
+     * looks clean and balanced.
+     */
+    _isFourShortWordsBalanced(group) {
+        if (!Array.isArray(group) || group.length !== 4) return false;
+        const lengths = group.map(t => {
+            const core = String(t.clean || t.text || '').trim();
+            return t.isCjk ? core.length * 2 : core.length;
+        });
+        const maxLen = Math.max(...lengths);
+        const minLen = Math.min(...lengths);
+        // Every word must be short (<= 6 letters / <= 3 CJK chars) and no stark long-vs-short mismatch
+        return minLen >= 2 && maxLen <= 6 && (maxLen - minLen) <= 3;
+    }
+
+    _selectSmartMixedMode(group, requestedMode, seed) {
+        const n = group.length;
+        if (n <= 1) return 'single';
+        if (requestedMode && requestedMode !== 'cycle') return requestedMode;
+
+        // Smart copy-aware mode selection when in 'cycle' (自动轮换) mode
+        if (n === 2) {
+            const wDiff = Math.abs(group[0].weight - group[1].weight);
+            if (wDiff >= 0.55) return 'focus';
+            return Math.abs(seed) % 2 === 0 ? 'stack' : 'stairs';
+        }
+
+        const weights = group.map(t => t.weight);
+        const maxWeight = Math.max(...weights);
+        const maxIdx = weights.indexOf(maxWeight);
+        const totalChars = group.reduce((sum, t) => sum + t.text.length, 0);
+
+        if (n === 4) {
+            // 4 short, balanced words -> prioritize the signature Left-Right-Left-Right interleaved layout
+            if (this._isFourShortWordsBalanced(group)) {
+                return 'stairs';
+            }
+            // Long word + short word in a 4-word group -> NEVER use 4-row staggered stairs;
+            // pair short words with neighbors using centered focus / collage / stack
+            if (maxIdx > 0 && maxIdx < n - 1 && maxWeight >= 1.3) {
+                return 'focus';
+            }
+            const mixedLenModes = ['focus', 'collage', 'stack'];
+            return mixedLenModes[Math.abs(seed) % mixedLenModes.length];
+        }
+
+        if (n === 3) {
+            if (maxIdx > 0 && maxIdx < n - 1 && maxWeight >= 1.35) {
+                return Math.abs(seed) % 3 === 0 ? 'collage' : 'focus';
+            }
+            const shortModes = ['focus', 'stairs', 'collage', 'stack'];
+            return shortModes[Math.abs(seed) % shortModes.length];
+        }
+
+        if (n >= 5 && n <= 6) {
+            // Medium copy (5-6 words): bias toward focus/stack/collage; avoid 4-row alternating stairs when word lengths vary
+            const firstLastStrong = (group[0].weight >= 1.25 || group[n - 1].weight >= 1.25);
+            const midStrong = maxIdx >= 1 && maxIdx <= n - 2 && maxWeight >= 1.4;
+            if (midStrong && Math.abs(seed) % 2 === 0) return 'focus';
+            if (firstLastStrong && Math.abs(seed) % 3 === 1) return 'stack';
+            const medModes = ['stack', 'focus', 'collage'];
+            return medModes[Math.abs(seed) % medModes.length];
+        }
+
+        // Longer copy (7+ words): avoid 'stairs' indent waste; prefer structured 3-4 row stack/collage/focus
+        const longModes = totalChars > 36
+            ? ['stack', 'collage', 'stack', 'focus']
+            : ['stack', 'collage', 'focus'];
+        return longModes[Math.abs(seed) % longModes.length];
+    }
+
+    _splitTokensIntoBalancedRows(tokens, targetRows) {
+        const n = tokens.length;
+        const k = Math.max(1, Math.min(targetRows, n));
+        if (k === 1) return [tokens];
+        if (k === n) return tokens.map(t => [t]);
+
+        // Dynamic programming / greedy character-balanced partition that avoids stranding stop words at row ends
+        const charWeights = tokens.map(t => Math.max(2, t.text.length));
+        const totalW = charWeights.reduce((a, b) => a + b, 0);
+        const idealRowW = totalW / k;
+
+        const rows = [];
+        let cursor = 0;
+        for (let r = 0; r < k - 1; r++) {
+            const rowsLeft = k - r;
+            const minEnd = cursor + 1;
+            const maxEnd = n - (rowsLeft - 1);
+            let bestEnd = minEnd;
+            let bestCost = Infinity;
+            let accumW = 0;
+
+            for (let end = minEnd; end <= maxEnd; end++) {
+                accumW += charWeights[end - 1];
+                const lastTok = tokens[end - 1];
+                let cost = Math.abs(accumW - idealRowW);
+                // Penalize ending a row with an article/preposition (e.g. "the", "to", "in", "a")
+                if (lastTok.weight <= 0.3 && end < maxEnd) cost += 4.5;
+                // Reward breaking at punctuation
+                if (lastTok.hasClauseBreak) cost -= 2.5;
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    bestEnd = end;
+                }
+            }
+            rows.push(tokens.slice(cursor, bestEnd));
+            cursor = bestEnd;
+        }
+        rows.push(tokens.slice(cursor));
+        return rows.filter(r => r.length > 0);
+    }
+
+    _buildSmartMixedRows(group, mode) {
+        const n = group.length;
+        if (n === 1) {
+            return [{
+                tokens: group,
+                scales: [1.42],
+                emphasisFlags: [true],
+                align: 'center',
+                indent: 0,
+                fitTarget: 1.0,
+            }];
+        }
+
+        if (n === 2) {
+            const firstBigger = group[0].weight > group[1].weight + 0.15;
+            if (mode === 'stairs') {
+                return [
+                    { tokens: [group[0]], scales: [firstBigger ? 1.32 : 1.05], emphasisFlags: [firstBigger], align: 'left', indent: 0 },
+                    { tokens: [group[1]], scales: [firstBigger ? 1.05 : 1.38], emphasisFlags: [!firstBigger], align: 'left', indent: 0.55 },
+                ];
+            }
+            if (mode === 'collage' && (group[0].text.length + group[1].text.length <= 11)) {
+                return [{
+                    tokens: group,
+                    scales: firstBigger ? [1.48, 0.86] : [0.86, 1.48],
+                    emphasisFlags: [firstBigger, !firstBigger],
+                    align: 'center',
+                    indent: 0,
+                }];
+            }
+            return [
+                { tokens: [group[0]], scales: [firstBigger ? 1.45 : 0.94], emphasisFlags: [firstBigger], align: 'center', indent: 0, fitTarget: firstBigger ? 1.0 : 0.82 },
+                { tokens: [group[1]], scales: [firstBigger ? 0.94 : 1.48], emphasisFlags: [!firstBigger], align: 'center', indent: 0, fitTarget: firstBigger ? 0.82 : 1.0 },
+            ];
+        }
+
+        if (mode === 'focus') {
+            // Find the strongest focal word (preferring middle positions, or final word for 3-word phrases)
+            let focusIdx = Math.floor(n / 2);
+            let bestFocusScore = -Infinity;
+            const startCand = 1;
+            const endCand = n === 3 ? 2 : Math.max(1, n - 2);
+            for (let i = startCand; i <= endCand; i++) {
+                const centerBias = 1 - Math.abs(i - (n - 1) / 2) * 0.18;
+                const sc = group[i].weight * centerBias;
+                if (sc > bestFocusScore) {
+                    bestFocusScore = sc;
+                    focusIdx = i;
+                }
+            }
+
+            // If the chosen focus word is a tiny stop word, include its neighbor
+            let focusStart = focusIdx;
+            let focusEnd = focusIdx + 1;
+            if (group[focusIdx].text.length <= 3 && n >= 5 && focusIdx + 1 < n - 1) {
+                focusEnd = focusIdx + 2;
+            }
+
+            const before = group.slice(0, focusStart);
+            const focusTokens = group.slice(focusStart, focusEnd);
+            const after = group.slice(focusEnd);
+
+            const built = [];
+            if (before.length > 0) {
+                const beforeChars = before.reduce((s, t) => s + t.text.length, 0);
+                let topRows = [before];
+                if (before.length >= 5 && beforeChars >= 22) {
+                    const candidate = this._splitTokensIntoBalancedRows(before, 2);
+                    if (candidate.every(r => r.length >= 2 && r.reduce((s, t) => s + t.text.length, 0) >= 8)) {
+                        topRows = candidate;
+                    }
+                }
+                topRows.forEach(r => built.push({
+                    tokens: r,
+                    scales: r.map(() => 0.86),
+                    emphasisFlags: r.map(() => false),
+                    align: 'center',
+                    indent: 0,
+                    fitTarget: 0.96,
+                }));
+            }
+            const focusCharLen = focusTokens.reduce((s, t) => s + t.text.length, 0);
+            const focusScale = focusCharLen <= 5 ? 1.78 : focusCharLen <= 9 ? 1.56 : 1.36;
+            built.push({
+                tokens: focusTokens,
+                scales: focusTokens.map(() => focusScale),
+                emphasisFlags: focusTokens.map(() => true),
+                align: 'center',
+                indent: 0,
+                fitTarget: 1.02,
+            });
+            if (after.length > 0) {
+                const afterChars = after.reduce((s, t) => s + t.text.length, 0);
+                let botRows = [after];
+                if (after.length >= 5 && afterChars >= 22) {
+                    const candidate = this._splitTokensIntoBalancedRows(after, 2);
+                    if (candidate.every(r => r.length >= 2 && r.reduce((s, t) => s + t.text.length, 0) >= 8)) {
+                        botRows = candidate;
+                    }
+                }
+                botRows.forEach(r => built.push({
+                    tokens: r,
+                    scales: r.map(() => 0.88),
+                    emphasisFlags: r.map(() => false),
+                    align: 'center',
+                    indent: 0,
+                    fitTarget: 0.96,
+                }));
+            }
+            return built;
+        }
+
+        if (mode === 'stack') {
+            // 'stack' (首尾大字):
+            // Never leave a single short word on a small-font middle row between two big-font edge rows!
+            // Pack middle words together onto one compact middle row so its width fills the space between top and bottom.
+            if (n === 3) {
+                const midLen = group[1].text.length;
+                const edgeAvgLen = (group[0].text.length + group[2].text.length) / 2;
+                if (midLen < edgeAvgLen + 2) {
+                    // Combine the short middle word with the shorter edge so there is no skinny 1-word middle row
+                    const attachTop = group[0].text.length <= group[2].text.length;
+                    const topRow = attachTop ? [group[0], group[1]] : [group[0]];
+                    const botRow = attachTop ? [group[2]] : [group[1], group[2]];
+                    return [
+                        {
+                            tokens: topRow,
+                            scales: topRow.map(() => (attachTop ? 0.96 : 1.44)),
+                            emphasisFlags: topRow.map(() => !attachTop),
+                            align: 'center',
+                            indent: 0,
+                            fitTarget: 0.98,
+                        },
+                        {
+                            tokens: botRow,
+                            scales: botRow.map(() => (attachTop ? 1.46 : 0.96)),
+                            emphasisFlags: botRow.map(() => attachTop),
+                            align: 'center',
+                            indent: 0,
+                            fitTarget: 1.0,
+                        },
+                    ];
+                }
+                return [
+                    { tokens: [group[0]], scales: [1.44], emphasisFlags: [true], align: 'center', indent: 0, fitTarget: 1.0 },
+                    { tokens: [group[1]], scales: [0.95], emphasisFlags: [false], align: 'center', indent: 0, fitTarget: 0.96 },
+                    { tokens: [group[2]], scales: [1.44], emphasisFlags: [true], align: 'center', indent: 0, fitTarget: 1.0 },
+                ];
+            }
+
+            // For n >= 4: reserve plenty of words for the middle small-font row(s)
+            // Edge rows take 1 word by default; only take 2 words on an edge if n >= 6 and the edge word is a tiny stop word (<= 2 chars)
+            const topCount = (n >= 6 && group[0].text.length <= 2 && group[0].weight <= 0.35) ? 2 : 1;
+            const botCount = (n - topCount >= 5 && group[n - 1].text.length <= 3 && group[n - 2]?.weight <= 0.35) ? 2 : 1;
+            const midTokens = group.slice(topCount, n - botCount);
+            const midChars = midTokens.reduce((s, t) => s + t.text.length, 0);
+
+            // Only split midTokens into 2 rows if there are enough words & characters that BOTH middle rows have >= 2 words and >= 10 chars
+            let midRows = [midTokens];
+            if (midTokens.length >= 5 && midChars >= 22) {
+                const candidate = this._splitTokensIntoBalancedRows(midTokens, 2);
+                const bothRich = candidate.length === 2 &&
+                    candidate.every(r => r.length >= 2 && r.reduce((s, t) => s + t.text.length, 0) >= 9);
+                if (bothRich) {
+                    midRows = candidate;
+                }
+            }
+
+            const rawRows = [group.slice(0, topCount), ...midRows, group.slice(n - botCount)];
+
+            return rawRows.filter(r => r.length > 0).map((r, idx, arr) => {
+                const isEdge = idx === 0 || idx === arr.length - 1;
+                const rowChars = r.reduce((s, t) => s + t.text.length, 0);
+                const edgeScale = rowChars <= 5 ? 1.52 : rowChars <= 9 ? 1.36 : 1.20;
+                const midScale = rowChars >= 18 ? 0.78 : rowChars >= 12 ? 0.86 : 0.94;
+                return {
+                    tokens: r,
+                    scales: r.map(() => (isEdge ? edgeScale : midScale)),
+                    emphasisFlags: r.map(() => isEdge),
+                    align: 'center',
+                    indent: 0,
+                    fitTarget: isEdge ? 1.0 : 0.96,
+                };
+            });
+        }
+
+        if (mode === 'collage') {
+            // Adaptive 2 rows (3-4 words), 3 rows (5-7 words), 4 rows (8+ words)
+            const targetRows = n <= 4 ? 2 : n <= 7 ? 3 : 4;
+            const rawRows = this._splitTokensIntoBalancedRows(group, targetRows);
+            return rawRows.map((r, rIdx) => {
+                if (r.length === 1) {
+                    const sc = r[0].text.length <= 6 ? 1.48 : 1.28;
+                    return {
+                        tokens: r,
+                        scales: [sc],
+                        emphasisFlags: [true],
+                        align: 'center',
+                        indent: 0,
+                    };
+                }
+                // Pick the highest-weight word in the row to be the big word (instead of blindly index 0 if index 0 is a stop word)
+                let bigIdx = 0;
+                let bestW = -Infinity;
+                r.forEach((tok, i) => {
+                    const edgeBonus = (i === (rIdx % 2 === 0 ? 0 : r.length - 1)) ? 0.18 : 0;
+                    if (tok.weight + edgeBonus > bestW) {
+                        bestW = tok.weight + edgeBonus;
+                        bigIdx = i;
+                    }
+                });
+                const bigTokLen = r[bigIdx].text.length;
+                const bigScale = bigTokLen <= 5 ? (rIdx % 2 === 0 ? 1.56 : 1.44) : bigTokLen <= 9 ? 1.34 : 1.20;
+                const smallScale = 0.82;
+                return {
+                    tokens: r,
+                    scales: r.map((_, i) => (i === bigIdx ? bigScale : smallScale)),
+                    emphasisFlags: r.map((_, i) => i === bigIdx),
+                    align: 'center',
+                    indent: 0,
+                };
+            });
+        }
+
+        // 'stairs' (阶梯错位 / 左右穿插):
+        // ONLY use 4-row 1-word-per-row Left-Right-Left-Right interleaved zigzag when all 4 words are short & balanced:
+        //   [词1]
+        //          [词2]
+        //   [词3]
+        //          [词4]
+        // When long words are mixed with short words, group short words with neighbors into 2-3 balanced rows instead.
+        if (this._isFourShortWordsBalanced(group)) {
+            const leftRightIndents = [0, 1.15, 0, 1.15];
+            return group.map((tok, rIdx) => {
+                const isEmph = rIdx === 3 || tok.weight >= 1.45;
+                return {
+                    tokens: [tok],
+                    scales: [isEmph ? 1.22 : 1.14],
+                    emphasisFlags: [isEmph],
+                    align: 'left',
+                    indent: leftRightIndents[rIdx],
+                    interleavedZigzag: true,
+                    zigzagCol: rIdx % 2, // 0 = left col, 1 = right col
+                };
+            });
+        }
+
+        const targetRows = n <= 3 ? n : n === 4 ? 2 : n <= 6 ? 3 : 4;
+        const rawRows = this._splitTokensIntoBalancedRows(group, targetRows);
+        const indentPattern = rawRows.length === 2
+            ? [0, 0.55]
+            : rawRows.length === 3
+                ? [0, 0.48, 0.96]
+                : [0, 0.62, 0.25, 0.88];
+        return rawRows.map((r, rIdx) => {
+            const isLastRow = rIdx === rawRows.length - 1;
+            const hasHighKeyword = r.some(t => t.weight >= 1.45);
+            const rowEmph = isLastRow || hasHighKeyword;
+            const sc = rowEmph ? 1.24 : (rIdx === 0 ? 1.08 : 0.96);
+            return {
+                tokens: r,
+                scales: r.map(() => sc),
+                emphasisFlags: r.map(t => isLastRow || t.weight >= 1.45),
+                align: 'left',
+                indent: indentPattern[rIdx] || 0,
+            };
+        });
+    }
+
+    // Plan the entire group before revealing words: earlier words never reflow.
+    // Both preview and WYSIWYG export enter through renderSubtitle above.
+    _renderMixedLayout(s, segment, currentTime, videoW, videoH) {
+        if (currentTime < segment.start || currentTime >= segment.end) return;
+        const text = this._applyTextTransform(segment.edited_text ?? segment.text ?? '', s);
+        const timed = getSpeechWritingTokens(segment, text, true);
+        let offset = 0;
+        const indexed = timed.map(t => {
+            const item = { ...t, offset };
+            offset += t.text.length;
+            return item;
+        });
+        // Keep Latin words intact; Han characters can reveal individually.
+        const matches = [...text.matchAll(/\p{Script=Han}|[^\s\p{Script=Han}]+/gu)];
+        const rawTokens = matches.map((m, idx) => {
+            const chars = indexed.filter(t => t.offset >= m.index && t.offset < m.index + m[0].length);
+            const spoken = chars.find(t => /[\p{L}\p{N}]/u.test(t.text)) || chars[0];
+            const lastChar = chars[chars.length - 1] || spoken;
+            const rawStr = m[0];
+            return {
+                text: rawStr,
+                clean: rawStr.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase(),
+                start: spoken?.start ?? segment.start,
+                end: lastChar?.end ?? spoken?.end ?? segment.end,
+                index: m.index,
+                isCjk: /\p{Script=Han}/u.test(rawStr),
+                hasClauseBreak: /[.!?;:,—–…。！？；：，、]["'”’)]*$/u.test(rawStr),
+                hasStrongBreak: /[.!?;—。！？；]["'”’)]*$/u.test(rawStr),
+                tokenIdx: idx,
+            };
+        });
+        if (!rawTokens.length) return;
+        rawTokens.forEach((tok, idx) => {
+            tok.weight = this._scoreMixedLayoutToken(tok, idx, rawTokens.length);
+        });
+
+        // Smart clause & length-balanced screen groups (no 1-word orphans, respects punctuation)
+        const groups = this._partitionMixedLayoutGroups(rawTokens);
+        const groupIndex = groups.findIndex((g, i) => {
+            const gStart = i === 0 ? Math.min(segment.start, g[0].start) : g[0].start;
+            return currentTime >= gStart && (i === groups.length - 1 || currentTime < groups[i + 1][0].start);
+        });
+        if (groupIndex < 0) return;
+        const group = groups[groupIndex];
+
+        const contextIndex = this._contextSegments?.findIndex(seg => seg === segment ||
+            (seg.start === segment.start && seg.end === segment.end && seg.text === segment.text)) ?? -1;
+        const seed = (contextIndex >= 0 ? contextIndex : [...text].reduce((n, c) => n + c.codePointAt(0), 0)) + groupIndex;
+        const mode = this._selectSmartMixedMode(group, s.mixed_layout, seed);
+
+        const ctx = this.ctx;
+        const base = Math.max(12, Number(s.fontsize) || 74);
+        const family = s.font_family || 'Arimo';
+        const font = (size, isEmph = false) => {
+            const baseWeight = _resolveFontWeight(s.font_weight, s.bold === false ? 400 : 700);
+            const weight = isEmph && typeof baseWeight === 'number' ? Math.min(900, baseWeight + 100) : baseWeight;
+            return `${s.italic ? 'italic ' : ''}${weight} ${size}px "${family}", ${_resolveGenericFallback(family)}`;
+        };
+
+        const rowSpecs = this._buildSmartMixedRows(group, mode);
+        const isZigzag4 = rowSpecs.some(r => r.interleavedZigzag);
+        const wordGapRatio = 0.16;
+        const rowGapRatio = isZigzag4 ? 0.05 : 0.08;
+
+        // First pass: measure each row's natural width and height
+        const measuredRows = rowSpecs.map(rowSpec => {
+            const sizes = rowSpec.scales.map(sc => base * sc);
+            const widths = rowSpec.tokens.map((tok, i) => {
+                ctx.font = font(sizes[i], rowSpec.emphasisFlags?.[i]);
+                return ctx.measureText(tok.text).width;
+            });
+            const gap = base * wordGapRatio;
+            const naturalWidth = widths.reduce((a, b) => a + b, 0) + Math.max(0, widths.length - 1) * gap;
+            return {
+                ...rowSpec,
+                sizes,
+                widths,
+                gap,
+                naturalWidth,
+                indentPx: (rowSpec.indent || 0) * base,
+            };
+        });
+
+        // For 4-short-word Left-Right-Left-Right interleaved zigzag:
+        // align [词2] and [词4] to a clean right-hand lane based on the left column's actual pixel width
+        if (isZigzag4 && measuredRows.length === 4) {
+            const leftColMaxW = Math.max(measuredRows[0].naturalWidth, measuredRows[2].naturalWidth);
+            const rightColOffset = Math.max(base * 1.05, leftColMaxW * 0.78);
+            measuredRows[0].indentPx = 0;
+            measuredRows[1].indentPx = rightColOffset;
+            measuredRows[2].indentPx = 0;
+            measuredRows[3].indentPx = rightColOffset;
+        }
+
+        // Second pass: poster width harmonization for centered modes ('stack' & 'focus')
+        // Balances big edge/focus lines and compact middle lines so there are no wide empty gaps on the sides
+        if ((mode === 'stack' || mode === 'focus') && measuredRows.length >= 2) {
+            const maxNaturalW = Math.max(...measuredRows.map(r => r.naturalWidth));
+            const avgNaturalW = measuredRows.reduce((sum, r) => sum + r.naturalWidth, 0) / measuredRows.length;
+            const refWidth = avgNaturalW * 0.65 + maxNaturalW * 0.35;
+            if (refWidth > 1) {
+                measuredRows.forEach(r => {
+                    if (!r.fitTarget) return;
+                    const desiredW = refWidth * r.fitTarget;
+                    const rawFactor = desiredW / Math.max(1, r.naturalWidth);
+                    const clampedFactor = Math.max(0.76, Math.min(1.36, Math.pow(rawFactor, 0.65)));
+                    r.sizes = r.sizes.map(sz => sz * clampedFactor);
+                    r.widths = r.tokens.map((tok, i) => {
+                        ctx.font = font(r.sizes[i], r.emphasisFlags?.[i]);
+                        return ctx.measureText(tok.text).width;
+                    });
+                    r.naturalWidth = r.widths.reduce((a, b) => a + b, 0) + Math.max(0, r.widths.length - 1) * r.gap;
+                });
+            }
+        }
+
+        // Third pass: compute final coordinates (x, y) for each token item
+        let blockWidth = 0;
+        measuredRows.forEach(r => {
+            blockWidth = Math.max(blockWidth, r.indentPx + r.naturalWidth);
+        });
+
+        const items = [];
+        let cursorY = 0;
+        measuredRows.forEach((r, rIdx) => {
+            const maxRowFont = Math.max(...r.sizes);
+            const rowHeight = maxRowFont * (isZigzag4 ? 1.04 : 1.07);
+            let cursorX = r.align === 'center'
+                ? (blockWidth - r.naturalWidth) / 2
+                : r.indentPx;
+            const rowStart = r.tokens[0]?.start ?? group.start;
+
+            r.tokens.forEach((tok, i) => {
+                const sz = r.sizes[i];
+                const w = r.widths[i];
+                const isEmph = Boolean(r.emphasisFlags?.[i]);
+                items.push({
+                    ...tok,
+                    rowIndex: rIdx,
+                    rowStart,
+                    wordIndex: items.length,
+                    x: cursorX,
+                    // Baseline-align mixed sizes within the same row
+                    y: cursorY + (maxRowFont - sz) * 0.88,
+                    size: sz,
+                    width: w,
+                    height: sz * 1.12,
+                    isEmphasis: isEmph,
+                });
+                cursorX += w + r.gap;
+            });
+
+            cursorY += rowHeight + (rIdx < measuredRows.length - 1 ? base * rowGapRatio : 0);
+        });
+
+        const totalHeight = Math.max(1, cursorY);
+        const availableW = videoW * Math.max(0.2, Math.min(0.95, (Number(s.wrap_width_percent) || 80) / 100));
+        const availableH = videoH * 0.65;
+        const scale = Math.min(1.08, availableW / Math.max(1, blockWidth), availableH / totalHeight);
+        const cx = (Number(s.pos_x ?? 0.5) <= 1 ? Number(s.pos_x ?? 0.5) * videoW : Number(s.pos_x));
+        const cy = (Number(s.pos_y ?? 0.48) <= 1 ? Number(s.pos_y ?? 0.48) * videoH : Number(s.pos_y));
+
+        const useHighlightColor = Boolean(
+            s.highlight_enabled !== false &&
+            s.karaoke_highlight !== false &&
+            s.color_high &&
+            String(s.color_high).trim().toLowerCase() !== String(s.color_text || '#FFFFFF').trim().toLowerCase()
+        );
+
+        const anim = typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : null;
+        const animInType = String(s.anim_in_type || 'none').trim() || 'none';
+        const animOutType = String(s.anim_out_type || 'none').trim() || 'none';
+        const inDur = Math.max(0.08, Number(s.anim_in_duration) || 0.28);
+        const outDur = Math.max(0, Number(s.anim_out_duration) || 0.25);
+        const groupDur = Math.max(0.01, group.end - group.start);
+        const dtToEnd = group.end - currentTime;
+
+        // Group-level exit animation (preserves layout while fading/sliding/shrinking out at group end)
+        let groupOutAlpha = 1;
+        let groupOutScale = 1;
+        let groupOutDx = 0;
+        let groupOutDy = 0;
+        const effectiveOutDur = Math.min(outDur, groupDur * 0.45);
+        if (animOutType !== 'none' && effectiveOutDur > 0 && dtToEnd >= 0 && dtToEnd < effectiveOutDur) {
+            const rawOut = Math.max(0, Math.min(1, dtToEnd / effectiveOutDur));
+            const easeOutProg = rawOut * rawOut * (3 - 2 * rawOut);
+            const exitProg = 1 - easeOutProg;
+            groupOutAlpha = Math.max(0.02, easeOutProg);
+            if (animOutType === 'pop') {
+                groupOutScale = Math.max(0.18, 0.25 + 0.75 * easeOutProg);
+            } else if (animOutType === 'slide_up') {
+                groupOutDy = -exitProg * (base * 0.45);
+            } else if (animOutType === 'slide_down') {
+                groupOutDy = exitProg * (base * 0.45);
+            } else if (animOutType === 'slide_left') {
+                groupOutDx = -exitProg * (base * 0.55);
+            } else if (animOutType === 'slide_right') {
+                groupOutDx = exitProg * (base * 0.55);
+            }
+        }
+
+        const isCharAnim = [
+            'char_float_up',
+            'char_pop_elastic',
+            'char_wave',
+            'char_drop_bounce',
+            'char_squash_bounce',
+            'char_center_spread',
+        ].includes(animInType);
+
+        ctx.save();
+        ctx.translate(cx + groupOutDx, cy + groupOutDy);
+        ctx.rotate((Number(s.rotation) || 0) * Math.PI / 180);
+        ctx.scale(scale * groupOutScale, scale * groupOutScale);
+        ctx.translate(-blockWidth / 2, -totalHeight / 2);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const baseAlpha = Number(s.opacity_text_global ?? 1);
+        ctx.globalAlpha *= baseAlpha * groupOutAlpha;
+
+        // Resolve active spoken word index across the group (bridging inter-word silence/space gaps)
+        let activeSpokenIdx = items.findIndex(it => currentTime >= it.start && currentTime < it.end);
+        if (activeSpokenIdx < 0) {
+            for (let k = items.length - 1; k >= 0; k--) {
+                if (currentTime >= items[k].start - 1e-6) {
+                    activeSpokenIdx = k;
+                    break;
+                }
+            }
+            if (activeSpokenIdx < 0 && items.length > 0) {
+                activeSpokenIdx = 0;
+            }
+        }
+
+        for (const item of items) {
+            if (s.only_show_active_word && item.wordIndex !== activeSpokenIdx) {
+                continue;
+            }
+
+            let triggerStart = (groupIndex === 0 && item.wordIndex === 0)
+                ? Math.min(segment.start, item.start)
+                : item.start;
+            if (animInType === 'bullet_reveal') {
+                triggerStart = (groupIndex === 0 && item.rowIndex === 0)
+                    ? Math.min(segment.start, item.rowStart ?? item.start)
+                    : (item.rowStart ?? item.start);
+            } else if (animInType === 'metronome') {
+                const bpm = Math.max(30, Number(s.metronome_bpm) || 120);
+                triggerStart = group.start + item.wordIndex * (60 / bpm);
+            }
+
+            let isUnreadMetronome = false;
+            if (currentTime < triggerStart) {
+                if (animInType === 'metronome') {
+                    const unreadOp = Math.max(0, Math.min(1, Number(s.metro_unread_opacity ?? 0) / 255));
+                    if (unreadOp <= 0.01) continue;
+                    isUnreadMetronome = true;
+                } else {
+                    continue;
+                }
+            }
+
+            const elapsed = Math.max(0, currentTime - triggerStart);
+            const sizeRatio = item.size / Math.max(24, base);
+            let wordScaleX = 1;
+            let wordScaleY = 1;
+            let wordAlpha = 1;
+            let offsetX = 0;
+            let offsetY = 0;
+            let rotateDeg = 0;
+            let blurPx = 0;
+            let flashIntensity = 0;
+
+            if (isUnreadMetronome) {
+                wordAlpha = Math.max(0, Math.min(1, Number(s.metro_unread_opacity ?? 0) / 255));
+            } else if (animInType === 'none') {
+                const popDur = 0.12;
+                if (elapsed < popDur) {
+                    const t = elapsed / popDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    const overshoot = item.isEmphasis ? Math.sin(t * Math.PI) * 0.06 : 0;
+                    const sc = (item.isEmphasis ? 0.84 : 0.90) + (1 - (item.isEmphasis ? 0.84 : 0.90)) * easeOut + overshoot;
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                    wordAlpha = 0.45 + 0.55 * easeOut;
+                    offsetY = (1 - easeOut) * (base * 0.08);
+                }
+            } else if (animInType === 'fade') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    wordAlpha = Math.max(0.05, easeOut);
+                    offsetY = (1 - easeOut) * (item.size * 0.06);
+                }
+            } else if (animInType.startsWith('slide_')) {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    const rem = 1 - easeOut;
+                    const dist = Math.max(22, item.size * 0.52);
+                    if (animInType === 'slide_up') offsetY = rem * dist;
+                    else if (animInType === 'slide_down') offsetY = -rem * dist;
+                    else if (animInType === 'slide_left') offsetX = rem * dist;
+                    else if (animInType === 'slide_right') offsetX = -rem * dist;
+                    wordAlpha = Math.min(1, 0.15 + 0.85 * (1 - Math.pow(1 - t, 2)));
+                }
+            } else if (animInType === 'pop') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const c1 = 1.70158 + (item.isEmphasis ? 0.45 : 0);
+                    const c3 = c1 + 1;
+                    const easeBack = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+                    const sc = Math.max(0.12, 0.18 + 0.82 * easeBack);
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                    wordAlpha = Math.min(1, t * 2.6);
+                }
+            } else if (animInType === 'word_pop_random' || animInType === 'word_pop_random_pulse') {
+                const popDur = Math.max(0.08, Number(s.word_pop_random_duration || s.word_pop_random_pulse_duration || inDur) || 0.22);
+                const readOpacity = Math.max(0.1, Math.min(1, Number(s.word_pop_random_read_opacity ?? 1.0)));
+                wordAlpha = readOpacity;
+                if (elapsed < popDur) {
+                    const minS = Math.max(1.06, Number(s.word_pop_random_pulse_min_scale || 1.10));
+                    const maxS = Math.max(minS, Math.min(1.48, Number(s.word_pop_random_pulse_max_scale || s.word_pop_random_max_scale || 1.36)));
+                    const key = (item.wordIndex + 1) * 12.9898 + group.start * 78.233 + item.start * 37.719;
+                    const rand = Math.abs((Math.sin(key) * 43758.5453) % 1);
+                    const peak = (minS + (maxS - minS) * rand) * (item.isEmphasis ? 1.05 : 1.0);
+                    const inHalf = popDur * 0.45;
+                    let sc = 1;
+                    if (elapsed <= inHalf) {
+                        const p = elapsed / Math.max(0.001, inHalf);
+                        const c1 = 1.70158, c3 = c1 + 1;
+                        const eb = 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+                        sc = 0.68 + (peak - 0.68) * eb;
+                    } else {
+                        const p = (elapsed - inHalf) / Math.max(0.001, popDur - inHalf);
+                        const ec = 1 - Math.pow(1 - p, 3);
+                        sc = peak - (peak - 1) * ec;
+                    }
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                }
+            } else if (animInType === 'char_bounce') {
+                const bounceDur = Math.max(0.18, inDur);
+                const bounceH = (Number(s.char_bounce_height) || 20) * sizeRatio;
+                if (elapsed < bounceDur) {
+                    const t = elapsed / bounceDur;
+                    offsetY = -bounceH * Math.sin(Math.PI * t) * (1 - 0.25 * t);
+                    wordAlpha = Math.min(1, 0.25 + t * 2.2);
+                }
+            } else if (animInType === 'letter_jump') {
+                const jumpDur = Math.max(0.12, Math.min(Number(s.letter_jump_duration) || inDur || 0.24, Math.max(0.16, item.end - item.start)));
+                const jumpScale = Math.max(1.08, Math.min(2.2, Number(s.letter_jump_scale) || 1.35));
+                if (elapsed < jumpDur) {
+                    const half = jumpDur / 2;
+                    const sc = elapsed < half
+                        ? 1 + (jumpScale - 1) * (1 - Math.pow(1 - elapsed / half, 3))
+                        : jumpScale - (jumpScale - 1) * (1 - Math.pow(1 - (elapsed - half) / half, 3));
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                }
+            } else if (animInType === 'floating') {
+                const enterDur = Math.min(0.18, inDur);
+                if (elapsed < enterDur) {
+                    const t = elapsed / enterDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    wordAlpha = 0.35 + 0.65 * easeOut;
+                    offsetY += (1 - easeOut) * (item.size * 0.12);
+                }
+                const amp = (Number(s.floating_amplitude) || 8) * sizeRatio * 0.65;
+                const period = Math.max(0.4, Number(s.floating_period) || 2.0);
+                offsetY += amp * Math.sin((2 * Math.PI * (currentTime - group.start)) / period + item.rowIndex * 0.9 + item.wordIndex * 0.45);
+            } else if (animInType === 'bullet_reveal') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    offsetY = (1 - easeOut) * (item.size * 0.34);
+                    wordAlpha = Math.max(0.05, easeOut);
+                }
+            } else if (animInType === 'flash_highlight') {
+                const flashDur = Math.max(0.12, Number(s.flash_duration) || inDur * 0.65 || 0.16);
+                if (elapsed < flashDur) {
+                    flashIntensity = 1 - elapsed / flashDur;
+                    const sc = 1 + 0.10 * flashIntensity;
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                }
+            } else if (animInType === 'holy_glow') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    wordAlpha = 0.35 + 0.65 * easeOut;
+                    offsetY = (1 - easeOut) * (item.size * 0.08);
+                }
+            } else if (animInType === 'blur_sharp') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const easeOut = 1 - Math.pow(1 - t, 3);
+                    const maxBlur = Math.max(2, Number(s.blur_sharp_max) || 18);
+                    blurPx = Math.round(maxBlur * (1 - easeOut));
+                    wordAlpha = 0.25 + 0.75 * easeOut;
+                }
+            } else if (animInType === 'typewriter') {
+                const stampDur = Math.min(0.08, inDur * 0.5);
+                if (elapsed < stampDur) {
+                    const t = elapsed / Math.max(0.01, stampDur);
+                    const sc = 0.92 + 0.08 * t;
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                }
+            } else if (animInType === 'scatter_pop' || animInType === 'word_random_position') {
+                if (elapsed < inDur) {
+                    const t = elapsed / inDur;
+                    const c1 = 1.70158, c3 = c1 + 1;
+                    const easeBack = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+                    const sc = Math.max(0.15, 0.22 + 0.78 * easeBack);
+                    wordScaleX = sc;
+                    wordScaleY = sc;
+                    rotateDeg = (1 - easeBack) * ((item.wordIndex % 2 === 0 ? -1 : 1) * 7);
+                    wordAlpha = Math.min(1, t * 2.5);
+                }
+            }
+
+            const isCurrentSpoken = item.wordIndex === activeSpokenIdx;
+            let wordColor = (useHighlightColor && isCurrentSpoken)
+                ? s.color_high
+                : (s.color_text || '#FFFFFF');
+            if (animInType === 'metronome') {
+                wordColor = isUnreadMetronome
+                    ? (s.metro_unread_color || '#808080')
+                    : ((useHighlightColor && isCurrentSpoken) ? s.color_high : (s.metro_read_color || s.color_text || '#FFFFFF'));
+            } else if (flashIntensity > 0.35 && s.flash_color) {
+                wordColor = s.flash_color;
+            }
+
+            ctx.save();
+            const centerX = item.x + item.width / 2;
+            const centerY = item.y + item.height / 2;
+            ctx.translate(centerX + offsetX, centerY + offsetY);
+            if (Math.abs(rotateDeg) > 0.01) {
+                ctx.rotate((rotateDeg * Math.PI) / 180);
+            }
+            ctx.scale(wordScaleX, wordScaleY);
+            ctx.translate(-centerX, -centerY);
+            ctx.globalAlpha *= wordAlpha;
+            if (blurPx > 0 && 'filter' in ctx) {
+                ctx.filter = `blur(${blurPx}px)`;
+            }
+            ctx.font = font(item.size, item.isEmphasis);
+
+            // Optional dynamic word box when enabled
+            if (isCurrentSpoken && s.dynamic_box && typeof this._roundRect === 'function' && typeof ctx.fill === 'function') {
+                const dynPad = (Number(s.high_padding) || 6) * sizeRatio;
+                ctx.save();
+                ctx.globalAlpha *= (Number(s.opacity_high_bg ?? 200) / 255);
+                this._roundRect(
+                    ctx,
+                    item.x - dynPad,
+                    item.y - dynPad * 0.4,
+                    item.width + dynPad * 2,
+                    item.height + dynPad * 0.8,
+                    Number(s.dynamic_radius) || 6
+                );
+                if (s.dynamic_box_stroke && typeof ctx.stroke === 'function') {
+                    ctx.strokeStyle = s.color_high_bg || '#FFD700';
+                    ctx.lineWidth = Number(s.dynamic_box_stroke_width) || 2;
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = s.color_high_bg || '#FFD700';
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // Optional Holy Glow halo
+            if (animInType === 'holy_glow' && typeof ctx.strokeText === 'function') {
+                const glowRadius = Math.max(1, Math.min(16, Math.round((Number(s.holy_glow_radius) || 6) * sizeRatio)));
+                const glowColor = s.holy_glow_color || '#FFFFAA';
+                const pulse = 0.65 + 0.35 * Math.sin((2 * Math.PI * (currentTime - group.start)) / Math.max(0.3, Number(s.holy_glow_period) || 3.0));
+                ctx.save();
+                for (let gr = glowRadius; gr > 0; gr--) {
+                    const ga = (80 * pulse * (gr / glowRadius) * 0.5) / 255;
+                    ctx.globalAlpha *= Math.max(0.05, ga);
+                    ctx.strokeStyle = glowColor;
+                    ctx.lineWidth = gr * 2;
+                    ctx.lineJoin = 'round';
+                    ctx.strokeText(item.text, item.x, item.y);
+                }
+                ctx.restore();
+            }
+
+            // Per-character entrance animations while active, settling to whole-word draw once complete
+            const chars = isCharAnim ? Array.from(item.text) : null;
+            const charDur = Math.max(0.06, Number(s.char_anim_duration) || 0.24);
+            const charStagger = Math.max(0.005, Number(s.char_anim_stagger) || 0.035);
+            const charIntensity = Math.max(0.2, Number(s.char_anim_intensity) || 1.0);
+            const totalCharWindow = chars
+                ? Math.max(0, chars.length - 1) * charStagger + charDur * (animInType === 'char_wave' ? 1.6 : 1.0)
+                : 0;
+
+            if (isCharAnim && chars && chars.length > 1 && elapsed < totalCharWindow) {
+                let charX = item.x;
+                for (let ci = 0; ci < chars.length; ci++) {
+                    const ch = chars[ci];
+                    const chW = ctx.measureText(ch).width;
+                    const tf = anim && typeof anim.computeCharAnimTransform === 'function'
+                        ? anim.computeCharAnimTransform(animInType, currentTime, ci, chars.length, triggerStart, item.end, {
+                            intensity: charIntensity,
+                            duration: charDur,
+                            stagger: charStagger,
+                            fontSize: item.size,
+                        })
+                        : { dx: 0, dy: 0, scaleX: 1, scaleY: 1, alpha: 1 };
+                    if (tf.alpha > 0.005) {
+                        ctx.save();
+                        ctx.globalAlpha *= tf.alpha;
+                        const chCx = charX + chW / 2;
+                        const chCy = item.y + item.height / 2;
+                        if (tf.dx !== 0 || tf.dy !== 0) {
+                            ctx.translate(tf.dx, tf.dy);
+                        }
+                        if (Math.abs(tf.scaleX - 1) > 0.001 || Math.abs(tf.scaleY - 1) > 0.001) {
+                            ctx.translate(chCx, chCy);
+                            ctx.scale(tf.scaleX, tf.scaleY);
+                            ctx.translate(-chCx, -chCy);
+                        }
+                        this._drawWord(ctx, ch, charX, item.y, wordColor,
+                            !!s.use_stroke, s.color_outline || '#000000', Number(s.border_width) || 0, 1,
+                            Number(s.shadow_blur) || 0, Number(s.shadow_offset_x) || 0, Number(s.shadow_offset_y) || 0,
+                            s.color_shadow || '#000000', Number(s.opacity_shadow ?? 210) / 255, 0, s);
+                        ctx.restore();
+                    }
+                    charX += chW;
+                }
+            } else if (animInType === 'typewriter' && s.typewriter_reveal_type === 'char') {
+                const twChars = Array.from(item.text);
+                const revealWin = Math.max(0.08, Math.min(inDur, Math.max(0.12, (item.end - item.start) * 0.85)));
+                const revealedCount = elapsed >= revealWin
+                    ? twChars.length
+                    : Math.max(1, Math.min(twChars.length, Math.floor((elapsed / revealWin) * twChars.length) + 1));
+                const revealedText = twChars.slice(0, revealedCount).join('');
+                this._drawWord(ctx, revealedText, item.x, item.y, wordColor,
+                    !!s.use_stroke, s.color_outline || '#000000', Number(s.border_width) || 0, 1,
+                    Number(s.shadow_blur) || 0, Number(s.shadow_offset_x) || 0, Number(s.shadow_offset_y) || 0,
+                    s.color_shadow || '#000000', Number(s.opacity_shadow ?? 210) / 255, 0, s);
+            } else {
+                this._drawWord(ctx, item.text, item.x, item.y, wordColor,
+                    !!s.use_stroke, s.color_outline || '#000000', Number(s.border_width) || 0, 1,
+                    Number(s.shadow_blur) || 0, Number(s.shadow_offset_x) || 0, Number(s.shadow_offset_y) || 0,
+                    s.color_shadow || '#000000', Number(s.opacity_shadow ?? 210) / 255, 0, s);
+            }
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
     _renderWordRandomPosition(s, segment, currentTime, videoW, videoH) {
         const ctx = this.ctx;
         const words = this._getTimedWords(segment);
@@ -3923,7 +5034,8 @@ class ReelsCanvasRenderer {
         const shadowOffY = s.shadow_offset_y ?? 2;
         const shadowColor = s.color_shadow || '#000000';
         const shadowAlpha = (s.opacity_shadow || 150) / 255;
-        const wordColor = s.color_high || s.color_text || '#FFFFFF';
+        const highlightEnabled = s.highlight_enabled !== false && s.karaoke_highlight !== false;
+        const wordColor = highlightEnabled ? (s.color_high || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
 
         this._drawWord(ctx, wordStr, wordX, wordY, wordColor,
             useStroke && !s.stroke_expand_enabled, outlineColor, borderW, 1,

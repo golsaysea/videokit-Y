@@ -2761,6 +2761,7 @@ function initKeyTableManagers() {
         { id: 'deepgram-keys', title: 'Deepgram API Key 轮询池' },
         { id: 'groq-keys', title: 'Groq API Key 轮询池' },
         { id: 'gemini-keys', title: 'Gemini API Key 轮询池' },
+        { id: 'gemini-tts-keys', title: 'Gemini TTS 配音 API Key 轮询池' },
         { id: 'settings-elevenlabs-keys', title: 'ElevenLabs API Key 轮询池 (全局设置)' },
         { id: 'elevenlabs-api-keys', title: 'ElevenLabs API Key 轮询池 (快捷栏)' }
     ];
@@ -2814,6 +2815,26 @@ async function loadSettings(autoLoadVoices = false) {
         if (data.keys) {
             document.getElementById('gemini-keys').value = data.keys.join('\n');
             refreshKeyTable('gemini-keys');
+        }
+        const ttsKeys = Array.isArray(data.tts_keys) && data.tts_keys.length ? data.tts_keys : (data.keys || []);
+        const ttsEl = document.getElementById('gemini-tts-keys');
+        if (ttsEl) {
+            ttsEl.value = ttsKeys.join('\n');
+            refreshKeyTable('gemini-tts-keys');
+        }
+        const ggKeysEl = document.getElementById('gg-api-keys');
+        if (ggKeysEl) {
+            ggKeysEl.value = ttsKeys.join('\n');
+        }
+        const ttsStatusEl = document.getElementById('gemini-tts-key-status');
+        if (ttsStatusEl) {
+            ttsStatusEl.textContent = ttsKeys.length ? `已配置 ${ttsKeys.length} 个 Key` : '尚未配置';
+        }
+        if (data.tts_model) {
+            const ttsModelSel = document.getElementById('gemini-tts-model');
+            if (ttsModelSel) ttsModelSel.value = data.tts_model;
+            const ggModelSel = document.getElementById('gg-tts-model');
+            if (ggModelSel) ggModelSel.value = data.tts_model;
         }
         if (data.model) {
             const modelSelect = document.getElementById('gemini-model');
@@ -11905,15 +11926,29 @@ async function saveGeminiKeys() {
     const keys = keysText.split('\n').map(k => k.trim()).filter(Boolean);
     const prompt = document.getElementById('gemini-prompt').value;
     const model = document.getElementById('gemini-model')?.value || null;
+    const ttsEl = document.getElementById('gemini-tts-keys');
+    const ttsKeys = ttsEl
+        ? ttsEl.value.split('\n').map(k => k.trim()).filter(Boolean)
+        : keys;
+    const mergedTts = [...new Set([...ttsKeys, ...keys])];
 
     try {
         const response = await apiFetch(`${API_BASE}/settings/gemini-keys`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keys, prompt, model })
+            body: JSON.stringify({ keys, tts_keys: mergedTts, prompt, model })
         });
 
         if (response.ok) {
+            if (ttsEl) {
+                ttsEl.value = mergedTts.join('\n');
+                refreshKeyTable('gemini-tts-keys');
+            }
+            const ggKeysEl = document.getElementById('gg-api-keys');
+            if (ggKeysEl) ggKeysEl.value = mergedTts.join('\n');
+            const ttsStatusEl = document.getElementById('gemini-tts-key-status');
+            if (ttsStatusEl) ttsStatusEl.textContent = mergedTts.length ? `已配置 ${mergedTts.length} 个 Key` : '尚未配置';
+            window.dispatchEvent(new CustomEvent('vk-gemini-tts-keys-updated'));
             setGeminiSettingsDirty(false);
             showToast('Gemini 设置已保存！', 'success');
         }
@@ -11921,6 +11956,73 @@ async function saveGeminiKeys() {
         showToast('保存失败: ' + error.message, 'error');
     }
 }
+
+async function saveGeminiTtsKeys() {
+    const ttsEl = document.getElementById('gemini-tts-keys');
+    const ttsKeys = (ttsEl?.value || '').split('\n').map(k => k.trim()).filter(Boolean);
+    const ttsModel = document.getElementById('gemini-tts-model')?.value || 'gemini-2.5-flash-preview-tts';
+    try {
+        const response = await apiFetch(`${API_BASE}/google-tts/keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tts_keys: ttsKeys, tts_model: ttsModel, syncAllKeys: true })
+        });
+        if (response.ok) {
+            const ggKeysEl = document.getElementById('gg-api-keys');
+            if (ggKeysEl) ggKeysEl.value = ttsKeys.join('\n');
+            const ggModelSel = document.getElementById('gg-tts-model');
+            if (ggModelSel) ggModelSel.value = ttsModel;
+            const ttsStatusEl = document.getElementById('gemini-tts-key-status');
+            if (ttsStatusEl) ttsStatusEl.textContent = ttsKeys.length ? `✅ 已保存 ${ttsKeys.length} 个 Key` : '尚未配置';
+            window.dispatchEvent(new CustomEvent('vk-gemini-tts-keys-updated'));
+            showToast(`已保存 ${ttsKeys.length} 个 Gemini TTS API Key！`, 'success');
+        }
+    } catch (error) {
+        showToast('保存 Gemini TTS Key 失败: ' + error.message, 'error');
+    }
+}
+window.saveGeminiTtsKeys = saveGeminiTtsKeys;
+
+async function testGeminiTtsKeys() {
+    const ttsEl = document.getElementById('gemini-tts-keys');
+    const keys = (ttsEl?.value || '').split('\n').map(k => k.trim()).filter(Boolean);
+    const model = document.getElementById('gemini-tts-model')?.value || 'gemini-2.5-flash-preview-tts';
+    const resultsDiv = document.getElementById('gemini-tts-test-results');
+    const statusEl = document.getElementById('gemini-tts-key-status');
+    if (!keys.length) {
+        showToast('请先输入至少一个 Gemini TTS API Key', 'warning');
+        return;
+    }
+    if (resultsDiv) {
+        resultsDiv.style.display = 'block';
+        resultsDiv.textContent = `⏳ 正在测试 ${keys.length} 个 Gemini TTS Key (${model})...`;
+    }
+    if (statusEl) statusEl.textContent = '测试中...';
+    try {
+        const resp = await apiFetch(`${API_BASE}/google-tts/test-keys`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keys, model })
+        });
+        const data = await resp.json();
+        const list = Array.isArray(data.results) ? data.results : [];
+        const passCount = list.filter(r => r.valid).length;
+        if (resultsDiv) {
+            resultsDiv.innerHTML = '';
+            list.forEach(r => {
+                const line = document.createElement('div');
+                line.style.color = r.valid ? '#6ee7b7' : '#ff8a8a';
+                line.textContent = `${r.masked}: ${r.message}`;
+                resultsDiv.appendChild(line);
+            });
+        }
+        if (statusEl) statusEl.textContent = `测试完成：${passCount}/${list.length} 可用`;
+    } catch (error) {
+        if (resultsDiv) resultsDiv.textContent = '❌ 测试失败: ' + error.message;
+        if (statusEl) statusEl.textContent = '测试失败';
+    }
+}
+window.testGeminiTtsKeys = testGeminiTtsKeys;
 
 // 主设置页的测试使用当前输入值，但 AI 处理读取已保存的配置。
 // 因此编辑后必须明确提示，避免用户误以为测试通过的 Key 已投入使用。

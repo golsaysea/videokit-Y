@@ -2250,17 +2250,26 @@ function reelsApplyAnimationPreset(silent = false) {
 
     set('reels-anim-in', preset.anim_in_type);
     set('reels-anim-in-dur', preset.anim_in_duration);
+    set('reels-anim-in-dur-range', preset.anim_in_duration);
     set('reels-anim-out', preset.anim_out_type);
     set('reels-anim-out-dur', preset.anim_out_duration);
+    set('reels-anim-out-dur-range', preset.anim_out_duration);
     set('reels-float-amp', preset.floating_amplitude);
+    set('reels-float-amp-range', preset.floating_amplitude);
     set('reels-float-period', preset.floating_period);
+    set('reels-float-period-range', preset.floating_period);
     set('reels-bounce-height', preset.char_bounce_height);
+    set('reels-bounce-height-range', preset.char_bounce_height);
     set('reels-metro-bpm', preset.metronome_bpm);
+    set('reels-metro-bpm-range', preset.metronome_bpm);
     set('reels-jump-scale', preset.letter_jump_scale);
+    set('reels-jump-scale-range', preset.letter_jump_scale);
     set('reels-flash-color', preset.flash_color);
     set('reels-glow-color', preset.holy_glow_color);
     set('reels-glow-radius', preset.holy_glow_radius);
+    set('reels-glow-radius-range', preset.holy_glow_radius);
     set('reels-blur-max', preset.blur_sharp_max);
+    set('reels-blur-max-range', preset.blur_sharp_max);
     set('reels-typewriter-reveal-type', preset.typewriter_reveal_type);
     if (preset.tw_unrevealed_opacity !== undefined) {
         const opacity = Number(preset.tw_unrevealed_opacity);
@@ -2294,7 +2303,10 @@ function reelsApplyAnimationPreset(silent = false) {
     set('reels-char-anim-duration-range', preset.char_anim_duration);
     set('reels-char-anim-stagger', preset.char_anim_stagger);
     set('reels-char-anim-stagger-range', preset.char_anim_stagger);
-    setChk('reels-karaoke-hl', preset.karaoke_highlight);
+    if (preset.karaoke_highlight !== undefined) {
+        setChk('reels-karaoke-hl', preset.karaoke_highlight);
+        setChk('reels-highlight-enabled', preset.karaoke_highlight);
+    }
 
     _persistSubtitleStyleByScope(_readStyleFromUI());
     reelsRefreshAnimationParameterAvailability();
@@ -2688,6 +2700,7 @@ function _readStyleFromUI() {
 
     const baseStyle = {
         // Font
+        mixed_layout: val('reels-mixed-layout') || 'none',
         font_family: val('reels-font-family') || 'Arial',
         font_weight: num('reels-font-weight', chk('reels-bold') ? 700 : 400),
         fontsize: num('reels-fontsize', 74),
@@ -2701,7 +2714,9 @@ function _readStyleFromUI() {
         color_text: val('reels-color-text') || '#FFFFFF',
         text_gradient_direction: get('reels-color-text')?.dataset?.gradientDirection || 'horizontal',
         text_gradient_scope: val('reels-text-gradient-scope') || 'line',
-        highlight_enabled: get('reels-highlight-enabled') ? chk('reels-highlight-enabled') : true,
+        highlight_enabled: get('reels-highlight-enabled')
+            ? chk('reels-highlight-enabled')
+            : (get('reels-karaoke-hl') ? chk('reels-karaoke-hl') : true),
         color_high: val('reels-color-high') || '#FFD700',
         high_gradient_direction: get('reels-color-high')?.dataset?.gradientDirection || 'horizontal',
 
@@ -2774,9 +2789,12 @@ function _readStyleFromUI() {
         high_padding: num('reels-high-padding', 4),
         high_offset_y: 0,
 
-        // The checkbox lives in the project menu.  The old id did not exist,
-        // so this setting was always saved as false and the control was inert.
-        karaoke_highlight: chk('reels-karaoke-hl'),
+        // Synchronize karaoke_highlight with highlight_enabled so the inspector
+        // checkbox (#reels-highlight-enabled) and menu toggle (#reels-karaoke-hl)
+        // never contradict each other.
+        karaoke_highlight: get('reels-highlight-enabled')
+            ? chk('reels-highlight-enabled')
+            : (get('reels-karaoke-hl') ? chk('reels-karaoke-hl') : true),
 
         // Position & Layout
         pos_x: num('reels-pos-x', 50) / 100,
@@ -3155,6 +3173,7 @@ function _writeStyleToUI(style) {
     };
     const setChk = (id, val) => { const el = document.getElementById(id); if (el) el.checked = !!val; };
 
+    set('reels-mixed-layout', style.mixed_layout || 'none');
     set('reels-font-family', style.font_family || 'Arial');
     // 如果字体是 Google Font，按需加载。这里以前只启动加载却立即绘制预览：
     // 首帧会落到系统替代字体，而导出会等待字体就绪，导致两边字形/换行不同。
@@ -3194,7 +3213,9 @@ function _writeStyleToUI(style) {
         }
     }
     set('reels-text-gradient-scope', style.text_gradient_scope || 'line');
-    setChk('reels-highlight-enabled', style.highlight_enabled !== false);
+    const hlEnabled = style.highlight_enabled !== false && style.karaoke_highlight !== false;
+    setChk('reels-highlight-enabled', hlEnabled);
+    setChk('reels-karaoke-hl', hlEnabled);
 
     const colorHighEl = document.getElementById('reels-color-high');
     if (colorHighEl) {
@@ -4063,7 +4084,7 @@ function _drawSubtitlePreviewRange(ctx, style, canvasW, canvasH) {
     ctx.strokeStyle = 'rgba(0, 224, 255, 0.9)';
     ctx.fillStyle = 'rgba(0, 224, 255, 0.08)';
 
-    if (style.anim_in_type === 'word_random_position' && style.random_position_use_layout_range !== false) {
+    if ((!style.mixed_layout || style.mixed_layout === 'none') && style.anim_in_type === 'word_random_position' && style.random_position_use_layout_range !== false) {
         const cx = (typeof style.pos_x === 'number' && style.pos_x <= 1) ? style.pos_x * canvasW : (style.pos_x || canvasW / 2);
         const cy = (typeof style.pos_y === 'number' && style.pos_y <= 1) ? style.pos_y * canvasH : (style.pos_y || canvasH * 0.5);
         const rangeW = Math.max(20, Math.min(120, parseFloat(style.wrap_width_percent) || 70)) / 100 * canvasW;
@@ -14481,9 +14502,25 @@ function reelsMarkStyleDirty(e) {
         }
     }
 
+    // Ensure paired controls (such as highlight toggles and -range sliders) are
+    // synchronized before reading UI state, even if a listener runs before inline handlers.
+    if (el.id === 'reels-highlight-enabled') {
+        const k = document.getElementById('reels-karaoke-hl');
+        if (k) k.checked = el.checked;
+    } else if (el.id === 'reels-karaoke-hl') {
+        const h = document.getElementById('reels-highlight-enabled');
+        if (h) h.checked = el.checked;
+    } else if (el.id && el.id.endsWith('-range')) {
+        const paired = document.getElementById(el.id.slice(0, -6));
+        if (paired) paired.value = el.value;
+    }
+
     // 只有用户真实改动某个样式控件时才写入当前作用域；预览/任务切换不写。
     // input/change 在控件值更新后触发，这里读取到的是最终值。
     _persistSubtitleStyleByScope(_readStyleFromUI());
+    if (window.ReelsPreviewV2?.isOpen?.()) {
+        window.ReelsPreviewV2.render?.();
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -14545,8 +14582,8 @@ function _reelsUpdateResolutionUI(w, h) {
     }
 }
 
-document.addEventListener('input', reelsMarkStyleDirty, true);
-document.addEventListener('change', reelsMarkStyleDirty, true);
+document.addEventListener('input', reelsMarkStyleDirty, false);
+document.addEventListener('change', reelsMarkStyleDirty, false);
 
 // ─── 统一的文件选择器辅助函数 ───
 async function _pickSingleFile(title, extensions) {
@@ -15580,6 +15617,7 @@ window.reelsToggleBgModeUI = function(mode) {
     const task = _reelsState.tasks[idx];
     if (!task) return;
 
+    const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
     task.bgMode = mode;
     if (mode === 'single') {
         task.bgClipPool = [];
@@ -15589,9 +15627,13 @@ window.reelsToggleBgModeUI = function(mode) {
         task.bgPath = '';
         task.videoPath = '';
         task.bgSrcUrl = '';
+        task.srcUrl = '';
         task.bgClipPool = Array.isArray(task.bgClipPool) ? task.bgClipPool : [];
         task.bgClipActivePool = Array.isArray(task.bgClipActivePool) ? task.bgClipActivePool : [];
         task.bgClipOrder = task.bgClipOrder || 'random';
+        if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+            window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: oldPaths });
+        }
     }
     
     // 面板显示切换
@@ -15631,10 +15673,17 @@ window.reelsClearClipPoolUI = function() {
     if (idx < 0) return;
     const task = _reelsState.tasks[idx];
     if (!task) return;
+    const oldPaths = [
+        task.concatVideoPath,
+        ...(Array.isArray(task.clipPool) ? task.clipPool.map(c => typeof c === 'string' ? c : c?.path) : []),
+    ].filter(Boolean);
     task.clipPoolDir = '';
     task.clipPool = [];
     task.concatStatus = '';
     task.concatVideoPath = '';
+    if (typeof window.reelsPurgeMediaCaches === 'function' && oldPaths.length > 0) {
+        window.reelsPurgeMediaCaches(oldPaths);
+    }
     
     if (typeof _renderBatchTable === 'function') {
         if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
@@ -15751,10 +15800,18 @@ window.reelsSelectBgPathUI = async function() {
 
     const path = await _pickSingleFile('选择背景素材 (图片/视频)', ['mp4', 'mov', 'avi', 'mkv', 'webm', 'jpg', 'jpeg', 'png', 'webp', 'gif']);
     if (path) {
+        const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
         task.bgPath = path;
+        task.videoPath = path;
         task.bgSrcUrl = null;
         task.srcUrl = null;
         document.getElementById('reels-bg-path-ui').value = path;
+        if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+            window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: [...oldPaths, path] });
+        } else {
+            task.timeline = null;
+            task.renderPlan = null;
+        }
         
         if (typeof _renderBatchTable === 'function') {
             if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
@@ -15771,10 +15828,18 @@ window.reelsClearBgPathUI = function() {
     const task = _reelsState.tasks[idx];
     if (!task) return;
 
+    const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
     task.bgPath = '';
-    task.bgSrcUrl = null;
-    task.srcUrl = null;
+    task.videoPath = '';
+    task.bgSrcUrl = '';
+    task.srcUrl = '';
     document.getElementById('reels-bg-path-ui').value = '';
+    if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+        window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: oldPaths });
+    } else {
+        task.timeline = null;
+        task.renderPlan = null;
+    }
 
     if (typeof _renderBatchTable === 'function') {
         if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
@@ -15925,10 +15990,18 @@ window.reelsCopyCvToBgUI = function() {
         return;
     }
 
+    const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
     task.bgPath = task.contentVideoPath;
+    task.videoPath = task.contentVideoPath;
     task.bgSrcUrl = null;
     task.srcUrl = null;
     document.getElementById('reels-bg-path-ui').value = task.bgPath;
+    if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+        window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: [...oldPaths, task.bgPath] });
+    } else {
+        task.timeline = null;
+        task.renderPlan = null;
+    }
 
     if (typeof _renderBatchTable === 'function') {
         if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;

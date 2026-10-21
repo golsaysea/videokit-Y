@@ -488,7 +488,18 @@ if (_customUserData) {
 
 // The editor is the only workspace owner; a second launch focuses it.
 const _workspaceInstanceOwner=app.requestSingleInstanceLock();
-if(!_workspaceInstanceOwner)app.quit();
+if (!_workspaceInstanceOwner) {
+    if (!app.isPackaged) {
+        dialog.showMessageBoxSync({
+            type: 'info',
+            title: '源码测试版未启动',
+            message: '已有 VideoKit 正在运行，本次源码测试版没有启动。',
+            detail: `程序会唤起已有窗口，因此该窗口可能没有本文件夹的新功能。\n请先保存工程并退出已有 VideoKit，再运行本文件夹的启动脚本。\n\n本次源码目录：${path.resolve(__dirname, '..')}`,
+            buttons: ['知道了'],
+        });
+    }
+    app.exit(0);
+}
 app.on('second-instance',()=>{if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
 
 // 日志文件路径
@@ -694,7 +705,7 @@ function createWindow() {
         height: 800,
         minWidth: 900,
         minHeight: 700,
-        title: 'VideoKit',
+        title: app.isPackaged ? 'VideoKit' : 'VideoKit — 源码测试版',
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -714,6 +725,12 @@ function createWindow() {
     }
 
     mainWindow = new BrowserWindow(windowOptions);
+    if (!app.isPackaged) {
+        mainWindow.webContents.on('page-title-updated', event => {
+            event.preventDefault();
+            mainWindow.setTitle(`VideoKit — 源码测试版 · ${path.basename(path.resolve(__dirname, '..'))}`);
+        });
+    }
     mainWindow.webContents.on('will-navigate', (event, url) => {
         if (!isTrustedRendererUrl(url, { packaged: app.isPackaged, port: DEV_SERVER_PORT })) event.preventDefault();
     });

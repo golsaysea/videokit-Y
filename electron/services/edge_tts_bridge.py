@@ -26,6 +26,7 @@ async def main(data):
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         communicate = edge_tts.Communicate(text, voice, rate=data.get('rate', '+0%'),
+                                          pitch=data.get('pitch', '+0Hz'),
                                           boundary='SentenceBoundary')
         with temporary.open('wb') as media:
             async for chunk in communicate.stream():

@@ -19,6 +19,7 @@
         <button class="tab" data-tab="voiceover-workflow">🚀 一键配音字幕</button>
         <button class="tab" data-tab="elevenlabs">ElevenLabs</button>
         <button class="tab" data-tab="microsoft-tts">微软语音</button>
+        <button class="tab" data-tab="google-tts">谷歌配音</button>
         <button class="tab" data-tab="subtitle">字幕对齐</button>
         <button class="tab" data-tab="media">媒体转换</button>
         <button class="tab" data-tab="srt-tools">SRT工具</button>
@@ -60,7 +61,8 @@
       </script>
       <section id="microsoft-tts-panel" class="panel">
         <style>
-          #microsoft-tts-panel {
+          #microsoft-tts-panel,
+          #google-tts-panel {
             --ms-bg: #070a16;
             --ms-panel: rgba(17, 25, 45, 0.86);
             --ms-panel-strong: rgba(23, 34, 58, 0.95);
@@ -75,14 +77,14 @@
             --ms-ok: rgba(38, 94, 79, 0.46);
             --ms-ok-line: rgba(78, 231, 167, 0.48);
           }
-          #microsoft-tts-panel .ms-studio-shell {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell {
             display: grid;
             grid-template-columns: 350px minmax(0, 1fr);
             gap: 18px;
             min-height: calc(100vh - 120px);
             align-items: start;
           }
-          #microsoft-tts-panel .ms-studio-sidebar {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-sidebar {
             display: flex;
             flex-direction: column;
             gap: 13px;
@@ -92,14 +94,14 @@
             border-radius: 10px;
             box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
           }
-          #microsoft-tts-panel .ms-brand {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-brand {
             display: flex;
             align-items: center;
             gap: 12px;
             padding-bottom: 13px;
             border-bottom: 1px solid var(--ms-line);
           }
-          #microsoft-tts-panel .ms-brand-mark {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-brand-mark {
             display: grid;
             place-items: center;
             width: 46px;
@@ -110,18 +112,18 @@
             font-size: 22px;
             flex-shrink: 0;
           }
-          #microsoft-tts-panel .ms-brand h2 {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-brand h2 {
             margin: 0;
             color: #f4fbfb;
             font-size: 17px;
             line-height: 1.22;
           }
-          #microsoft-tts-panel .ms-brand p {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-brand p {
             margin: 4px 0 0;
             color: var(--ms-gold);
             font-size: 12px;
           }
-          #microsoft-tts-panel .ms-box {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-box {
             display: grid;
             gap: 10px;
             padding: 13px;
@@ -129,7 +131,7 @@
             border-radius: 8px;
             background: var(--ms-panel);
           }
-          #microsoft-tts-panel .ms-box-title {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-box-title {
             color: #dce8e8;
             font-size: 13px;
             font-weight: 800;
@@ -137,19 +139,19 @@
             justify-content: space-between;
             align-items: center;
           }
-          #microsoft-tts-panel .ms-field {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-field {
             display: grid;
             gap: 6px;
             min-width: 0;
           }
-          #microsoft-tts-panel .ms-field > span {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-field > span {
             color: var(--ms-muted);
             font-size: 12px;
             font-weight: 700;
           }
-          #microsoft-tts-panel .ms-studio-shell input,
-          #microsoft-tts-panel .ms-studio-shell select,
-          #microsoft-tts-panel .ms-studio-shell textarea {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell input,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell select,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell textarea {
             width: 100%;
             box-sizing: border-box;
             border: 1px solid var(--ms-line);
@@ -159,28 +161,28 @@
             outline: none;
             font: inherit;
           }
-          #microsoft-tts-panel .ms-studio-shell input,
-          #microsoft-tts-panel .ms-studio-shell select {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell input,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell select {
             height: 38px;
             padding: 0 11px;
           }
-          #microsoft-tts-panel .ms-studio-shell select option {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell select option {
             background: #11192d;
             color: var(--ms-text);
           }
-          #microsoft-tts-panel .ms-studio-shell input:focus,
-          #microsoft-tts-panel .ms-studio-shell select:focus,
-          #microsoft-tts-panel .ms-studio-shell textarea:focus {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell input:focus,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell select:focus,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell textarea:focus {
             border-color: var(--ms-accent);
             box-shadow: 0 0 0 3px rgba(69, 216, 208, 0.15);
           }
-          #microsoft-tts-panel .ms-two-cols,
-          #microsoft-tts-panel .ms-split-btns {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-two-cols,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-split-btns {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 8px;
           }
-          #microsoft-tts-panel .ms-btn {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn {
             min-height: 36px;
             padding: 0 13px;
             border: 1px solid var(--ms-line);
@@ -191,31 +193,31 @@
             font-size: 13px;
             transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
           }
-          #microsoft-tts-panel .ms-btn:hover:not(:disabled) {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn:hover:not(:disabled) {
             background: rgba(37, 53, 84, 0.96);
             border-color: rgba(69, 216, 208, 0.45);
             transform: translateY(-1px);
           }
-          #microsoft-tts-panel .ms-btn:disabled {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn:disabled {
             cursor: not-allowed;
             opacity: 0.48;
             transform: none;
           }
-          #microsoft-tts-panel .ms-btn-primary {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn-primary {
             background: linear-gradient(135deg, #2bd4ca, #168a9a);
             border-color: rgba(101, 238, 230, 0.48);
             color: #061018;
             font-weight: 800;
           }
-          #microsoft-tts-panel .ms-btn-primary:hover:not(:disabled) {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn-primary:hover:not(:disabled) {
             background: linear-gradient(135deg, #65eee6, #21aeba);
           }
-          #microsoft-tts-panel .ms-btn-danger {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-btn-danger {
             background: var(--ms-danger-soft);
             border-color: rgba(255, 141, 133, 0.28);
             color: var(--ms-danger);
           }
-          #microsoft-tts-panel .ms-segmented {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-segmented {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 4px;
@@ -224,17 +226,17 @@
             border-radius: 7px;
             background: rgba(4, 7, 17, 0.62);
           }
-          #microsoft-tts-panel .ms-segmented label {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-segmented label {
             position: relative;
             display: flex;
             margin: 0;
           }
-          #microsoft-tts-panel .ms-segmented input {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-segmented input {
             position: absolute;
             opacity: 0;
             pointer-events: none;
           }
-          #microsoft-tts-panel .ms-segmented span {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-segmented span {
             display: grid;
             place-items: center;
             width: 100%;
@@ -245,11 +247,11 @@
             font-weight: 800;
             cursor: pointer;
           }
-          #microsoft-tts-panel .ms-segmented input:checked + span {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-segmented input:checked + span {
             background: linear-gradient(135deg, rgba(69, 216, 208, 0.92), rgba(228, 189, 115, 0.86));
             color: #061018;
           }
-          #microsoft-tts-panel .ms-status-panel {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-status-panel {
             display: grid;
             gap: 8px;
             padding: 12px;
@@ -260,13 +262,14 @@
             font-size: 12px;
             line-height: 1.45;
           }
-          #microsoft-tts-panel .ms-progress-track {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-progress-track {
             height: 12px;
             overflow: hidden;
             border-radius: 999px;
             background: rgba(255, 255, 255, 0.08);
           }
-          #microsoft-tts-panel #ms-progress-fill {
+          #microsoft-tts-panel #ms-progress-fill,
+          #google-tts-panel #gg-progress-fill {
             display: grid;
             place-items: center;
             width: 0%;
@@ -277,13 +280,13 @@
             font-weight: 900;
             transition: width 0.22s ease;
           }
-          #microsoft-tts-panel .ms-studio-workspace {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-workspace {
             display: flex;
             flex-direction: column;
             gap: 14px;
             min-width: 0;
           }
-          #microsoft-tts-panel .ms-studio-topbar {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-topbar {
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -295,59 +298,60 @@
             box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
             flex-wrap: wrap;
           }
-          #microsoft-tts-panel .ms-studio-topbar h3 {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-topbar h3 {
             margin: 0;
             font-size: 18px;
             color: #f4fbfb;
           }
-          #microsoft-tts-panel .ms-studio-topbar p {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-topbar p {
             margin: 4px 0 0;
             color: var(--ms-muted);
             font-size: 12px;
           }
-          #microsoft-tts-panel .ms-topbar-actions {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-topbar-actions {
             display: flex;
             align-items: center;
             flex-wrap: wrap;
             gap: 8px;
           }
-          #microsoft-tts-panel #ms-queue {
+          #microsoft-tts-panel #ms-queue,
+          #google-tts-panel #gg-queue {
             display: grid;
             gap: 12px;
           }
-          #microsoft-tts-panel .ms-script-card {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-script-card {
             overflow: hidden;
             border: 1px solid var(--ms-line);
             border-radius: 9px;
             background: var(--ms-panel-strong);
             box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
           }
-          #microsoft-tts-panel .ms-script-card.done {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-script-card.done {
             border-color: var(--ms-ok-line);
             background: var(--ms-ok);
           }
-          #microsoft-tts-panel .ms-script-card.failed {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-script-card.failed {
             border-color: rgba(255, 141, 133, 0.46);
             background: rgba(91, 35, 38, 0.42);
           }
-          #microsoft-tts-panel .ms-card-head,
-          #microsoft-tts-panel .ms-card-foot {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-head,
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-foot {
             display: flex;
             align-items: center;
             gap: 10px;
             padding: 9px 12px;
             background: rgba(8, 13, 27, 0.5);
           }
-          #microsoft-tts-panel .ms-card-head {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-head {
             justify-content: space-between;
             border-bottom: 1px solid var(--ms-line);
           }
-          #microsoft-tts-panel .ms-card-foot {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-foot {
             justify-content: flex-end;
             flex-wrap: wrap;
             border-top: 1px solid var(--ms-line);
           }
-          #microsoft-tts-panel .ms-card-number {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-number {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -361,13 +365,13 @@
             font-size: 13px;
             font-weight: 900;
           }
-          #microsoft-tts-panel .ms-card-status {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-card-status {
             color: var(--ms-muted);
             font-size: 12px;
             overflow-wrap: anywhere;
             text-align: right;
           }
-          #microsoft-tts-panel .ms-script-card textarea {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-script-card textarea {
             border: 0;
             border-radius: 0;
             background: transparent;
@@ -378,11 +382,11 @@
             line-height: 1.65;
             color: var(--ms-text);
           }
-          #microsoft-tts-panel .ms-script-card textarea:focus {
+          :is(#microsoft-tts-panel, #google-tts-panel) .ms-script-card textarea:focus {
             box-shadow: inset 0 0 0 2px rgba(69, 216, 208, 0.22);
           }
           @media (max-width: 980px) {
-            #microsoft-tts-panel .ms-studio-shell {
+            :is(#microsoft-tts-panel, #google-tts-panel) .ms-studio-shell {
               grid-template-columns: 1fr;
             }
           }
@@ -516,6 +520,168 @@
               </header>
 
               <div id="ms-queue" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 谷歌配音面板 (Google Voice Studio) ==================== -->
+      <section id="google-tts-panel" class="panel">
+        <div class="panel-content" style="max-width: 100%; padding: 8px 4px;">
+          <div class="ms-studio-shell">
+            <aside class="ms-studio-sidebar">
+              <div class="ms-brand">
+                <div class="ms-brand-mark">🌐</div>
+                <div>
+                  <h2>Google Voice Studio</h2>
+                  <p>谷歌免Key标准语音 + Gemini AI 30种拟真音色</p>
+                </div>
+              </div>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>输出</span></div>
+                <label class="ms-field">
+                  <span>保存位置</span>
+                  <input id="gg-output" type="text" spellcheck="false" placeholder="默认保存到下载文件夹">
+                </label>
+                <label class="ms-field">
+                  <span>任务文件夹</span>
+                  <input id="gg-task-folder" type="text" spellcheck="false" value="第一期" placeholder="例如：第一期">
+                </label>
+                <div class="ms-split-btns">
+                  <button id="gg-choose-output" class="ms-btn" type="button">选择目录</button>
+                  <button id="gg-open-output" class="ms-btn" type="button">打开目录</button>
+                </div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title">
+                  <span>声音</span>
+                  <div style="display:flex;gap:6px;">
+                    <button id="gg-toggle-key-box" class="ms-btn" type="button" style="min-height:26px;padding:0 9px;font-size:11px;">🔑 添加 Gemini TTS Key</button>
+                    <button id="gg-refresh" class="ms-btn" type="button" style="min-height:26px;padding:0 9px;font-size:11px;">刷新音色</button>
+                  </div>
+                </div>
+                <div id="gg-key-drawer" style="display:none;padding:10px;border-radius:8px;background:rgba(59,130,246,0.08);border:1px solid rgba(96,165,250,0.28);margin-bottom:8px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
+                    <strong style="color:#93c5fd;">🔑 Gemini TTS 语音合成 API Key (每行一个)</strong>
+                    <a href="#" onclick="window.electronAPI && window.electronAPI.openExternal('https://aistudio.google.com/apikey'); return false;" style="color:#60a5fa;text-decoration:underline;">🌍 去 AI Studio 免费获取</a>
+                  </div>
+                  <textarea id="gg-api-keys" rows="3" placeholder="粘贴免费的 Google AI Studio API Key (以 AIzaSy... 开头)，支持多行轮询" style="width:100%;font-size:11px;font-family:monospace;padding:6px 8px;border-radius:6px;border:1px solid var(--border-color);background:rgba(0,0,0,0.25);color:var(--text-primary);resize:vertical;"></textarea>
+                  <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                    <select id="gg-tts-model" style="flex:1;min-width:150px;font-size:11px;padding:4px 6px;border-radius:5px;">
+                      <option value="gemini-2.5-flash-preview-tts" selected>⚡ Gemini 2.5 Flash TTS (推荐·快速免费)</option>
+                      <option value="gemini-2.5-pro-preview-tts">🧠 Gemini 2.5 Pro TTS (高表现力)</option>
+                    </select>
+                    <button id="gg-save-keys" class="ms-btn ms-primary" type="button" style="min-height:26px;padding:0 10px;font-size:11px;">💾 保存 Key</button>
+                    <button id="gg-test-keys" class="ms-btn" type="button" style="min-height:26px;padding:0 10px;font-size:11px;">🔍 测试</button>
+                    <button class="ms-btn" type="button" style="min-height:26px;padding:0 8px;font-size:11px;" onclick="document.querySelector('[data-tab=&quot;settings&quot;]')?.click()">⚙️ 设置页</button>
+                  </div>
+                  <div id="gg-key-test-status" style="margin-top:5px;font-size:11px;color:var(--ms-muted);white-space:pre-wrap;"></div>
+                </div>
+                <label class="ms-field">
+                  <span>语音引擎</span>
+                  <select id="gg-engine">
+                    <option value="all" selected>全部谷歌语音 (1140+ 音色：Gemini AI 原生真人 + 免Key直连)</option>
+                    <option value="gemini">✨ Gemini AI / Cloud 原生真人多音色 (102款 · 需免费Key)</option>
+                    <option value="translate">🌐 免Key直连多音色 (Google Translate · 20款男女音色/语种 · 免配置)</option>
+                  </select>
+                </label>
+                <label class="ms-field">
+                  <span>语言</span>
+                  <select id="gg-language">
+                    <option value="en-US">英语 - 美国 (en-US)</option>
+                  </select>
+                </label>
+                <label class="ms-field">
+                  <span>语音</span>
+                  <select id="gg-voice">
+                    <option value="gtrans:en-US">🌐 美式英语 · 标准自然女声 (Standard) · 女声</option>
+                  </select>
+                </label>
+                <label class="ms-field">
+                  <span>快速搜索声音（可选）</span>
+                  <input id="gg-voice-search" type="text" placeholder="搜索 男声 / 女声 / 祈祷 / 浑厚 / Kore / Puck / zh-CN...">
+                </label>
+                <div class="ms-two-cols">
+                  <label class="ms-field">
+                    <span>速度</span>
+                    <select id="gg-rate">
+                      <option value="-30%">-30%</option>
+                      <option value="-25%">-25%</option>
+                      <option value="-20%">-20%</option>
+                      <option value="-10%">-10%</option>
+                      <option value="+0%" selected>标准</option>
+                      <option value="+10%">+10%</option>
+                      <option value="+20%">+20%</option>
+                      <option value="+25%">+25%</option>
+                      <option value="+30%">+30%</option>
+                      <option value="+50%">+50%</option>
+                    </select>
+                  </label>
+                  <label class="ms-field">
+                    <span>语气风格</span>
+                    <select id="gg-style" title="使用 Gemini AI 多音色时支持自然语气引导">
+                      <option value="natural" selected>标准自然</option>
+                      <option value="calm">温柔祷告</option>
+                      <option value="upbeat">热情活力</option>
+                      <option value="narrative">沉稳叙事</option>
+                      <option value="gentle">柔和治愈</option>
+                    </select>
+                  </label>
+                </div>
+                <div id="gg-voice-status" style="font-size:11px;color:var(--ms-muted);" role="status"></div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>一键打包</span></div>
+                <div class="ms-segmented" role="radiogroup" aria-label="一键打包格式">
+                  <label><input type="radio" name="ggZipFormat" value="mp3" checked><span>MP3</span></label>
+                  <label><input type="radio" name="ggZipFormat" value="mp4"><span>MP4</span></label>
+                  <label><input type="radio" name="ggZipFormat" value="both"><span>全部</span></label>
+                </div>
+              </section>
+
+              <section class="ms-box">
+                <div class="ms-box-title"><span>批量导入 / 表格拆分</span></div>
+                <textarea id="gg-text" rows="2" style="min-height:64px;padding:8px;font-size:12px;" placeholder="可在此粘贴 Excel/Google 表格多行文案自动拆分，或直接在右侧卡片内粘贴..."></textarea>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                  <select id="gg-split" style="flex:1;min-width:120px;height:34px;font-size:12px;">
+                    <option value="line">每行一条</option>
+                    <option value="cells">表格单元格（每格一条）</option>
+                    <option value="paragraph">按空行分隔</option>
+                    <option value="whole">整篇一条</option>
+                  </select>
+                  <button id="gg-add" class="ms-btn" type="button" style="min-height:34px;font-size:12px;">拆分添加</button>
+                  <button id="gg-import" class="ms-btn" type="button" style="min-height:34px;font-size:12px;">导入 TXT</button>
+                  <input id="gg-files" type="file" accept=".txt" multiple hidden>
+                </div>
+              </section>
+
+              <div class="ms-status-panel">
+                <div id="gg-progress" role="status" aria-live="polite">Ready</div>
+                <div id="gg-total" style="font-size:11px;opacity:0.85;">0 条文案</div>
+                <div class="ms-progress-track"><div id="gg-progress-fill"></div></div>
+              </div>
+            </aside>
+
+            <div class="ms-studio-workspace">
+              <header class="ms-studio-topbar">
+                <div>
+                  <h3>文案列表</h3>
+                  <p id="gg-card-count">1 条文案 · 可直接在卡片中输入文案点击「试听」即时预览声音</p>
+                </div>
+                <div class="ms-topbar-actions">
+                  <button id="gg-new" class="ms-btn" type="button">添加文案</button>
+                  <button id="gg-start" class="ms-btn ms-btn-primary" type="button">批量生成</button>
+                  <button id="gg-stop" class="ms-btn" type="button" disabled>停止</button>
+                  <button id="gg-preview-all" class="ms-btn" type="button" disabled>试听全部</button>
+                  <button id="gg-create-zip" class="ms-btn" type="button" disabled>打包 MP3 ZIP</button>
+                  <button id="gg-clear" class="ms-btn ms-btn-danger" type="button">清空</button>
+                </div>
+              </header>
+
+              <div id="gg-queue" aria-live="polite"></div>
             </div>
           </div>
         </div>
@@ -4744,7 +4910,8 @@
                     <input type="file" id="reels-font-upload" class="hidden-file-input" accept=".ttf,.otf,.woff,.woff2">
                     <div class="reels-dropdown-item" onclick="document.getElementById('reels-font-upload').click()">🔤 上传字体</div>
                     <label class="reels-dropdown-item" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-                      <input type="checkbox" id="reels-karaoke-hl" style="accent-color:var(--accent);"> 🎤 卡拉OK高亮
+                      <input type="checkbox" id="reels-karaoke-hl" checked style="accent-color:var(--accent);"
+                        onchange="var h=document.getElementById('reels-highlight-enabled'); if(h)h.checked=this.checked; reelsUpdatePreview()"> 🎤 卡拉OK高亮
                     </label>
                   </div>
                 </div>
@@ -5663,6 +5830,16 @@
                     <div style="padding: 8px; background: var(--bg-tertiary); border-radius: 6px; margin-top: 4px;">
                       <div class="param-row" style="flex-wrap: wrap; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <div style="display: flex; align-items: center; gap: 4px;">
+                          <label>动态混排:</label>
+                          <select id="reels-mixed-layout" class="select" style="width:120px" onchange="reelsUpdatePreview()">
+                            <option value="none">关闭</option>
+                            <option value="cycle">自动轮换</option>
+                            <option value="stack">首尾大字</option>
+                            <option value="focus">中间强调</option>
+                            <option value="collage">大小拼接</option>
+                            <option value="stairs">阶梯错位</option>
+                          </select>
+                          <span style="font-size:11px;color:var(--text-secondary)">混排开启时保持排版结构，可自由搭配右侧入场/出场动画</span>
                           <label>入场:</label>
                           <select id="reels-anim-in" class="select" style="width: 110px;" onchange="reelsRefreshAnimationParameterAvailability(); reelsUpdatePreview()">
                             <option value="none">无</option>
@@ -7172,6 +7349,29 @@
               <strong style="color:#4a9eff;">🔄 Token 失效说明：</strong>网页 Token 属于会话凭证，有效期通常为数小时到数天不等。<strong>当 Token 失效后，语音生成会报 401 错误</strong>，此时需返回语音合成页面重新登录获取新 Token。API Key 则无此限制，长期稳定有效。
             </div>
 
+          <div class="form-section" id="settings-gemini-tts-section">
+            <h3 class="section-title">🌐 Google Gemini TTS 配音配置</h3>
+            <p class="hint">用于「🌐 谷歌配音」中的 Gemini 2.5 原生真人多音色（30 款官方音色 + 24 款场景定制音色 + 48 款 Cloud 拟真音色）。支持多 Key 轮询，可与下方 Gemini AI 设置自动互通。</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin: 8px 0 6px;">
+              <label class="hint" style="font-weight:500;margin:0;">Gemini TTS API Key（每行一个，支持 AIzaSy... 免费 Key）</label>
+              <a href="#" onclick="window.electronAPI && window.electronAPI.openExternal('https://aistudio.google.com/apikey'); return false;" style="color:#4a9eff; font-size:12px; text-decoration:underline;">🌍 去 Google AI Studio 免费获取 API Key</a>
+            </div>
+            <textarea id="gemini-tts-keys" class="textarea" rows="3" autocomplete="off" spellcheck="false" placeholder="每行一个 Google AI Studio Gemini API Key (例如 AIzaSy...)"></textarea>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px;">
+              <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary);">
+                <span>首选语音模型:</span>
+                <select id="gemini-tts-model" class="select" style="width: 260px; font-size: 12px;">
+                  <option value="gemini-2.5-flash-preview-tts" selected>⚡ gemini-2.5-flash-preview-tts (推荐·快速免费)</option>
+                  <option value="gemini-2.5-pro-preview-tts">🧠 gemini-2.5-pro-preview-tts (Pro高表现力)</option>
+                </select>
+              </label>
+              <button class="btn btn-primary" onclick="saveGeminiTtsKeys()" style="font-size:12px;padding:6px 16px;">💾 保存 Gemini TTS Keys</button>
+              <button class="btn btn-secondary" onclick="testGeminiTtsKeys()" style="font-size:12px;padding:6px 14px;background:rgba(110,231,183,0.1);color:#6ee7b7;border:1px solid rgba(110,231,183,0.3);">🔍 测试 TTS 语音合成</button>
+              <span id="gemini-tts-key-status" style="font-size:12px;color:var(--text-secondary);"></span>
+            </div>
+            <div id="gemini-tts-test-results" style="display:none; margin-top: 8px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto;"></div>
+          </div>
+
           <div class="form-section">
             <h3 class="section-title">云端转录服务</h3>
             <p class="hint">支持 Deepgram、Groq 与 Gladia 多平台切换与多 Key 轮询池。可在表格模式下逐行查看/编辑/删除，或在文本模式下一行一个快速导入。</p>
@@ -8202,6 +8402,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="app.js"></script>
   <script src="voiceover-workflow.js"></script>
   <script src="microsoft-tts.js"></script>
+  <script src="google-tts.js"></script>
 </body>
 
 </html>

@@ -767,6 +767,39 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
         case 'edge-tts/create-zip':
             return await require('./services/edgeTts').createZip(data);
 
+        case 'google-tts/voices':
+            return await require('./services/googleTts').listVoices(!!data.refresh);
+
+        case 'google-tts/keys': {
+            if (data._method === 'GET') {
+                return settingsService.loadGeminiKeys();
+            }
+            const existing = settingsService.loadGeminiKeys() || {};
+            const ttsKeys = Array.isArray(data.tts_keys)
+                ? data.tts_keys.map(k => String(k || '').trim()).filter(Boolean)
+                : (Array.isArray(data.keys) ? data.keys.map(k => String(k || '').trim()).filter(Boolean) : (existing.tts_keys || []));
+            const mergedKeys = [...new Set([...(existing.keys || []), ...ttsKeys])];
+            settingsService.saveGeminiKeys({
+                ...existing,
+                keys: data.syncAllKeys !== false ? mergedKeys : (existing.keys || []),
+                tts_keys: ttsKeys,
+                tts_model: data.tts_model || existing.tts_model || 'gemini-2.5-flash-preview-tts',
+            });
+            return { ok: true, count: ttsKeys.length, message: '保存成功' };
+        }
+
+        case 'google-tts/test-keys':
+            return await require('./services/googleTts').testKeys(data);
+
+        case 'google-tts/preview':
+            return await require('./services/googleTts').preview(data);
+
+        case 'google-tts/save-item':
+            return await require('./services/googleTts').saveItem(data);
+
+        case 'google-tts/create-zip':
+            return await require('./services/googleTts').createZip(data);
+
         case 'tts/workflow':
         case 'elevenlabs/tts-workflow':
             return await workflowService.ttsWorkflow(data);
@@ -1922,31 +1955,95 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
 
         // ==================== 字幕生成（Gladia + 完整对齐） ====================
         case 'subtitle/clear-cache': {
-            if (!data.audio_path && !data.audio_file_path) throw new Error('缺少音频文件路径');
-            const audioPath = data.audio_path || data.audio_file_path;
-            
+            const rawPaths = [];
+            if (Array.isArray(data.audio_paths)) {
+                for (const p of data.audio_paths) {
+                    if (p && String(p).trim()) rawPaths.push(String(p).trim());
+                }
+            }
+            const singlePath = data.audio_path || data.audio_file_path;
+            if (singlePath && String(singlePath).trim()) {
+                rawPaths.push(String(singlePath).trim());
+            }
+            const clearAll = data.clear_all === true || data.clear_all === 'true';
+            if (!rawPaths.length && !clearAll) throw new Error('缺少音频文件路径');
+
             const langInput = data.language || 'english';
             let currentLanguage = langInput;
             for (const [code, info] of Object.entries(subtitleUtils.LANGUAGES)) {
                 if (info.name === langInput) { currentLanguage = code; break; }
             }
-            
-            const fileName = path.parse(audioPath).name;
+
             const logDir = settingsService.getSecureTmpDir('videokit_log');
-            const audioCacheKey = buildAudioCacheKey(audioPath);
-            const jsonPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_audio_text_whittime.json`);
-            const txtPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_finally.txt`);
-            
             let deletedJson = false;
             let deletedTxt = false;
-            
-            try { if (fs.existsSync(jsonPath)) { fs.unlinkSync(jsonPath); deletedJson = true; } } catch {}
-            try { if (fs.existsSync(txtPath)) { fs.unlinkSync(txtPath); deletedTxt = true; } } catch {}
-            
+            let deletedCount = 0;
+            let jsonPath = '';
+            let txtPath = '';
+
+            const existingLogFiles = fs.existsSync(logDir) ? fs.readdirSync(logDir) : [];
+
+            if (clearAll && existingLogFiles.length > 0) {
+                for (const f of existingLogFiles) {
+                    if (f.endsWith('_audio_text_whittime.json') || f.endsWith('_finally.txt')) {
+                        try {
+                            fs.unlinkSync(path.join(logDir, f));
+                            if (f.endsWith('.json')) deletedJson = true;
+                            if (f.endsWith('.txt')) deletedTxt = true;
+                            deletedCount++;
+                        } catch {}
+                    }
+                }
+            }
+
+            for (let rawP of rawPaths) {
+                if (rawP.startsWith('file://')) {
+                    try { rawP = decodeURIComponent(rawP.replace(/^file:\/\//i, '')); } catch (_) { rawP = rawP.replace(/^file:\/\//i, ''); }
+                }
+                const fileName = path.parse(rawP).name;
+                const audioCacheKey = buildAudioCacheKey(rawP);
+                const legacyJsonPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_audio_text_whittime.json`);
+                const legacyTxtPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_finally.txt`);
+                if (!jsonPath) jsonPath = legacyJsonPath;
+                if (!txtPath) txtPath = legacyTxtPath;
+
+                try { if (fs.existsSync(legacyJsonPath)) { fs.unlinkSync(legacyJsonPath); deletedJson = true; deletedCount++; } } catch {}
+                try { if (fs.existsSync(legacyTxtPath)) { fs.unlinkSync(legacyTxtPath); deletedTxt = true; deletedCount++; } } catch {}
+
+                // 同时清除 v2_${provider} 多平台隔离缓存及同名不同语言/时间戳的残留转录缓存
+                const keyToken = `_${fileName}_${audioCacheKey}_`;
+                const nameToken = `_${fileName}_`;
+                for (const f of existingLogFiles) {
+                    if (!f.endsWith('_audio_text_whittime.json') && !f.endsWith('_finally.txt')) continue;
+                    if (f.includes(keyToken) || (fileName && f.includes(nameToken))) {
+                        const fullPath = path.join(logDir, f);
+                        try {
+                            if (fs.existsSync(fullPath)) {
+                                fs.unlinkSync(fullPath);
+                                if (f.endsWith('.json')) deletedJson = true;
+                                if (f.endsWith('.txt')) deletedTxt = true;
+                                deletedCount++;
+                            }
+                        } catch {}
+                    }
+                }
+            }
+
+            // 同步清理 HDR/宽色域 预览代理缓存
+            let deletedPreviewCount = 0;
+            try {
+                const hdrPreview = require('./services/reels-hdr-preview');
+                if (typeof hdrPreview.clearReelsPreviewCache === 'function') {
+                    deletedPreviewCount = hdrPreview.clearReelsPreviewCache(rawPaths, clearAll);
+                }
+            } catch {}
+
             return {
                 message: '清除缓存成功',
                 deletedJson,
                 deletedTxt,
+                deletedCount,
+                deletedPreviewCount,
                 jsonPath,
                 txtPath
             };

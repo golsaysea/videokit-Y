@@ -29,6 +29,7 @@ const DEFAULT_SUBTITLE_STYLE = {
     random_spacing_seed: 1,
     random_position_use_layout_range: false,
     random_position_height_percent: 35,
+    mixed_layout: 'none', // none | stack | focus | collage | stairs | cycle
 
     // ── Position ──
     pos_x: 0.5,       // 0~1 normalized (0.5 = center)
@@ -826,6 +827,7 @@ const BUILTIN_PRESETS = {
 
 // Category mapping for collapsible preset picker
 const PRESET_CATEGORIES = {
+    '🔤 动态混排': ['动态混排 · 自动轮换','动态混排 · 首尾大字','动态混排 · 中间强调','动态混排 · 大小拼接','动态混排 · 阶梯错位'],
     '🎯 底框样式': ['焦糖橙_黄高亮','深海蓝_黄高亮','暗夜青_青高亮','明亮紫_黄高亮','奶油底_藏青高亮','浅丁香_藏青高亮','砖红_金黄高亮','亮蓝_明黄高亮','深紫_粉红高亮','棕褐_奶黄高亮','暗蓝灰_薄荷高亮','白底框_紫字高亮','黑底框_粉字高亮','荧光绿底框_黑字','深蓝大底框+红色动画','深褐底框+红色动画','粉色气泡','渐变蓝色框','霓虹蓝粉渐变框','红色警报'],
     '📝 基础字幕': ['默认白字','黄字黑边 (经典)','上滑入场','左滑入场','黑底白字 (新闻)'],
     '🎤 卡拉OK高亮': ['卡拉OK高亮','节奏逐词','闪光高亮','黑边_粉红高亮','黑边_薄荷高亮','黑边_电蓝高亮','极简纯文+电光青高亮','重金大字+强对比排版'],

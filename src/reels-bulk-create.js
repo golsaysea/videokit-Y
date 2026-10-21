@@ -318,6 +318,9 @@ function _bcApplySingleBackground(task, path) {
     task.srcUrl = null;
     task.bgMode = 'single';
     task.bgClipPool = [];
+    delete task.timeline;
+    delete task.renderPlan;
+    delete task.timelineBackgroundTrim;
 }
 
 // 选择背景循环文件
@@ -366,12 +369,18 @@ async function _bcImportBackgroundFolders(paths) {
 }
 
 function _bcClearBackgroundFolders() {
+    const oldPaths = (_bulkState.backgroundFolders || []).flatMap(f => Array.isArray(f?.files) ? f.files : []).filter(Boolean);
     _bulkState.backgroundFolders = [];
     (_bulkState.groupAssignments || []).forEach(entry => {
         entry.backgroundFolder = '';
+        entry.selectedBackgroundFiles = [];
     });
+    if (typeof window.reelsPurgeMediaCaches === 'function' && oldPaths.length) {
+        window.reelsPurgeMediaCaches(oldPaths);
+    }
     _bcRenderBindings();
     _bcScheduleDraftSave();
+    if (typeof showToast === 'function') showToast('✅ 已清空背景库及素材缓存', 'success');
 }
 
 function _bcApplyAssignedBackground(task, tpl, index) {
@@ -683,7 +692,11 @@ function _bcShowBgCycleDetail(tpl, ti) {
     // 清空
     ov.querySelector('#bgc-clear').onclick = () => {
         if (confirm('清空全部背景循环素材？')) {
+            const oldCycle = Array.isArray(tpl.bgCycle) ? [...tpl.bgCycle] : [];
             tpl.bgCycle = null;
+            if (typeof window.reelsPurgeMediaCaches === 'function' && oldCycle.length) {
+                window.reelsPurgeMediaCaches(oldCycle);
+            }
             close();
         }
     };

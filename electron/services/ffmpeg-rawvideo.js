@@ -67,6 +67,26 @@ function expectedFrameCount(duration, fps) {
 
 async function getMediaDuration(filePath) {
     try {
+        const isVideoExt = /\.(mp4|mov|mkv|webm|avi|m4v|flv|wmv|ts|3gp)$/i.test(String(filePath || ''));
+        if (isVideoExt) {
+            try {
+                const rawJson = execFileSync(findFFprobe(), [
+                    '-v', 'error',
+                    '-select_streams', 'v:0',
+                    '-show_entries', 'stream=duration:format=duration',
+                    '-of', 'json',
+                    filePath,
+                ], { timeout: 15000 }).toString().trim();
+                const parsed = JSON.parse(rawJson || '{}');
+                const streamDur = parseFloat(parsed?.streams?.[0]?.duration);
+                const formatDur = parseFloat(parsed?.format?.duration);
+                if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
+                    return Math.min(streamDur, formatDur);
+                }
+                if (Number.isFinite(streamDur) && streamDur > 0) return streamDur;
+                if (Number.isFinite(formatDur) && formatDur > 0) return formatDur;
+            } catch (_) { /* fallback below */ }
+        }
         const result = execFileSync(findFFprobe(), [
             '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', filePath
         ], { timeout: 15000 }).toString().trim();
@@ -909,7 +929,8 @@ async function prepareBg(opts) {
     const fadeDur = Math.min(loopFadeDur || 1.0, bgDuration * 0.4);
 
     if (fadeEnabled && bgDuration > 0 && duration > bgDuration) {
-        const step = bgDuration - fadeDur;
+        const safeFps = Math.max(1, Number(fps) || 30);
+        const step = Math.max(0.1, bgDuration - fadeDur - (2 / safeFps));
 
         // ── 智能避让：确保背景视频不会在转场过渡中结束 ──
         // xfade 发生在 offset = i * step，持续 fadeDur 秒
@@ -935,14 +956,15 @@ async function prepareBg(opts) {
                 args.push('-i', backgroundPath);
             }
 
-            const filterParts = [`[0:v]${scaleCropFilter},${ptsFilter}[v0]`];
+            const filterParts = [normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, safeFps, 'v0', 2)];
             let prevLabel = 'v0';
 
             for (let i = 1; i < segCount; i++) {
                 const inLabel = `v${i}`;
                 const outLabel = i === segCount - 1 ? 'vout' : `vx${i}`;
-                const offset = Math.max(0, i * step - 0.01).toFixed(3);
-                filterParts.push(`[${i}:v]${scaleCropFilter},${ptsFilter}[${inLabel}]`);
+                const offset = Math.max(0, i * step).toFixed(3);
+                const padSec = i === segCount - 1 ? 10 : 2;
+                filterParts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, safeFps, inLabel, padSec));
                 filterParts.push(
                     `[${prevLabel}][${inLabel}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${offset}[${outLabel}]`
                 );
@@ -1097,9 +1119,12 @@ function normalizeDisplayAspectFilter() {
     return 'scale=trunc(iw*sar/2)*2:ih:flags=lanczos,setsar=1';
 }
 
-function normalizedDirectBackgroundFilter(inputIndex, scaleCropFilter, ptsFilter, fps, outputLabel) {
+function normalizedDirectBackgroundFilter(inputIndex, scaleCropFilter, ptsFilter, fps, outputLabel, stopPadSeconds = 0) {
     const safeFps = Math.max(1, Number(fps) || 30);
-    return `[${inputIndex}:v]${scaleCropFilter},${ptsFilter},fps=${safeFps},format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS[${outputLabel}]`;
+    const padFilter = Number(stopPadSeconds) > 0
+        ? `,tpad=stop_mode=clone:stop_duration=${Number(stopPadSeconds).toFixed(2)}`
+        : '';
+    return `[${inputIndex}:v]${scaleCropFilter},${ptsFilter},fps=${safeFps},format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS${padFilter}[${outputLabel}]`;
 }
 
 async function prepareOverlay(opts) {
@@ -1376,17 +1401,23 @@ async function startSession(opts) {
         // Fast Alpha Overlay 模式：直接由 FFmpeg 解码背景图像/视频
         const bgExt = require('path').extname(opts.alphaOverlayBgPath).toLowerCase();
         const isAlphaBgImage = ['.jpg', '.jpeg', '.png', '.webp', '.bmp'].includes(bgExt);
-        const rawBgDuration = Math.max(0, Number(opts.alphaBgDuration) || 0);
+        const rawBgFromOpts = Math.max(0, Number(opts.alphaBgDuration) || 0);
+        // 核验视频流真实有效时长（防止容器/音轨长于视频轨，如视频轨 8s、音轨 15.85s 导致 xfade offset 越界并在第 240 帧提前以 code=0 退出）
+        const probedVideoDur = !isAlphaBgImage ? await getMediaDuration(opts.alphaOverlayBgPath) : 0;
+        const rawBgDuration = (rawBgFromOpts > 0 && probedVideoDur > 0)
+            ? Math.min(rawBgFromOpts, probedVideoDur)
+            : (probedVideoDur || rawBgFromOpts);
         const scaledBgDuration = rawBgDuration * Math.max(0.01, (bgDurScale || 100) / 100);
         const fadeDur = Math.min(Math.max(0.05, Number(opts.loopFadeDur) || 1), scaledBgDuration * 0.4);
+        const safeFps = Math.max(1, Number(fps) || 30);
+        const step = Math.max(0.1, scaledBgDuration - fadeDur - (2 / safeFps));
         const useDirectLoopFade = !isAlphaBgImage && opts.loopFade && scaledBgDuration > fadeDur + 0.05
             && targetDuration > scaledBgDuration + 0.01;
         let bgInputCount = 1;
         if (useDirectLoopFade) {
-            const step = scaledBgDuration - fadeDur;
-            bgInputCount = Math.max(2, Math.ceil((targetDuration - scaledBgDuration) / step) + 1);
+            bgInputCount = Math.max(2, Math.ceil((targetDuration - scaledBgDuration) / step) + 2);
             for (let i = 0; i < bgInputCount; i++) args.push('-i', opts.alphaOverlayBgPath);
-            console.log(`[WYSIWYG] 背景直通 xfade 循环: ${bgInputCount} 段, fade=${fadeDur.toFixed(3)}s`);
+            console.log(`[WYSIWYG] 背景直通 xfade 循环: ${bgInputCount} 段, rawVideoDur=${rawBgDuration.toFixed(3)}s, step=${step.toFixed(3)}s, fade=${fadeDur.toFixed(3)}s`);
         } else if (isAlphaBgImage) {
             args.push('-loop', '1', '-i', opts.alphaOverlayBgPath);
         } else {
@@ -1435,10 +1466,10 @@ async function startSession(opts) {
         if (useDirectLoopFade) {
             const parts = [];
             for (let i = 0; i < bgInputCount; i++) {
-                parts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, fps, `bg${i}`));
+                const padSec = i === bgInputCount - 1 ? Math.max(10, Math.ceil(targetDuration) + 5) : 2;
+                parts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, fps, `bg${i}`, padSec));
             }
             let previous = 'bg0';
-            const step = scaledBgDuration - fadeDur;
             for (let i = 1; i < bgInputCount; i++) {
                 const out = i === bgInputCount - 1 ? 'bg' : `bgx${i}`;
                 parts.push(`[${previous}][bg${i}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${(i * step).toFixed(3)}[${out}]`);
@@ -1451,7 +1482,8 @@ async function startSession(opts) {
             // could therefore feed tens of thousands of surplus frames into
             // the graph (drop=... in FFmpeg), then miss the finalization wait.
             // Normalize before overlay just like the xfade branch already did.
-            bgFilter = normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, fps, 'bg');
+            const fallbackPadSec = isAlphaBgImage ? 0 : Math.max(10, Math.ceil(targetDuration) + 5);
+            bgFilter = normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, fps, 'bg', fallbackPadSec);
         }
         const fgInput = bgInputCount;
         const filterComplex = `${bgFilter};[${fgInput}:v]scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuva420p[fg];[bg][fg]overlay=0:0:format=auto:shortest=1,fps=${fps}[outv]`;

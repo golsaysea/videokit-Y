@@ -204,19 +204,6 @@
             if (statusEl) statusEl.textContent = row.fileName || '已停止试听';
             return;
         }
-        if (!fullTextMode && row.audioBase64 && !row._dirtyPreview) {
-            try {
-                await playAudioBase64(row.audioBase64, button, row, statusEl);
-                return;
-            } catch (_) {}
-        }
-        if (fullTextMode && row.fullAudioBase64 && !row._dirtyFull) {
-            try {
-                await playAudioBase64(row.fullAudioBase64, button, row, statusEl);
-                return;
-            } catch (_) {}
-        }
-
         const rawText = String(row.text || '').trim();
         if (!rawText) {
             if (statusEl) statusEl.textContent = '请先输入文案';
@@ -225,6 +212,22 @@
         }
 
         const sampleText = fullTextMode ? rawText : rawText.slice(0, 60);
+        const opts = currentVoiceSettings();
+        const cacheKey = `${opts.voice}|${opts.rate}|${opts.pitch}|${sampleText}`;
+
+        if (!fullTextMode && row.audioBase64 && !row._dirtyPreview && row._previewCacheKey === cacheKey) {
+            try {
+                await playAudioBase64(row.audioBase64, button, row, statusEl);
+                return;
+            } catch (_) {}
+        }
+        if (fullTextMode && row.fullAudioBase64 && !row._dirtyFull && row._fullCacheKey === cacheKey) {
+            try {
+                await playAudioBase64(row.fullAudioBase64, button, row, statusEl);
+                return;
+            } catch (_) {}
+        }
+
         const runId = ++previewRunId;
         stopAudio(false);
         currentPlayBtn = button;
@@ -234,7 +237,6 @@
         setStatus(`正在生成试听：${sampleText.slice(0, 24)}…`);
 
         try {
-            const opts = currentVoiceSettings();
             const res = await request('edge-tts/preview', {
                 text: sampleText,
                 voice: opts.voice,
@@ -244,9 +246,11 @@
             if (runId !== previewRunId) return;
             if (fullTextMode) {
                 row.fullAudioBase64 = res.audio_base64;
+                row._fullCacheKey = cacheKey;
                 row._dirtyFull = false;
             } else {
                 row.audioBase64 = res.audio_base64;
+                row._previewCacheKey = cacheKey;
                 row._dirtyPreview = false;
             }
             setStatus('正在播放试听音频');
@@ -554,6 +558,10 @@
             else if (filtered[0]) select.value = filtered[0].voice_id;
         }
 
+        if (select.value !== normalizedSelected) {
+            rows.forEach(r => { r._dirtyPreview = true; r._dirtyFull = true; });
+        }
+
         if ($('voice-status')) {
             $('voice-status').textContent = `显示 ${filtered.length} / ${voices.length} 个微软音色`;
         }
@@ -704,6 +712,7 @@
                     row.fileName = result.fileName || fileName;
                     row.baseName = result.baseName || fileName.replace(/\.mp3$/i, '');
                     row.fullAudioBase64 = result.audio_base64 || '';
+                    row._fullCacheKey = `${opts.voice}|${opts.rate}|${opts.pitch}|${String(row.text || '').trim()}`;
                     row._dirtyFull = false;
                     row.state = 'success';
                     row.error = '';
@@ -742,9 +751,10 @@
             for (let i = 0; i < generated.length; i++) {
                 const row = generated[i];
                 setStatus(`正在顺序试听 ${i + 1}/${generated.length}：${row.fileName || row.name}`);
-                let b64 = row.fullAudioBase64;
+                const opts = currentVoiceSettings();
+                const expectedKey = `${opts.voice}|${opts.rate}|${opts.pitch}|${String(row.text || '').trim()}`;
+                let b64 = (row._fullCacheKey === expectedKey && !row._dirtyFull) ? row.fullAudioBase64 : '';
                 if (!b64) {
-                    const opts = currentVoiceSettings();
                     const res = await request('edge-tts/preview', {
                         text: row.text,
                         voice: opts.voice,
@@ -753,6 +763,8 @@
                     });
                     b64 = res.audio_base64;
                     row.fullAudioBase64 = b64;
+                    row._fullCacheKey = expectedKey;
+                    row._dirtyFull = false;
                 }
                 await playAudioBase64(b64, btn, row, null, `试听中 (${i + 1}/${generated.length})`);
             }
