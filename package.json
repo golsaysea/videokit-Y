@@ -30,7 +30,7 @@
     "archiver": "^7.0.1",
     "axios": "^1.15.0",
     "diff-match-patch": "^1.0.5",
-    "electron-store": "^8.1.0",
+    "electron-store": "^11.0.2",
     "electron-updater": "^6.8.3",
     "extract-zip": "^2.0.1",
     "node-web-audio-api": "^1.0.8"
