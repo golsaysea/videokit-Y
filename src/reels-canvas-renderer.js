@@ -981,6 +981,48 @@ class ReelsCanvasRenderer {
                 ? s.pos_y * videoH : (s.pos_y || videoH * 0.85);
         }
 
+        const rawTextAlign = String(
+            s.text_align || (advEnabled ? (s.advanced_textbox_align || s.adv_text_align) : '') || 'center'
+        ).toLowerCase();
+
+        const resolveLineAlignMode = (lineIdx) => {
+            if (rawTextAlign === 'left' || rawTextAlign === 'right' || rawTextAlign === 'center') {
+                return rawTextAlign;
+            }
+            if (rawTextAlign === 'smart_left_center') {
+                const lnStr = String(visibleLines[lineIdx] || '').trim();
+                const lnWords = lnStr.split(/\s+/).filter(Boolean);
+                const lnW = (finalLineWidths[lineIdx] != null && finalLineWidths[lineIdx] > (lineWidths[lineIdx] || 0))
+                    ? finalLineWidths[lineIdx]
+                    : (lineWidths[lineIdx] || 0);
+                const hasExclaim = /[!?\uFF01\uFF1F]["'”’)]*$/.test(lnStr);
+                if (visibleLines.length === 1) {
+                    const isShortImpact = (lnWords.length <= 3 && lnStr.length <= 16) || (hasExclaim && lnWords.length <= 4);
+                    return isShortImpact ? 'center' : 'left';
+                }
+                const ratio = renderMaxLineW > 1 ? (lnW / renderMaxLineW) : 1;
+                const isFocalShortLine = (ratio < 0.68 && lnWords.length <= 3) || (hasExclaim && ratio < 0.76);
+                return isFocalShortLine ? 'center' : 'left';
+            }
+            return advEnabled ? advAlign : 'center';
+        };
+
+        const computeAlignedLineX = (lineIdx, lineWForAlign) => {
+            const mode = resolveLineAlignMode(lineIdx);
+            if (blockTypography) {
+                if (advEnabled && mode === 'left') return advX;
+                if (advEnabled && mode === 'right') return advX + advW - renderMaxLineW;
+                return cx - renderMaxLineW / 2;
+            }
+            if (mode === 'left') {
+                return advEnabled ? advX : (cx - renderMaxLineW / 2);
+            }
+            if (mode === 'right') {
+                return advEnabled ? (advX + advW - lineWForAlign) : (cx + renderMaxLineW / 2 - lineWForAlign);
+            }
+            return cx - lineWForAlign / 2;
+        };
+
         const parsePadding = (val, fallback) => {
             if (val === undefined || val === null || val === '') return fallback;
             const parsed = parseFloat(val);
@@ -1199,7 +1241,7 @@ class ReelsCanvasRenderer {
                     for (let i = 0; i < visibleLines.length; i++) {
                         const lineW = lineWidths[i];
                         const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW) ? actualLineWidths[i] : lineW;
-                        const xStart = cx - effectiveLineW / 2;
+                        const xStart = computeAlignedLineX(i, effectiveLineW);
                         const y = tempStartY + (lineTopOffsets[i] || 0);
                         const lRectX = xStart - effectivePadLeft - expand;
                         const glyphBounds = lineGlyphBounds[i] || { top: 0, bottom: lineH, height: lineH };
@@ -1300,7 +1342,7 @@ class ReelsCanvasRenderer {
                     for (let i = 0; i < visibleLines.length; i++) {
                         const lineW = lineWidths[i];
                         const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW) ? actualLineWidths[i] : lineW;
-                        let xStart = cx - effectiveLineW / 2; // Usually center
+                        let xStart = computeAlignedLineX(i, effectiveLineW);
                         const y = tempStartY + (lineTopOffsets[i] || 0);
                         let lRectX = xStart - effectivePadLeft;
                         const glyphBounds = lineGlyphBounds[i] || { top: 0, bottom: lineH, height: lineH };
@@ -1446,11 +1488,12 @@ class ReelsCanvasRenderer {
         // ── Multi-layer stroke expand (pre-pass) ──
         // These modes control visibility per word/line.  A whole-line pre-pass
         // would leak the expanded outline for text that is still hidden.
-        const needsPerWordStrokeExpand = s.only_show_active_word || isTypewriter || isMetronome ||
+        const needsPerWordStrokeExpand = s.only_show_active_word || Boolean(s.hide_until_spoken) ||
+            Boolean(s.highlight_scale_enabled) || isTypewriter || isMetronome ||
             isWordPopRandom || isWordPopRandomPulse || isBullet || isExtendedCharAnim;
         if (s.stroke_expand_enabled && !needsPerWordStrokeExpand) {
             this._renderStrokeExpand(ctx, s, visibleLines, lineWidths, cx, advEnabled, advAlign, advX, advW,
-                cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH);
+                cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX);
         }
 
         // ── 文字绘制 ──
@@ -1513,23 +1556,31 @@ class ReelsCanvasRenderer {
             return { start: ws, end: we };
         });
 
-        let activeHighlightIdx = -1;
-        if (highlightEnabled && currentTime != null && currentTime >= segStart - 1e-6 && currentTime <= segEnd + 1e-6) {
-            activeHighlightIdx = resolvedWordTimings.findIndex((wt, idx) =>
+        const highlightScaleEnabled = Boolean(s.highlight_scale_enabled);
+        const highlightScaleFactor = highlightScaleEnabled
+            ? Math.max(0.5, Math.min(3.0, (Number(s.highlight_scale) || 125) / 100))
+            : 1.0;
+        const hideUntilSpoken = Boolean(s.hide_until_spoken);
+        const unreadOpacityFactor = Math.max(0, Math.min(1, Number(s.unread_opacity ?? 0) / 100));
+
+        let activeSpokenIdx = -1;
+        if ((highlightEnabled || highlightScaleEnabled || hideUntilSpoken || s.dynamic_box) && currentTime != null && currentTime >= segStart - 1e-6 && currentTime <= segEnd + 1e-6) {
+            activeSpokenIdx = resolvedWordTimings.findIndex((wt, idx) =>
                 currentTime >= wt.start && (idx === totalWordCount - 1 ? currentTime <= wt.end : currentTime < wt.end)
             );
-            if (activeHighlightIdx < 0) {
+            if (activeSpokenIdx < 0) {
                 for (let k = totalWordCount - 1; k >= 0; k--) {
                     if (currentTime >= resolvedWordTimings[k].start - 1e-6) {
-                        activeHighlightIdx = k;
+                        activeSpokenIdx = k;
                         break;
                     }
                 }
-                if (activeHighlightIdx < 0 && totalWordCount > 0) {
-                    activeHighlightIdx = 0;
+                if (activeSpokenIdx < 0 && totalWordCount > 0) {
+                    activeSpokenIdx = 0;
                 }
             }
         }
+        const activeHighlightIdx = highlightEnabled ? activeSpokenIdx : -1;
 
         for (let i = 0; i < visibleLines.length; i++) {
             const line = visibleLines[i];
@@ -1537,26 +1588,13 @@ class ReelsCanvasRenderer {
             const lineScale = lineScales[i] || 1.0;
             const lineHScaled = lineH * lineScale;
 
-            // Text alignment — 使用最终行宽（所有词展开后）来锚定居中位置，避免逐词弹出时偏移
+            // Text alignment — 使用最终行宽（所有词展开后）来锚定位置，避免逐词弹出时偏移
             const anchorLineW = (finalLineWidths[i] != null && finalLineWidths[i] > lineW)
                 ? finalLineWidths[i] : lineW;
             const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW)
                 ? actualLineWidths[i] : lineW;
-            let xStart;
-            if (blockTypography && advEnabled && advAlign === 'left') {
-                xStart = advX;
-            } else if (blockTypography && advEnabled && advAlign === 'right') {
-                xStart = advX + advW - renderMaxLineW;
-            } else if (blockTypography) {
-                xStart = cx - renderMaxLineW / 2;
-            } else if (advEnabled && advAlign === 'left') {
-                xStart = advX;
-            } else if (advEnabled && advAlign === 'right') {
-                xStart = advX + advW - effectiveLineW;
-            } else {
-                // 居中对齐：使用最终宽度锚定位置，防止逐词弹出时文字整体左移
-                xStart = cx - anchorLineW / 2;
-            }
+            const lineAlignMode = resolveLineAlignMode(i);
+            const xStart = computeAlignedLineX(i, lineAlignMode === 'right' ? effectiveLineW : anchorLineW);
 
             const y = startY + (lineTextTopOffsets[i] || 0);
             const lineGradBounds = {
@@ -1597,17 +1635,19 @@ class ReelsCanvasRenderer {
                 const wordStart = wt.start;
                 const wordEnd = wt.end;
 
-                let isHighlight = false;
-                if (highlightEnabled && activeHighlightIdx >= 0) {
+                let isActiveSpoken = false;
+                if (activeSpokenIdx >= 0) {
                     if (wordPopGroups) {
-                        const activeTiming = resolvedWordTimings[activeHighlightIdx];
-                        isHighlight = activeTiming != null
+                        const activeTiming = resolvedWordTimings[activeSpokenIdx];
+                        isActiveSpoken = activeTiming != null
                             && Math.abs(wordStart - activeTiming.start) < 1e-6
                             && Math.abs(wordEnd - activeTiming.end) < 1e-6;
                     } else {
-                        isHighlight = wordIdx === activeHighlightIdx;
+                        isActiveSpoken = wordIdx === activeSpokenIdx;
                     }
                 }
+                const isHighlight = highlightEnabled && isActiveSpoken;
+                const isHighlightZoom = highlightScaleEnabled && isActiveSpoken;
 
                 let allocScale = 1.0;
                 if (isWordPopRandom) {
@@ -1666,13 +1706,18 @@ class ReelsCanvasRenderer {
                 }
 
                 // ── Dynamic highlight box ──
-                if (isHighlight && s.dynamic_box && isWordActive) {
+                if (isActiveSpoken && s.dynamic_box && isWordActive) {
                     const dynPad = s.high_padding || 4;
                     const dynOffY = s.high_offset_y || 0;
-                    let boxX = drawX - dynPad * dynamicWordScale;
-                    let boxY = y - dynPad * dynamicWordScale + dynOffY;
-                    let boxW = (wordW * lineScale + dynPad * 2) * dynamicWordScale;
-                    let boxH = (lineHScaled + dynPad * 2) * dynamicWordScale;
+                    const effectiveBoxScale = dynamicWordScale * (isHighlightZoom ? highlightScaleFactor : 1.0);
+                    let boxX = drawX - dynPad * effectiveBoxScale;
+                    let boxY = y - dynPad * effectiveBoxScale + dynOffY;
+                    let boxW = (wordW * lineScale + dynPad * 2) * effectiveBoxScale;
+                    let boxH = (lineHScaled + dynPad * 2) * effectiveBoxScale;
+                    if (effectiveBoxScale !== 1.0) {
+                        boxX = wordCenterX - boxW / 2;
+                        boxY = wordCenterY - boxH / 2 + dynOffY;
+                    }
 
                     if (s.dyn_box_anim && anim) {
                         const dscale = anim.computeDynBoxScale(
@@ -1721,6 +1766,8 @@ class ReelsCanvasRenderer {
                 } else if ((s.ambient_glow_enabled || style?._ambient_text_final_pass)
                     && currentTime != null && currentTime < wordStart) {
                     wordOpacity = 0.0;
+                } else if (hideUntilSpoken && currentTime != null && currentTime < wordStart && !isActiveSpoken) {
+                    wordOpacity *= unreadOpacityFactor;
                 }
                 let wordColor = isHighlight ? highColor : textColor;
                 let wordStrokeColor = outlineColor;
@@ -1818,10 +1865,22 @@ class ReelsCanvasRenderer {
 
                 // ── Render word ──
                 if (isWordActive && wordOpacity > 0.001) {
+                    const wordScale = letterJumpScale * randomPopScale * (isHighlightZoom ? highlightScaleFactor : 1.0);
+
                     // ── Local multi-layer stroke expand ──
                     if (s.stroke_expand_enabled && needsPerWordStrokeExpand) {
                         ctx.save();
                         ctx.globalAlpha = globalAlpha * wordOpacity;
+                        if (wordScale !== 1.0) {
+                            ctx.translate(wordCenterX, wordCenterY);
+                            ctx.scale(wordScale, wordScale);
+                            ctx.translate(-wordCenterX, -wordCenterY);
+                        }
+                        if (lineScale !== 1.0) {
+                            ctx.translate(wordCenterX, wordCenterY);
+                            ctx.scale(lineScale, lineScale);
+                            ctx.translate(-wordCenterX, -wordCenterY);
+                        }
                         if (typewriterPartial) {
                             this._renderWordStrokeExpand(ctx, s, typewriterPartial.revealed, drawX, wordY, fontStr, letterSpacing);
                             const revealedW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing);
@@ -1840,8 +1899,6 @@ class ReelsCanvasRenderer {
 
                     ctx.save();
                     ctx.globalAlpha = globalAlpha * wordOpacity;
-
-                    const wordScale = letterJumpScale * randomPopScale;
 
                     // ── 调色级物理曝光提亮 (Exposure Dodge & Optical Luminescence) ──
                     if (s.ambient_glow_enabled && (currentTime == null || currentTime >= wordStart)) {
@@ -2205,7 +2262,7 @@ class ReelsCanvasRenderer {
 
     // ─── Multi-layer stroke expand ───
     _renderStrokeExpand(ctx, s, lines, lineWidths, cx, advEnabled, advAlign, advX, advW,
-        cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH) {
+        cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX = null) {
         const seLayers = parseInt(s.stroke_expand_layers) || 3;
         const seStep = parseFloat(s.stroke_expand_step) || 4;
         const seFeather = parseFloat(s.stroke_expand_feather) || 8;
@@ -2255,7 +2312,8 @@ class ReelsCanvasRenderer {
                         const line = lines[i];
                         const lineW = lineWidths[i];
                         let xS;
-                        if (advEnabled && advAlign === 'left') xS = advX;
+                        if (typeof computeAlignedLineX === 'function') xS = computeAlignedLineX(i, lineW);
+                        else if (advEnabled && advAlign === 'left') xS = advX;
                         else if (advEnabled && advAlign === 'right') xS = advX + advW - lineW;
                         else xS = cx - lineW / 2;
                         const yS = startY + i * lineStep;
@@ -2272,7 +2330,8 @@ class ReelsCanvasRenderer {
                     const line = lines[i];
                     const lineW = lineWidths[i];
                     let xS;
-                    if (advEnabled && advAlign === 'left') xS = advX;
+                    if (typeof computeAlignedLineX === 'function') xS = computeAlignedLineX(i, lineW);
+                    else if (advEnabled && advAlign === 'left') xS = advX;
                     else if (advEnabled && advAlign === 'right') xS = advX + advW - lineW;
                     else xS = cx - lineW / 2;
                     const yS = startY + i * lineStep;
@@ -2931,11 +2990,26 @@ class ReelsCanvasRenderer {
         let currY = startY;
         let renderWordIdx = 0;
         let renderLineIdx = 0;
+        const richRawAlign = String(
+            s.text_align || (advEnabled ? (s.advanced_textbox_align || s.adv_text_align) : '') || 'center'
+        ).toLowerCase();
         for (const line of lines) {
             // align
+            let lineAlign = richRawAlign;
+            if (lineAlign === 'smart_left_center') {
+                const lnText = line.tokens.map(t => t.text).join('').trim();
+                const lnWords = lnText.split(/\s+/).filter(Boolean);
+                const hasExclaim = /[!?\uFF01\uFF1F]["'”’)]*$/.test(lnText);
+                if (lines.length === 1) {
+                    lineAlign = ((lnWords.length <= 3 && lnText.length <= 16) || (hasExclaim && lnWords.length <= 4)) ? 'center' : 'left';
+                } else {
+                    const ratio = maxLineW > 1 ? (line.w / maxLineW) : 1;
+                    lineAlign = ((ratio < 0.68 && lnWords.length <= 3) || (hasExclaim && ratio < 0.76)) ? 'center' : 'left';
+                }
+            }
             let renderX = 0;
-            if (advEnabled && advAlign === 'left') renderX = advX;
-            else if (advEnabled && advAlign === 'right') renderX = advX + advW - line.w;
+            if (lineAlign === 'left') renderX = advEnabled ? advX : (cx - maxLineW / 2);
+            else if (lineAlign === 'right') renderX = advEnabled ? (advX + advW - line.w) : (cx + maxLineW / 2 - line.w);
             else renderX = cx - line.w / 2;
             if (textDirection === 'rtl') renderX += line.w;
 
@@ -4431,6 +4505,42 @@ class ReelsCanvasRenderer {
         };
 
         const rowSpecs = this._buildSmartMixedRows(group, mode);
+        const alignPref = String(
+            s.text_align || (s.advanced_textbox_enabled ? (s.advanced_textbox_align || s.adv_text_align) : '') || ''
+        ).toLowerCase();
+        if (alignPref === 'left') {
+            rowSpecs.forEach(r => {
+                r.align = 'left';
+                r.indent = 0;
+                r.interleavedZigzag = false;
+            });
+        } else if (alignPref === 'right') {
+            rowSpecs.forEach(r => {
+                r.align = 'right';
+                r.indent = 0;
+                r.interleavedZigzag = false;
+            });
+        } else if (alignPref === 'smart_left_center') {
+            // 智能对齐（搭配智能混排）：主要左对齐 + 重点/冲击短行居中，禁止右对齐与右侧阶梯缩进
+            rowSpecs.forEach((r, idx) => {
+                r.indent = 0;
+                r.interleavedZigzag = false;
+                const rowChars = r.tokens.reduce((sum, t) => sum + (t.text?.length || 0), 0);
+                const allEmph = Array.isArray(r.emphasisFlags) && r.emphasisFlags.length > 0 && r.emphasisFlags.every(Boolean);
+                const isFocalSingle = r.tokens.length === 1 && allEmph && (rowChars <= 9 || (r.scales?.[0] || 1) >= 1.38);
+                const isFocusCenter = mode === 'focus' && allEmph;
+                if (rowSpecs.length === 1) {
+                    r.align = isFocalSingle ? 'center' : 'left';
+                } else if (isFocusCenter || (isFocalSingle && idx > 0)) {
+                    r.align = 'center';
+                } else {
+                    r.align = 'left';
+                }
+            });
+            if (rowSpecs.length >= 2 && rowSpecs.every(r => r.align === 'center')) {
+                rowSpecs[0].align = 'left';
+            }
+        }
         const isZigzag4 = rowSpecs.some(r => r.interleavedZigzag);
         const wordGapRatio = 0.16;
         const rowGapRatio = isZigzag4 ? 0.05 : 0.08;
@@ -4500,7 +4610,9 @@ class ReelsCanvasRenderer {
             const rowHeight = maxRowFont * (isZigzag4 ? 1.04 : 1.07);
             let cursorX = r.align === 'center'
                 ? (blockWidth - r.naturalWidth) / 2
-                : r.indentPx;
+                : r.align === 'right'
+                    ? (blockWidth - r.naturalWidth)
+                    : r.indentPx;
             const rowStart = r.tokens[0]?.start ?? group.start;
 
             r.tokens.forEach((tok, i) => {
@@ -4623,11 +4735,14 @@ class ReelsCanvasRenderer {
             }
 
             let isUnreadMetronome = false;
+            let isUnreadSemiTransparent = false;
             if (currentTime < triggerStart) {
                 if (animInType === 'metronome') {
                     const unreadOp = Math.max(0, Math.min(1, Number(s.metro_unread_opacity ?? 0) / 255));
                     if (unreadOp <= 0.01) continue;
                     isUnreadMetronome = true;
+                } else if (s.hide_until_spoken && Number(s.unread_opacity ?? 0) > 0) {
+                    isUnreadSemiTransparent = true;
                 } else {
                     continue;
                 }
@@ -4646,6 +4761,8 @@ class ReelsCanvasRenderer {
 
             if (isUnreadMetronome) {
                 wordAlpha = Math.max(0, Math.min(1, Number(s.metro_unread_opacity ?? 0) / 255));
+            } else if (isUnreadSemiTransparent) {
+                wordAlpha = Math.max(0, Math.min(1, Number(s.unread_opacity ?? 0) / 100));
             } else if (animInType === 'none') {
                 const popDur = 0.12;
                 if (elapsed < popDur) {
@@ -4795,6 +4912,11 @@ class ReelsCanvasRenderer {
             }
 
             const isCurrentSpoken = item.wordIndex === activeSpokenIdx;
+            if (s.highlight_scale_enabled && isCurrentSpoken && !isUnreadMetronome && !isUnreadSemiTransparent) {
+                const hlZoom = Math.max(0.5, Math.min(3.0, (Number(s.highlight_scale) || 125) / 100));
+                wordScaleX *= hlZoom;
+                wordScaleY *= hlZoom;
+            }
             let wordColor = (useHighlightColor && isCurrentSpoken)
                 ? s.color_high
                 : (s.color_text || '#FFFFFF');
@@ -5003,7 +5125,7 @@ class ReelsCanvasRenderer {
         const popDur = Math.max(0.04, Number(s.word_pop_random_duration ?? 0.18));
         const localT = Math.min(1, (currentTime - wordInfo.start) / popDur);
         const ease = 1 - Math.pow(1 - localT, 3);
-        const popScale = 0.82 + 0.18 * ease;
+        const popScale = (0.82 + 0.18 * ease) * (s.highlight_scale_enabled ? Math.max(0.5, Math.min(3.0, (Number(s.highlight_scale) || 125) / 100)) : 1.0);
         const fadeOut = progress > 0.82 ? Math.max(0, 1 - (progress - 0.82) / 0.18) : 1;
 
         ctx.save();

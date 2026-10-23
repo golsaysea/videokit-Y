@@ -81,8 +81,54 @@ function normalizeNumbers(text) {
     return res;
 }
 
+const INLINE_MUSIC_TAG_REGEX = /(?:\[(?:verse|chorus|pre-?chorus|post-?chorus|bridge|intro|outro|hook|interlude|instrumental|solo|guitar\s*solo|piano\s*solo|drop|break|build|end|fade\s*out|spoken|rap|refrain|coda|主歌|副歌|前奏|间奏|尾奏|桥段|合唱|独唱|伴奏)[^\]]*\]|【(?:主歌|副歌|前奏|间奏|尾奏|桥段|合唱|独唱|伴奏)[^】]*】|\((?:verse|chorus|pre-?chorus|bridge|intro|outro|instrumental)[^)]*\))/gi;
+
+function cleanMusicLyricsText(text = '') {
+    if (!text || typeof text !== 'string') return '';
+    return text
+        .split(/\r?\n/)
+        .map(line => line.replace(INLINE_MUSIC_TAG_REGEX, '').replace(/[♪♫♬♩]+/g, '').trim())
+        .filter(Boolean)
+        .join('\n');
+}
+
+function hasMusicLyricsTags(text = '') {
+    if (!text || typeof text !== 'string') return false;
+    INLINE_MUSIC_TAG_REGEX.lastIndex = 0;
+    return INLINE_MUSIC_TAG_REGEX.test(text) || /[♪♫♬♩]/.test(text);
+}
+
+function buildEffectiveTranscriptionConfig(baseConfig = {}, preferredProviderRaw = 'auto', musicModeRaw = false) {
+    const preferred = String(preferredProviderRaw || 'auto').toLowerCase().trim();
+    const musicMode = musicModeRaw === true || musicModeRaw === 'true' || preferred === 'music_mv';
+    let order;
+    if (preferred === 'music_mv') {
+        order = ['groq', 'gladia', 'deepgram'];
+    } else if (preferred === 'groq') {
+        order = ['groq', 'gladia', 'deepgram'];
+    } else if (preferred === 'gladia') {
+        order = ['gladia', 'groq', 'deepgram'];
+    } else if (preferred === 'deepgram') {
+        order = ['deepgram', 'groq', 'gladia'];
+    } else if (musicMode) {
+        order = ['groq', 'gladia', 'deepgram'];
+    } else {
+        order = [...new Set([baseConfig.primary, baseConfig.fallback, baseConfig.rescue, 'deepgram', 'groq', 'gladia'].filter(p => ['deepgram', 'groq', 'gladia'].includes(p)))];
+    }
+    return {
+        ...baseConfig,
+        primary: order[0] || 'groq',
+        fallback: order[1] || 'gladia',
+        rescue: order[2] || 'deepgram',
+        musicMode,
+        preferredProvider: preferred,
+    };
+}
+
 function normalizeForStrictTextMatch(text) {
     let clean = String(text || '')
+        .replace(INLINE_MUSIC_TAG_REGEX, ' ')
+        .replace(/[♪♫♬♩]+/g, ' ')
         .toLowerCase()
         .normalize('NFKC');
     clean = normalizeNumbers(clean);
@@ -2072,10 +2118,15 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                 }
                 throw new Error(`无法读取音频文件（${audioPath}）: ${error.message}`);
             }
-            const transcriptionConfig = settingsService.loadTranscriptionProviders();
-            if (!Object.values(transcriptionConfig.providers || {}).some(provider => provider.keys?.length)) {
-                throw new Error('未配置 Deepgram 或 Groq API Key');
+            const baseTranscriptionConfig = settingsService.loadTranscriptionProviders();
+            if (!Object.values(baseTranscriptionConfig.providers || {}).some(provider => provider.keys?.length)) {
+                throw new Error('未配置 Deepgram、Groq 或 Gladia API Key');
             }
+            const preferredProvider = String(data.preferred_provider || 'auto').toLowerCase().trim();
+            const musicMode = data.music_mode === true || data.music_mode === 'true'
+                || preferredProvider === 'music_mv'
+                || hasMusicLyricsTags(data.source_text || '');
+            const transcriptionConfig = buildEffectiveTranscriptionConfig(baseTranscriptionConfig, preferredProvider, musicMode);
 
             // 确定语言
             const langInput = data.language || 'english';
@@ -2091,13 +2142,14 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             const logDir = settingsService.getSecureTmpDir('videokit_log');
             fs.mkdirSync(logDir, { recursive: true });
             const audioCacheKey = buildAudioCacheKey(audioPath);
-            // 字幕对齐缓存按首选平台隔离；切换平台后不应静默复用旧平台转录。
+            // 字幕对齐缓存按首选平台与音乐MV模式隔离；切换模型后不应静默复用旧平台转录。
             const cacheProvider = String(transcriptionConfig.primary || 'auto').toLowerCase().replace(/[^a-z0-9_-]/g, '');
-            const cacheVersion = `v2_${cacheProvider || 'auto'}`;
+            const cacheModeSuffix = musicMode ? '_mv' : '';
+            const cacheVersion = `v2_${cacheProvider || 'auto'}${cacheModeSuffix}`;
             const jsonPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_${cacheVersion}_audio_text_whittime.json`);
             const txtPath = path.join(logDir, `${currentLanguage}_${fileName}_${audioCacheKey}_${cacheVersion}_finally.txt`);
             const forceTranscribe = data.force === true || data.force === 'true';
-            console.log(`[字幕对齐] 音频: ${audioPath}`);
+            console.log(`[字幕对齐] 音频: ${audioPath} | 模型策略: ${preferredProvider} (首选: ${transcriptionConfig.primary}${musicMode ? ', 🎵音乐MV增强' : ''})`);
             console.log(`[字幕对齐] 转录缓存: ${path.basename(jsonPath)}`);
             console.log(`[字幕对齐] 强制重新转录: ${forceTranscribe ? '是' : '否'}`);
 
@@ -2136,9 +2188,13 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             } else if (forceTranscribe || !fs.existsSync(jsonPath)) {
                 console.log(`[字幕对齐] 🎙️ 正在调用云端语音识别${forceTranscribe ? '（强制重新转录）' : ''}...`);
                 const cutLength = parseFloat(data.audio_cut_length || 5.0);
+                const rawHintText = cleanMusicLyricsText(data.source_text || data.prompt_hint || '');
+                const promptHint = rawHintText ? rawHintText.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
                 const result = await cloudTranscription.transcribeWithFallback(
                     audioPath, transcriptionConfig, langEnName, jsonPath, txtPath, cutLength,
-                    (message) => progressSender?.({ stage: 'transcribe', message })
+                    (message) => progressSender?.({ stage: 'transcribe', message }),
+                    null,
+                    { musicMode, promptHint }
                 );
                 generationSubtitleArray = result.wordTimeInfo;
                 generationSubtitleText = result.fullText;
@@ -2155,6 +2211,12 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             const requireAutoSourceMatch = data.require_auto_source_match === true || data.require_auto_source_match === 'true';
             let selectedSourceText = data.source_text || '';
             let selectedTranslateText = data.translate_text || '';
+            if (musicMode || hasMusicLyricsTags(selectedSourceText)) {
+                selectedSourceText = cleanMusicLyricsText(selectedSourceText);
+                if (selectedTranslateText && hasMusicLyricsTags(selectedTranslateText)) {
+                    selectedTranslateText = cleanMusicLyricsText(selectedTranslateText);
+                }
+            }
             const ignoreMismatch = data.ignore_mismatch === true || data.ignore_mismatch === 'true';
             let autoMatchedSource = null;
 
@@ -2180,7 +2242,9 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                             message: '自动匹配文案失败: 识别文本和候选文案没有完全一致项（已忽略大小写、标点、空格和换行）'
                         }));
                     }
-                    selectedSourceText = autoMatchedSource.sourceText;
+                    selectedSourceText = (musicMode || hasMusicLyricsTags(autoMatchedSource.sourceText))
+                        ? cleanMusicLyricsText(autoMatchedSource.sourceText)
+                        : autoMatchedSource.sourceText;
                     selectedTranslateText = autoMatchedSource.translateText || selectedTranslateText;
                     console.log(`[字幕对齐] 自动匹配文案成功: 候选 #${autoMatchedSource.index + 1}`);
                 } else {
@@ -2195,18 +2259,23 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                     }
                     const maxLen = Math.max(cleanGen.length, cleanSource.length);
                     const similarity = maxLen === 0 ? 1 : equalLen / maxLen;
+                    const minSimThreshold = musicMode ? 0.45 : 0.85;
 
-                    throw new Error(JSON.stringify({
-                        code: 'TEXT_MISMATCH',
-                        similarity: Math.round(similarity * 100),
-                        recognized_text: buildRecognizedText(generationSubtitleArray, generationSubtitleText)
-                    }));
+                    if (similarity < minSimThreshold) {
+                        throw new Error(JSON.stringify({
+                            code: 'TEXT_MISMATCH',
+                            similarity: Math.round(similarity * 100),
+                            recognized_text: buildRecognizedText(generationSubtitleArray, generationSubtitleText)
+                        }));
+                    }
                 }
             } else {
                 if (!ownTextMatches && sourceTextCandidates.length > 0) {
                     autoMatchedSource = pickExactSourceTextCandidate(generationSubtitleText, sourceTextCandidates);
                     if (autoMatchedSource) {
-                        selectedSourceText = autoMatchedSource.sourceText;
+                        selectedSourceText = (musicMode || hasMusicLyricsTags(autoMatchedSource.sourceText))
+                            ? cleanMusicLyricsText(autoMatchedSource.sourceText)
+                            : autoMatchedSource.sourceText;
                         selectedTranslateText = autoMatchedSource.translateText || selectedTranslateText;
                         console.log(`[字幕对齐] 自动匹配文案成功: 候选 #${autoMatchedSource.index + 1}`);
                     }
@@ -2259,7 +2328,7 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                     sourceTextWithInfo, translateTextDict,
                     genMergeSrt, sourceUpOrder, exportFcpxml, seamlessFcpxml,
                     null, null,
-                    data.ignore_mismatch === true
+                    ignoreMismatch || musicMode
                 );
 
                 if (typeof alignResult === 'string' && !alignResult.startsWith('生成了字幕文件')) {
@@ -2734,10 +2803,21 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
             fs.writeFileSync(tempPath, Buffer.from(fileBuffer));
 
             try {
-                const transcriptionConfig = settingsService.loadTranscriptionProviders();
+                const baseTranscriptionConfig = settingsService.loadTranscriptionProviders();
 
                 let sourceText = formData.source_text || '';
                 let translateText = formData.translate_text || '';
+                const preferredProvider = String(formData.preferred_provider || 'auto').toLowerCase().trim();
+                const musicMode = formData.music_mode === true || formData.music_mode === 'true'
+                    || preferredProvider === 'music_mv'
+                    || hasMusicLyricsTags(sourceText);
+                const transcriptionConfig = buildEffectiveTranscriptionConfig(baseTranscriptionConfig, preferredProvider, musicMode);
+                if (musicMode || hasMusicLyricsTags(sourceText)) {
+                    sourceText = cleanMusicLyricsText(sourceText);
+                    if (translateText && hasMusicLyricsTags(translateText)) {
+                        translateText = cleanMusicLyricsText(translateText);
+                    }
+                }
                 const langInput = formData.language || 'en';
 
                 // 确定语言
@@ -2755,10 +2835,12 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
                 const jsonPath = path.join(logDir, `${currentLanguage}_${baseName}_${audioCacheKey}_audio_text_whittime.json`);
                 const txtPath = path.join(logDir, `${currentLanguage}_${baseName}_${audioCacheKey}_finally.txt`);
 
-                // 云端转录：按设置的主用/备用服务自动切换。
+                // 云端转录：按设置或所选模型切换，并在音乐MV模式下注入歌词提示与人声滤波。
                 const cutLength = parseFloat(formData.audio_cut_length || 5.0);
+                const promptHint = sourceText ? sourceText.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
                 const result = await cloudTranscription.transcribeWithFallback(
-                    tempPath, transcriptionConfig, langEnName, jsonPath, txtPath, cutLength
+                    tempPath, transcriptionConfig, langEnName, jsonPath, txtPath, cutLength,
+                    null, null, { musicMode, promptHint }
                 );
 
                 const sourceTextCandidates = parseSourceTextCandidates(formData.source_text_candidates);
@@ -2828,7 +2910,9 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
                     currentLanguage, outputDir, baseName,
                     result.wordTimeInfo, result.fullText,
                     sourceTextWithInfo, translateTextDict,
-                    genMergeSrt, sourceUpOrder, exportFcpxml, seamlessFcpxml
+                    genMergeSrt, sourceUpOrder, exportFcpxml, seamlessFcpxml,
+                    null, null,
+                    musicMode
                 );
 
                 if (typeof alignResult === 'string' && !alignResult.startsWith('生成了字幕文件')) {

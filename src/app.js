@@ -2787,6 +2787,11 @@ async function loadSettings(autoLoadVoices = false) {
         const data = await response.json();
         const primary = document.getElementById('transcription-primary');
         if (primary && data.primary) primary.value = data.primary;
+        const savedAlignModel = localStorage.getItem('rbt_align_model') || 'music_mv';
+        const subAlignModelEl = document.getElementById('subtitle-align-model');
+        if (subAlignModelEl) subAlignModelEl.value = savedAlignModel;
+        const reelsAlignModelEl = document.getElementById('reels-align-model');
+        if (reelsAlignModelEl) reelsAlignModelEl.value = savedAlignModel;
         const concurrencyEl = document.getElementById('transcription-concurrency');
         if (concurrencyEl && data.concurrency) concurrencyEl.value = String(data.concurrency);
         for (const name of ['deepgram', 'groq', 'gladia']) {
@@ -3671,8 +3676,11 @@ async function startBatchGeneration() {
         if (sourceTextCandidates.length > 1) {
             formData.append('source_text_candidates', JSON.stringify(sourceTextCandidates));
         }
+        const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
         formData.append('language', language);
         formData.append('audio_cut_length', cutLength);
+        formData.append('preferred_provider', alignModel);
+        formData.append('music_mode', alignModel === 'music_mv' ? 'true' : 'false');
         formData.append('gen_merge_srt', mergeSrt);
         formData.append('source_up_order', sourceUp);
         formData.append('export_fcpxml', exportFcpxml);
@@ -3956,8 +3964,11 @@ async function retrySingleSubtitleTask(index) {
     if (sourceTextCandidates.length > 1) {
         formData.append('source_text_candidates', JSON.stringify(sourceTextCandidates));
     }
+    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
     formData.append('language', language);
     formData.append('audio_cut_length', cutLength);
+    formData.append('preferred_provider', alignModel);
+    formData.append('music_mode', alignModel === 'music_mv' ? 'true' : 'false');
     formData.append('gen_merge_srt', mergeSrt);
     formData.append('source_up_order', sourceUp);
     formData.append('export_fcpxml', exportFcpxml);
@@ -4071,6 +4082,7 @@ async function startGeneration() {
     const exportFcpxml = document.getElementById('export-fcpxml').checked;
     const sourceUp = document.getElementById('source-up').checked;
     const mergeSrt = document.getElementById('merge-srt').checked;
+    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
 
     const requestData = {
         audio_path: audioPath,
@@ -4078,6 +4090,8 @@ async function startGeneration() {
         translate_text: translateText,
         language: language,
         audio_cut_length: cutLength,
+        preferred_provider: alignModel,
+        music_mode: alignModel === 'music_mv',
         gen_merge_srt: mergeSrt,
         source_up_order: sourceUp,
         export_fcpxml: exportFcpxml,

@@ -45,6 +45,11 @@ const DEFAULT_SUBTITLE_STYLE = {
     high_gradient_direction: 'horizontal',
     high_gradient_scope: 'word',
     highlight_enabled: true,    // 朗读高亮开关
+    highlight_scale_enabled: false, // 朗读当前词放大开关
+    highlight_scale: 125,       // 朗读当前词放大比例 (%)
+    hide_until_spoken: false,   // 未读文字透明开关（读到才出字）
+    unread_opacity: 0,          // 未读文字不透明度 (0~100%)
+    text_align: 'center',       // 字幕对齐方式: center | left | right | smart_left_center
     color_bg: '#000000',
     color_shadow: '#000000',
     opacity_bg: 150,

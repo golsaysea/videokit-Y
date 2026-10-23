@@ -647,7 +647,7 @@ class ReelsOverlayPanel {
                         <label>字符间距</label><input type="number" id="rop-scroll-letterspacing" class="rop-input" min="-20" max="100" value="0">
                         <label>对齐</label>
                         <select id="rop-scroll-align" class="rop-select">
-                            <option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option>
+                            <option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option><option value="smart_left_center">✨ 智能对齐 (主左+重点居中·禁右)</option>
                         </select>
                         <label>行距</label><input type="number" id="rop-scroll-linespacing" class="rop-input" min="0" max="50" step="1" value="6">
                         <label>文本宽度</label>
@@ -703,6 +703,12 @@ class ReelsOverlayPanel {
                             <option value="sentence">逐句出现 (按句子)</option>
                         </select>
 
+                        <label style="font-weight:600;color:#93c5fd;" title="开启后未读到的文字变为透明或半透明（读到才出字）；关闭后全文始终正常显示，读到时触发高亮/放大">未读文字透明</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-hide-unread" checked>
+                            <span style="font-size:11px;color:var(--text-muted);">开启=未读透明(读到才出字) · 关闭=全文直接显示</span>
+                        </div>
+
                         <label title="0%=未读的字完全透明（像写出来一样）；100%=未读的字完全不透明（正常显示全文，读到哪个词触发效果）">未读字透明度%</label>
                         <div class="rop-slider-combo">
                             <input type="range" id="rop-scroll-tw-unrevealed-opacity" class="rop-range" min="0" max="100" step="5" value="0">
@@ -720,8 +726,16 @@ class ReelsOverlayPanel {
                             <input type="checkbox" id="rop-scroll-tw-active-highlight" checked title="读到该字/词时变色高亮">
                             <input type="color" id="rop-scroll-tw-active-color" class="rop-color" value="#FFD700" style="flex:1;">
                         </div>
-                        <label title="100%=不放大；>100% 时读到该词会放大强调">当前词缩放%</label>
-                        <input type="number" id="rop-scroll-tw-active-scale" class="rop-input" min="80" max="200" step="5" value="100">
+                        <label title="开启后读到当前字/词时自动放大，增强视觉冲击力">当前词放大</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-active-scale-enabled" title="开启当前朗读词放大效果">
+                            <span style="font-size:11px;color:var(--text-muted);">开启读到放大冲击效果</span>
+                        </div>
+                        <label title="100%=不放大；>100% 时读到该词会放大强调">放大比例%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-active-scale" class="rop-range" min="80" max="220" step="5" value="125">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-active-scale" min="80" max="220" step="5" value="125">
+                        </div>
 
                         <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">跟随笔尖 / 光标</div>
                         <label>显示跟随笔尖</label>
@@ -1919,8 +1933,9 @@ class ReelsOverlayPanel {
             'rop-scroll-bg-blur-enabled', 'rop-scroll-bg-blur-amount',
             // 滚动字幕出字效果
             'rop-scroll-tw-enabled', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
-            'rop-scroll-tw-unrevealed-opacity',
-            'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color', 'rop-scroll-tw-active-scale',
+            'rop-scroll-tw-hide-unread', 'rop-scroll-tw-unrevealed-opacity',
+            'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color',
+            'rop-scroll-tw-active-scale-enabled', 'rop-scroll-tw-active-scale',
             'rop-scroll-tw-cursor-enabled', 'rop-scroll-tw-cursor-kind', 'rop-scroll-tw-cursor-image',
             'rop-scroll-tw-cursor-anchor-x', 'rop-scroll-tw-cursor-anchor-y',
             'rop-scroll-tw-cursor-scale', 'rop-scroll-tw-cursor-offset-x', 'rop-scroll-tw-cursor-offset-y',
@@ -1955,12 +1970,50 @@ class ReelsOverlayPanel {
                 this._syncToOverlay();
             });
         });
+        const scrollTwHideUnreadEl = this.container.querySelector('#rop-scroll-tw-hide-unread');
+        if (scrollTwHideUnreadEl) {
+            scrollTwHideUnreadEl.addEventListener('change', () => {
+                this._val('rop-scroll-tw-enabled', true);
+                if (scrollTwHideUnreadEl.checked) {
+                    const curOp = Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0);
+                    if (curOp >= 100) {
+                        this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    }
+                } else {
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                }
+                this._syncToOverlay();
+            });
+        }
+        const scrollTwUnreadOpEl = this.container.querySelector('#rop-scroll-tw-unrevealed-opacity');
+        if (scrollTwUnreadOpEl) {
+            const syncHideChk = () => {
+                const op = Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0);
+                this._val('rop-scroll-tw-hide-unread', op < 100);
+            };
+            scrollTwUnreadOpEl.addEventListener('input', syncHideChk);
+            scrollTwUnreadOpEl.addEventListener('change', syncHideChk);
+        }
+        const scrollTwActiveScaleChkEl = this.container.querySelector('#rop-scroll-tw-active-scale-enabled');
+        if (scrollTwActiveScaleChkEl) {
+            scrollTwActiveScaleChkEl.addEventListener('change', () => {
+                if (scrollTwActiveScaleChkEl.checked) {
+                    this._val('rop-scroll-tw-enabled', true);
+                    const curScale = Number(this._get('rop-scroll-tw-active-scale') || 100);
+                    if (curScale <= 100) {
+                        this._val('rop-scroll-tw-active-scale', 125);
+                    }
+                }
+                this._syncToOverlay();
+            });
+        }
         this.container.querySelectorAll('.rop-scroll-tw-opacity-preset').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const op = parseInt(btn.dataset.opacity ?? '0', 10) || 0;
                 this._val('rop-scroll-tw-enabled', true);
                 this._val('rop-scroll-tw-unrevealed-opacity', op);
+                this._val('rop-scroll-tw-hide-unread', op < 100);
                 this._syncToOverlay();
             });
         });
@@ -1973,6 +2026,7 @@ class ReelsOverlayPanel {
                 if (preset === 'quill') {
                     this._val('rop-scroll-tw-reveal-type', 'char');
                     this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    this._val('rop-scroll-tw-hide-unread', true);
                     this._val('rop-scroll-tw-cursor-enabled', true);
                     this._val('rop-scroll-tw-cursor-kind', 'quill');
                     this._val('rop-scroll-tw-cursor-scale', 1.15);
@@ -1980,6 +2034,7 @@ class ReelsOverlayPanel {
                 } else if (preset === 'rose') {
                     this._val('rop-scroll-tw-reveal-type', 'char');
                     this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    this._val('rop-scroll-tw-hide-unread', true);
                     this._val('rop-scroll-tw-cursor-enabled', true);
                     this._val('rop-scroll-tw-cursor-kind', 'rose');
                     this._val('rop-scroll-tw-cursor-scale', 1.15);
@@ -1996,9 +2051,11 @@ class ReelsOverlayPanel {
                 } else if (preset === 'readfollow') {
                     this._val('rop-scroll-tw-reveal-type', 'word');
                     this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-hide-unread', false);
                     this._val('rop-scroll-tw-active-highlight', true);
                     this._val('rop-scroll-tw-active-color', '#FFD700');
-                    this._val('rop-scroll-tw-active-scale', 110);
+                    this._val('rop-scroll-tw-active-scale-enabled', true);
+                    this._val('rop-scroll-tw-active-scale', 120);
                 }
                 this._syncScrollTypewriterCursorImageUI();
                 this._syncToOverlay();
@@ -4205,10 +4262,20 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-enabled', ov.scroll_typewriter_enabled === true);
             this._val('rop-scroll-tw-speech-sync', ov.scroll_tw_speech_sync !== false);
             this._val('rop-scroll-tw-reveal-type', ov.scroll_tw_reveal_type || 'char');
-            this._val('rop-scroll-tw-unrevealed-opacity', ov.scroll_tw_unrevealed_opacity ?? 0);
+            const scrollUnreadOp = ov.scroll_tw_unrevealed_opacity ?? 0;
+            const scrollHideUnread = ov.scroll_tw_hide_unread !== undefined
+                ? Boolean(ov.scroll_tw_hide_unread)
+                : (Number(scrollUnreadOp) < 100);
+            this._val('rop-scroll-tw-hide-unread', scrollHideUnread);
+            this._val('rop-scroll-tw-unrevealed-opacity', scrollHideUnread ? scrollUnreadOp : 100);
             this._val('rop-scroll-tw-active-highlight', ov.scroll_tw_active_highlight !== false);
             this._val('rop-scroll-tw-active-color', ov.scroll_tw_active_color || '#FFD700');
-            this._val('rop-scroll-tw-active-scale', ov.scroll_tw_active_scale ?? 100);
+            const scrollActiveScaleVal = Number(ov.scroll_tw_active_scale ?? 125);
+            const scrollActiveScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
+                ? Boolean(ov.scroll_tw_active_scale_enabled)
+                : (Number(ov.scroll_tw_active_scale || 100) !== 100);
+            this._val('rop-scroll-tw-active-scale-enabled', scrollActiveScaleEnabled);
+            this._val('rop-scroll-tw-active-scale', scrollActiveScaleVal === 100 && !scrollActiveScaleEnabled ? 125 : scrollActiveScaleVal);
             this._val('rop-scroll-tw-cursor-enabled', ov.scroll_tw_cursor_enabled !== false);
             this._val('rop-scroll-tw-cursor-kind', ov.scroll_tw_cursor_kind || 'quill');
             this._val('rop-scroll-tw-cursor-image', ov.scroll_tw_cursor_image || '');
@@ -4780,12 +4847,18 @@ class ReelsOverlayPanel {
             ov.bg_blur_amount = this._get('rop-scroll-bg-blur-amount');
             // 出字效果（朗诵写出/打字机）
             ov.scroll_typewriter_enabled = !!this._get('rop-scroll-tw-enabled');
-            ov.scroll_tw_unrevealed_opacity = Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0);
+            ov.scroll_tw_hide_unread = this._get('rop-scroll-tw-hide-unread') !== false;
+            ov.scroll_tw_unrevealed_opacity = ov.scroll_tw_hide_unread
+                ? Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0)
+                : 100;
             ov.scroll_tw_speech_sync = !!this._get('rop-scroll-tw-speech-sync');
             ov.scroll_tw_reveal_type = this._get('rop-scroll-tw-reveal-type') || 'char';
             ov.scroll_tw_active_highlight = !!this._get('rop-scroll-tw-active-highlight');
             ov.scroll_tw_active_color = this._get('rop-scroll-tw-active-color') || '#FFD700';
-            ov.scroll_tw_active_scale = Number(this._get('rop-scroll-tw-active-scale') || 100);
+            ov.scroll_tw_active_scale_enabled = !!this._get('rop-scroll-tw-active-scale-enabled');
+            ov.scroll_tw_active_scale = ov.scroll_tw_active_scale_enabled
+                ? Number(this._get('rop-scroll-tw-active-scale') || 125)
+                : 100;
             ov.scroll_tw_cursor_enabled = !!this._get('rop-scroll-tw-cursor-enabled');
             ov.scroll_tw_cursor_kind = this._get('rop-scroll-tw-cursor-kind') || 'quill';
             ov.scroll_tw_cursor_image = this._get('rop-scroll-tw-cursor-image') || ov.scroll_tw_cursor_image || '';

@@ -1457,6 +1457,14 @@ function _renderBatchTable() {
                         <button class="rbt-btn" id="rbt-ai-settings-btn" style="padding:2px 10px;font-size:11px;background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);color:#a78bfa;border-radius:4px;cursor:pointer;" title="配置 Gemini API Key 和自定义 Prompt 指令">⚙️ AI设置</button>
                         <span class="rbt-batch-rowbreak"></span>
                         <span class="rbt-batch-subgroup">对齐设定</span>
+                        <select id="rbt-align-model" class="rbt-select" title="选择听译/字幕对齐模型（标注各模型适用场景与优点；做唱歌MV有歌词强烈推荐【🎸 音乐MV专享】）" style="width:auto;max-width:320px;height:24px;font-size:11px;padding:0 6px;background:rgba(168,85,247,0.16);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-weight:600;">
+                            <option value="music_mv" ${(localStorage.getItem('rbt_align_model') || 'music_mv') === 'music_mv' ? 'selected' : ''}>🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
+                            <option value="groq" ${localStorage.getItem('rbt_align_model') === 'groq' ? 'selected' : ''}>🎵 Groq · Whisper-V3-Turbo (抗伴奏强 · 极速 · 支持歌词引导)</option>
+                            <option value="gladia" ${localStorage.getItem('rbt_align_model') === 'gladia' ? 'selected' : ''}>🎤 Gladia · Whisper增强版 (歌曲/多语种稳健 · 时间戳高精)</option>
+                            <option value="deepgram" ${localStorage.getItem('rbt_align_model') === 'deepgram' ? 'selected' : ''}>🎙️ Deepgram · Nova-3 (纯人声口播极速50并发 · 伴奏易吞词)</option>
+                            <option value="auto" ${localStorage.getItem('rbt_align_model') === 'auto' ? 'selected' : ''}>⚙️ 跟随总设置默认平台</option>
+                        </select>
+                        <button class="rbt-btn" id="rbt-align-model-guide-btn" style="padding:2px 7px;font-size:11px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.35);color:#d8b4fe;" title="查看各识别模型优缺点对比与唱歌MV最佳配置说明">💡 模型优点</button>
                         <select id="rbt-align-source" class="rbt-select" style="width:auto;height:24px;font-size:11px;padding:0 4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:#ccc;">
                             <option value="video">背景视频对齐</option>
                             <option value="audio">人声-音频文件对齐</option>
@@ -4595,11 +4603,24 @@ function _bindBatchTableEvents() {
         }
     });
 
+    container.querySelector('#rbt-align-model')?.addEventListener('change', (e) => {
+        const val = e.target.value || 'music_mv';
+        localStorage.setItem('rbt_align_model', val);
+        const subModelEl = document.getElementById('subtitle-align-model');
+        if (subModelEl) subModelEl.value = val;
+        const reelsModelEl = document.getElementById('reels-align-model');
+        if (reelsModelEl) reelsModelEl.value = val;
+    });
+    container.querySelector('#rbt-align-model-guide-btn')?.addEventListener('click', () => {
+        if (typeof window.showAlignModelGuideModal === 'function') {
+            window.showAlignModelGuideModal();
+        }
+    });
     container.querySelector('#rbt-align-all-btn')?.addEventListener('click', () => {
-        _batchAlignWithMultipleKeys();
+        _batchAlignWithMultipleKeys({ forceParallel: false });
     });
     container.querySelector('#rbt-align-multikey-btn')?.addEventListener('click', () => {
-        _batchAlignWithMultipleKeys();
+        _batchAlignWithMultipleKeys({ forceParallel: true });
     });
     container.querySelector('#rbt-view-records-btn')?.addEventListener('click', () => {
         if (typeof window.showTranscriptionRecordsModal === 'function') {
@@ -14610,6 +14631,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
     if (!state) return;
 
     const alignSource = alignOptions.alignSource || document.getElementById('rbt-align-source')?.value || 'video';
+    const alignModel = alignOptions.alignModel || document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const isMusicMode = alignModel === 'music_mv';
     const forceRealign = alignOptions.forceRealign ?? (legacyForce || (document.getElementById('rbt-force-realign')?.checked || false));
     const forceTranscribe = alignOptions.forceTranscribe ?? (document.getElementById('rbt-force-transcribe')?.checked || false);
     const allowBlind = document.getElementById('rbt-allow-blind')?.checked || false;
@@ -14835,18 +14858,21 @@ async function _batchAlignAllTasks(overrideForce = false) {
                     const modeLabel = triedOwnTextFirst ? '当前行文案' : (useAutoCandidates ? `候选池 ${sourceTextCandidates.length} 条` : '直接对齐');
                     progressEl.textContent = `🔗 对齐 ${i + 1}/${tasksToAlign.length}: ${taskName} · ${modeLabel}${isRealignRedo ? (forceTranscribe ? ' (强制重新转录)' : ' (重新对齐)') : ''}`;
                 }
-                console.log(`[BatchAlign] 请求字幕生成: task=${taskName}, force=${forceThisRequest ? 'true' : 'false'}, forceTranscribe=${forceTranscribe ? 'true' : 'false'}, audio=${audioPath}`);
+                console.log(`[BatchAlign] 请求字幕生成: task=${taskName}, model=${alignModel}, force=${forceThisRequest ? 'true' : 'false'}, forceTranscribe=${forceTranscribe ? 'true' : 'false'}, audio=${audioPath}`);
                 resp = await apiFetch(`${API_BASE}/subtitle/generate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         audio_path: audioPath,
                         source_text: sourceText,
+                        prompt_hint: (!strictRefind && ownText) ? ownText : undefined,
                         source_text_candidates: useAutoCandidates ? sourceTextCandidates : undefined,
                         require_auto_source_match: requireAutoSourceMatch,
                         language: language,
                         audio_cut_length: 5.0,
                         output_dir: audioDir,
+                        preferred_provider: alignModel,
+                        music_mode: isMusicMode,
                         // 多 Key 并行时，当前 worker 会把不同 Key 放在首位；后端仍可在失败时轮换备用 Key。
                         gladia_keys: Array.isArray(alignOptions.gladiaKeys) ? alignOptions.gladiaKeys : undefined,
                         force: forceThisRequest,  // 只有“强制重新转录”才删除识别缓存；重试复用缓存
@@ -15171,6 +15197,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                     language: language,
                                     audio_cut_length: 5.0,
                                     output_dir: audioDir,
+                                    preferred_provider: alignModel,
+                                    music_mode: isMusicMode,
                                     force: false,
                                     ignore_mismatch: true
                                 }),
@@ -15227,6 +15255,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 language: language,
                                 audio_cut_length: 5.0,
                                 output_dir: audioDir,
+                                preferred_provider: alignModel,
+                                music_mode: isMusicMode,
                                 force: false,
                                 ignore_mismatch: true
                             }),
@@ -15255,6 +15285,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 language: language,
                                 audio_cut_length: 5.0,
                                 output_dir: audioDir,
+                                preferred_provider: alignModel,
+                                music_mode: isMusicMode,
                                 force: false,
                                 ignore_mismatch: true
                             }),
@@ -15294,6 +15326,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 language: language,
                                 audio_cut_length: 5.0,
                                 output_dir: audioDir,
+                                preferred_provider: alignModel,
+                                music_mode: isMusicMode,
                                 force: false,
                                 ignore_mismatch: true
                             }),
@@ -15316,8 +15350,8 @@ async function _batchAlignAllTasks(overrideForce = false) {
             }
 
             // 统计转录来源
-            if (data.transcription_source === 'gladia_fresh') freshCount++;
-            else if (data.transcription_source === 'gladia_cache') cacheCount++;
+            if (String(data.transcription_source || '').endsWith('_fresh')) freshCount++;
+            else if (String(data.transcription_source || '').endsWith('_cache')) cacheCount++;
             if (data.timing_calibration) {
                 task.timingCalibration = data.timing_calibration;
                 if (data.timing_calibration.applied) calibrationCount++;
@@ -15484,19 +15518,121 @@ async function _batchAlignAllTasks(overrideForce = false) {
     }
 }
 
+/** 展示听译/字幕识别模型优缺点与场景推荐弹窗 */
+window.showAlignModelGuideModal = function showAlignModelGuideModal() {
+    let existing = document.getElementById('rbt-align-model-guide-modal');
+    if (existing) existing.remove();
+    const currentModel = document.getElementById('rbt-align-model')?.value
+        || document.getElementById('subtitle-align-model')?.value
+        || localStorage.getItem('rbt_align_model')
+        || 'music_mv';
+
+    const applyModelSelection = (val) => {
+        localStorage.setItem('rbt_align_model', val);
+        const rbtEl = document.getElementById('rbt-align-model');
+        if (rbtEl) rbtEl.value = val;
+        const subEl = document.getElementById('subtitle-align-model');
+        if (subEl) subEl.value = val;
+        const reelsEl = document.getElementById('reels-align-model');
+        if (reelsEl) reelsEl.value = val;
+        if (typeof showToast === 'function') {
+            showToast(`已切换听译识别模型为: ${val}`, 'success');
+        }
+        modal.remove();
+    };
+
+    const modal = document.createElement('div');
+    modal.id = 'rbt-align-model-guide-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.78);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
+    modal.innerHTML = `
+        <div style="width:min(920px,95vw);max-height:88vh;background:#181822;color:#f4f4f5;border:1px solid rgba(168,85,247,0.35);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,0.65);display:flex;flex-direction:column;overflow:hidden;">
+            <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(90deg,rgba(168,85,247,0.16),rgba(59,130,246,0.08));">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:22px;">🎵</span>
+                    <div>
+                        <div style="font-size:15px;font-weight:700;color:#fff;">听译 / 字幕对齐 AI 模型优缺点与场景指南</div>
+                        <div style="font-size:12px;color:#cbd5e1;margin-top:2px;">针对「唱歌 MV（有伴奏+有歌词文案）」与「纯人声口播」智能优选</div>
+                    </div>
+                </div>
+                <button data-close style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#ddd;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;">✖ 关闭</button>
+            </div>
+            <div style="padding:18px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
+                <div style="padding:12px 14px;border-radius:10px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.4);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                        <div style="font-weight:700;font-size:14px;color:#e9d5ff;">🎸 1. 音乐MV专享模式（强烈推荐：唱歌MV / Suno音乐 / 带伴奏有歌词）</div>
+                        <button data-pick="music_mv" style="background:linear-gradient(135deg,#7c5cff,#a855f7);color:#fff;border:none;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">${currentModel === 'music_mv' ? '✅ 当前已选' : '选用此模式'}</button>
+                    </div>
+                    <div style="font-size:12px;color:#ddd;line-height:1.6;margin-top:6px;">
+                        • <b>核心优点</b>：专为<b>带伴奏唱歌视频 + 已有歌词文案</b>打造！底层自动优先调用 <b>Groq (Whisper-Large-V3-Turbo) → Gladia (Whisper)</b>（避开会把歌声当背景噪音过滤的 Deepgram）。<br>
+                        • <b>三大专属黑科技</b>：① <b>歌词 Prompt 注入</b>（让 Whisper 拿着您的歌词去听歌，不再把尾音/连音听错）；② <b>FFmpeg 人声频段提纯</b>（自动滤除 160Hz 以下鼓点低音与 4.8kHz 以上乐器高频，仅用于识别，不影响成片音质）；③ <b>自动清理歌词标签</b>（自动剥离 <code>[Verse]</code>、<code>[Chorus]</code>、<code>【主歌】</code>、<code>【副歌】</code> 等结构词，防止字幕错位）。
+                    </div>
+                </div>
+
+                <div style="padding:12px 14px;border-radius:10px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.3);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                        <div style="font-weight:700;font-size:14px;color:#7dd3fc;">🎵 2. Groq · Whisper-Large-V3-Turbo（音乐/歌唱 & 通用极速）</div>
+                        <button data-pick="groq" style="background:rgba(56,189,248,0.2);color:#bae6fd;border:1px solid rgba(56,189,248,0.4);padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">${currentModel === 'groq' ? '✅ 当前已选' : '选用此模型'}</button>
+                    </div>
+                    <div style="font-size:12px;color:#ddd;line-height:1.6;margin-top:6px;">
+                        • <b>核心优点</b>：OpenAI Whisper V3 Turbo 架构，<b>抗背景音乐/伴奏干扰能力极强</b>，支持歌词 Prompt 引导，响应速度极快（1~3 秒），每天免费 2,000 次额度。<br>
+                        • <b>适用场景</b>：唱歌 MV、带 BGM 的口播、多语言混合视频（建议并发 3~5 路）。
+                    </div>
+                </div>
+
+                <div style="padding:12px 14px;border-radius:10px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.3);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                        <div style="font-weight:700;font-size:14px;color:#f9a8d4;">🎤 3. Gladia · Whisper 增强版（歌曲长音频 / 多语言高精度）</div>
+                        <button data-pick="gladia" style="background:rgba(236,72,153,0.2);color:#fbcfe8;border:1px solid rgba(236,72,153,0.4);padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">${currentModel === 'gladia' ? '✅ 当前已选' : '选用此模型'}</button>
+                    </div>
+                    <div style="font-size:12px;color:#ddd;line-height:1.6;margin-top:6px;">
+                        • <b>核心优点</b>：基于优化版 Whisper，对<b>歌曲旋律、长音频、小语种</b>识别非常稳健，逐词时间戳校准细腻；支持多 Key 轮询。<br>
+                        • <b>适用场景</b>：当 Groq 达到每分钟限流时的最佳歌曲替补，或需要精细多语种对齐的场景。
+                    </div>
+                </div>
+
+                <div style="padding:12px 14px;border-radius:10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                        <div style="font-weight:700;font-size:14px;color:#6ee7b7;">🎙️ 4. Deepgram · Nova-3（纯人声口播 / 解说 50 路高并发王牌）</div>
+                        <button data-pick="deepgram" style="background:rgba(16,185,129,0.2);color:#a7f3d0;border:1px solid rgba(16,185,129,0.4);padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">${currentModel === 'deepgram' ? '✅ 当前已选' : '选用此模型'}</button>
+                    </div>
+                    <div style="font-size:12px;color:#ddd;line-height:1.6;margin-top:6px;">
+                        • <b>核心优点</b>：纯人声语音识别速度最快（秒出）、支持 <b>20~50 路超高并发</b>、赠送 $200 永久额度。<br>
+                        • <b>注意缺点</b>：自带强力语音降噪（VAD），<b>遇到强烈音乐伴奏或拉长音唱歌时容易把歌声当背景音乐过滤掉（吞词/漏识别）</b>，因此做唱歌 MV 请勿选它，做纯人声配音/口播选它最快！
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.querySelector('[data-close]').onclick = () => modal.remove();
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelectorAll('[data-pick]').forEach(btn => {
+        btn.onclick = () => applyModelSelection(btn.getAttribute('data-pick'));
+    });
+    document.body.appendChild(modal);
+};
+
 /** 使用配置的云端转录并发数（如 Deepgram 20 并发，或多 Key）并行处理对齐任务 */
-async function _batchAlignWithMultipleKeys() {
+async function _batchAlignWithMultipleKeys(opts = {}) {
     _applyBatchTableChanges();
     const state = window._reelsState;
     if (!state?.tasks?.length) return;
 
+    const selectedModel = document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
     let concurrency = 1;
-    let providerName = 'deepgram';
+    let providerName = selectedModel === 'music_mv' ? 'groq' : (selectedModel === 'auto' ? 'deepgram' : selectedModel);
     try {
         const resp = await apiFetch(`${API_BASE}/settings/transcription-providers`);
         const conf = await resp.json();
-        providerName = conf.primary || 'deepgram';
-        concurrency = Number(conf.concurrency) || (providerName === 'deepgram' ? 20 : (providerName === 'groq' ? 5 : 1));
+        if (selectedModel === 'auto') {
+            providerName = conf.primary || 'deepgram';
+        }
+        const savedConc = Number(conf.concurrency) || 1;
+        if (opts?.forceParallel && savedConc <= 1) {
+            const gladiaKeyCount = Array.isArray(conf.providers?.gladia?.keys) ? conf.providers.gladia.keys.length : 1;
+            concurrency = providerName === 'deepgram' ? 15 : (providerName === 'groq' ? 3 : Math.max(2, gladiaKeyCount));
+        } else {
+            concurrency = savedConc;
+        }
         if (concurrency < 1) concurrency = 1;
     } catch (error) {
         console.warn('[BatchAlign] Failed to load transcription config for parallel alignment:', error);

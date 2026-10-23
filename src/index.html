@@ -736,6 +736,17 @@
           <div class="form-section">
             <h3 class="section-title">STEP 4: 参数设置</h3>
             <div class="params-grid">
+              <div class="param-row" style="flex-wrap:wrap;gap:10px;">
+                <label>听译/识别模型:</label>
+                <select id="subtitle-align-model" class="select" style="min-width:320px;max-width:100%;background:rgba(168,85,247,0.12);border-color:rgba(168,85,247,0.4);color:#e9d5ff;font-weight:600;" onchange="localStorage.setItem('rbt_align_model', this.value); var r=document.getElementById('rbt-align-model'); if(r)r.value=this.value;">
+                  <option value="music_mv" selected>🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
+                  <option value="groq">🎵 Groq · Whisper-V3-Turbo (抗伴奏强 · 极速 · 支持歌词引导)</option>
+                  <option value="gladia">🎤 Gladia · Whisper增强版 (歌曲/多语种稳健 · 时间戳高精)</option>
+                  <option value="deepgram">🎙️ Deepgram · Nova-3 (纯人声口播极速50并发 · 伴奏易吞词)</option>
+                  <option value="auto">⚙️ 跟随总设置默认平台</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-small" onclick="window.showAlignModelGuideModal?.()" style="font-size:12px;padding:5px 10px;background:rgba(168,85,247,0.14);border-color:rgba(168,85,247,0.35);color:#d8b4fe;">💡 模型优点说明</button>
+              </div>
               <div class="param-row">
                 <label>音频识别语言:</label>
                 <div style="position:relative;display:inline-block;" id="subtitle-lang-picker-wrap">
@@ -4884,6 +4895,13 @@
                     <div class="reels-dropdown-item" onclick="reelsResegment()">🧠 智能分段</div>
                     <div class="reels-dropdown-item" onclick="reelsMergeShort()">🔗 合并短句</div>
                     <div class="reels-dropdown-item" onclick="reelsExportSRT()">💾 导出SRT</div>
+                    <select id="reels-align-model" class="select" style="font-size:11px;width:calc(100% - 24px);margin:2px 12px;" onchange="localStorage.setItem('rbt_align_model', this.value); var r=document.getElementById('rbt-align-model'); if(r)r.value=this.value;">
+                      <option value="music_mv" selected>🎸 音乐MV专享 (Groq+歌词引导)</option>
+                      <option value="groq">🎵 Groq Whisper (抗伴奏·极速)</option>
+                      <option value="gladia">🎤 Gladia Whisper (歌曲稳健)</option>
+                      <option value="deepgram">🎙️ Deepgram Nova-3 (纯人声口播)</option>
+                      <option value="auto">⚙️ 跟随设置默认</option>
+                    </select>
                     <select id="reels-align-lang" class="select" style="font-size:11px;width:calc(100% - 24px);margin:2px 12px;display:none;">
                       <option value="英语">英语</option>
                       <option value="中文">中文</option>
@@ -5135,6 +5153,20 @@
                           style="width: 36px; height: 28px; border: none; cursor: pointer;"
                           onchange="if(!this._settingFromGradient){delete this.dataset.gradientValue;} if(typeof _syncSubtitleGradientSwatch==='function')_syncSubtitleGradientSwatch(this,document.getElementById('reels-color-high-gradient-btn')); reelsUpdatePreview()">
                         <button type="button" id="reels-color-high-gradient-btn" class="btn btn-secondary" style="font-size:11px; padding:2px 6px; height:28px; display:inline-flex; align-items:center; gap:2px;" title="高亮渐变色 (支持多节点自定义)">🌈</button>
+                        <label class="checkbox-label" style="margin:0;" title="开启后朗读到当前单词时自动放大，增强视觉冲击力"><input type="checkbox" id="reels-highlight-scale-enabled"
+                            onchange="var a=document.getElementById('reels-anim-highlight-scale-enabled'); if(a)a.checked=this.checked; reelsUpdatePreview()"><span>高亮放大:</span></label>
+                        <input type="range" id="reels-highlight-scale-range" min="100" max="220" step="5" value="125" style="width: 66px;"
+                          oninput="document.getElementById('reels-highlight-scale').value=this.value; reelsUpdatePreview()" title="当前朗读词放大比例 (%)">
+                        <input type="number" id="reels-highlight-scale" class="input input-small" min="100" max="220" step="5" value="125" style="width: 48px;"
+                          oninput="document.getElementById('reels-highlight-scale-range').value=this.value; reelsUpdatePreview()" title="当前朗读词放大比例 (%)">
+                        <span style="font-size: 11px; color: var(--text-secondary);">%</span>
+                        <label class="checkbox-label" style="margin:0;" title="开启后未读到的文字透明/半透明，读到时才显现（出字效果）"><input type="checkbox" id="reels-hide-until-spoken"
+                            onchange="var h=document.getElementById('reels-anim-hide-until-spoken'); if(h)h.checked=this.checked; reelsUpdatePreview()"><span>未读字透明:</span></label>
+                        <input type="range" id="reels-unread-opacity-range" min="0" max="100" step="5" value="0" style="width: 58px;"
+                          oninput="document.getElementById('reels-unread-opacity').value=this.value; reelsUpdatePreview()" title="未读文字不透明度 (0%=完全透明隐藏，30%=半透明底字)">
+                        <input type="number" id="reels-unread-opacity" class="input input-small" min="0" max="100" step="5" value="0" style="width: 44px;"
+                          oninput="document.getElementById('reels-unread-opacity-range').value=this.value; reelsUpdatePreview()" title="未读文字不透明度 (%)">
+                        <span style="font-size: 11px; color: var(--text-secondary);">%</span>
                       </div>
                           </div>
                         </div>
@@ -5796,6 +5828,15 @@
                       超长字幕自动断行
                     </label>
                     <div style="display: flex; align-items: center; gap: 4px;">
+                      <label>对齐:</label>
+                      <select id="reels-text-align" class="select" style="width: 210px;" onchange="var adv=document.getElementById('reels-adv-textbox-align'); if(adv && (this.value==='left'||this.value==='center'||this.value==='right')) adv.value=this.value; reelsUpdatePreview()" title="字幕排版对齐方式（支持普通字幕与智能动态混排）">
+                        <option value="center" selected>居中对齐 (Center)</option>
+                        <option value="left">左对齐 (Left)</option>
+                        <option value="right">右对齐 (Right)</option>
+                        <option value="smart_left_center">✨ 智能对齐 (主左对齐+重点居中·禁右)</option>
+                      </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
                       <label>随机高度:</label>
                       <input type="range" id="reels-random-position-height-range" min="10" max="100" value="35" style="width: 70px;"
                         oninput="document.getElementById('reels-random-position-height').value=this.value; reelsUpdatePreview()" title="随机单词定位的垂直范围高度">
@@ -5894,6 +5935,14 @@
                             min="0" max="2" style="width: 55px;" oninput="document.getElementById('reels-anim-out-dur-range').value=this.value; reelsUpdatePreview()">
                           <label>s</label>
                         </div>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);" title="开启后未读到的文字透明/半透明，读到该词才出字（与『1.字体与颜色』中的未读字透明同步）">
+                          <input type="checkbox" id="reels-anim-hide-until-spoken" onchange="var h=document.getElementById('reels-hide-until-spoken'); if(h)h.checked=this.checked; reelsUpdatePreview()">
+                          未读文字透明(读到才出字)
+                        </label>
+                        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);" title="开启后朗读到当前单词时自动放大（与『1.字体与颜色』中的高亮放大同步）">
+                          <input type="checkbox" id="reels-anim-highlight-scale-enabled" onchange="var s=document.getElementById('reels-highlight-scale-enabled'); if(s)s.checked=this.checked; reelsUpdatePreview()">
+                          当前词放大
+                        </label>
                       </div>
 
                       <!-- 动画专属参数（根据当前选择的入场动画智能动态展示） -->
@@ -6299,11 +6348,36 @@
                 <!-- Tab: 背景与内容视频设置 -->
                 <div id="inspector-tab-background" style="display:none; flex:1; overflow-y:scroll; scrollbar-gutter: stable; padding:10px;">
                   <h3 class="section-title">🌫️ 背景与内容视频设置</h3>
+
+                  <!-- 整个队列同步调节总控栏 -->
+                  <div id="reels-bg-queue-sync-bar" style="margin-bottom: 10px; padding: 8px 10px; background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(16,185,129,0.10)); border: 1px solid rgba(59,130,246,0.4); border-radius: 7px; display:flex; flex-direction:column; gap:6px;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                      <label style="display:flex; align-items:center; gap:6px; margin:0; font-size:12px; font-weight:700; color:#93c5fd; cursor:pointer;" title="开启后，拖动下方任意滑块、切换毛玻璃/翻转/裁切比例等参数时，会自动实时同步到整个队列所有任务（不会覆盖各任务独立的视频文件路径）">
+                        <input type="checkbox" id="reels-bg-sync-all-queue" onchange="window.reelsOnBgSyncAllQueueToggle?.(this.checked)" style="margin:0; width:14px; height:14px; accent-color:#3b82f6;">
+                        <span>🔗 同步调节整个队列所有任务</span>
+                      </label>
+                      <span id="reels-bg-sync-all-badge" style="font-size:10px; padding:1px 6px; border-radius:999px; background:rgba(148,163,184,0.2); color:#cbd5e1; font-weight:600;">仅当前任务</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      <span style="font-size:10px; color:var(--text-secondary); flex-shrink:0;">作用范围:</span>
+                      <select id="reels-bg-queue-scope" class="select" style="flex:1; min-width:130px; height:22px; font-size:10px; padding:1px 4px;" onchange="window.reelsOnBgQueueScopeChange?.(this.value)">
+                        <option value="all">📋 整个队列全部任务</option>
+                        <option value="checked">☑️ 仅批量表勾选任务 (未勾选则全部)</option>
+                      </select>
+                      <button type="button" class="btn btn-primary" style="font-size:10px; padding:2px 8px; height:22px; background:#2563eb; border-color:#3b82f6; color:#fff; flex-shrink:0;" onclick="window.reelsApplyAllBgCvBgmToQueue?.()" title="将当前任务的【背景 + 内容视频 + 配乐】所有参数一键复制到队列所有任务（保留各任务原有视频文件路径）">📋 一键同步全部参数到队列</button>
+                    </div>
+                  </div>
                   
                   <!-- Section 1: 背景素材设置 (Background Settings) -->
                   <details open style="margin-bottom: 10px;">
                     <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-color);">1. 背景素材设置</summary>
                     <div style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; margin-top: 4px; border: 1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
+
+                      <!-- 背景队列批量快捷栏 -->
+                      <div style="display:flex; gap:4px; flex-wrap:wrap; padding-bottom:6px; border-bottom:1px dashed var(--border-color);">
+                        <button type="button" class="btn btn-secondary" style="flex:1; font-size:10px; padding:3px 6px; background:rgba(59,130,246,0.14); border:1px solid rgba(59,130,246,0.35); color:#93c5fd; font-weight:600;" onclick="window.reelsApplyBgConfigToAllTasks?.()" title="将当前背景缩放、旋转、偏移、翻转、音量、变速、转场等参数应用到整个队列（不覆盖各行自己的背景文件）">📋 应用当前背景参数到整个队列</button>
+                        <button type="button" class="btn btn-secondary" style="font-size:10px; padding:3px 6px;" onclick="window.reelsCopyCvToBgAllTasks?.()" title="将队列中每个任务各自的内容视频路径复制为该任务的背景素材">🔁 全队列同内容</button>
+                      </div>
                       
                       <!-- 背景模式 -->
                       <div style="display:flex; flex-direction:column; gap:4px;">
@@ -6502,6 +6576,17 @@
                   <details open style="margin-bottom: 10px;">
                     <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-color);">2. 内容视频设置</summary>
                     <div style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; margin-top: 4px; border: 1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
+
+                      <!-- 内容视频队列批量快捷栏 -->
+                      <div style="display:flex; flex-direction:column; gap:4px; padding:6px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.28); border-radius:5px;">
+                        <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                          <button type="button" class="btn btn-secondary" style="flex:1; font-size:10px; padding:3px 6px; background:rgba(59,130,246,0.2); border:1px solid rgba(59,130,246,0.45); color:#93c5fd; font-weight:700;" onclick="window.reelsApplyCvConfigToAllTasks?.()" title="将当前内容视频的毛玻璃、亮度、音量、缩放、位置偏移、翻转、起止时间、画面裁切等参数一键应用到整个队列所有任务（保留各任务自己的视频文件）">📋 应用当前内容视频参数到整个队列</button>
+                        </div>
+                        <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                          <button type="button" class="btn btn-secondary" style="flex:1; font-size:10px; padding:2px 6px;" onclick="window.reelsCopyBgToCvAllTasks?.()" title="将队列中每个任务各自的背景视频设为该任务的内容视频，并同步当前内容视频参数">🔁 全队列：同背景 (每行背景→内容视频)</button>
+                          <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px; color:#f87171;" onclick="window.reelsClearCvPathAllTasks?.()" title="清除整个队列所有任务的内容视频">🧹 全队列清除</button>
+                        </div>
+                      </div>
                       
                       <!-- 内容视频 file selection -->
                       <div style="display:flex; flex-direction:column; gap:4px;">
@@ -6564,6 +6649,40 @@
                           <input type="range" id="reels-cv-scale-range" min="10" max="300" value="100" style="flex:1; min-width:80px;" oninput="document.getElementById('reels-cv-scale-num').value=this.value; reelsSaveBgConfigUI();">
                           <input type="number" id="reels-cv-scale-num" class="input input-small" value="100" min="10" max="300" style="width: 54px; height:22px; font-size:11px; padding:1px 3px;" oninput="document.getElementById('reels-cv-scale-range').value=this.value; reelsSaveBgConfigUI();">
                           <button class="btn btn-secondary" style="font-size:10px; padding:1px 3px; min-width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0;" onclick="reelsResetParamUI('reels-cv-scale', 100)" title="恢复默认值">↺</button>
+                        </div>
+                      </div>
+
+                      <!-- 内容视频-位置X偏移 -->
+                      <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="margin:0; font-size:12px; color:var(--text-secondary);">内容视频-X偏移 (px):</label>
+                        <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+                          <div style="display:flex; gap:8px; align-items:center; min-width:0;">
+                            <input type="range" id="reels-cv-x-range" min="-540" max="540" step="1" value="0" style="flex:1; min-width:80px;" oninput="document.getElementById('reels-cv-x-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-x-num" class="input input-small" value="0" min="-1080" max="1080" step="1" style="width: 54px; height:22px; font-size:11px; padding:1px 3px;" oninput="document.getElementById('reels-cv-x-range').value=this.value; reelsSaveBgConfigUI();">
+                            <button class="btn btn-secondary" style="font-size:10px; padding:1px 3px; min-width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0;" onclick="reelsSetCvOffsetUI('x', 0)" title="恢复居中">↺</button>
+                          </div>
+                          <div style="display:flex; gap:4px;">
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('x', -200)">偏左</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('x', 0)">居中</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('x', 200)">偏右</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- 内容视频-位置Y偏移 -->
+                      <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="margin:0; font-size:12px; color:var(--text-secondary);">内容视频-Y偏移 (px):</label>
+                        <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+                          <div style="display:flex; gap:8px; align-items:center; min-width:0;">
+                            <input type="range" id="reels-cv-y-range" min="-960" max="960" step="1" value="0" style="flex:1; min-width:80px;" oninput="document.getElementById('reels-cv-y-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-y-num" class="input input-small" value="0" min="-1920" max="1920" step="1" style="width: 54px; height:22px; font-size:11px; padding:1px 3px;" oninput="document.getElementById('reels-cv-y-range').value=this.value; reelsSaveBgConfigUI();">
+                            <button class="btn btn-secondary" style="font-size:10px; padding:1px 3px; min-width:20px; height:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0;" onclick="reelsSetCvOffsetUI('y', 0)" title="恢复居中">↺</button>
+                          </div>
+                          <div style="display:flex; gap:4px;">
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('y', -300)">偏上</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('y', 0)">居中</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:1px 4px; height:18px; line-height:1;" onclick="reelsSetCvOffsetUI('y', 300)">偏下</button>
+                          </div>
                         </div>
                       </div>
 
@@ -6655,6 +6774,12 @@
                   <details open style="margin-bottom: 10px;">
                     <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-color);">3. 配乐素材设置</summary>
                     <div style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; margin-top: 4px; border: 1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
+
+                      <!-- 配乐队列批量快捷栏 -->
+                      <div style="display:flex; gap:4px; flex-wrap:wrap; padding-bottom:6px; border-bottom:1px dashed var(--border-color);">
+                        <button type="button" class="btn btn-secondary" style="flex:1; font-size:10px; padding:3px 6px; background:rgba(59,130,246,0.14); border:1px solid rgba(59,130,246,0.35); color:#93c5fd; font-weight:600;" onclick="window.reelsApplyBgmConfigToAllTasks?.()" title="将当前配乐音量、组合方式应用到整个队列（不覆盖各任务自己的配乐文件）">📋 应用配乐参数到队列</button>
+                        <button type="button" class="btn btn-secondary" style="flex:1; font-size:10px; padding:3px 6px;" onclick="window.reelsApplyBgmMediaAndConfigToAllTasks?.()" title="将当前配乐素材/配乐池及音量参数一键复制到整个队列所有任务">🎵 同步配乐文件+参数到队列</button>
+                      </div>
                       
                       <!-- 配乐模式 -->
                       <div style="display:flex; flex-direction:column; gap:4px;">
@@ -7380,9 +7505,9 @@
               <div style="flex: 1; min-width: 260px;">
                 <label style="font-weight:600;display:block;margin-bottom:6px;">首选转录平台</label>
                 <select id="transcription-primary" class="select" style="width: 100%;" onchange="onTranscriptionPrimaryChange()">
-                  <option value="deepgram">⚡ Deepgram（推荐·极速直出·自带 $200 免费额度）</option>
-                  <option value="groq">🌐 Groq（Whisper 语音转录）</option>
-                  <option value="gladia" selected>⏳ Gladia</option>
+                  <option value="deepgram">🎙️ Deepgram · Nova-3（纯人声口播/解说首选 · 50路并发极速 · $200免费额度 · 不适合伴奏唱歌）</option>
+                  <option value="groq">🎵 Groq · Whisper-Large-V3-Turbo（唱歌MV/带伴奏音乐首选 · 抗伴奏强 · 支持歌词引导 · 每日2000次免费）</option>
+                  <option value="gladia" selected>🎤 Gladia · Whisper增强版（歌曲/多语言/长音频稳健 · 高精度逐词时间轴）</option>
                 </select>
               </div>
               <input id="transcription-concurrency" type="hidden" value="1">

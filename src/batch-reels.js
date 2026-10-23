@@ -1353,6 +1353,9 @@ function _initCvPosControl() {
         if (window.reelsSyncBackgroundTabUI) {
             window.reelsSyncBackgroundTabUI(task);
         }
+        if (typeof window._syncCvPosControlToQueueIfEnabled === 'function') {
+            window._syncCvPosControlToQueueIfEnabled(task);
+        }
     }
 
     // 移动位置
@@ -2717,6 +2720,14 @@ function _readStyleFromUI() {
         highlight_enabled: get('reels-highlight-enabled')
             ? chk('reels-highlight-enabled')
             : (get('reels-karaoke-hl') ? chk('reels-karaoke-hl') : true),
+        highlight_scale_enabled: get('reels-highlight-scale-enabled')
+            ? chk('reels-highlight-scale-enabled')
+            : chk('reels-anim-highlight-scale-enabled'),
+        highlight_scale: num('reels-highlight-scale', 125),
+        hide_until_spoken: get('reels-hide-until-spoken')
+            ? chk('reels-hide-until-spoken')
+            : chk('reels-anim-hide-until-spoken'),
+        unread_opacity: num('reels-unread-opacity', 0),
         color_high: val('reels-color-high') || '#FFD700',
         high_gradient_direction: get('reels-color-high')?.dataset?.gradientDirection || 'horizontal',
 
@@ -2801,6 +2812,7 @@ function _readStyleFromUI() {
         pos_y: num('reels-pos-y', 85) / 100,
         wrap_width_percent: num('reels-wrap-width', 90),
         auto_wrap: chk('reels-auto-wrap'),
+        text_align: val('reels-text-align') || val('reels-adv-textbox-align') || 'center',
         wrap_lines: 2,
         wrap_left: 0,
         wrap_right: 0,
@@ -3216,6 +3228,18 @@ function _writeStyleToUI(style) {
     const hlEnabled = style.highlight_enabled !== false && style.karaoke_highlight !== false;
     setChk('reels-highlight-enabled', hlEnabled);
     setChk('reels-karaoke-hl', hlEnabled);
+    const hlScaleEnabled = Boolean(style.highlight_scale_enabled);
+    setChk('reels-highlight-scale-enabled', hlScaleEnabled);
+    setChk('reels-anim-highlight-scale-enabled', hlScaleEnabled);
+    const hlScaleVal = Number.isFinite(Number(style.highlight_scale)) ? Number(style.highlight_scale) : 125;
+    set('reels-highlight-scale', hlScaleVal);
+    set('reels-highlight-scale-range', hlScaleVal);
+    const hideUntilSpoken = Boolean(style.hide_until_spoken);
+    setChk('reels-hide-until-spoken', hideUntilSpoken);
+    setChk('reels-anim-hide-until-spoken', hideUntilSpoken);
+    const unreadOpacityVal = Number.isFinite(Number(style.unread_opacity)) ? Number(style.unread_opacity) : 0;
+    set('reels-unread-opacity', unreadOpacityVal);
+    set('reels-unread-opacity-range', unreadOpacityVal);
 
     const colorHighEl = document.getElementById('reels-color-high');
     if (colorHighEl) {
@@ -3298,6 +3322,7 @@ function _writeStyleToUI(style) {
     set('reels-pos-y', Math.round((style.pos_y || 0.5) * 100));
     set('reels-wrap-width', style.wrap_width_percent || 90);
     setChk('reels-auto-wrap', style.auto_wrap !== false);
+    set('reels-text-align', style.text_align || style.advanced_textbox_align || 'center');
     set('reels-random-position-height', style.random_position_height_percent || 35);
     set('reels-random-position-height-range', style.random_position_height_percent || 35);
     set('reels-line-spacing', style.line_spacing ?? 4);
@@ -7991,6 +8016,7 @@ async function _reelsAlignSubtitles(task, ignoreMismatch = false) {
 
     // 调用现有的 subtitle/generate API
     const language = document.getElementById('reels-align-lang')?.value || '英语';
+    const alignModel = document.getElementById('reels-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
     // 输出目录 = 音频/视频文件所在目录（SRT 保存到文件旁边）
     const audioDir = audioPath.replace(/[\\/][^\\/]+$/, '');
     const response = await apiFetch(`${API_BASE}/subtitle/generate`, {
@@ -8002,6 +8028,8 @@ async function _reelsAlignSubtitles(task, ignoreMismatch = false) {
             language: language,
             audio_cut_length: 5.0,
             output_dir: audioDir,
+            preferred_provider: alignModel,
+            music_mode: alignModel === 'music_mv',
             ignore_mismatch: ignoreMismatch
         }),
     });
@@ -15278,12 +15306,188 @@ function _showInsertClipInspector(editorClip) {
     document.getElementById('batch-reels-panel')?.appendChild(panel);
 }
 
-// ─── 背景与内容视频双向同步与保存逻辑 ───
+// ─── 背景与内容视频双向同步与全队列批量调节逻辑 ───
+let _bgQueueSyncInitDone = false;
+let _bgQueueRenderTableDebounceTimer = null;
+
+function _isBgQueueSyncEnabled() {
+    const chk = document.getElementById('reels-bg-sync-all-queue');
+    if (chk) return !!chk.checked;
+    try { return localStorage.getItem('reels_bg_sync_all_queue') === 'true'; } catch (_) { return false; }
+}
+
+function _getBgQueueScope() {
+    const sel = document.getElementById('reels-bg-queue-scope');
+    if (sel && sel.value) return sel.value;
+    try { return localStorage.getItem('reels_bg_queue_scope') || 'all'; } catch (_) { return 'all'; }
+}
+
+function _getBgQueueTargetTasks() {
+    const allTasks = Array.isArray(_reelsState?.tasks) ? _reelsState.tasks : [];
+    if (!allTasks.length) return [];
+    const scope = _getBgQueueScope();
+    if (scope === 'checked' && typeof window.reelsGetSelectedBatchTasks === 'function') {
+        const checkedTasks = window.reelsGetSelectedBatchTasks();
+        if (Array.isArray(checkedTasks) && checkedTasks.length > 0) {
+            const currentTask = _reelsState.tasks[_reelsState.selectedIdx];
+            if (currentTask && !checkedTasks.includes(currentTask)) {
+                return [currentTask, ...checkedTasks];
+            }
+            return checkedTasks;
+        }
+    }
+    return allTasks;
+}
+
+function _refreshBgQueueSyncBadge() {
+    const chk = document.getElementById('reels-bg-sync-all-queue');
+    const scopeEl = document.getElementById('reels-bg-queue-scope');
+    const badge = document.getElementById('reels-bg-sync-all-badge');
+    if (!_bgQueueSyncInitDone && (chk || scopeEl)) {
+        try {
+            const savedSync = localStorage.getItem('reels_bg_sync_all_queue');
+            if (chk && savedSync !== null) chk.checked = savedSync === 'true';
+            const savedScope = localStorage.getItem('reels_bg_queue_scope');
+            if (scopeEl && savedScope) scopeEl.value = savedScope;
+        } catch (_) {}
+        _bgQueueSyncInitDone = true;
+    }
+    if (!badge) return;
+    const enabled = _isBgQueueSyncEnabled();
+    const targetCount = _getBgQueueTargetTasks().length;
+    if (enabled) {
+        badge.textContent = `🔥 实时同步 (${targetCount}个任务)`;
+        badge.style.background = 'rgba(37, 99, 235, 0.35)';
+        badge.style.color = '#93c5fd';
+        badge.style.border = '1px solid rgba(96, 165, 250, 0.5)';
+    } else {
+        badge.textContent = '仅当前任务';
+        badge.style.background = 'rgba(148, 163, 184, 0.2)';
+        badge.style.color = '#cbd5e1';
+        badge.style.border = 'none';
+    }
+}
+
+function _copyBgParamsToTask(sourceTask, targetTask) {
+    if (!sourceTask || !targetTask || sourceTask === targetTask) return;
+    targetTask.bgScale = sourceTask.bgScale != null ? sourceTask.bgScale : 100;
+    targetTask.bgRotation = sourceTask.bgRotation != null ? sourceTask.bgRotation : 0;
+    targetTask.bgX = sourceTask.bgX != null ? sourceTask.bgX : 0;
+    targetTask.bgY = sourceTask.bgY != null ? sourceTask.bgY : 0;
+    targetTask.bgFlipH = !!sourceTask.bgFlipH;
+    targetTask.bgFlipV = !!sourceTask.bgFlipV;
+    targetTask.bgDurScale = sourceTask.bgDurScale != null ? sourceTask.bgDurScale : 100;
+    targetTask.bgTransition = sourceTask.bgTransition || 'crossfade';
+    targetTask.bgTransDur = sourceTask.bgTransDur != null ? sourceTask.bgTransDur : 0.5;
+    targetTask.bgClipOrder = sourceTask.bgClipOrder || 'random';
+    if (sourceTask.bgVideoVolume != null) {
+        targetTask.bgVideoVolume = sourceTask.bgVideoVolume;
+    } else {
+        delete targetTask.bgVideoVolume;
+    }
+}
+
+function _copyCvParamsToTask(sourceTask, targetTask) {
+    if (!sourceTask || !targetTask || sourceTask === targetTask) return;
+    targetTask.contentVideoBlurBg = !!sourceTask.contentVideoBlurBg;
+    targetTask.contentVideoDirectBg = !!sourceTask.contentVideoDirectBg;
+    targetTask.contentVideoBlur = sourceTask.contentVideoBlur != null ? sourceTask.contentVideoBlur : 40;
+    targetTask.contentVideoBrightness = sourceTask.contentVideoBrightness != null ? sourceTask.contentVideoBrightness : 60;
+    targetTask.contentVideoVolume = sourceTask.contentVideoVolume != null ? sourceTask.contentVideoVolume : 100;
+    targetTask.contentVideoScale = sourceTask.contentVideoScale != null ? sourceTask.contentVideoScale : 100;
+    targetTask.contentVideoFlipH = !!sourceTask.contentVideoFlipH;
+    targetTask.contentVideoFlipV = !!sourceTask.contentVideoFlipV;
+    targetTask.contentVideoTrimStart = sourceTask.contentVideoTrimStart != null ? sourceTask.contentVideoTrimStart : null;
+    targetTask.contentVideoTrimEnd = sourceTask.contentVideoTrimEnd != null ? sourceTask.contentVideoTrimEnd : null;
+    targetTask.contentVideoCrop = sourceTask.contentVideoCrop || '';
+    targetTask.contentVideoX = sourceTask.contentVideoX || 'center';
+    targetTask.contentVideoY = sourceTask.contentVideoY || 'center';
+}
+
+function _copyBgmParamsToTask(sourceTask, targetTask) {
+    if (!sourceTask || !targetTask || sourceTask === targetTask) return;
+    targetTask.bgmClipOrder = sourceTask.bgmClipOrder || 'random';
+    if (sourceTask.bgmVolume != null) {
+        targetTask.bgmVolume = sourceTask.bgmVolume;
+    } else {
+        delete targetTask.bgmVolume;
+    }
+}
+
+function _flushBgQueueTableAndHistory(options = {}) {
+    const immediate = options.immediate === true;
+    const totalTasks = Array.isArray(_reelsState?.tasks) ? _reelsState.tasks.length : 0;
+    const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+    const isRangeDragging = !immediate && totalTasks > 50 && activeEl && activeEl.tagName === 'INPUT' && activeEl.type === 'range';
+
+    const doFlush = () => {
+        if (typeof _renderBatchTable === 'function') {
+            if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
+            _renderBatchTable();
+        }
+        if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+        if (typeof _batchAutoSave === 'function') _batchAutoSave();
+        if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+    };
+
+    if (isRangeDragging) {
+        if (_bgQueueRenderTableDebounceTimer) clearTimeout(_bgQueueRenderTableDebounceTimer);
+        _bgQueueRenderTableDebounceTimer = setTimeout(() => {
+            _bgQueueRenderTableDebounceTimer = null;
+            doFlush();
+        }, 120);
+    } else {
+        if (_bgQueueRenderTableDebounceTimer) {
+            clearTimeout(_bgQueueRenderTableDebounceTimer);
+            _bgQueueRenderTableDebounceTimer = null;
+        }
+        doFlush();
+    }
+}
+
+window._syncCvPosControlToQueueIfEnabled = function(sourceTask) {
+    if (!sourceTask || !_isBgQueueSyncEnabled()) return;
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            t.contentVideoX = sourceTask.contentVideoX || 'center';
+            t.contentVideoY = sourceTask.contentVideoY || 'center';
+            t.contentVideoScale = sourceTask.contentVideoScale != null ? sourceTask.contentVideoScale : 100;
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: false });
+};
+
+window.reelsOnBgSyncAllQueueToggle = function(checked) {
+    try { localStorage.setItem('reels_bg_sync_all_queue', checked ? 'true' : 'false'); } catch (_) {}
+    _bgQueueSyncInitDone = true;
+    _refreshBgQueueSyncBadge();
+    if (checked) {
+        window.reelsSaveBgConfigUI();
+        const count = _getBgQueueTargetTasks().length;
+        if (typeof showToast === 'function') {
+            showToast(`🔗 已开启全队列同步调节，当前参数已同步到 ${count} 个任务`, 'success');
+        }
+    } else if (typeof showToast === 'function') {
+        showToast('已切换为仅调节当前选中任务', 'info');
+    }
+};
+
+window.reelsOnBgQueueScopeChange = function(scope) {
+    try { localStorage.setItem('reels_bg_queue_scope', scope || 'all'); } catch (_) {}
+    _refreshBgQueueSyncBadge();
+    if (_isBgQueueSyncEnabled()) {
+        window.reelsSaveBgConfigUI();
+    }
+};
+
 window.reelsSyncBackgroundTabUI = function(task) {
     if (!task) return;
 
     const bgPathEl = document.getElementById('reels-bg-path-ui');
     if (!bgPathEl) return;
+
+    _refreshBgQueueSyncBadge();
 
     // 背景模式与面板显示切换
     const bgMode = task.bgMode || 'single';
@@ -15389,6 +15593,24 @@ window.reelsSyncBackgroundTabUI = function(task) {
     const cvScale = task.contentVideoScale != null ? task.contentVideoScale : 100;
     document.getElementById('reels-cv-scale-num').value = cvScale;
     document.getElementById('reels-cv-scale-range').value = cvScale;
+    const cvPosScaleEl = document.getElementById('reels-cv-pos-scale-val');
+    if (cvPosScaleEl) cvPosScaleEl.value = cvScale;
+
+    // 内容视频位置偏移 (X / Y px)
+    const cvXNum = (task.contentVideoX && task.contentVideoX !== 'center') ? (parseFloat(task.contentVideoX) || 0) : 0;
+    const cvYNum = (task.contentVideoY && task.contentVideoY !== 'center') ? (parseFloat(task.contentVideoY) || 0) : 0;
+    const cvXNumEl = document.getElementById('reels-cv-x-num');
+    const cvXRangeEl = document.getElementById('reels-cv-x-range');
+    const cvYNumEl = document.getElementById('reels-cv-y-num');
+    const cvYRangeEl = document.getElementById('reels-cv-y-range');
+    if (cvXNumEl) cvXNumEl.value = cvXNum;
+    if (cvXRangeEl) cvXRangeEl.value = Math.max(-540, Math.min(540, cvXNum));
+    if (cvYNumEl) cvYNumEl.value = cvYNum;
+    if (cvYRangeEl) cvYRangeEl.value = Math.max(-960, Math.min(960, cvYNum));
+    const cvPosXValEl = document.getElementById('reels-cv-pos-x-val');
+    const cvPosYValEl = document.getElementById('reels-cv-pos-y-val');
+    if (cvPosXValEl) cvPosXValEl.value = task.contentVideoX || 'center';
+    if (cvPosYValEl) cvPosYValEl.value = task.contentVideoY || 'center';
 
     // 视频翻转与背景翻转
     document.getElementById('reels-bg-fliph-ui').checked = !!task.bgFlipH;
@@ -15578,6 +15800,25 @@ window.reelsSaveBgConfigUI = function() {
     task.contentVideoVolume = isNaN(cvVolVal) ? 100 : cvVolVal;
 
     task.contentVideoScale = parseInt(document.getElementById('reels-cv-scale-num').value) || 100;
+    const cvPosScaleEl = document.getElementById('reels-cv-pos-scale-val');
+    if (cvPosScaleEl) cvPosScaleEl.value = task.contentVideoScale;
+
+    // 内容视频位置偏移 (X / Y px)
+    const cvXNumEl = document.getElementById('reels-cv-x-num');
+    const cvYNumEl = document.getElementById('reels-cv-y-num');
+    if (cvXNumEl) {
+        const vx = parseFloat(cvXNumEl.value) || 0;
+        task.contentVideoX = vx === 0 ? 'center' : String(vx);
+        const cvPosXValEl = document.getElementById('reels-cv-pos-x-val');
+        if (cvPosXValEl) cvPosXValEl.value = task.contentVideoX;
+    }
+    if (cvYNumEl) {
+        const vy = parseFloat(cvYNumEl.value) || 0;
+        task.contentVideoY = vy === 0 ? 'center' : String(vy);
+        const cvPosYValEl = document.getElementById('reels-cv-pos-y-val');
+        if (cvPosYValEl) cvPosYValEl.value = task.contentVideoY;
+    }
+
     task.contentVideoFlipH = document.getElementById('reels-cv-fliph-ui').checked;
     task.contentVideoFlipV = document.getElementById('reels-cv-flipv-ui').checked;
     
@@ -15599,16 +15840,215 @@ window.reelsSaveBgConfigUI = function() {
         task.contentVideoCrop = '';
     }
 
-    console.log('[BgConfigUI] Saved config: bgScale=' + task.bgScale + ' bgVideoVolume=' + task.bgVideoVolume + ' bgDurScale=' + task.bgDurScale + ' bgMode=' + task.bgMode + ' bgTransition=' + task.bgTransition + ' bgTransDur=' + task.bgTransDur + ' contentVideoBlurBg=' + task.contentVideoBlurBg + ' contentVideoVolume=' + task.contentVideoVolume + ' crop=' + task.contentVideoCrop);
+    // 若开启了【同步调节整个队列所有任务】，实时同步背景/内容视频/配乐参数到目标队列任务
+    if (_isBgQueueSyncEnabled()) {
+        const targets = _getBgQueueTargetTasks();
+        for (const t of targets) {
+            if (t && t !== task) {
+                _copyBgParamsToTask(task, t);
+                _copyCvParamsToTask(task, t);
+                _copyBgmParamsToTask(task, t);
+            }
+        }
+        _refreshBgQueueSyncBadge();
+    }
+
+    console.log('[BgConfigUI] Saved config: bgScale=' + task.bgScale + ' bgVideoVolume=' + task.bgVideoVolume + ' bgDurScale=' + task.bgDurScale + ' bgMode=' + task.bgMode + ' bgTransition=' + task.bgTransition + ' bgTransDur=' + task.bgTransDur + ' contentVideoBlurBg=' + task.contentVideoBlurBg + ' contentVideoVolume=' + task.contentVideoVolume + ' crop=' + task.contentVideoCrop + ' syncAll=' + _isBgQueueSyncEnabled());
 
     // 重新渲染批量表和预览
-    if (typeof _renderBatchTable === 'function') {
-        if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
-        _renderBatchTable();
-    }
     if (typeof _applyPreviewAudioMix === 'function') _applyPreviewAudioMix();
     if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
-    if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+    _flushBgQueueTableAndHistory({ immediate: false });
+};
+
+window.reelsSetCvOffsetUI = function(axis, value) {
+    const el = document.getElementById('reels-cv-' + axis + '-num');
+    const elRange = document.getElementById('reels-cv-' + axis + '-range');
+    if (el) el.value = value;
+    if (elRange) elRange.value = value;
+    window.reelsSaveBgConfigUI();
+};
+
+window.reelsApplyBgConfigToAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx < 0 || !_reelsState.tasks[idx]) return;
+    window.reelsSaveBgConfigUI();
+    const sourceTask = _reelsState.tasks[idx];
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            _copyBgParamsToTask(sourceTask, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已将当前【背景参数】应用到队列 ${targets.length} 个任务`, 'success');
+    }
+};
+
+window.reelsApplyCvConfigToAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx < 0 || !_reelsState.tasks[idx]) return;
+    window.reelsSaveBgConfigUI();
+    const sourceTask = _reelsState.tasks[idx];
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            _copyCvParamsToTask(sourceTask, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已将当前【内容视频参数】应用到队列 ${targets.length} 个任务`, 'success');
+    }
+};
+
+window.reelsApplyBgmConfigToAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx < 0 || !_reelsState.tasks[idx]) return;
+    window.reelsSaveBgConfigUI();
+    const sourceTask = _reelsState.tasks[idx];
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            _copyBgmParamsToTask(sourceTask, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已将当前【配乐参数】应用到队列 ${targets.length} 个任务`, 'success');
+    }
+};
+
+window.reelsApplyBgmMediaAndConfigToAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx < 0 || !_reelsState.tasks[idx]) return;
+    window.reelsSaveBgConfigUI();
+    const sourceTask = _reelsState.tasks[idx];
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            t.bgmMode = sourceTask.bgmMode || 'single';
+            t.bgmPath = sourceTask.bgmPath || '';
+            t.bgmClipPool = Array.isArray(sourceTask.bgmClipPool) ? [...sourceTask.bgmClipPool] : [];
+            t.bgmClipActivePool = Array.isArray(sourceTask.bgmClipActivePool) ? [...sourceTask.bgmClipActivePool] : [];
+            _copyBgmParamsToTask(sourceTask, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') {
+        showToast(`🎵 已将当前配乐素材及参数同步到队列 ${targets.length} 个任务`, 'success');
+    }
+};
+
+window.reelsApplyAllBgCvBgmToQueue = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx < 0 || !_reelsState.tasks[idx]) return;
+    window.reelsSaveBgConfigUI();
+    const sourceTask = _reelsState.tasks[idx];
+    const targets = _getBgQueueTargetTasks();
+    for (const t of targets) {
+        if (t && t !== sourceTask) {
+            _copyBgParamsToTask(sourceTask, t);
+            _copyCvParamsToTask(sourceTask, t);
+            _copyBgmParamsToTask(sourceTask, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已将当前【背景 + 内容视频 + 配乐】全部参数同步到队列 ${targets.length} 个任务`, 'success');
+    }
+};
+
+window.reelsCopyBgToCvAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx >= 0 && _reelsState.tasks[idx]) {
+        window.reelsSaveBgConfigUI();
+    }
+    const sourceTask = idx >= 0 ? _reelsState.tasks[idx] : null;
+    const targets = _getBgQueueTargetTasks();
+    let updatedCount = 0;
+    for (const t of targets) {
+        if (!t) continue;
+        const bgFile = t.bgPath || t.videoPath || '';
+        if (bgFile) {
+            t.contentVideoPath = bgFile;
+            updatedCount++;
+        }
+        if (sourceTask && t !== sourceTask) {
+            _copyCvParamsToTask(sourceTask, t);
+        }
+    }
+    if (sourceTask) {
+        const cvPathEl = document.getElementById('reels-cv-path-ui');
+        if (cvPathEl) cvPathEl.value = sourceTask.contentVideoPath || '';
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (idx >= 0 && typeof reelsSelectTask === 'function') reelsSelectTask(idx);
+    if (typeof showToast === 'function') {
+        showToast(`🔁 已将队列中 ${updatedCount} 个任务的背景设为内容视频，并同步内容视频参数`, 'success');
+    }
+};
+
+window.reelsCopyCvToBgAllTasks = function() {
+    const idx = _reelsState.selectedIdx;
+    if (idx >= 0 && _reelsState.tasks[idx]) {
+        window.reelsSaveBgConfigUI();
+    }
+    const sourceTask = idx >= 0 ? _reelsState.tasks[idx] : null;
+    const targets = _getBgQueueTargetTasks();
+    let updatedCount = 0;
+    for (const t of targets) {
+        if (!t) continue;
+        if (t.contentVideoPath) {
+            const oldPaths = [t.bgPath, t.videoPath, t.concatVideoPath].filter(Boolean);
+            t.bgPath = t.contentVideoPath;
+            t.videoPath = t.contentVideoPath;
+            t.bgSrcUrl = null;
+            t.srcUrl = null;
+            if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+                window.reelsPurgeTaskBackgroundMedia(t, { extraPaths: [...oldPaths, t.bgPath] });
+            } else {
+                t.timeline = null;
+                t.renderPlan = null;
+            }
+            updatedCount++;
+        }
+        if (sourceTask && t !== sourceTask) {
+            _copyBgParamsToTask(sourceTask, t);
+        }
+    }
+    if (sourceTask) {
+        const bgPathEl = document.getElementById('reels-bg-path-ui');
+        if (bgPathEl) bgPathEl.value = sourceTask.bgPath || '';
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (idx >= 0 && typeof reelsSelectTask === 'function') reelsSelectTask(idx);
+    if (typeof showToast === 'function') {
+        showToast(`🔁 已将队列中 ${updatedCount} 个任务的内容视频设为背景，并同步背景参数`, 'success');
+    }
+};
+
+window.reelsClearCvPathAllTasks = function() {
+    const targets = _getBgQueueTargetTasks();
+    if (!targets.length) return;
+    let clearedCount = 0;
+    for (const t of targets) {
+        if (t && t.contentVideoPath) {
+            t.contentVideoPath = '';
+            clearedCount++;
+        }
+    }
+    const cvPathEl = document.getElementById('reels-cv-path-ui');
+    const idx = _reelsState.selectedIdx;
+    if (cvPathEl && idx >= 0 && _reelsState.tasks[idx]) {
+        cvPathEl.value = _reelsState.tasks[idx].contentVideoPath || '';
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (idx >= 0 && typeof reelsSelectTask === 'function') reelsSelectTask(idx);
+    if (typeof showToast === 'function') {
+        showToast(`🧹 已清除队列中 ${clearedCount} 个任务的内容视频`, 'info');
+    }
 };
 
 window.reelsToggleBgModeUI = function(mode) {
@@ -15980,6 +16420,10 @@ window.reelsApplyCropPresetUI = function(preset) {
 };
 
 window.reelsCopyCvToBgUI = function() {
+    if (_isBgQueueSyncEnabled()) {
+        window.reelsCopyCvToBgAllTasks();
+        return;
+    }
     const idx = _reelsState.selectedIdx;
     if (idx < 0) return;
     const task = _reelsState.tasks[idx];
@@ -16012,6 +16456,10 @@ window.reelsCopyCvToBgUI = function() {
 };
 
 window.reelsCopyBgToCvUI = function() {
+    if (_isBgQueueSyncEnabled()) {
+        window.reelsCopyBgToCvAllTasks();
+        return;
+    }
     const idx = _reelsState.selectedIdx;
     if (idx < 0) return;
     const task = _reelsState.tasks[idx];

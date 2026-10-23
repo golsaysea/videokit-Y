@@ -4564,10 +4564,20 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
     const isRtl = textDirection === 'rtl';
     const lineTokensList = _buildScrollTypewriterLines(ov, lines, textDirection, twContext);
 
-    const unrevealedOpacity = Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100));
+    const hideUnread = ov.scroll_tw_hide_unread !== undefined
+        ? Boolean(ov.scroll_tw_hide_unread)
+        : (Number(ov.scroll_tw_unrevealed_opacity ?? 0) < 100);
+    const unrevealedOpacity = hideUnread
+        ? Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100))
+        : 1.0;
     const activeHighlight = ov.scroll_tw_active_highlight !== false;
     const activeColor = ov.scroll_tw_active_color || '#FFD700';
-    const activeScale = Math.max(0.5, Math.min(2.5, (Number(ov.scroll_tw_active_scale) || 100) / 100));
+    const activeScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
+        ? Boolean(ov.scroll_tw_active_scale_enabled)
+        : (Number(ov.scroll_tw_active_scale || 100) !== 100);
+    const activeScale = activeScaleEnabled
+        ? Math.max(0.5, Math.min(2.5, (Number(ov.scroll_tw_active_scale) || 125) / 100))
+        : 1.0;
     const cursorEnabled = ov.scroll_tw_cursor_enabled !== false;
     const tipKind = ov.scroll_tw_cursor_kind || 'quill';
     const isImageTip = tipKind !== 'char';
@@ -4874,7 +4884,12 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
     }
 
     // ── 出字效果（朗诵打字机/手写跟读模式）──
-    if (ov.scroll_typewriter_enabled && lines.length > 0) {
+    const shouldRenderScrollTw = Boolean(
+        ov.scroll_typewriter_enabled ||
+        ov.scroll_tw_active_scale_enabled ||
+        ov.scroll_tw_hide_unread === true
+    );
+    if (shouldRenderScrollTw && lines.length > 0) {
         _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHeight, fontSize, align, bLetterSpacing, twContext);
         return;
     }
@@ -5356,6 +5371,13 @@ function _alignX(ctx, text, boxX, boxW, align, letterSpacing = 0) {
     } else if (align === 'right') {
         const tw = _measureTextWithLetterSpacing(ctx, text, letterSpacing);
         return boxX + boxW - tw;
+    } else if (align === 'smart_left_center') {
+        const tw = _measureTextWithLetterSpacing(ctx, text, letterSpacing);
+        const trimmed = String(text || '').trim();
+        const words = trimmed.split(/\s+/).filter(Boolean);
+        const hasExclaim = /[!?\uFF01\uFF1F]["'”’)]*$/.test(trimmed);
+        const isShortFocal = (words.length <= 4 && tw < boxW * 0.62) || (hasExclaim && tw < boxW * 0.72);
+        return isShortFocal ? (boxX + (boxW - tw) / 2) : boxX;
     }
     return boxX;
 }

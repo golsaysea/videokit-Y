@@ -188,22 +188,36 @@ function gladiaRequest(method, urlStr, headers, body, timeout = 120000, signal =
 /**
  * 从视频文件中提取音频（替代 Python extract_audio_from_video）
  */
-async function extractAudioFromVideo(videoPath, outputDir, audioFormat = 'wav', signal = null) {
+async function extractAudioFromVideo(videoPath, outputDir, audioFormat = 'wav', signal = null, options = {}) {
     const baseName = path.parse(videoPath).name;
     const audioPath = path.join(outputDir, `${baseName}.${audioFormat}`);
     fs.mkdirSync(outputDir, { recursive: true });
 
     const ffmpegPath = resolveCmd('ffmpeg');
-    const args = ['-y', '-i', videoPath, '-vn'];
-    if (audioFormat === 'wav') {
-        args.push('-ar', '32000', '-ac', '1');
-    } else {
-        args.push('-ar', '44100', '-ac', '1', '-b:a', '192k');
-    }
-    args.push(audioPath);
+    const useMusicFilter = !!options?.musicMode;
+    const buildArgs = (withFilter) => {
+        const a = ['-y', '-i', videoPath, '-vn'];
+        if (withFilter) {
+            // 音乐MV人声频段提纯：削减160Hz以下鼓点低频与4800Hz以上镲片高频伴奏干扰，并动态均衡人声响度
+            a.push('-af', 'highpass=f=160,lowpass=f=4800,dynaudnorm=f=150:g=15');
+        }
+        if (audioFormat === 'wav') {
+            a.push('-ar', '32000', '-ac', '1');
+        } else {
+            a.push('-ar', '44100', '-ac', '1', '-b:a', '192k');
+        }
+        a.push(audioPath);
+        return a;
+    };
 
     try {
-        await execFileWithSignal(ffmpegPath, args, { timeout: 300000 }, signal);
+        try {
+            await execFileWithSignal(ffmpegPath, buildArgs(useMusicFilter), { timeout: 300000 }, signal);
+        } catch (filterErr) {
+            if (!useMusicFilter || signal?.aborted || filterErr?.message === '任务已停止') throw filterErr;
+            console.warn('[Gladia] 音乐人声滤波提取失败，回退标准提取:', filterErr?.message || '');
+            await execFileWithSignal(ffmpegPath, buildArgs(false), { timeout: 300000 }, signal);
+        }
         return audioPath;
     } catch (failure) {
         if (signal?.aborted || failure?.message === '任务已停止') throw new Error('任务已停止');
@@ -215,7 +229,7 @@ async function extractAudioFromVideo(videoPath, outputDir, audioFormat = 'wav', 
 }
 
 /** 将任意 FFmpeg 可读的音/视频媒体标准化为语音识别用的 PCM WAV。 */
-async function normalizeMediaForTranscription(mediaPath, outputDir, signal = null) {
+async function normalizeMediaForTranscription(mediaPath, outputDir, signal = null, options = {}) {
     if (!mediaPath) {
         throw new Error('缺少音频或视频文件路径');
     }
@@ -228,13 +242,23 @@ async function normalizeMediaForTranscription(mediaPath, outputDir, signal = nul
     }
     fs.mkdirSync(outputDir, { recursive: true });
     const outputPath = path.join(outputDir, 'transcription_input.wav');
-    const args = [
-        '-y', '-v', 'error', '-i', cleanPath,
-        '-map', '0:a:0?', '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le',
-        outputPath,
-    ];
+    const useMusicFilter = !!options?.musicMode;
+    const buildArgs = (withFilter) => {
+        const a = ['-y', '-v', 'error', '-i', cleanPath, '-map', '0:a:0?', '-vn'];
+        if (withFilter) {
+            a.push('-af', 'highpass=f=160,lowpass=f=4800,dynaudnorm=f=150:g=15');
+        }
+        a.push('-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', outputPath);
+        return a;
+    };
     try {
-        await execFileWithSignal(resolveCmd('ffmpeg'), args, { timeout: 300000, maxBuffer: 4 * 1024 * 1024 }, signal);
+        try {
+            await execFileWithSignal(resolveCmd('ffmpeg'), buildArgs(useMusicFilter), { timeout: 300000, maxBuffer: 4 * 1024 * 1024 }, signal);
+        } catch (filterErr) {
+            if (!useMusicFilter || signal?.aborted || filterErr?.message === '任务已停止') throw filterErr;
+            console.warn('[Gladia] 音乐人声滤波标准化失败，回退标准转换:', filterErr?.message || '');
+            await execFileWithSignal(resolveCmd('ffmpeg'), buildArgs(false), { timeout: 300000, maxBuffer: 4 * 1024 * 1024 }, signal);
+        }
     } catch (failure) {
         if (signal?.aborted || failure?.message === '任务已停止') throw new Error('任务已停止');
         const err = failure?.error || failure;
@@ -695,7 +719,7 @@ function getJsonResult(transcribeResult, lastResult, fullTextList, startTime) {
  * @param {Function} onProgress   进度回调
  * @returns {Object} { wordTimeInfo, fullText }
  */
-async function transcribeAudioFull(mediaPath, apiKeys, language, jsonPath, txtPath, minMinutes = 5.0, onProgress = null, signal = null) {
+async function transcribeAudioFull(mediaPath, apiKeys, language, jsonPath, txtPath, minMinutes = 5.0, onProgress = null, signal = null, options = {}) {
     const throwIfAborted = () => { if (signal?.aborted) throw new Error('任务已停止'); };
     throwIfAborted();
     if (!apiKeys || apiKeys.length === 0) {
@@ -705,12 +729,13 @@ async function transcribeAudioFull(mediaPath, apiKeys, language, jsonPath, txtPa
     const settings = require('./settings');
     const tmpDir = path.join(settings.getSecureTmpDir(), `gladia_${crypto.randomUUID()}`);
     // 统一成单声道 PCM WAV，避免 AAC/FLAC/OGG/特殊 WAV 编码直接进识别端时失败。
-    if (onProgress) onProgress('正在读取并转换音频');
-    const audioPath = await normalizeMediaForTranscription(mediaPath, tmpDir, signal);
+    if (onProgress) onProgress(options?.musicMode ? '正在提取并提纯音乐人声...' : '正在读取并转换音频');
+    const audioPath = await normalizeMediaForTranscription(mediaPath, tmpDir, signal, options);
 
-    // 切分音频
+    // 切分音频（音乐模式下提高最小时长避免歌曲前奏/间奏被误切）
     if (onProgress) onProgress('切分音频');
-    const segments = await splitAudioOnSilence(audioPath, tmpDir, minMinutes, 50.0, 'wav');
+    const effectiveMinMinutes = options?.musicMode ? Math.max(8.0, Number(minMinutes) || 5.0) : minMinutes;
+    const segments = await splitAudioOnSilence(audioPath, tmpDir, effectiveMinMinutes, 50.0, 'wav');
 
     // 开始转录
     let curStartTime = 0;

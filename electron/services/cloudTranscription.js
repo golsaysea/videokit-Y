@@ -218,8 +218,13 @@ async function transcribeSegment(provider, filePath, key, language, signal, meta
         return s.length > 8 ? `${s.slice(0, 4)}••••${s.slice(-4)}` : '••••••••';
     };
 
-    const modelName = provider === 'deepgram' ? 'nova-3'
+    const promptHint = String(meta.promptHint || '').trim().slice(0, 600);
+    const musicMode = !!meta.musicMode;
+    const baseModelName = provider === 'deepgram' ? 'nova-3'
         : (provider === 'groq' ? 'whisper-large-v3-turbo' : 'whisper');
+    const modelName = (provider === 'groq' && (musicMode || promptHint))
+        ? `${baseModelName} (${musicMode ? 'MV歌唱增强' : '歌词引导'})`
+        : baseModelName;
 
     const record = {
         id: recordId,
@@ -243,7 +248,7 @@ async function transcribeSegment(provider, filePath, key, language, signal, meta
     };
     addTranscriptionRecord(record);
 
-    console.log(`[云端转录] 🚀 [${record.providerLabel}] 发送切片 [${record.mediaName}] (${record.segmentIndex}/${record.totalSegments}) 大小: ${record.fileSize} 时间: ${record.sendTime}`);
+    console.log(`[云端转录] 🚀 [${record.providerLabel}] 发送切片 [${record.mediaName}] (${record.segmentIndex}/${record.totalSegments}) 模型: ${modelName} 大小: ${record.fileSize} 时间: ${record.sendTime}`);
 
     try {
         let result;
@@ -251,16 +256,37 @@ async function transcribeSegment(provider, filePath, key, language, signal, meta
             const form = multipart(filePath, {
                 // Groq 已于 2025-08-23 下线 distil-whisper-large-v3-en；
                 // Turbo 是官方推荐替代，并支持英语及多语言转录。
+                // 传入歌词/文案 prompt 可显著提升唱歌MV/伴奏下的人声识别准确率。
                 model: 'whisper-large-v3-turbo',
                 response_format: 'verbose_json',
                 'timestamp_granularities[]': 'word',
                 ...(iso ? { language: iso } : {}),
+                ...(promptHint ? { prompt: promptHint } : {}),
             });
             const data = parseResponse('groq', await request({
                 url: 'https://api.groq.com/openai/v1/audio/transcriptions',
                 headers: { Authorization: `Bearer ${key}`, 'Content-Type': form.contentType, 'Content-Length': form.body.length }, body: form.body, signal,
             }));
-            result = { text: data.text || '', words: Array.isArray(data.words) ? data.words : [] };
+            let rawWords = Array.isArray(data.words) ? data.words : [];
+            if (!rawWords.length && Array.isArray(data.segments)) {
+                for (const seg of data.segments) {
+                    if (Array.isArray(seg.words) && seg.words.length) {
+                        rawWords.push(...seg.words);
+                    } else if (seg.text && String(seg.text).trim()) {
+                        const segStart = Number(seg.start || 0);
+                        const segEnd = Math.max(segStart + 0.4, Number(seg.end || segStart + 1));
+                        const cleanSeg = String(seg.text).trim();
+                        const tokens = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(cleanSeg)
+                            ? Array.from(cleanSeg).filter(c => c.trim())
+                            : cleanSeg.split(/\s+/).filter(Boolean);
+                        const step = (segEnd - segStart) / Math.max(1, tokens.length);
+                        tokens.forEach((w, idx) => {
+                            rawWords.push({ word: w, start: segStart + step * idx, end: segStart + step * (idx + 1) });
+                        });
+                    }
+                }
+            }
+            result = { text: data.text || '', words: rawWords };
         } else {
             const body = fs.readFileSync(filePath);
             const deepgramLang = iso || 'en';
@@ -314,7 +340,7 @@ async function transcribeSegment(provider, filePath, key, language, signal, meta
     }
 }
 
-async function transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes, onProgress, signal) {
+async function transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes, onProgress, signal, options = {}) {
     if (!keys?.length) throw new Error(`${PROVIDER_LABEL[provider]} 未配置 API Key`);
     if (provider === 'gladia') {
         // 不让同一 Gladia Key 同时处理两个媒体。这样“每任务 3 路 × 同时 2
@@ -329,7 +355,7 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
             totalSegments: 1,
             provider: 'gladia',
             providerLabel: 'Gladia',
-            model: 'whisper',
+            model: options?.musicMode ? 'whisper (MV歌唱增强)' : 'whisper',
             language: language || 'auto',
             fileSize: '',
             keyPreview: `${slot.key.slice(0, 4)}••••${slot.key.slice(-4)}`,
@@ -345,7 +371,7 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
         addTranscriptionRecord(record);
         console.log(`[云端转录] 🚀 [Gladia] 发送请求 [${record.mediaName}] 时间: ${record.sendTime}`);
         try {
-            const result = await gladiaService.transcribeAudioFull(mediaPath, [slot.key], language, jsonPath, txtPath, minMinutes, onProgress, signal);
+            const result = await gladiaService.transcribeAudioFull(mediaPath, [slot.key], language, jsonPath, txtPath, minMinutes, onProgress, signal, options);
             const durationMs = Date.now() - startTime;
             const durationSec = (durationMs / 1000).toFixed(2) + 's';
             const finishTime = formatTimeWithMs(Date.now());
@@ -380,11 +406,12 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
     }
     const tmpDir = path.join(settings.getSecureTmpDir(), `transcription_${provider}_${crypto.randomUUID()}`);
     try {
-        onProgress?.(`🎙️ [${PROVIDER_LABEL[provider]}] 正在提取音频...`);
-        const audioPath = await extractAudioFromVideo(mediaPath, tmpDir, 'wav', signal);
+        onProgress?.(`🎙️ [${PROVIDER_LABEL[provider]}] ${options?.musicMode ? '正在提取并提纯音乐人声...' : '正在提取音频...'}`);
+        const audioPath = await extractAudioFromVideo(mediaPath, tmpDir, 'wav', signal, options);
         // Groq's standard upload limit is 25 MB.  32 kHz mono WAV is roughly
         // 3.8 MB/minute, so cap chunks at the caller's five-minute default.
-        const segments = await splitAudioOnSilence(audioPath, tmpDir, minMinutes, Math.max(1, minMinutes), 'wav');
+        const effectiveMinMinutes = options?.musicMode ? Math.max(6, Number(minMinutes) || 5) : minMinutes;
+        const segments = await splitAudioOnSilence(audioPath, tmpDir, effectiveMinMinutes, Math.max(1, effectiveMinMinutes), 'wav');
         const utterances = [], texts = [];
         let offset = 0;
         for (let index = 0; index < segments.length; index++) {
@@ -398,6 +425,8 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
                         mediaName: path.basename(mediaPath),
                         segmentIndex: index,
                         totalSegments: segments.length,
+                        promptHint: options?.promptHint || '',
+                        musicMode: !!options?.musicMode,
                     });
                     break;
                 } catch (error) {
@@ -406,7 +435,7 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
                 }
             }
             if (!result) throw lastError || new Error(`${PROVIDER_LABEL[provider]} 未返回结果`);
-            const words = result.words.map(rawWord => {
+            let words = result.words.map(rawWord => {
                 // Deepgram 同时返回 word（裸词）和 punctuated_word（带标点）。
                 // Groq 的 word 有时会携带前导空白。统一保留标点、移除词边界
                 // 的空白，才能让“逐词拼出的文本”和 API 返回全文一致。
@@ -418,7 +447,26 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
                     confidence: Number(rawWord.confidence ?? 0),
                 };
             }).filter(word => word.word);
-            if (!result.text?.trim() || !words.length) throw new Error(`${PROVIDER_LABEL[provider]} 未返回逐词时间码`);
+            if (result.text?.trim() && !words.length) {
+                const cleanSegText = String(result.text).trim();
+                const tokens = /[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(cleanSegText)
+                    ? Array.from(cleanSegText).filter(c => c.trim())
+                    : cleanSegText.split(/\s+/).filter(Boolean);
+                const segDur = Math.max(0.4, Number(segments[index].duration) || tokens.length * 0.25);
+                const step = segDur / Math.max(1, tokens.length);
+                words = tokens.map((w, wIdx) => ({
+                    word: w,
+                    start: offset + step * wIdx,
+                    end: offset + step * (wIdx + 1),
+                    confidence: 0,
+                }));
+            }
+            if (!result.text?.trim() || !words.length) {
+                const hint = provider === 'deepgram'
+                    ? '（Deepgram 强降噪容易过滤音乐伴奏人声，唱歌MV建议切换为「🎸 音乐MV专享」或「🎵 Groq Whisper」模型）'
+                    : '';
+                throw new Error(`${PROVIDER_LABEL[provider]} 未返回逐词时间码${hint}`);
+            }
             utterances.push({ text: result.text, audio_start: offset, audio_end: offset + segments[index].duration, words });
             texts.push(result.text);
             offset += segments[index].duration;
@@ -430,17 +478,21 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
     } finally { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { } }
 }
 
-async function transcribeWithFallback(mediaPath, config, language, jsonPath, txtPath, minMinutes = 5, onProgress, signal) {
+async function transcribeWithFallback(mediaPath, config, language, jsonPath, txtPath, minMinutes = 5, onProgress, signal, options = {}) {
     const order = [...new Set([config?.primary, config?.fallback, config?.rescue].filter(p => ['deepgram', 'groq', 'gladia'].includes(p)))];
     if (!order.length) throw new Error('请在设置中配置至少一个转录服务 API Key');
+    const effectiveOptions = {
+        musicMode: !!(options?.musicMode ?? config?.musicMode),
+        promptHint: String(options?.promptHint ?? config?.promptHint ?? '').trim(),
+    };
     const errors = [];
     for (const provider of order) {
         const keys = config?.providers?.[provider]?.keys || [];
         if (!keys.length) { errors.push(`${PROVIDER_LABEL[provider]}：未配置 Key`); continue; }
         try {
-            console.log(`[云端转录] 🎙️ 正在调用 ${PROVIDER_LABEL[provider]}...`);
-            onProgress?.(`🎙️ 正在通过 ${PROVIDER_LABEL[provider]} 进行语音转录...`);
-            const res = await transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes, onProgress, signal);
+            console.log(`[云端转录] 🎙️ 正在调用 ${PROVIDER_LABEL[provider]}${effectiveOptions.musicMode ? ' [音乐MV增强]' : ''}...`);
+            onProgress?.(`🎙️ 正在通过 ${PROVIDER_LABEL[provider]}${effectiveOptions.musicMode ? ' (音乐MV增强)' : ''} 进行语音转录...`);
+            const res = await transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes, onProgress, signal, effectiveOptions);
             console.log(`[云端转录] ✅ ${PROVIDER_LABEL[provider]} 转录成功`);
             return res;
         }
