@@ -283,6 +283,33 @@ function _findFileRecursive(dir, fileName, maxDepth) {
     return null;
 }
 
+function _resolveMissingMediaFile(filePath, tag = 'WYSIWYG') {
+    if (!filePath || typeof filePath !== 'string') return '';
+    if (path.isAbsolute(filePath) && fs.existsSync(filePath)) return filePath;
+    const bareFileName = path.basename(filePath);
+    if (!bareFileName) return '';
+    console.log(`[${tag}] 素材路径不存在，尝试搜索文件: "${bareFileName}" (原路径: "${filePath}")`);
+
+    const searchDirs = [
+        path.join(os.homedir(), 'Downloads'),
+        path.join(os.homedir(), 'Desktop'),
+        path.join(os.homedir(), 'Documents'),
+        'D:\\AI素材库',
+        'D:\\素材存储',
+        'D:\\专业发帖',
+    ];
+
+    for (const searchDir of searchDirs) {
+        if (!fs.existsSync(searchDir)) continue;
+        const found = _findFileRecursive(searchDir, bareFileName, 4);
+        if (found) {
+            console.log(`[${tag}] 自动找到文件: "${bareFileName}" → "${found}"`);
+            return found;
+        }
+    }
+    return '';
+}
+
 // ═══════════════════════════════════════════════════════
 // 阶段 1: 预处理背景视频 → 提取帧序列
 // ═══════════════════════════════════════════════════════
@@ -345,10 +372,12 @@ async function prepareBg(opts) {
     if (bgMode === 'multi' && Array.isArray(bgClipPool) && bgClipPool.length > 0) {
         console.log(`[WYSIWYG-BG] 多素材拼接: ${bgClipPool.length} 个素材, 目标时长: ${duration}s, 转场: ${bgTransition} ${bgTransDur}s`);
 
-        // 过滤出实际存在的文件
-        const validClips = bgClipPool.filter(p => p && fs.existsSync(p));
+        // 过滤出实际存在的文件（支持自动找回被移动的素材）
+        const validClips = bgClipPool
+            .map(p => (p && fs.existsSync(p)) ? p : _resolveMissingMediaFile(p, 'WYSIWYG-BG-MULTI'))
+            .filter(Boolean);
         if (validClips.length === 0) {
-            throw new Error('素材池中没有有效的文件');
+            throw new Error(`多素材池中的背景视频文件均不存在（可能已被删除或移动）：${bgClipPool[0] || ''}。请重新拖入背景视频。`);
         }
 
         // 获取每个素材的时长，并考虑 custom trim 属性
@@ -884,27 +913,11 @@ async function prepareBg(opts) {
         throw new Error('背景素材路径为空');
     }
     if (!path.isAbsolute(backgroundPath) || !fs.existsSync(backgroundPath)) {
-        const bareFileName = path.basename(backgroundPath);
-        console.log(`[WYSIWYG-BG] 背景路径无效，尝试搜索文件: "${bareFileName}"`);
-        
-        const searchDirs = [
-            path.join(os.homedir(), 'Downloads'),
-            path.join(os.homedir(), 'Desktop'),
-            path.join(os.homedir(), 'Documents'),
-        ];
-        
-        let found = null;
-        for (const searchDir of searchDirs) {
-            if (!fs.existsSync(searchDir)) continue;
-            found = _findFileRecursive(searchDir, bareFileName, 4);
-            if (found) break;
-        }
-        
+        const found = _resolveMissingMediaFile(backgroundPath, 'WYSIWYG-BG');
         if (found) {
-            console.log(`[WYSIWYG-BG] 自动找到文件: "${bareFileName}" → "${found}"`);
             backgroundPath = found;
         } else {
-            throw new Error(`背景素材路径无效且自动搜索未找到文件: "${backgroundPath}"。请重新添加素材。`);
+            throw new Error(`背景视频/图片文件不存在（可能已被删除或移动）：${backgroundPath}。请重新为该任务拖入或选择背景视频。`);
         }
     }
 
@@ -1329,24 +1342,39 @@ async function startSession(opts) {
         useGPU = false,
     } = opts;
 
-    // 路径自动修复（与 prepareBg 相同逻辑）
+    // 路径自动修复与存在性校验（覆盖 backgroundPath 与 Fast Alpha Overlay 的 alphaOverlayBgPath）
     if (backgroundPath && (!path.isAbsolute(backgroundPath) || !fs.existsSync(backgroundPath))) {
-        const bareFileName = path.basename(backgroundPath);
-        console.log(`[WYSIWYG-START] 背景路径无效，尝试搜索: "${bareFileName}"`);
-        const searchDirs = [
-            path.join(os.homedir(), 'Downloads'),
-            path.join(os.homedir(), 'Desktop'),
-            path.join(os.homedir(), 'Documents'),
-        ];
-        for (const searchDir of searchDirs) {
-            if (!fs.existsSync(searchDir)) continue;
-            const found = _findFileRecursive(searchDir, bareFileName, 4);
+        const found = _resolveMissingMediaFile(backgroundPath, 'WYSIWYG-START');
+        if (found) {
+            backgroundPath = found;
+        }
+    }
+    if (opts.alphaOverlayBgPath) {
+        if (!path.isAbsolute(opts.alphaOverlayBgPath) || !fs.existsSync(opts.alphaOverlayBgPath)) {
+            const found = (backgroundPath && fs.existsSync(backgroundPath))
+                ? backgroundPath
+                : _resolveMissingMediaFile(opts.alphaOverlayBgPath, 'WYSIWYG-START-ALPHA');
             if (found) {
-                console.log(`[WYSIWYG-START] 自动找到: "${found}"`);
-                backgroundPath = found;
-                break;
+                opts.alphaOverlayBgPath = found;
+                if (!backgroundPath || !fs.existsSync(backgroundPath)) {
+                    backgroundPath = found;
+                }
+            } else {
+                throw new Error(`背景视频/图片文件不存在（可能已被删除或移动）：${opts.alphaOverlayBgPath}。请重新为该任务拖入或选择背景视频。`);
             }
         }
+    }
+    if (voicePath && (!path.isAbsolute(voicePath) || !fs.existsSync(voicePath))) {
+        const found = _resolveMissingMediaFile(voicePath, 'WYSIWYG-VOICE');
+        if (found) voicePath = found;
+    }
+    if (bgmPath && (!path.isAbsolute(bgmPath) || !fs.existsSync(bgmPath))) {
+        const found = _resolveMissingMediaFile(bgmPath, 'WYSIWYG-BGM');
+        if (found) bgmPath = found;
+    }
+    if (contentVideoPath && (!path.isAbsolute(contentVideoPath) || !fs.existsSync(contentVideoPath))) {
+        const found = _resolveMissingMediaFile(contentVideoPath, 'WYSIWYG-CONTENT');
+        if (found) contentVideoPath = found;
     }
 
     const sessionId = generateId();
@@ -1574,7 +1602,11 @@ async function startSession(opts) {
     if (session.encoderExited) {
         console.error(`[WYSIWYG] FFmpeg 启动失败! stderr: ${session.stderr}`);
         sessions.delete(sessionId);
-        return null;
+        const detailErr = formatMediaError(session.stderr, {
+            action: 'FFmpeg 编码器启动',
+            code: session.encoderExitCode,
+        });
+        throw new Error(detailErr || 'FFmpeg 启动失败');
     }
 
     return sessionId;

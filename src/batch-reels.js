@@ -13596,7 +13596,8 @@ async function reelsStartExport(options = {}) {
         } catch (err) {
             console.error('[Reels] Export failed:', task.fileName, err);
             failCount += 1;
-            const errMsg = err && err.message ? err.message : String(err || '未知错误');
+            const rawErrMsg = err && err.message ? err.message : String(err || '未知错误');
+            const errMsg = rawErrMsg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)*/i, '');
             failDetails.push(`${task.fileName}${presetLabel}: ${errMsg}`);
             _reelsAppendExportLogUI(`${task.fileName}${presetLabel} 导出失败：${errMsg}`, 'error');
             _reelsUpdateJobProgressUI(i, jobProgress[i], '失败', 'failed');
