@@ -2,9 +2,25 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+let originalFs = fs;
+try {
+    // In Electron, require('fs') treats app.asar as a virtual directory.
+    // original-fs stats the actual .asar archive file on disk.
+    originalFs = require('original-fs');
+} catch (_) {
+    originalFs = fs;
+}
+
 const STATE_FILE_NAME = '.videokit-code-cache-state.json';
 const BOOT_PENDING_FILE_NAME = '.videokit-renderer-boot-pending.json';
 const BACKUP_PREFIX = 'Code Cache.before-videokit-repair-';
+const AUX_GPU_CACHE_DIRS = ['GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache'];
+
+function sleepSync(ms) {
+    try {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    } catch (_) {}
+}
 
 function formatTimestamp(date = new Date()) {
     const pad = (n) => String(n).padStart(2, '0');
@@ -18,6 +34,12 @@ function getBundleSignature(appPath) {
     if (!appPath) return '';
     try {
         // When packaged with asar, appPath points to .../resources/app.asar
+        if (originalFs && typeof originalFs.existsSync === 'function' && originalFs.existsSync(appPath)) {
+            const rawStat = originalFs.statSync(appPath);
+            if (rawStat.isFile()) {
+                return `asar:${rawStat.size}:${Math.trunc(rawStat.mtimeMs)}`;
+            }
+        }
         if (fs.existsSync(appPath)) {
             const stat = fs.statSync(appPath);
             if (stat.isFile()) {
@@ -33,6 +55,23 @@ function getBundleSignature(appPath) {
         // Ignore stat errors on virtual paths
     }
     return '';
+}
+
+function clearAuxiliaryGpuCaches(rootDir, log = () => {}) {
+    if (!rootDir || typeof rootDir !== 'string') return;
+    const root = path.resolve(rootDir);
+    for (const dirName of AUX_GPU_CACHE_DIRS) {
+        const target = path.resolve(root, dirName);
+        if (path.dirname(target).toLowerCase() !== root.toLowerCase()) continue;
+        try {
+            if (!fs.existsSync(target)) continue;
+            const lstat = fs.lstatSync(target);
+            if (lstat.isSymbolicLink() || !lstat.isDirectory()) continue;
+            fs.rmSync(target, { recursive: true, force: true });
+        } catch (err) {
+            log(`[CodeCacheGuard] 清理辅助着色器缓存跳过 (${dirName}): ${err.message}`);
+        }
+    }
 }
 
 function pruneOldCodeCacheBackups(rootDir, maxBackups = 2) {
@@ -90,20 +129,74 @@ function rotateCodeCacheDir(userDataDir, options = {}) {
     const backupName = `${BACKUP_PREFIX}${suffix}`;
     const backupPath = path.join(root, backupName);
 
-    fs.renameSync(cacheDir, backupPath);
-
-    const maxBackups = Number.isFinite(options.maxBackups) ? options.maxBackups : 2;
-    if (maxBackups >= 1) {
-        pruneOldCodeCacheBackups(root, maxBackups);
+    let renamed = false;
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            fs.renameSync(cacheDir, backupPath);
+            renamed = true;
+            break;
+        } catch (err) {
+            lastErr = err;
+            if (attempt === 0) {
+                sleepSync(150);
+            }
+        }
     }
 
-    return {
-        rotated: true,
-        reason: options.reason || 'manual',
-        cacheDir,
-        backupName,
-        backupPath,
-    };
+    if (renamed) {
+        const maxBackups = Number.isFinite(options.maxBackups) ? options.maxBackups : 2;
+        if (maxBackups >= 1) {
+            pruneOldCodeCacheBackups(root, maxBackups);
+        }
+        return {
+            rotated: true,
+            reason: options.reason || 'manual',
+            cacheDir,
+            backupName,
+            backupPath,
+        };
+    }
+
+    // Fallback on Windows when the top-level 'Code Cache' directory handle is briefly held:
+    // purge unlocked inner bytecode directories ('js', 'wasm', 'webui_js') in-place.
+    try {
+        const innerEntries = fs.readdirSync(cacheDir);
+        let remainingFiles = 0;
+        for (const entryName of innerEntries) {
+            const entryPath = path.join(cacheDir, entryName);
+            try {
+                fs.rmSync(entryPath, { recursive: true, force: true });
+            } catch (_) {}
+            if (fs.existsSync(entryPath)) {
+                try {
+                    const st = fs.statSync(entryPath);
+                    if (st.isDirectory()) {
+                        remainingFiles += fs.readdirSync(entryPath).length;
+                    } else {
+                        remainingFiles += 1;
+                    }
+                } catch (_) {
+                    remainingFiles += 1;
+                }
+            }
+        }
+        if (remainingFiles === 0) {
+            return {
+                rotated: true,
+                clearedInPlace: true,
+                reason: options.reason || 'manual',
+                cacheDir,
+                backupName: '(cleared-in-place)',
+                backupPath: cacheDir,
+            };
+        }
+    } catch (_) {}
+
+    if (lastErr) {
+        throw lastErr;
+    }
+    return { rotated: false, reason: 'locked', cacheDir };
 }
 
 /**
@@ -166,6 +259,9 @@ function ensureFreshCodeCacheOnStartup({
     }
 
     let rotationResult = { rotated: false, reason: rotationReason || 'up-to-date' };
+    if (rotationReason) {
+        clearAuxiliaryGpuCaches(root, log);
+    }
     if (rotationReason && hasExistingCodeCache) {
         try {
             rotationResult = rotateCodeCacheDir(root, { reason: rotationReason });
@@ -178,30 +274,36 @@ function ensureFreshCodeCacheOnStartup({
         }
     }
 
+    const rotationFailedWithExistingCache = Boolean(rotationReason && hasExistingCodeCache && !rotationResult.rotated);
+
     try {
-        if (hadIncompleteBoot) {
+        if (hadIncompleteBoot && !rotationFailedWithExistingCache) {
             fs.rmSync(bootPendingFile, { force: true });
         }
     } catch (_) {}
 
-    try {
-        fs.mkdirSync(root, { recursive: true });
-        fs.writeFileSync(
-            stateFile,
-            JSON.stringify(
-                {
-                    ...currentFingerprint,
-                    updatedAt: new Date().toISOString(),
-                    lastRotationReason: rotationResult.rotated ? rotationReason : (prevState?.lastRotationReason || ''),
-                    lastBackupName: rotationResult.rotated ? rotationResult.backupName : (prevState?.lastBackupName || ''),
-                },
-                null,
-                2
-            ),
-            'utf8'
-        );
-    } catch (err) {
-        log(`[CodeCacheGuard] 写入状态文件失败: ${err.message}`);
+    // Only mark currentFingerprint as up-to-date in stateFile if rotation was not needed
+    // or succeeded. If rotation failed (e.g. EPERM lock), preserve previous state so next boot retries.
+    if (!rotationFailedWithExistingCache) {
+        try {
+            fs.mkdirSync(root, { recursive: true });
+            fs.writeFileSync(
+                stateFile,
+                JSON.stringify(
+                    {
+                        ...currentFingerprint,
+                        updatedAt: new Date().toISOString(),
+                        lastRotationReason: rotationResult.rotated ? rotationReason : (prevState?.lastRotationReason || ''),
+                        lastBackupName: rotationResult.rotated ? rotationResult.backupName : (prevState?.lastBackupName || ''),
+                    },
+                    null,
+                    2
+                ),
+                'utf8'
+            );
+        } catch (err) {
+            log(`[CodeCacheGuard] 写入状态文件失败: ${err.message}`);
+        }
     }
 
     return {
@@ -237,6 +339,8 @@ module.exports = {
     STATE_FILE_NAME,
     BOOT_PENDING_FILE_NAME,
     BACKUP_PREFIX,
+    AUX_GPU_CACHE_DIRS,
+    clearAuxiliaryGpuCaches,
     rotateCodeCacheDir,
     ensureFreshCodeCacheOnStartup,
     markRendererBootPending,

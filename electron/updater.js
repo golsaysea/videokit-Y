@@ -17,7 +17,8 @@ try {
 } catch (e) {
     console.warn('[Updater] electron-updater not available in dev mode:', e.message);
 }
-const { app, ipcMain: rawIpcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain: rawIpcMain, dialog } = require('electron');
+const { spawn } = require('child_process');
 const { assertTrustedRenderer } = require('./services/trustedRenderer');
 const ipcMain = { handle: (channel, listener) => rawIpcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return listener(event, ...args); }) };
 const fs = require('fs');
@@ -32,6 +33,88 @@ let log = console.log;
 let _isPortable = false;
 let _portableDir = '';          // 绿色版 exe 所在目录
 let _pendingPortableUpdate = null; // { version, zipUrl, releaseNotes }
+let _pendingPortableStagingDir = ''; // Windows 文件被占用时的暂存解压目录
+
+async function prepareForUpdateRestart() {
+    app.isQuitting = true;
+    app._updateRestartApproved = true;
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed() && !mainWindow.webContents.isCrashed()) {
+        try {
+            await Promise.race([
+                mainWindow.webContents.executeJavaScript(`(()=>{
+                    if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
+                    const result=window.reelsFlushWorkspaceBeforeClose();
+                    if(result?.ok)window._workspaceCloseAlreadySaved=true;
+                    return result;
+                })()`, true),
+                new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 1500)),
+            ]);
+        } catch (err) {
+            log(`[Updater] 重启前自动保存工作区跳过: ${err.message}`);
+        }
+        try {
+            await mainWindow.webContents.session.clearCodeCaches({});
+        } catch (_) {}
+    }
+    try {
+        for (const win of BrowserWindow.getAllWindows()) {
+            if (win && win !== mainWindow && !win.isDestroyed()) {
+                win.destroy();
+            }
+        }
+    } catch (_) {}
+    try {
+        if (typeof app.releaseSingleInstanceLock === 'function') {
+            app.releaseSingleInstanceLock();
+        }
+    } catch (_) {}
+}
+
+function launchPortableRestart() {
+    if (process.platform === 'win32' && _pendingPortableStagingDir && fs.existsSync(_pendingPortableStagingDir)) {
+        try {
+            const scriptPath = path.join(_portableDir, '.videokit-portable-apply.ps1');
+            let unpackRoot = _pendingPortableStagingDir;
+            try {
+                const entries = fs.readdirSync(_pendingPortableStagingDir, { withFileTypes: true });
+                if (entries.length === 1 && entries[0].isDirectory() && !fs.existsSync(path.join(_pendingPortableStagingDir, path.basename(process.execPath)))) {
+                    unpackRoot = path.join(_pendingPortableStagingDir, entries[0].name);
+                }
+            } catch (_) {}
+            const psContent = [
+                '$ErrorActionPreference = "SilentlyContinue"',
+                `$targetPid = ${process.pid}`,
+                'for ($i = 0; $i -lt 60; $i++) {',
+                '    if (-not (Get-Process -Id $targetPid -ErrorAction SilentlyContinue)) { break }',
+                '    Start-Sleep -Milliseconds 250',
+                '}',
+                `$src = ${JSON.stringify(unpackRoot)}`,
+                `$dst = ${JSON.stringify(_portableDir)}`,
+                `$staging = ${JSON.stringify(_pendingPortableStagingDir)}`,
+                'if (Test-Path -LiteralPath $src) {',
+                '    Get-ChildItem -LiteralPath $src -Force | ForEach-Object {',
+                '        Copy-Item -LiteralPath $_.FullName -Destination $dst -Recurse -Force',
+                '    }',
+                '}',
+                'Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue',
+                `Start-Process -FilePath ${JSON.stringify(process.execPath)} -WorkingDirectory $dst`,
+                'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue',
+            ].join('\r\n');
+            fs.writeFileSync(scriptPath, psContent, 'utf8');
+            const child = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+                detached: true,
+                stdio: 'ignore',
+            });
+            child.unref();
+            app.exit(0);
+            return;
+        } catch (err) {
+            log(`[Updater-Portable] 启动暂存覆盖脚本失败，回退直接重启: ${err.message}`);
+        }
+    }
+    app.relaunch();
+    app.exit(0);
+}
 
 // 使用 electron-store 持久化更新通道偏好
 let store = null;
@@ -321,11 +404,25 @@ async function portableUpdate(info) {
         log(`[Updater-Portable] 下载完成，开始解压到: ${_portableDir}`);
         sendToRenderer('update-status', { status: 'downloading', message: '解压更新文件中...', percent: 100 });
 
-        // 解压覆盖当前目录
+        // 解压覆盖当前目录（Windows 下若运行中的 exe/dll/asar 被锁，自动降级解压至暂存目录并在退出后覆盖）
         const extract = require('./services/safeExtract');
-        await extract(zipPath, { dir: _portableDir });
-
-        log(`[Updater-Portable] 解压完成 v${version}`);
+        _pendingPortableStagingDir = '';
+        try {
+            await extract(zipPath, { dir: _portableDir });
+            log(`[Updater-Portable] 解压完成 v${version}`);
+        } catch (extractErr) {
+            if (process.platform === 'win32') {
+                const stagingDir = path.join(_portableDir, '.update-staging');
+                log(`[Updater-Portable] 直接覆盖遇到文件占用 (${extractErr.message})，改用暂存目录解压: ${stagingDir}`);
+                try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) {}
+                fs.mkdirSync(stagingDir, { recursive: true });
+                await extract(zipPath, { dir: stagingDir });
+                _pendingPortableStagingDir = stagingDir;
+                log(`[Updater-Portable] 暂存解压完成 v${version}，将在退出后自动替换并重启`);
+            } else {
+                throw extractErr;
+            }
+        }
 
         // 清理临时文件
         try {
@@ -344,7 +441,7 @@ async function portableUpdate(info) {
         const { response } = await dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: '绿色版更新完成',
-            message: `v${version} 已覆盖更新到当前目录`,
+            message: `v${version} 已准备就绪`,
             detail: '重启应用即可使用新版本。是否立即重启？',
             buttons: ['立即重启', '稍后'],
             defaultId: 0,
@@ -352,9 +449,8 @@ async function portableUpdate(info) {
         });
 
         if (response === 0) {
-            app.isQuitting = true;
-            app.relaunch();
-            app.exit(0);
+            await prepareForUpdateRestart();
+            launchPortableRestart();
         }
     } catch (err) {
         log(`[Updater-Portable] 更新失败: ${err.message}`);
@@ -473,10 +569,9 @@ function initAutoUpdater(win, logFn) {
         });
 
         // IPC: 安装更新并重启（绿色版直接重启）
-        ipcMain.handle('install-update', () => {
-            app.isQuitting = true;
-            app.relaunch();
-            app.exit(0);
+        ipcMain.handle('install-update', async () => {
+            await prepareForUpdateRestart();
+            launchPortableRestart();
         });
 
         // IPC: 获取/设置通道
@@ -616,10 +711,10 @@ function initAutoUpdater(win, logFn) {
             buttons: ['立即重启', '稍后'],
             defaultId: 0,
             cancelId: 1,
-        }).then(({ response }) => {
+        }).then(async ({ response }) => {
             if (response === 0) {
-                app.isQuitting = true;
-                autoUpdater.quitAndInstall();
+                await prepareForUpdateRestart();
+                autoUpdater.quitAndInstall(false, true);
             }
         });
     });
@@ -655,9 +750,9 @@ function initAutoUpdater(win, logFn) {
     });
 
     // 安装更新并重启
-    ipcMain.handle('install-update', () => {
-        app.isQuitting = true;
-        autoUpdater.quitAndInstall();
+    ipcMain.handle('install-update', async () => {
+        await prepareForUpdateRestart();
+        autoUpdater.quitAndInstall(false, true);
     });
 
     // 获取/设置更新通道

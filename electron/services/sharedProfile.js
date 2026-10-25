@@ -398,19 +398,20 @@ function readChromiumLocalStorage(userDataDir) {
                 stateByOriginKey.set(compound, {
                     origin: parsed.origin,
                     key: parsed.key,
-                    value: _decodeLocalStorageValue(entry.val),
+                    rawVal: entry.val,
                     seq: entry.seq || 0,
                 });
             }
         }
 
         for (const item of stateByOriginKey.values()) {
+            const decodedValue = _decodeLocalStorageValue(item.rawVal);
             if (!result.byOrigin[item.origin]) result.byOrigin[item.origin] = {};
-            result.byOrigin[item.origin][item.key] = item.value;
+            result.byOrigin[item.origin][item.key] = decodedValue;
             const prev = result.latestByKey[item.key];
             if (!prev || item.seq >= prev.seq) {
                 result.latestByKey[item.key] = {
-                    value: item.value,
+                    value: decodedValue,
                     seq: item.seq,
                     origin: item.origin,
                 };

@@ -18050,6 +18050,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 window.reelsFlushWorkspaceBeforeClose=function(){
     if(window._skipBatchSaveBeforeUnload || window._templateThumbnailCaptureActive)return {ok:true,skipped:true};
+    if(!Array.isArray(_batchTableState?.tabs) || _batchTableState.tabs.length === 0)return {ok:true,skipped:true};
     try{
         document.activeElement?.blur?.();
         if(typeof _syncCurrentOverlayEditorToSelectedTask==='function')_syncCurrentOverlayEditorToSelectedTask();

@@ -29,7 +29,14 @@ try {
     $installDirs = @((Join-Path $env:LOCALAPPDATA 'Programs\videokit'))
     if ($env:ProgramFiles) { $installDirs += Join-Path $env:ProgramFiles 'VideoKit' }
     if (${env:ProgramFiles(x86)}) { $installDirs += Join-Path ${env:ProgramFiles(x86)} 'VideoKit' }
-    if ($env:VIDEOKIT_REPAIR_SELF) { $installDirs += [IO.Path]::GetDirectoryName($env:VIDEOKIT_REPAIR_SELF) }
+    if ($env:VIDEOKIT_REPAIR_SELF) {
+        $selfDir = [IO.Path]::GetDirectoryName($env:VIDEOKIT_REPAIR_SELF)
+        $installDirs += $selfDir
+        $portableData = Join-Path $selfDir 'portable-data'
+        if (Test-Path -LiteralPath $portableData -PathType Container) {
+            $profiles.Add($portableData)
+        }
+    }
     foreach ($dir in $installDirs | Select-Object -Unique) {
         $config = Join-Path $dir '.videokit-cache-config.json'
         if (Test-Path -LiteralPath $config -PathType Leaf) {
@@ -42,6 +49,21 @@ try {
     $renamed = 0
     foreach ($profile in $profiles | Select-Object -Unique) {
         $root = [IO.Path]::GetFullPath($profile).TrimEnd('\','/')
+        if (-not $CheckOnly) {
+            foreach ($gpuDirName in @('GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache')) {
+                $gpuDir = [IO.Path]::GetFullPath((Join-Path $root $gpuDirName))
+                if ([string]::Equals([IO.Path]::GetDirectoryName($gpuDir), $root, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $gpuDir -PathType Container)) {
+                    $gItem = Get-Item -LiteralPath $gpuDir -Force
+                    if (($gItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+                        Remove-Item -LiteralPath $gpuDir -Recurse -Force -ErrorAction SilentlyContinue
+                    }
+                }
+            }
+            $stateFile = Join-Path $root '.videokit-code-cache-state.json'
+            if (Test-Path -LiteralPath $stateFile -PathType Leaf) {
+                Remove-Item -LiteralPath $stateFile -Force -ErrorAction SilentlyContinue
+            }
+        }
         $cache = [IO.Path]::GetFullPath((Join-Path $root 'Code Cache'))
         if (-not [string]::Equals([IO.Path]::GetDirectoryName($cache), $root, [StringComparison]::OrdinalIgnoreCase)) {
             throw '缓存路径校验失败，已停止。'

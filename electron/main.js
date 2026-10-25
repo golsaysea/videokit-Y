@@ -501,7 +501,16 @@ if (_customUserData) {
 }
 
 // The editor is the only workspace owner; a second launch focuses it.
-const _workspaceInstanceOwner=app.requestSingleInstanceLock();
+// On packaged update/restart, the previous process may still be releasing its lock for a few hundred ms.
+let _workspaceInstanceOwner = app.requestSingleInstanceLock();
+if (!_workspaceInstanceOwner && app.isPackaged) {
+    for (let retry = 0; retry < 8 && !_workspaceInstanceOwner; retry++) {
+        try {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300);
+        } catch (_) {}
+        _workspaceInstanceOwner = app.requestSingleInstanceLock();
+    }
+}
 if (!_workspaceInstanceOwner) {
     if (!app.isPackaged) {
         dialog.showMessageBoxSync({
@@ -514,7 +523,14 @@ if (!_workspaceInstanceOwner) {
     }
     app.exit(0);
 }
-app.on('second-instance',()=>{if(mainWindow&&!mainWindow.isDestroyed()){if(mainWindow.isMinimized())mainWindow.restore();mainWindow.show();mainWindow.focus();}});
+app.on('second-instance', () => {
+    if (isQuitting || app.isQuitting) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    }
+});
 
 // 日志文件路径
 const logDir = (app && app.isPackaged)
@@ -892,18 +908,34 @@ function createWindow() {
         const userDataDir = app.getPath('userData');
         const distHtmlPath = path.join(__dirname, '../dist/index.html');
         let packagedCacheRetried = false;
+        let rendererBootVerified = false;
+        let bootWatchdogTimer = null;
 
         codeCacheGuard.markRendererBootPending(userDataDir, {
             appVersion: app.getVersion(),
         });
 
+        const clearBootWatchdog = () => {
+            if (bootWatchdogTimer) {
+                clearTimeout(bootWatchdogTimer);
+                bootWatchdogTimer = null;
+            }
+        };
+
         const recoverFromWhiteScreen = async (reason) => {
-            if (packagedCacheRetried || !mainWindow || mainWindow.isDestroyed()) return;
+            clearBootWatchdog();
+            if (packagedCacheRetried || rendererBootVerified || !mainWindow || mainWindow.isDestroyed()) return;
             packagedCacheRetried = true;
             log(`[CodeCacheGuard] 检测到渲染异常或白屏 (${reason})，正在自动清理 Code Cache 并重载...`);
             try {
+                codeCacheGuard.rotateCodeCacheDir(userDataDir, { reason: `runtime-${reason}` });
+            } catch (_) {}
+            try {
                 await mainWindow.webContents.session.clearCodeCaches({});
                 await mainWindow.webContents.session.clearCache();
+                await mainWindow.webContents.session.clearStorageData({
+                    storages: ['shadercache', 'cachestorage'],
+                });
             } catch (_) {}
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.reloadIgnoringCache();
@@ -917,14 +949,18 @@ function createWindow() {
         mainWindow.webContents.on('did-finish-load', async () => {
             if (!mainWindow || mainWindow.isDestroyed()) return;
             try {
-                const domHealthy = await mainWindow.webContents.executeJavaScript(
-                    'Boolean(document.body && document.body.children && document.body.children.length > 0)',
+                // Verify both DOM structure AND core frontend JS bundle execution (`window.switchTab` & `window._reelsState`).
+                // Static HTML alone has document.body.children.length > 0 even when V8 Code Cache fails to execute scripts.
+                const jsAndDomHealthy = await mainWindow.webContents.executeJavaScript(
+                    'Boolean(document.body && document.body.children && document.body.children.length > 0 && typeof window.switchTab === "function" && window._reelsState)',
                     true
                 );
-                if (domHealthy) {
+                if (jsAndDomHealthy) {
+                    rendererBootVerified = true;
+                    clearBootWatchdog();
                     codeCacheGuard.markRendererBootComplete(userDataDir);
                 } else {
-                    await recoverFromWhiteScreen('empty-dom-after-load');
+                    await recoverFromWhiteScreen('scripts-not-initialized-after-load');
                 }
             } catch (err) {
                 await recoverFromWhiteScreen(`dom-check-error:${err.message}`);
@@ -935,18 +971,36 @@ function createWindow() {
             if (_startupCodeCacheStatus?.needsSessionCacheClear && mainWindow && !mainWindow.isDestroyed()) {
                 try {
                     await mainWindow.webContents.session.clearCodeCaches({});
+                    await mainWindow.webContents.session.clearCache();
                 } catch (_) {}
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
+                bootWatchdogTimer = setTimeout(() => {
+                    if (!rendererBootVerified) {
+                        recoverFromWhiteScreen('startup-watchdog-timeout');
+                    }
+                }, 10000);
                 mainWindow.loadFile(distHtmlPath);
             }
         })();
     }
 
     mainWindow.on('close',async event=>{
-        if(workspaceCloseApproved || mainWindow?.webContents?.isDestroyed() || mainWindow?.webContents?.isCrashed()){
+        if(
+            workspaceCloseApproved ||
+            app._updateRestartApproved ||
+            isQuitting ||
+            app.isQuitting ||
+            mainWindow?.webContents?.isDestroyed() ||
+            mainWindow?.webContents?.isCrashed()
+        ){
             isQuitting = true;
             app.isQuitting = true;
+            try {
+                if (typeof app.releaseSingleInstanceLock === 'function') {
+                    app.releaseSingleInstanceLock();
+                }
+            } catch (_) {}
             return;
         }
         event.preventDefault();
@@ -967,12 +1021,22 @@ function createWindow() {
             workspaceCloseApproved=true;
             isQuitting = true;
             app.isQuitting = true;
+            try {
+                if (typeof app.releaseSingleInstanceLock === 'function') {
+                    app.releaseSingleInstanceLock();
+                }
+            } catch (_) {}
             closingWindow.close();
         }catch(error){
             if (closingWindow.isDestroyed() || closingWindow.webContents?.isDestroyed() || closingWindow.webContents?.isCrashed()) {
                 workspaceCloseApproved = true;
                 isQuitting = true;
                 app.isQuitting = true;
+                try {
+                    if (typeof app.releaseSingleInstanceLock === 'function') {
+                        app.releaseSingleInstanceLock();
+                    }
+                } catch (_) {}
                 if (!closingWindow.isDestroyed()) closingWindow.close();
                 return;
             }
@@ -983,6 +1047,14 @@ function createWindow() {
 
     mainWindow.on('closed', () => {
         mainWindow = null;
+        for (const [, win] of templateWindows) {
+            try { if (win && !win.isDestroyed()) win.destroy(); } catch (_) {}
+        }
+        templateWindows.clear();
+        for (const [, win] of isolatedReelsRenderers) {
+            try { if (win && !win.isDestroyed()) win.destroy(); } catch (_) {}
+        }
+        isolatedReelsRenderers.clear();
     });
 }
 
@@ -2544,7 +2616,7 @@ app.whenReady().then(async () => {
     createWindow();
 
     // 自动更新：仅在打包版启用（开发模式跳过）
-    if (app.isPackaged && mainWindow && !_portableMode) {
+    if (app.isPackaged && mainWindow) {
         initAutoUpdater(mainWindow, log);
     } else {
         log('[Updater] 开发模式，跳过自动更新初始化');
@@ -2558,6 +2630,12 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
     isQuitting = true;
+    app.isQuitting = true;
+    try {
+        if (typeof app.releaseSingleInstanceLock === 'function') {
+            app.releaseSingleInstanceLock();
+        }
+    } catch (_) {}
     if (process.platform !== 'darwin') app.quit();
 });
 
@@ -2569,4 +2647,10 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
     isQuitting = true;
+    app.isQuitting = true;
+    try {
+        if (typeof app.releaseSingleInstanceLock === 'function') {
+            app.releaseSingleInstanceLock();
+        }
+    } catch (_) {}
 });

@@ -63,9 +63,7 @@ function readSnapshot() {
         return readSingleSnapshotFile(primaryPath)?.values || {};
     }
 
-    let merged = { ...getLeveldbPresetSeed() };
-
-    // 2. Read and merge all `local-storage-presets.json` snapshots from oldest to newest,
+    // Read all `local-storage-presets.json` snapshots from oldest to newest,
     // keeping the primary file last if timestamps tie.
     const snapshots = [];
     for (const presetDir of sharedProfile.getCandidatePresetDirs()) {
@@ -82,6 +80,10 @@ function readSnapshot() {
         if (a.updatedMs !== b.updatedMs) return a.updatedMs - b.updatedMs;
         return Number(a.isPrimary) - Number(b.isPrimary);
     });
+
+    const hasExistingDiskSnapshot = snapshots.some(s => s.values && Object.keys(s.values).length > 0);
+    let merged = hasExistingDiskSnapshot ? {} : { ...getLeveldbPresetSeed() };
+
     for (const snap of snapshots) {
         merged = mergeSnapshots(merged, snap.values);
     }
