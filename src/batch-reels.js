@@ -290,6 +290,15 @@ const REELS_ANIMATION_PRESETS = {
         box_connected: false,
         box_wipe_enabled: true,
     },
+    zoom_typewriter: {
+        label: 'Zoom Typewriter · 远景打字推进',
+        anim_in_type: 'zoom_typewriter',
+        anim_in_duration: 0.35,
+        anim_out_type: 'none',
+        anim_out_duration: 0,
+        typewriter_reveal_type: 'char',
+        tw_unrevealed_opacity: 0,
+    },
 };
 
 let _reelsHotkeyBound = false;

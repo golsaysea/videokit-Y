@@ -129,6 +129,7 @@ const ANIM_TYPE_LABELS = [
     ['漂浮', 'floating'],
     ['逐行出现', 'bullet_reveal'],
     ['底条进度擦除', 'box_wipe'],
+    ['远景打字推进', 'zoom_typewriter'],
     ['闪光高亮', 'flash_highlight'],
 ];
 
@@ -711,6 +712,46 @@ function computeBoxWipeLineWidths(currentTime, segStart, segEnd, lineWidths, opt
     });
 }
 
+/**
+ * Compute continuous 3D forward zoom scale + rapid character-by-character
+ * typewriter reveal state ("远景打字推进").
+ *
+ * @param {number|null} currentTime
+ * @param {number} segStart
+ * @param {number} segEnd
+ * @param {number} totalChars
+ * @param {object} [opts]
+ * @returns {{ blockScale: number, revealedChars: number, activeCharIdx: number, activeCharProgress: number }}
+ */
+function computeZoomTypewriterState(currentTime, segStart, segEnd, totalChars, opts = {}) {
+    const count = Math.max(1, Number(totalChars) || 1);
+    if (currentTime == null || !Number.isFinite(Number(currentTime))) {
+        return { blockScale: 1.0, revealedChars: count, activeCharIdx: -1, activeCharProgress: 1.0 };
+    }
+    const segDur = Math.max(0.001, Number(segEnd) - Number(segStart));
+    const elapsed = Math.max(0.0, Number(currentTime) - Number(segStart));
+    const segFrac = Math.max(0.0, Math.min(1.0, elapsed / segDur));
+
+    const startScale = Number.isFinite(Number(opts.startScale)) ? Number(opts.startScale) : 0.42;
+    const endScale = Number.isFinite(Number(opts.endScale)) ? Number(opts.endScale) : 1.26;
+    const blockScale = startScale + (endScale - startScale) * Math.pow(segFrac, 1.12);
+
+    const revealDur = Math.min(segDur * 0.36, Math.max(0.18, count * 0.036));
+    if (elapsed >= revealDur) {
+        return { blockScale, revealedChars: count, activeCharIdx: -1, activeCharProgress: 1.0 };
+    }
+    const rawUnits = Math.max(0.35, (elapsed / Math.max(0.001, revealDur)) * count);
+    const revealedChars = Math.max(1, Math.min(count, Math.ceil(rawUnits)));
+    const fracInChar = rawUnits - Math.floor(rawUnits);
+    const activeCharProgress = fracInChar > 0.001 ? Math.max(0.35, Math.min(1.0, fracInChar)) : 1.0;
+    return {
+        blockScale,
+        revealedChars,
+        activeCharIdx: revealedChars - 1,
+        activeCharProgress,
+    };
+}
+
 // Spectrum shape types
 const SPECTRUM_SHAPES = [
     ['频谱条', 'bars'],
@@ -759,6 +800,7 @@ const ReelsAnimEngine = {
     computeDynImgBreatheAlpha,
     computeBoxColorTransition,
     computeBoxWipeLineWidths,
+    computeZoomTypewriterState,
 };
 
 // Browser global

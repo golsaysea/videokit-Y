@@ -1167,18 +1167,32 @@ class ReelsCanvasRenderer {
         const globalAlpha = normOp * animOpacity;
         ctx.globalAlpha = globalAlpha;
 
-        // ── Typewriter ──
-        const isTypewriter = animInType === 'typewriter';
-        const typewriterRevealType = s.typewriter_reveal_type || 'word';
+        // ── Typewriter / Zoom Typewriter ──
+        const isZoomTypewriter = animInType === 'zoom_typewriter';
+        const isTypewriter = animInType === 'typewriter' || isZoomTypewriter;
+        const typewriterRevealType = isZoomTypewriter ? 'char' : (s.typewriter_reveal_type || 'word');
         // Older saved styles may not contain this field at all.  Missing means
         // hidden, not the old implicit 100/255 grey placeholder; otherwise an
         // existing project leaks future words as soon as it uses typewriter.
         // Explicit legacy values in 0–255 remain supported.
-        const twUnreadOpacity = s.tw_unrevealed_opacity === undefined ? 0
+        const twUnreadOpacity = isZoomTypewriter ? 0 : (s.tw_unrevealed_opacity === undefined ? 0
             : Math.max(0, Math.min(1, s.tw_unrevealed_opacity > 1
-                ? s.tw_unrevealed_opacity / 255 : s.tw_unrevealed_opacity));
+                ? s.tw_unrevealed_opacity / 255 : s.tw_unrevealed_opacity)));
         let twRevealedCount = -1;
-        if (isTypewriter && anim) {
+        let zoomTwState = null;
+        if (isZoomTypewriter && anim && typeof anim.computeZoomTypewriterState === 'function') {
+            const totalCharsForZoom = words.reduce((count, word) => count + Array.from(word).length, 0);
+            zoomTwState = anim.computeZoomTypewriterState(currentTime, segStart, segEnd, totalCharsForZoom, {
+                startScale: s.zoom_tw_start_scale,
+                endScale: s.zoom_tw_end_scale,
+            });
+            twRevealedCount = zoomTwState.revealedChars;
+            if (Math.abs(zoomTwState.blockScale - 1.0) > 0.001) {
+                ctx.translate(cx, cy);
+                ctx.scale(zoomTwState.blockScale, zoomTwState.blockScale);
+                ctx.translate(-cx, -cy);
+            }
+        } else if (isTypewriter && anim) {
             const totalUnits = typewriterRevealType === 'char'
                 ? words.reduce((count, word) => count + Array.from(word).length, 0)
                 : words.length;
@@ -1837,10 +1851,12 @@ class ReelsCanvasRenderer {
                 let wordColor = isHighlight ? highColor : textColor;
                 let wordStrokeColor = outlineColor;
                 let typewriterPartial = null;
+                let zoomTwActivePop = null;
 
                 if (isTypewriter) {
                     const chars = Array.from(wordStr);
                     const wordUnits = typewriterRevealType === 'char' ? chars.length : 1;
+                    const wordStartCharIdx = twCharCounter;
                     const revealedUnits = twRevealedCount < 0 ? wordUnits
                         : Math.max(0, Math.min(wordUnits, twRevealedCount - twCharCounter));
                     if (twRevealedCount >= 0) {
@@ -1854,7 +1870,15 @@ class ReelsCanvasRenderer {
                             wordColor = isHighlight ? highColor : (s.tw_revealed_color || textColor);
                             wordStrokeColor = s.tw_revealed_stroke_color || outlineColor;
                         }
-                        if (typewriterRevealType === 'char' && revealedUnits > 0 && revealedUnits < wordUnits) {
+                        if (isZoomTypewriter && zoomTwState && revealedUnits > 0 &&
+                            zoomTwState.activeCharIdx === (wordStartCharIdx + revealedUnits - 1) &&
+                            zoomTwState.activeCharProgress < 0.999) {
+                            zoomTwActivePop = {
+                                prefix: chars.slice(0, revealedUnits - 1).join(''),
+                                activeChar: chars[revealedUnits - 1] || '',
+                                progress: zoomTwState.activeCharProgress,
+                            };
+                        } else if (typewriterRevealType === 'char' && revealedUnits > 0 && revealedUnits < wordUnits) {
                             typewriterPartial = {
                                 revealed: chars.slice(0, revealedUnits).join(''),
                                 unrevealed: chars.slice(revealedUnits).join(''),
@@ -2039,7 +2063,33 @@ class ReelsCanvasRenderer {
                     };
                     const activeGradBounds = (s.text_gradient_scope === 'word') ? wordGradBounds : lineGradBounds;
 
-                    if (typewriterPartial) {
+                    if (zoomTwActivePop) {
+                        const revealedColor = s.tw_revealed_color || textColor;
+                        const revealedStroke = s.tw_revealed_stroke_color || outlineColor;
+                        let activeX = drawX;
+                        if (zoomTwActivePop.prefix) {
+                            this._drawWord(ctx, zoomTwActivePop.prefix, drawX, wordY, revealedColor,
+                                useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                            activeX += this._measureTextWithSpacing(ctx, zoomTwActivePop.prefix, letterSpacing);
+                        }
+                        if (zoomTwActivePop.activeChar) {
+                            const chW = this._measureTextWithSpacing(ctx, zoomTwActivePop.activeChar, letterSpacing);
+                            const chCx = activeX + chW / 2;
+                            const chCy = wordY + fontSize * 0.55;
+                            const p = zoomTwActivePop.progress;
+                            const chScale = 0.72 + 0.28 * p;
+                            const chDy = (1 - p) * fontSize * 0.08;
+                            ctx.save();
+                            ctx.translate(chCx, chCy + chDy);
+                            ctx.scale(chScale, chScale);
+                            ctx.translate(-chCx, -chCy);
+                            this._drawWord(ctx, zoomTwActivePop.activeChar, activeX, wordY, revealedColor,
+                                useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                            ctx.restore();
+                        }
+                    } else if (typewriterPartial) {
                         const revealedColor = s.tw_revealed_color || textColor;
                         const revealedStroke = s.tw_revealed_stroke_color || outlineColor;
                         const unrevealedColor = s.tw_unrevealed_color || '#808080';
@@ -2048,10 +2098,12 @@ class ReelsCanvasRenderer {
                         this._drawWord(ctx, typewriterPartial.revealed, drawX, wordY, revealedColor,
                             useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
                             currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
-                        ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity;
-                        this._drawWord(ctx, typewriterPartial.unrevealed, drawX + revealedW, wordY, unrevealedColor,
-                            useStroke && !s.stroke_expand_enabled, unrevealedStroke, borderW, outlineAlpha,
-                            currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                        if (twUnreadOpacity > 0.001) {
+                            ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity;
+                            this._drawWord(ctx, typewriterPartial.unrevealed, drawX + revealedW, wordY, unrevealedColor,
+                                useStroke && !s.stroke_expand_enabled, unrevealedStroke, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                        }
                     } else if (isExtendedCharAnim && anim) {
                         const chars = Array.from(wordStr);
                         let charX = drawX;
@@ -2095,9 +2147,23 @@ class ReelsCanvasRenderer {
                             charX += chW + letterSpacing;
                         }
                     } else {
-                        this._drawWord(ctx, wordStr, drawX, wordY, wordColor,
-                            useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
-                            currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                        const punctMatch = (isHighlight && wordColor !== textColor && textDirection !== 'rtl')
+                            ? wordStr.match(/^(.+?)([,.:;!?，。：；！？]+)$/)
+                            : null;
+                        if (punctMatch) {
+                            const [, corePart, punctPart] = punctMatch;
+                            const coreW = this._measureTextWithSpacing(ctx, corePart, letterSpacing);
+                            this._drawWord(ctx, corePart, drawX, wordY, wordColor,
+                                useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                            this._drawWord(ctx, punctPart, drawX + coreW, wordY, textColor,
+                                useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                        } else {
+                            this._drawWord(ctx, wordStr, drawX, wordY, wordColor,
+                                useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
+                                currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
+                        }
                     }
                     ctx.restore();
                 } else if (isExtendedCharAnim) {
