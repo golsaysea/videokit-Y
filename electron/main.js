@@ -32,7 +32,14 @@ let latestRendererCrashReport = null;
 function writeRendererCrashReport(details = {}) {
     const reason = String(details?.reason || '');
     // 正常退出、开发者热重载、进程主动终止 (killed/clean-exit/code 15) 不属于异常崩溃，不写入日志
-    if (reason === 'clean-exit' || reason === 'killed' || details?.exitCode === 0 || details?.exitCode === 15) {
+    if (
+        isQuitting ||
+        app.isQuitting ||
+        reason === 'clean-exit' ||
+        reason === 'killed' ||
+        details?.exitCode === 0 ||
+        details?.exitCode === 15
+    ) {
         return null;
     }
     try {
@@ -73,6 +80,9 @@ function getLatestRendererCrashReport() {
         const last = JSON.parse(lines[lines.length - 1]);
         const reason = String(last?.reason || '');
         if (reason === 'clean-exit' || reason === 'killed') return null;
+        // Windows 下旧进程退出/重启更新时 Crashpad 管道先断开会产生 exitCode = -36861 (0xFFFF7003)，
+        // 新进程刚启动读取磁盘日志时不应将其当作当前运行崩溃告警展示
+        if (Number(last?.exitCode) === -36861) return null;
         // 只有 60 秒内发生的真实崩溃（比如异常闪退后刚拉起恢复）才返回给前端展示，避免冷启动翻出历史旧账
         const reportTime = new Date(last?.timestamp).getTime();
         if (isNaN(reportTime) || Date.now() - reportTime > 60000) return null;
@@ -447,6 +457,10 @@ async function logBatchStartupState(targetWindow, label = 'startup') {
 // local-media 用于渲染本地生成的预览图/媒体。必须在 app.ready 前声明权限，
 // 否则 video/img 的 range/fetch 行为在部分 Electron 版本里会不稳定。
 try {
+    app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+} catch (_) {}
+
+try {
     protocol.registerSchemesAsPrivileged([{
         scheme: 'local-media',
         privileges: {
@@ -738,15 +752,46 @@ function createWindow() {
         if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
         return { action: 'deny' };
     });
-    // renderer 异常退出时，beforeunload 不一定会运行；由主进程记录原因。
+    let workspaceCloseApproved = false;
+    let workspaceCloseSaving = false;
+    let rendererAutoRecoveryCount = 0;
+
+    // renderer 异常退出时，beforeunload 不一定会运行；由主进程记录原因并在运行期自动恢复页面。
     mainWindow.webContents.on('render-process-gone', (_event, details) => {
-        // 忽略正常退出以及开发者热重启/系统 SIGTERM(15) 终止，不作为异常崩溃记录
-        if (isQuitting || details?.reason === 'clean-exit' || details?.exitCode === 15) return;
+        // 忽略正常退出、窗口关闭/重启过程以及系统 SIGTERM(15) 终止
+        if (
+            isQuitting ||
+            app.isQuitting ||
+            workspaceCloseApproved ||
+            workspaceCloseSaving ||
+            !mainWindow ||
+            mainWindow.isDestroyed() ||
+            details?.reason === 'clean-exit' ||
+            details?.reason === 'killed' ||
+            details?.exitCode === 0 ||
+            details?.exitCode === 15
+        ) {
+            return;
+        }
         writeRendererCrashReport({
             process: details?.process || 'renderer',
             reason: details?.reason || 'unknown',
             exitCode: Number.isFinite(details?.exitCode) ? details.exitCode : null,
         });
+        // 如果主窗口仍在运行期发生渲染进程崩溃（如内存峰值/显卡驱动重置），自动清理 Code Cache 并重载恢复
+        if (rendererAutoRecoveryCount < 3) {
+            rendererAutoRecoveryCount++;
+            log(`[CrashRecovery] 主窗口渲染进程异常退出 (reason=${details?.reason}, code=${details?.exitCode})，正在自动重载恢复 (${rendererAutoRecoveryCount}/3)...`);
+            setTimeout(async () => {
+                if (isQuitting || app.isQuitting || workspaceCloseApproved || !mainWindow || mainWindow.isDestroyed()) return;
+                try {
+                    await mainWindow.webContents.session.clearCodeCaches({});
+                } catch (_) {}
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.reloadIgnoringCache();
+                }
+            }, 400);
+        }
     });
 
     if (!app.isPackaged) {
@@ -817,6 +862,8 @@ function createWindow() {
                     clearTimeout(relaunchTimeout);
                     relaunchTimeout = setTimeout(() => {
                         log(`[HotReload] 主进程文件改变: ${filename}，正在重启 Electron...`);
+                        isQuitting = true;
+                        app.isQuitting = true;
                         app.relaunch();
                         app.exit(0);
                     }, 300);
@@ -896,24 +943,39 @@ function createWindow() {
         })();
     }
 
-    let workspaceCloseApproved=false,workspaceCloseSaving=false;
     mainWindow.on('close',async event=>{
-        if(workspaceCloseApproved || mainWindow?.webContents?.isDestroyed())return;
+        if(workspaceCloseApproved || mainWindow?.webContents?.isDestroyed() || mainWindow?.webContents?.isCrashed()){
+            isQuitting = true;
+            app.isQuitting = true;
+            return;
+        }
         event.preventDefault();
         if(workspaceCloseSaving)return;
         workspaceCloseSaving=true;
         const closingWindow=mainWindow;
         try{
-            const result=await closingWindow.webContents.executeJavaScript(`(()=>{
-                if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
-                const result=window.reelsFlushWorkspaceBeforeClose();
-                if(result?.ok)window._workspaceCloseAlreadySaved=true;
-                return result;
-            })()`,true);
+            const result=await Promise.race([
+                closingWindow.webContents.executeJavaScript(`(()=>{
+                    if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
+                    const result=window.reelsFlushWorkspaceBeforeClose();
+                    if(result?.ok)window._workspaceCloseAlreadySaved=true;
+                    return result;
+                })()`,true),
+                new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 2500))
+            ]);
             if(!result?.ok)throw new Error(result?.error||'自动保存未完成');
             workspaceCloseApproved=true;
+            isQuitting = true;
+            app.isQuitting = true;
             closingWindow.close();
         }catch(error){
+            if (closingWindow.isDestroyed() || closingWindow.webContents?.isDestroyed() || closingWindow.webContents?.isCrashed()) {
+                workspaceCloseApproved = true;
+                isQuitting = true;
+                app.isQuitting = true;
+                if (!closingWindow.isDestroyed()) closingWindow.close();
+                return;
+            }
             log('[Workspace] Close save failed: '+error.message);
             if(!closingWindow.isDestroyed())dialog.showMessageBoxSync(closingWindow,{type:'error',title:'自动保存失败',message:'当前编辑未能保存，已取消退出。',detail:error.message,buttons:['返回软件'],defaultId:0});
         }finally{workspaceCloseSaving=false;}

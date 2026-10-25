@@ -8900,7 +8900,10 @@ function reelsAutoMatchFiles() {
         // the current task was already selected, so explicitly refresh it.
         reelsSelectTask(_reelsState.selectedIdx);
     }
-    if (receivedFiles) window.ReelsPreviewV2?.recover?.('素材导入完成');
+    if (receivedFiles) {
+        if (typeof _batchAutoSave === 'function') _batchAutoSave();
+        window.ReelsPreviewV2?.recover?.('素材导入完成');
+    }
 }
 
 function resolveReelsCustomDuration(task, globalDuration) {

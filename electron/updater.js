@@ -352,6 +352,7 @@ async function portableUpdate(info) {
         });
 
         if (response === 0) {
+            app.isQuitting = true;
             app.relaunch();
             app.exit(0);
         }
@@ -473,6 +474,7 @@ function initAutoUpdater(win, logFn) {
 
         // IPC: 安装更新并重启（绿色版直接重启）
         ipcMain.handle('install-update', () => {
+            app.isQuitting = true;
             app.relaunch();
             app.exit(0);
         });
@@ -616,6 +618,7 @@ function initAutoUpdater(win, logFn) {
             cancelId: 1,
         }).then(({ response }) => {
             if (response === 0) {
+                app.isQuitting = true;
                 autoUpdater.quitAndInstall();
             }
         });
@@ -653,6 +656,7 @@ function initAutoUpdater(win, logFn) {
 
     // 安装更新并重启
     ipcMain.handle('install-update', () => {
+        app.isQuitting = true;
         autoUpdater.quitAndInstall();
     });
 
