@@ -128,6 +128,7 @@ const ANIM_TYPE_LABELS = [
     ['圣光', 'holy_glow'],
     ['漂浮', 'floating'],
     ['逐行出现', 'bullet_reveal'],
+    ['底条进度擦除', 'box_wipe'],
     ['闪光高亮', 'flash_highlight'],
 ];
 
@@ -671,6 +672,45 @@ function computeBoxColorTransition(currentTime, segStart, segEnd,
     ];
 }
 
+/**
+ * Compute per-line visible background bar widths for progressive left-to-right
+ * line-by-line background bar wipe ("底条进度擦除").
+ * Line 0 wipes 0→100% first; once Line 0 reaches 100%, it stays full while
+ * Line 1 wipes 0→100% at the same constant horizontal sweep speed, etc.
+ *
+ * @param {number|null} currentTime
+ * @param {number} segStart
+ * @param {number} segEnd
+ * @param {number[]} lineWidths - Full box width of each visible line
+ * @param {object} [opts]
+ * @returns {number[]} Visible width for each line in [0, lineWidths[i]]
+ */
+function computeBoxWipeLineWidths(currentTime, segStart, segEnd, lineWidths, opts = {}) {
+    if (!Array.isArray(lineWidths) || lineWidths.length === 0) return [];
+    const widths = lineWidths.map(w => Math.max(0, Number(w) || 0));
+    const totalW = widths.reduce((sum, w) => sum + w, 0);
+    if (totalW <= 0) return widths.map(() => 0);
+
+    if (currentTime == null || !Number.isFinite(currentTime)) {
+        return widths.slice();
+    }
+
+    const segDur = Math.max(0.001, (Number(segEnd) || 0) - (Number(segStart) || 0));
+    const rawFrac = Math.max(0.0, Math.min(1.0, (currentTime - (Number(segStart) || 0)) / segDur));
+    const minStartFrac = Number.isFinite(Number(opts.minStartFrac))
+        ? Math.max(0.0, Math.min(0.25, Number(opts.minStartFrac)))
+        : 0.04;
+    const frac = minStartFrac + (1.0 - minStartFrac) * rawFrac;
+    const sweptDist = frac * totalW;
+
+    let accumBefore = 0;
+    return widths.map((w) => {
+        const visW = Math.max(0, Math.min(w, sweptDist - accumBefore));
+        accumBefore += w;
+        return visW;
+    });
+}
+
 // Spectrum shape types
 const SPECTRUM_SHAPES = [
     ['频谱条', 'bars'],
@@ -718,6 +758,7 @@ const ReelsAnimEngine = {
     computeDynImgPulse,
     computeDynImgBreatheAlpha,
     computeBoxColorTransition,
+    computeBoxWipeLineWidths,
 };
 
 // Browser global

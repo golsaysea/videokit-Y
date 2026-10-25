@@ -5309,6 +5309,8 @@
                         onchange="reelsUpdatePreview()"><span>贴合行宽</span></label>
                     <label class="checkbox-label" title="开启后，多行贴合背景自动连接为平滑连体轮廓，并消除相邻行微小台阶"><input type="checkbox" id="reels-box-connected" checked
                         onchange="reelsUpdatePreview()"><span>连体轮廓</span></label>
+                    <label class="checkbox-label" title="开启后，每行字幕的底框将随当前句播放进度从左向右逐行线性擦除推进"><input type="checkbox" id="reels-box-wipe"
+                        onchange="reelsUpdatePreview()"><span>逐行进度擦除</span></label>
                     <div style="display: flex; align-items: center; gap: 4px;">
                       <input type="color" id="reels-box-color" value="#000000"
                         style="width: 36px; height: 28px; border: none; cursor: pointer;"
@@ -5905,6 +5907,7 @@
                             <option value="metronome">节奏逐词</option>
                             <option value="floating">漂浮</option>
                             <option value="bullet_reveal">逐行出现</option>
+                            <option value="box_wipe">底条进度擦除</option>
                             <option value="flash_highlight">闪光高亮</option>
                             <option value="holy_glow">圣光</option>
                             <option value="blur_sharp">模糊→清晰</option>

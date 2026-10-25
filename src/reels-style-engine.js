@@ -63,6 +63,7 @@ const DEFAULT_SUBTITLE_STYLE = {
     box_blur: 0,
     box_adaptive_width: false,
     box_connected: true,        // 连体贴合背景
+    box_wipe_enabled: false,    // 逐行左→右进度条擦除背景
     box_concave_radius: 10,     // 连体背景内凹圆角
     box_snap_threshold: 18,     // 相邻行宽度接近自动对齐阈值(px)
     box_brush_style: 'rect',
@@ -526,6 +527,49 @@ const MAX_PRESETS = 200;
 
 const BUILTIN_PRESETS = {
     // ── 爆贴底框系列 ──
+    "红底条逐行擦除 (爆款)": {
+        font_family: "Segoe UI",
+        font_weight: 800,
+        fontsize: 78,
+        bold: true,
+        italic: true,
+        letter_spacing: 0,
+        color_text: "#FFFFFF",
+        color_high: "#FFFFFF",
+        karaoke_highlight: false,
+        highlight_enabled: false,
+        use_stroke: true,
+        color_outline: "#000000",
+        border_width: 5,
+        opacity_outline: 255,
+        shadow_blur: 0,
+        shadow_offset_x: 0,
+        shadow_offset_y: 0,
+        opacity_shadow: 0,
+        use_box: true,
+        box_adaptive_width: true,
+        box_connected: false,
+        box_wipe_enabled: true,
+        color_bg: "#991A1C",
+        opacity_bg: 255,
+        box_radius: 0,
+        box_blur: 0,
+        box_padding_x: 22,
+        box_padding_y: 12,
+        dynamic_box: false,
+        use_underline: false,
+        bg_gradient_enabled: false,
+        box_transition_enabled: false,
+        global_mask_enabled: false,
+        pos_x: 0.5,
+        pos_y: 0.71,
+        wrap_width_percent: 82,
+        line_spacing: 24,
+        anim_in_type: "box_wipe",
+        anim_in_duration: 0,
+        anim_out_type: "none",
+        anim_out_duration: 0,
+    },
     "焦糖橙_黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#9D4512", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#F5D678", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
     "深海蓝_黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#0E4B7E", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#F6D371", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
     "暗夜青_青高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#033045", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#00BFFF", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
@@ -833,7 +877,7 @@ const BUILTIN_PRESETS = {
 // Category mapping for collapsible preset picker
 const PRESET_CATEGORIES = {
     '🔤 动态混排': ['动态混排 · 自动轮换','动态混排 · 首尾大字','动态混排 · 中间强调','动态混排 · 大小拼接','动态混排 · 阶梯错位'],
-    '🎯 底框样式': ['焦糖橙_黄高亮','深海蓝_黄高亮','暗夜青_青高亮','明亮紫_黄高亮','奶油底_藏青高亮','浅丁香_藏青高亮','砖红_金黄高亮','亮蓝_明黄高亮','深紫_粉红高亮','棕褐_奶黄高亮','暗蓝灰_薄荷高亮','白底框_紫字高亮','黑底框_粉字高亮','荧光绿底框_黑字','深蓝大底框+红色动画','深褐底框+红色动画','粉色气泡','渐变蓝色框','霓虹蓝粉渐变框','红色警报'],
+    '🎯 底框样式': ['红底条逐行擦除 (爆款)','焦糖橙_黄高亮','深海蓝_黄高亮','暗夜青_青高亮','明亮紫_黄高亮','奶油底_藏青高亮','浅丁香_藏青高亮','砖红_金黄高亮','亮蓝_明黄高亮','深紫_粉红高亮','棕褐_奶黄高亮','暗蓝灰_薄荷高亮','白底框_紫字高亮','黑底框_粉字高亮','荧光绿底框_黑字','深蓝大底框+红色动画','深褐底框+红色动画','粉色气泡','渐变蓝色框','霓虹蓝粉渐变框','红色警报'],
     '📝 基础字幕': ['默认白字','黄字黑边 (经典)','上滑入场','左滑入场','黑底白字 (新闻)'],
     '🎤 卡拉OK高亮': ['卡拉OK高亮','节奏逐词','闪光高亮','黑边_粉红高亮','黑边_薄荷高亮','黑边_电蓝高亮','极简纯文+电光青高亮','重金大字+强对比排版'],
     '🔥 逐词动态': ['单词聚焦_自适应色块','逐个大小出字-55','逐个大小出字-45','逐个出字+红色动画','逐个出字大小-爆贴','蓝底白字+动感回弹','黄线框高亮_逐词弹出','撞色黄底框高亮','紫色动态底框','逐字放大','逐词弹出(随机大小)','逐词弹出(随机回弹)','Hormozi 风格字幕'],

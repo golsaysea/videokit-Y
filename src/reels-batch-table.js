@@ -8030,9 +8030,11 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
         }
 
         let bgCss = '';
-        if (useBg) {
+        if (useBg || m.box_wipe_enabled || m.anim_in_type === 'box_wipe') {
             const bgGradCols = m.bg_gradient_colors || [];
-            if (m.bg_gradient_enabled && bgGradCols.length >= 2) {
+            if (m.box_wipe_enabled || m.anim_in_type === 'box_wipe') {
+                bgCss = `background:linear-gradient(90deg,${bgC} 0%,${bgC} 68%,rgba(255,255,255,0.08) 68%,rgba(255,255,255,0.08) 100%);`;
+            } else if (m.bg_gradient_enabled && bgGradCols.length >= 2) {
                 bgCss = `background:linear-gradient(90deg,${bgGradCols.join(',')});`;
             } else {
                 bgCss = `background:${bgC};`;

@@ -713,7 +713,7 @@ class ReelsCanvasRenderer {
             return;
         }
 
-        const anim = typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : null;
+        const anim = (typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : (typeof window !== 'undefined' ? window.ReelsAnimEngine : null));
 
         // ── 字体设置 ──
         const fontFamily = s.font_family || 'Arial';
@@ -1211,7 +1211,8 @@ class ReelsCanvasRenderer {
         }
 
         // ── 背景框绘制 ──
-        if (s.use_box) {
+        const isBoxWipe = Boolean(s.box_wipe_enabled || animInType === 'box_wipe');
+        if (s.use_box || isBoxWipe) {
             ctx.save();
             const bgColor = s.color_bg || '#000000';
             const bgAlpha = (s.opacity_bg ?? 150) / 255;
@@ -1227,8 +1228,8 @@ class ReelsCanvasRenderer {
                 ? Math.max(0, Number(s.box_snap_threshold))
                 : 18;
             
-            const isAdaptive = s.box_adaptive_width && !advEnabled;
-            const isConnectedAdaptive = isAdaptive && (s.box_connected !== false) && visibleLines.length > 1;
+            const isAdaptive = (s.box_adaptive_width || isBoxWipe) && !advEnabled;
+            const isConnectedAdaptive = isAdaptive && !isBoxWipe && (s.box_connected !== false) && visibleLines.length > 1;
             let tempStartY;
             if (isAdaptive) {
                 tempStartY = cy - totalH / 2;
@@ -1238,6 +1239,7 @@ class ReelsCanvasRenderer {
                 ctx.beginPath();
                 if (isAdaptive) {
                     const slabs = [];
+                    const baseSlabWidths = [];
                     for (let i = 0; i < visibleLines.length; i++) {
                         const lineW = lineWidths[i];
                         const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW) ? actualLineWidths[i] : lineW;
@@ -1247,15 +1249,32 @@ class ReelsCanvasRenderer {
                         const glyphBounds = lineGlyphBounds[i] || { top: 0, bottom: lineH, height: lineH };
                         const tightLine = canTightFitGlyphs;
                         const lRectY = y + (tightLine ? glyphBounds.top : 0) - effectivePadTop - expand;
-                        const lRectW = effectiveLineW + effectivePadLeft + effectivePadRight + expand * 2;
+                        const baseW = effectiveLineW + effectivePadLeft + effectivePadRight;
+                        const lRectW = baseW + expand * 2;
                         const contentH = tightLine ? glyphBounds.height : (lineHeights[i] || lineH);
                         const lRectH = contentH + effectivePadTop + effectivePadBottom + expand * 2;
+                        baseSlabWidths.push(baseW);
                         slabs.push({
                             left: lRectX,
                             right: lRectX + lRectW,
                             top: lRectY,
                             bottom: lRectY + lRectH,
                         });
+                    }
+                    if (isBoxWipe && slabs.length > 1) {
+                        const minGap = Math.max(4, Math.round(fontSize * 0.10));
+                        for (let i = 0; i < slabs.length - 1; i++) {
+                            const cur = slabs[i];
+                            const nxt = slabs[i + 1];
+                            const actualGap = nxt.top - cur.bottom;
+                            if (actualGap < minGap) {
+                                const mid = (cur.bottom + nxt.top) / 2;
+                                const halfGap = minGap / 2;
+                                const minHalfH = Math.max(8, fontSize * 0.35);
+                                cur.bottom = Math.max(cur.top + minHalfH, mid - halfGap);
+                                nxt.top = Math.min(nxt.bottom - minHalfH, mid + halfGap);
+                            }
+                        }
                     }
                     if (isConnectedAdaptive && slabs.length > 1) {
                         this._buildConnectedAdaptiveBoxPath(
@@ -1266,10 +1285,22 @@ class ReelsCanvasRenderer {
                             snapThreshold
                         );
                     } else {
-                        for (const sl of slabs) {
-                            const lRectX = sl.left;
+                        const wipedWidths = (isBoxWipe && anim && typeof anim.computeBoxWipeLineWidths === 'function')
+                            ? anim.computeBoxWipeLineWidths(currentTime, segStart, segEnd, baseSlabWidths)
+                            : null;
+                        for (let i = 0; i < slabs.length; i++) {
+                            const sl = slabs[i];
+                            let lRectX = sl.left;
                             const lRectY = sl.top;
-                            const lRectW = Math.max(1, sl.right - sl.left);
+                            let lRectW = Math.max(1, sl.right - sl.left);
+                            if (wipedWidths) {
+                                const w = wipedWidths[i] || 0;
+                                if (w <= 0.5) continue;
+                                lRectW = Math.max(1, w + expand * 2);
+                                if (textDirection === 'rtl') {
+                                    lRectX = sl.right - lRectW;
+                                }
+                            }
                             const lRectH = Math.max(1, sl.bottom - sl.top);
                             let r = rad + expand * 0.3;
                             r = Math.min(r, lRectW / 2, lRectH / 2);
@@ -1287,9 +1318,17 @@ class ReelsCanvasRenderer {
                     }
                 } else {
                     let r = rad + expand * 0.3;
-                    const lRectX = rectX - expand;
+                    let lRectX = rectX - expand;
                     const lRectY = rectY - expand;
-                    const lRectW = rectW + expand * 2;
+                    let lRectW = rectW + expand * 2;
+                    if (isBoxWipe && anim && typeof anim.computeBoxWipeLineWidths === 'function') {
+                        const [w] = anim.computeBoxWipeLineWidths(currentTime, segStart, segEnd, [rectW]);
+                        if (!w || w <= 0.5) return;
+                        lRectW = Math.max(1, w + expand * 2);
+                        if (textDirection === 'rtl') {
+                            lRectX = (rectX + rectW + expand) - lRectW;
+                        }
+                    }
                     const lRectH = rectH + expand * 2;
                     r = Math.min(r, lRectW / 2, lRectH / 2);
                     ctx.moveTo(lRectX + r, lRectY);
@@ -1339,6 +1378,8 @@ class ReelsCanvasRenderer {
                 const brushY = Number(s.box_brush_y) || 0;
 
                 if (isAdaptive) {
+                    const brushBoxes = [];
+                    const brushBaseWidths = [];
                     for (let i = 0; i < visibleLines.length; i++) {
                         const lineW = lineWidths[i];
                         const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW) ? actualLineWidths[i] : lineW;
@@ -1364,8 +1405,24 @@ class ReelsCanvasRenderer {
                         }
                         lRectX += brushX;
                         lRectY += brushY;
-
-                        brushEngine.drawBrush(ctx, lRectX, lRectY, lRectW, lRectH, bStyle, brushColor, 1, bColorMode, brushDir, bCustomData, bSolid);
+                        brushBaseWidths.push(lRectW);
+                        brushBoxes.push({ x: lRectX, y: lRectY, w: lRectW, h: lRectH });
+                    }
+                    const wipedBrushWidths = (isBoxWipe && anim && typeof anim.computeBoxWipeLineWidths === 'function')
+                        ? anim.computeBoxWipeLineWidths(currentTime, segStart, segEnd, brushBaseWidths)
+                        : null;
+                    for (let i = 0; i < brushBoxes.length; i++) {
+                        const bb = brushBoxes[i];
+                        let drawX = bb.x;
+                        let drawW = bb.w;
+                        if (wipedBrushWidths) {
+                            drawW = wipedBrushWidths[i] || 0;
+                            if (drawW <= 0.5) continue;
+                            if (textDirection === 'rtl') {
+                                drawX = (bb.x + bb.w) - drawW;
+                            }
+                        }
+                        brushEngine.drawBrush(ctx, drawX, bb.y, drawW, bb.h, bStyle, brushColor, 1, bColorMode, brushDir, bCustomData, bSolid);
                     }
                 } else {
                     let bx = rectX, by = rectY, bw = rectW, bh = rectH;
@@ -1381,7 +1438,15 @@ class ReelsCanvasRenderer {
                     }
                     bx += brushX;
                     by += brushY;
-                    brushEngine.drawBrush(ctx, bx, by, bw, bh, bStyle, brushColor, 1, bColorMode, brushDir, bCustomData, bSolid);
+                    if (isBoxWipe && anim && typeof anim.computeBoxWipeLineWidths === 'function') {
+                        const [w] = anim.computeBoxWipeLineWidths(currentTime, segStart, segEnd, [bw]);
+                        if (w && w > 0.5) {
+                            if (textDirection === 'rtl') bx = (bx + bw) - w;
+                            brushEngine.drawBrush(ctx, bx, by, w, bh, bStyle, brushColor, 1, bColorMode, brushDir, bCustomData, bSolid);
+                        }
+                    } else {
+                        brushEngine.drawBrush(ctx, bx, by, bw, bh, bStyle, brushColor, 1, bColorMode, brushDir, bCustomData, bSolid);
+                    }
                 }
             } else {
                 if (boxBlur > 0) {
@@ -2935,28 +3000,96 @@ class ReelsCanvasRenderer {
         }
 
         // 5. 绘制基础背景框
-        const richBoxOpacity = s.box_opacity ?? s.opacity_bg ?? (s.use_box ? 150 : 0);
+        const isRichBoxWipe = Boolean(s.box_wipe_enabled || s.anim_in_type === 'box_wipe');
+        const richBoxOpacity = (s.use_box || isRichBoxWipe)
+            ? (s.box_opacity ?? s.opacity_bg ?? 150)
+            : 0;
         if (richBoxOpacity > 0) {
-            let bX, bY, bW, bH;
-            if (advEnabled) {
-                bX = advX; bY = advY; bW = advW; bH = advH;
-            } else {
-                bX = cx - maxLineW / 2 - effectivePadLeft;
-                bY = cy - totalH / 2 - effectivePadTop;
-                bW = maxLineW + effectivePadLeft + effectivePadRight;
-                bH = totalH + effectivePadTop + effectivePadBottom;
-            }
-
             ctx.save();
             ctx.globalAlpha = Math.min(1, richBoxOpacity / 255);
             ctx.fillStyle = s.bg_color || s.color_bg || '#000000';
-
             const r = s.box_radius || 0;
-            if (r > 0) {
-                this._roundRect(ctx, bX, bY, bW, bH, r);
-                ctx.fill();
+            const richAdaptive = Boolean((s.box_adaptive_width || isRichBoxWipe) && !advEnabled);
+
+            if (richAdaptive) {
+                const richAnim = (typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : (typeof window !== 'undefined' ? window.ReelsAnimEngine : null));
+                const richSlabs = [];
+                const richBaseWidths = [];
+                let lineYCursor = cy - totalH / 2;
+                const alignSetting = String(
+                    s.text_align || (advEnabled ? (s.advanced_textbox_align || s.adv_text_align) : '') || 'center'
+                ).toLowerCase();
+                for (let li = 0; li < lines.length; li++) {
+                    const ln = lines[li];
+                    const lw = Math.max(0, ln.w || 0);
+                    let lx = cx - lw / 2;
+                    if (alignSetting === 'left') lx = cx - maxLineW / 2;
+                    else if (alignSetting === 'right') lx = cx + maxLineW / 2 - lw;
+                    const bw = lw + effectivePadLeft + effectivePadRight;
+                    const bh = (ln.lineH || baseStyleConfig.fontsize) + effectivePadTop + effectivePadBottom;
+                    richBaseWidths.push(bw);
+                    richSlabs.push({
+                        left: lx - effectivePadLeft,
+                        right: lx - effectivePadLeft + bw,
+                        top: lineYCursor - effectivePadTop,
+                        bottom: lineYCursor - effectivePadTop + bh,
+                    });
+                    lineYCursor += (ln.lineH || 0) + (richLineSpacings[li] || 0);
+                }
+                if (isRichBoxWipe && richSlabs.length > 1) {
+                    const minGap = Math.max(4, Math.round((baseStyleConfig.fontsize || 48) * 0.10));
+                    for (let li = 0; li < richSlabs.length - 1; li++) {
+                        const cur = richSlabs[li];
+                        const nxt = richSlabs[li + 1];
+                        if (nxt.top - cur.bottom < minGap) {
+                            const mid = (cur.bottom + nxt.top) / 2;
+                            cur.bottom = mid - minGap / 2;
+                            nxt.top = mid + minGap / 2;
+                        }
+                    }
+                }
+                const wipedRichWidths = (isRichBoxWipe && richAnim && typeof richAnim.computeBoxWipeLineWidths === 'function')
+                    ? richAnim.computeBoxWipeLineWidths(currentTime, segment.start || 0, segment.end || 0, richBaseWidths)
+                    : null;
+                for (let li = 0; li < richSlabs.length; li++) {
+                    const sl = richSlabs[li];
+                    let slW = Math.max(1, sl.right - sl.left);
+                    let slX = sl.left;
+                    if (wipedRichWidths) {
+                        slW = wipedRichWidths[li] || 0;
+                        if (slW <= 0.5) continue;
+                        if (textDirection === 'rtl') slX = sl.right - slW;
+                    }
+                    const slH = Math.max(1, sl.bottom - sl.top);
+                    if (r > 0) {
+                        this._roundRect(ctx, slX, sl.top, slW, slH, Math.min(r, slW / 2, slH / 2));
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(slX, sl.top, slW, slH);
+                    }
+                }
             } else {
-                ctx.fillRect(bX, bY, bW, bH);
+                let bX, bY, bW, bH;
+                if (advEnabled) {
+                    bX = advX; bY = advY; bW = advW; bH = advH;
+                } else {
+                    bX = cx - maxLineW / 2 - effectivePadLeft;
+                    bY = cy - totalH / 2 - effectivePadTop;
+                    bW = maxLineW + effectivePadLeft + effectivePadRight;
+                    bH = totalH + effectivePadTop + effectivePadBottom;
+                }
+                if (isRichBoxWipe && typeof ReelsAnimEngine !== 'undefined' && typeof ReelsAnimEngine.computeBoxWipeLineWidths === 'function') {
+                    const [w] = ReelsAnimEngine.computeBoxWipeLineWidths(currentTime, segment.start || 0, segment.end || 0, [bW]);
+                    bW = w || 0;
+                }
+                if (bW > 0.5) {
+                    if (r > 0) {
+                        this._roundRect(ctx, bX, bY, bW, bH, Math.min(r, bW / 2, bH / 2));
+                        ctx.fill();
+                    } else {
+                        ctx.fillRect(bX, bY, bW, bH);
+                    }
+                }
             }
             ctx.restore();
         }
@@ -4652,7 +4785,7 @@ class ReelsCanvasRenderer {
             String(s.color_high).trim().toLowerCase() !== String(s.color_text || '#FFFFFF').trim().toLowerCase()
         );
 
-        const anim = typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : null;
+        const anim = (typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : (typeof window !== 'undefined' ? window.ReelsAnimEngine : null));
         const animInType = String(s.anim_in_type || 'none').trim() || 'none';
         const animOutType = String(s.anim_out_type || 'none').trim() || 'none';
         const inDur = Math.max(0.08, Number(s.anim_in_duration) || 0.28);
@@ -4703,6 +4836,45 @@ class ReelsCanvasRenderer {
         const baseAlpha = Number(s.opacity_text_global ?? 1);
         ctx.globalAlpha *= baseAlpha * groupOutAlpha;
 
+        const isMixedBoxWipe = Boolean(s.box_wipe_enabled || animInType === 'box_wipe');
+        if (s.use_box || isMixedBoxWipe) {
+            const padX = Number.isFinite(Number(s.box_padding_x)) ? Number(s.box_padding_x) : 14;
+            const padY = Number.isFinite(Number(s.box_padding_y)) ? Number(s.box_padding_y) : 8;
+            const bgAlpha = Math.max(0, Math.min(1, Number(s.opacity_bg ?? 200) / 255));
+            const bgRad = Math.max(0, Number(s.box_radius ?? 0));
+            const rowBoxes = [];
+            const rowWidths = [];
+            for (let rIdx = 0; rIdx < measuredRows.length; rIdx++) {
+                const rowItems = items.filter(it => it.rowIndex === rIdx);
+                if (!rowItems.length) continue;
+                const minX = Math.min(...rowItems.map(it => it.x)) - padX;
+                const maxX = Math.max(...rowItems.map(it => it.x + it.width)) + padX;
+                const minY = Math.min(...rowItems.map(it => it.y)) - padY * 0.5;
+                const maxY = Math.max(...rowItems.map(it => it.y + it.height)) + padY * 0.5;
+                const w = Math.max(1, maxX - minX);
+                rowWidths.push(w);
+                rowBoxes.push({ x: minX, y: minY, w, h: Math.max(1, maxY - minY) });
+            }
+            const wipedRowWidths = (isMixedBoxWipe && anim && typeof anim.computeBoxWipeLineWidths === 'function')
+                ? anim.computeBoxWipeLineWidths(currentTime, group.start, group.end, rowWidths)
+                : rowWidths;
+            ctx.save();
+            ctx.globalAlpha *= bgAlpha;
+            ctx.fillStyle = s.color_bg || '#000000';
+            for (let bi = 0; bi < rowBoxes.length; bi++) {
+                const rb = rowBoxes[bi];
+                const drawW = wipedRowWidths[bi] || 0;
+                if (drawW <= 0.5) continue;
+                if (bgRad > 0) {
+                    this._roundRect(ctx, rb.x, rb.y, drawW, rb.h, Math.min(bgRad, drawW / 2, rb.h / 2));
+                    ctx.fill();
+                } else {
+                    ctx.fillRect(rb.x, rb.y, drawW, rb.h);
+                }
+            }
+            ctx.restore();
+        }
+
         // Resolve active spoken word index across the group (bridging inter-word silence/space gaps)
         let activeSpokenIdx = items.findIndex(it => currentTime >= it.start && currentTime < it.end);
         if (activeSpokenIdx < 0) {
@@ -4725,7 +4897,9 @@ class ReelsCanvasRenderer {
             let triggerStart = (groupIndex === 0 && item.wordIndex === 0)
                 ? Math.min(segment.start, item.start)
                 : item.start;
-            if (animInType === 'bullet_reveal') {
+            if ((animInType === 'box_wipe' || s.box_wipe_enabled) && !s.hide_until_spoken) {
+                triggerStart = groupIndex === 0 ? Math.min(segment.start, group.start) : group.start;
+            } else if (animInType === 'bullet_reveal') {
                 triggerStart = (groupIndex === 0 && item.rowIndex === 0)
                     ? Math.min(segment.start, item.rowStart ?? item.start)
                     : (item.rowStart ?? item.start);

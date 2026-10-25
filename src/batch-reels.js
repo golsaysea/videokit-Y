@@ -279,6 +279,17 @@ const REELS_ANIMATION_PRESETS = {
         anim_out_type: 'fade',
         anim_out_duration: 0.22,
     },
+    box_wipe: {
+        label: 'Box Wipe · 底条逐行擦除',
+        anim_in_type: 'box_wipe',
+        anim_in_duration: 0,
+        anim_out_type: 'none',
+        anim_out_duration: 0,
+        use_box: true,
+        box_adaptive_width: true,
+        box_connected: false,
+        box_wipe_enabled: true,
+    },
 };
 
 let _reelsHotkeyBound = false;
@@ -2752,9 +2763,12 @@ function _readStyleFromUI() {
         opacity_shadow: chk('reels-shadow') ? 150 : 0,
 
         // Box
-        use_box: chk('reels-use-box'),
-        box_adaptive_width: chk('reels-box-adaptive-width'),
-        box_connected: get('reels-box-connected') ? chk('reels-box-connected') : true,
+        use_box: chk('reels-use-box') || chk('reels-box-wipe') || val('reels-anim-in') === 'box_wipe',
+        box_adaptive_width: chk('reels-box-adaptive-width') || chk('reels-box-wipe') || val('reels-anim-in') === 'box_wipe',
+        box_connected: (chk('reels-box-wipe') || val('reels-anim-in') === 'box_wipe')
+            ? false
+            : (get('reels-box-connected') ? chk('reels-box-connected') : true),
+        box_wipe_enabled: chk('reels-box-wipe') || val('reels-anim-in') === 'box_wipe',
         box_concave_radius: num('reels-box-concave-radius', 10),
         box_snap_threshold: num('reels-box-snap-threshold', 18),
         box_brush_style: val('reels-box-brush-style') || 'rect',
@@ -3269,9 +3283,10 @@ function _writeStyleToUI(style) {
     set('reels-shadow-blur', style.shadow_blur || 4);
     set('reels-shadow-offset-x', style.shadow_offset_x ?? 0);
     set('reels-shadow-offset-y', style.shadow_offset_y ?? 2);
-    setChk('reels-use-box', style.use_box);
-    setChk('reels-box-adaptive-width', style.box_adaptive_width);
-    setChk('reels-box-connected', style.box_connected !== false);
+    setChk('reels-use-box', style.use_box || style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
+    setChk('reels-box-adaptive-width', style.box_adaptive_width || style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
+    setChk('reels-box-connected', (style.box_wipe_enabled || style.anim_in_type === 'box_wipe') ? false : (style.box_connected !== false));
+    setChk('reels-box-wipe', Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe'));
     set('reels-box-concave-radius', style.box_concave_radius ?? 10);
     set('reels-box-concave-radius-range', style.box_concave_radius ?? 10);
     set('reels-box-snap-threshold', style.box_snap_threshold ?? 18);
@@ -10630,7 +10645,7 @@ function reelsOpenSubtitlePresetLibrary() {
         const style = presetsMap[name] || {};
         const custom = g.category.startsWith('💾');
         const title = String(name).replace(/</g,'&lt;');
-        const animated = style.anim_in_type && style.anim_in_type !== 'none' || style.dynamic_box || style.karaoke_highlight || style.word_pop;
+        const animated = (style.anim_in_type && style.anim_in_type !== 'none') || style.box_wipe_enabled || style.dynamic_box || style.karaoke_highlight || style.word_pop;
         const previewIndex = previewStyles.push(style) - 1;
         // 画布显示时缩小，但渲染仍使用成片的 1080×1920 坐标系，保证预设
         // 内保存的像素字号、X/Y 坐标与最终导出完全一致。
@@ -10677,15 +10692,19 @@ function reelsOpenSubtitlePresetLibrary() {
         const renderScale = canvas.width / outputWidth;
         // 卡片静止时必须是“动画完成后的成片样子”，不能停在淡入/淡出的
         // 半透明中间帧。悬浮时才使用原始动画配置与真实 SRT 时间轴。
+        const isBoxWipeCard = Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
         const finalStyle = {
             ...style,
-            anim_in_type: 'none',
+            anim_in_type: isBoxWipeCard ? 'box_wipe' : 'none',
             anim_out_type: 'none',
             dynamic_box: false,
             karaoke_highlight: false,
             word_pop: false,
             fullpage_typewriter: false,
         };
+        const cardStaticTime = isBoxWipeCard
+            ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.65)
+            : staticPreviewTime;
         const draw = (time, animated = false) => {
             const activeSegment = animated
                 ? (previewSegments.find(segment => time >= segment.start && time <= segment.end) || previewSegment)
@@ -10700,7 +10719,7 @@ function reelsOpenSubtitlePresetLibrary() {
             renderer.renderSubtitle(animated ? style : finalStyle, activeSegment, time, outputWidth, outputHeight);
             ctx.restore();
         };
-        draw(staticPreviewTime, false);
+        draw(cardStaticTime, false);
         const card = canvas.closest('.rsp-card');
         let frameId = null;
         card.addEventListener('mouseenter', () => {
@@ -10719,7 +10738,7 @@ function reelsOpenSubtitlePresetLibrary() {
             if (frameId !== null) cancelAnimationFrame(frameId);
             activePreviewFrames.delete(frameId);
             frameId = null;
-            draw(staticPreviewTime, false);
+            draw(cardStaticTime, false);
         });
     });
     modal.querySelectorAll('aside button').forEach(btn => btn.onclick = () => { modal.querySelectorAll('aside button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); const group = btn.dataset.group; modal.querySelectorAll('.rsp-card').forEach(card => card.style.display = group === 'all' || card.dataset.group === group ? '' : 'none'); });
