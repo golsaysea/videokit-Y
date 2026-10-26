@@ -160,10 +160,17 @@ class ReelsVideoCanvas {
         }
 
         // 3. 字幕渲染
-        if (this._renderer && style && segment) {
+        if (this._renderer && style) {
             // 使用 videoCanvas 的 ctx，这样字幕画在视频之上
             this._renderer.ctx = vctx;
-            this._renderer.renderSubtitle(style, segment, this._currentTime, cw, ch);
+            const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
+                typeof this._renderer.renderKineticGlowBackdrop === 'function';
+            if (hasKineticBackdrop) {
+                this._renderer.renderKineticGlowBackdrop(style, cw, ch);
+            }
+            if (segment) {
+                this._renderer.renderSubtitle(style, segment, this._currentTime, cw, ch, false, hasKineticBackdrop);
+            }
         }
 
         // 4. 覆层渲染 (在视频 canvas 上)

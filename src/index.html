@@ -5291,6 +5291,31 @@
                           setTimeout(() => window.reelsSyncSEColorsUI(), 1000);
                         </script>
                       </div>
+                      <input type="hidden" id="reels-effect-controls-enabled" value="0">
+                      <div style="grid-column:1 / -1; font-size: 12px; color: var(--text-secondary); margin: 10px 0 6px 0; font-weight:600;">独立光影调节</div>
+                      <div class="param-row" style="grid-column:1 / -1; display:grid; grid-template-columns:72px minmax(90px,1fr) 52px; gap:6px; align-items:center; margin-bottom:6px;">
+                        <label style="margin:0;">黑边粗细:</label>
+                        <input type="range" id="reels-effect-inner-outline-range" min="0" max="15" step="0.5" value="5"
+                          oninput="document.getElementById('reels-effect-inner-outline').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <input type="number" id="reels-effect-inner-outline" class="input input-small" min="0" max="15" step="0.5" value="5" style="width:52px;"
+                          oninput="document.getElementById('reels-effect-inner-outline-range').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <label style="margin:0;">光影范围:</label>
+                        <input type="range" id="reels-effect-glow-range-range" min="0" max="50" step="1" value="22"
+                          oninput="document.getElementById('reels-effect-glow-range').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <input type="number" id="reels-effect-glow-range" class="input input-small" min="0" max="50" step="1" value="22" style="width:52px;"
+                          oninput="document.getElementById('reels-effect-glow-range-range').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <label style="margin:0;">光影模糊:</label>
+                        <input type="range" id="reels-effect-glow-blur-range" min="0" max="30" step="1" value="18"
+                          oninput="document.getElementById('reels-effect-glow-blur').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <input type="number" id="reels-effect-glow-blur" class="input input-small" min="0" max="30" step="1" value="18" style="width:52px;"
+                          oninput="document.getElementById('reels-effect-glow-blur-range').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <label style="margin:0;">边缘透明:</label>
+                        <input type="range" id="reels-effect-glow-opacity-range" min="0" max="100" step="1" value="70"
+                          oninput="document.getElementById('reels-effect-glow-opacity').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                        <input type="number" id="reels-effect-glow-opacity" class="input input-small" min="0" max="100" step="1" value="70" style="width:52px;"
+                          oninput="document.getElementById('reels-effect-glow-opacity-range').value=this.value; document.getElementById('reels-effect-controls-enabled').value='1'; reelsUpdatePreview()">
+                      </div>
+                      <div style="grid-column:1 / -1; font-size:11px;color:var(--text-secondary);line-height:1.5;">💡 边缘透明越低，外光越自然；第2、3个颜色控制主光影，可直接改成蓝色等颜色。</div>
                       </div>
                         </div>
                       </div>
@@ -5738,6 +5763,14 @@
                                 <option value="word">单词/短语</option><option value="sentence">逐句出现</option>
                               </select>
                             </div>
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px;">
+                              <input type="checkbox" id="reels-fullpage-typewriter-auto-page" checked
+                                onchange="if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
+                              文本框写满后自动换屏
+                            </label>
+                            <div style="font-size:11px;color:var(--text-secondary);margin:-2px 0 8px 24px;line-height:1.4;">
+                              下一屏会在该页第一个字开始书写时自动切换
+                            </div>
                             <div class="param-row" style="margin-bottom:6px; display:flex; align-items:center; gap:8px;">
                               <label style="min-width:80px; margin:0;">对齐方式:</label>
                               <select id="reels-fullpage-typewriter-align" class="select" style="width:100px;"
@@ -5894,6 +5927,7 @@
                             <option value="pop">弹出</option>
                             <option value="typewriter">打字机</option>
                             <option value="zoom_typewriter">远景打字推进</option>
+                            <option value="line_focus">双行焦点放大</option>
                             <option value="char_bounce">逐字弹跳</option>
                             <option value="letter_jump">逐字放大</option>
                             <option value="char_float_up">逐字上浮</option>
@@ -5904,6 +5938,7 @@
                             <option value="char_center_spread">中心扩散</option>
                             <option value="word_pop_random">逐词弹出(随机)</option>
                             <option value="word_pop_random_pulse">逐词弹出(回弹)</option>
+                            <option value="kinetic_glow_stack">黄绿辉光逐词叠排</option>
                             <option value="word_random_position">随机单词定位</option>
                             <option value="metronome">节奏逐词</option>
                             <option value="floating">漂浮</option>
@@ -6077,8 +6112,8 @@
                         </div>
 
                         <!-- 7. 圣光字幕 -->
-                        <div class="reels-anim-group-box" data-anim-types="holy_glow" style="display: none; padding: 6px 8px; background: rgba(0,0,0,0.18); border-radius: 5px;">
-                          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; font-weight: 500;">圣光字幕参数</div>
+                        <div class="reels-anim-group-box" data-anim-types="holy_glow,kinetic_glow_stack" style="display: none; padding: 6px 8px; background: rgba(0,0,0,0.18); border-radius: 5px;">
+                          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; font-weight: 500;">圣光 / 辉光字幕参数</div>
                           <div style="display: flex; flex-direction: column; gap: 5px;">
                             <div style="display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%;">
                               <label style="margin:0; font-size:12px; flex:0 0 60px; white-space:nowrap;">圣光色:</label>

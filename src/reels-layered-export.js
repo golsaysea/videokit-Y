@@ -689,6 +689,12 @@ async function reelsLayeredExport(params) {
             // ══════════════════════════════════════
             subtitleCtx.clearRect(0, 0, targetWidth, targetHeight);
             subtitleRenderer.renderAmbientLightingBase?.(style, targetWidth, targetHeight);
+            const hasKineticBackdrop = showSubtitle &&
+                style.anim_in_type === 'kinetic_glow_stack' &&
+                typeof subtitleRenderer.renderKineticGlowBackdrop === 'function';
+            if (hasKineticBackdrop) {
+                subtitleRenderer.renderKineticGlowBackdrop(style, targetWidth, targetHeight);
+            }
 
             if (showSubtitle && segments && segments.length > 0) {
                 let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
@@ -702,7 +708,7 @@ async function reelsLayeredExport(params) {
                 }
                 if (activeSeg) {
                     subtitleRenderer.setContextSegments(segments, originalScript);
-                    subtitleRenderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);
+                    subtitleRenderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight, false, hasKineticBackdrop);
                 }
             }
 

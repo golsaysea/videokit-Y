@@ -299,6 +299,27 @@ const REELS_ANIMATION_PRESETS = {
         typewriter_reveal_type: 'char',
         tw_unrevealed_opacity: 0,
     },
+    line_focus: {
+        label: 'Line Focus · 双行焦点放大',
+        anim_in_type: 'line_focus',
+        anim_in_duration: 0.2,
+        anim_out_type: 'none',
+        anim_out_duration: 0,
+        active_line_focus_enabled: true,
+        inactive_line_scale: 0.62,
+        karaoke_highlight: true,
+        highlight_enabled: true,
+        color_text: '#FFFFFF',
+        color_high: '#FBFD07',
+        use_box: false,
+        dynamic_box: false,
+        use_stroke: true,
+        border_width: 7,
+        color_outline: '#000000',
+        italic: true,
+        text_transform: 'uppercase',
+        uppercase: true,
+    },
 };
 
 let _reelsHotkeyBound = false;
@@ -2354,7 +2375,7 @@ const REELS_ANIMATION_PARAM_GROUPS = [
     { types: ['metronome'], label: '节奏逐词', ids: ['reels-metro-bpm', 'reels-metro-bpm-range', 'reels-metro-read-color', 'reels-metro-unread-color', 'reels-metro-unread-opacity', 'reels-metro-unread-opacity-range'] },
     { types: ['letter_jump'], label: '逐字放大', ids: ['reels-jump-scale', 'reels-jump-scale-range'] },
     { types: ['flash_highlight'], label: '闪光高亮', ids: ['reels-flash-color'] },
-    { types: ['holy_glow'], label: '圣光字幕', ids: ['reels-glow-color', 'reels-glow-radius', 'reels-glow-radius-range'] },
+    { types: ['holy_glow', 'kinetic_glow_stack'], label: '圣光／辉光字幕', ids: ['reels-glow-color', 'reels-glow-radius', 'reels-glow-radius-range'] },
     { types: ['blur_sharp'], label: '模糊到清晰', ids: ['reels-blur-max', 'reels-blur-max-range'] },
     { types: ['word_pop_random', 'word_pop_random_pulse'], label: '逐词弹出／回弹', ids: [
         'reels-word-pop-min', 'reels-word-pop-min-range', 'reels-word-pop-max', 'reels-word-pop-max-range',
@@ -2721,6 +2742,7 @@ function _readStyleFromUI() {
     const wwLabel = get('reels-wrap-width-label');
     if (wwLabel) wwLabel.textContent = val('reels-wrap-width') + '%';
 
+    const existingStyle = _reelsState.style || {};
     const baseStyle = {
         // Font
         mixed_layout: val('reels-mixed-layout') || 'none',
@@ -2763,6 +2785,11 @@ function _readStyleFromUI() {
         stroke_expand_step: num('reels-se-step', 4),
         stroke_expand_feather: num('reels-se-feather', 8),
         stroke_expand_colors: val('reels-se-colors') || '#FF0000,#00FF00,#0000FF',
+        effect_controls_enabled: val('reels-effect-controls-enabled') === '1',
+        effect_inner_outline_width: num('reels-effect-inner-outline', 5),
+        effect_glow_range: num('reels-effect-glow-range', 22),
+        effect_glow_blur: num('reels-effect-glow-blur', 18),
+        effect_glow_opacity: num('reels-effect-glow-opacity', 70),
 
         // Shadow
         shadow_blur: chk('reels-shadow') ? num('reels-shadow-blur', 4) : 0,
@@ -2840,6 +2867,7 @@ function _readStyleFromUI() {
         wrap_left: 0,
         wrap_right: 0,
         random_position_use_layout_range: val('reels-anim-in') === 'word_random_position',
+        active_line_focus_enabled: val('reels-anim-in') === 'line_focus',
         random_position_height_percent: num('reels-random-position-height', 35),
         line_spacing: num('reels-line-spacing', 1.2),
         rotation: num('reels-rotation', 0),
@@ -2914,6 +2942,7 @@ function _readStyleFromUI() {
         holy_glow_color: val('reels-glow-color') || '#FFFFAA',
         holy_glow_radius: num('reels-glow-radius', 6),
         holy_glow_period: 3.0,
+        kinetic_glow_color: val('reels-glow-color') || existingStyle.kinetic_glow_color || '#E7FF00',
         blur_sharp_max: num('reels-blur-max', 20),
         blur_sharp_clear_frac: 0.4,
 
@@ -2941,6 +2970,7 @@ function _readStyleFromUI() {
         // Fullpage Typewriter
         fullpage_typewriter: chk('reels-fullpage-typewriter'),
         fullpage_typewriter_reveal_type: val('reels-fullpage-typewriter-reveal-type') || 'char',
+        fullpage_typewriter_auto_page: chk('reels-fullpage-typewriter-auto-page'),
         fullpage_typewriter_align: val('reels-fullpage-typewriter-align') || 'center',
         fullpage_typewriter_cursor: chk('reels-fullpage-typewriter-cursor'),
         fullpage_typewriter_keep_background: chk('reels-fullpage-typewriter-keep-background'),
@@ -3009,7 +3039,6 @@ function _readStyleFromUI() {
     };
 
     // === Merge with existing hidden state (auto_color_rules etc.) ===
-    const existingStyle = _reelsState.style || {};
     const merged = Object.assign({}, existingStyle, baseStyle);
     _reelsState.style = merged;
     return merged;
@@ -3285,8 +3314,18 @@ function _writeStyleToUI(style) {
     set('reels-se-layers', style.stroke_expand_layers || 3);
     set('reels-se-step', style.stroke_expand_step || 4);
     set('reels-se-feather', style.stroke_expand_feather || 8);
-    set('reels-se-colors', typeof style.stroke_expand_colors === 'string' ? style.stroke_expand_colors : '#FF0000,#00FF00,#0000FF');
+    set('reels-se-colors', Array.isArray(style.stroke_expand_colors)
+        ? style.stroke_expand_colors.join(',')
+        : (typeof style.stroke_expand_colors === 'string' ? style.stroke_expand_colors : '#FF0000,#00FF00,#0000FF'));
     if (typeof window.reelsSyncSEColorsUI === 'function') window.reelsSyncSEColorsUI();
+    const effectLayerWidths = Array.isArray(style.stroke_expand_layer_widths) ? style.stroke_expand_layer_widths : [];
+    const effectLayerFeathers = Array.isArray(style.stroke_expand_layer_feathers) ? style.stroke_expand_layer_feathers : [];
+    const effectControlsEnabled = style.effect_controls_enabled === true || style.effect_controls_enabled === 1 || style.effect_controls_enabled === 'true';
+    set('reels-effect-controls-enabled', effectControlsEnabled ? '1' : '0');
+    set('reels-effect-inner-outline', style.effect_inner_outline_width ?? effectLayerWidths[0] ?? 5);
+    set('reels-effect-glow-range', style.effect_glow_range ?? effectLayerWidths[Math.min(2, Math.max(0, effectLayerWidths.length - 1))] ?? 22);
+    set('reels-effect-glow-blur', style.effect_glow_blur ?? effectLayerFeathers[Math.min(2, Math.max(0, effectLayerFeathers.length - 1))] ?? 18);
+    set('reels-effect-glow-opacity', style.effect_glow_opacity ?? 70);
     setChk('reels-shadow', (style.shadow_blur || 0) > 0);
     set('reels-shadow-color', style.color_shadow || '#000000');
     set('reels-shadow-blur', style.shadow_blur || 4);
@@ -3405,7 +3444,9 @@ function _writeStyleToUI(style) {
     set('reels-metro-bpm', style.metronome_bpm || 120);
     set('reels-jump-scale', style.letter_jump_scale || 1.5);
     set('reels-flash-color', style.flash_color || '#FFFFFF');
-    set('reels-glow-color', style.holy_glow_color || '#FFFFAA');
+    set('reels-glow-color', style.anim_in_type === 'kinetic_glow_stack'
+        ? (style.kinetic_glow_color || style.holy_glow_color || '#E7FF00')
+        : (style.holy_glow_color || '#FFFFAA'));
     set('reels-glow-radius', style.holy_glow_radius || 6);
     set('reels-blur-max', style.blur_sharp_max || 20);
     set('reels-typewriter-reveal-type', style.typewriter_reveal_type || 'word');
@@ -3436,6 +3477,7 @@ function _writeStyleToUI(style) {
     // Fullpage Typewriter
     setChk('reels-fullpage-typewriter', style.fullpage_typewriter);
     set('reels-fullpage-typewriter-reveal-type', style.fullpage_typewriter_reveal_type || 'char');
+    setChk('reels-fullpage-typewriter-auto-page', style.fullpage_typewriter_auto_page !== false);
     set('reels-fullpage-typewriter-align', style.fullpage_typewriter_align || 'center');
     setChk('reels-fullpage-typewriter-cursor', style.fullpage_typewriter_cursor !== false);
     setChk('reels-fullpage-typewriter-keep-background', style.fullpage_typewriter_keep_background ?? true);
@@ -4015,6 +4057,13 @@ function _reelsUpdatePreviewInternal() {
     // 环境暗部与字幕光使用同一组样式，不能借用全局黑色遮罩。
     renderer.renderAmbientLightingBase?.(style, w, h);
 
+    const hasKineticBackdrop = showSubtitle &&
+        style.anim_in_type === 'kinetic_glow_stack' &&
+        typeof renderer.renderKineticGlowBackdrop === 'function';
+    if (hasKineticBackdrop) {
+        renderer.renderKineticGlowBackdrop(style, w, h);
+    }
+
     // “覆层在字幕下方”时先画覆层；否则等字幕完成后再画。
     if (!overlayAboveSubtitle) renderOverlays();
 
@@ -4029,7 +4078,7 @@ function _reelsUpdatePreviewInternal() {
         } else {
             renderer.setContextSegments([activeSegment]);
         }
-        renderer.renderSubtitle(style, activeSegment, audioCycleTime, w, h);
+        renderer.renderSubtitle(style, activeSegment, audioCycleTime, w, h, false, hasKineticBackdrop);
     }
 
     if (overlayAboveSubtitle) renderOverlays();
@@ -10702,18 +10751,22 @@ function reelsOpenSubtitlePresetLibrary() {
         // 卡片静止时必须是“动画完成后的成片样子”，不能停在淡入/淡出的
         // 半透明中间帧。悬浮时才使用原始动画配置与真实 SRT 时间轴。
         const isBoxWipeCard = Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
+        const isLineFocusCard = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
         const finalStyle = {
             ...style,
-            anim_in_type: isBoxWipeCard ? 'box_wipe' : 'none',
+            anim_in_type: isBoxWipeCard ? 'box_wipe' : (isLineFocusCard ? 'line_focus' : 'none'),
             anim_out_type: 'none',
             dynamic_box: false,
-            karaoke_highlight: false,
+            karaoke_highlight: isLineFocusCard ? Boolean(style.karaoke_highlight ?? true) : false,
+            highlight_enabled: isLineFocusCard ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
             word_pop: false,
             fullpage_typewriter: false,
         };
         const cardStaticTime = isBoxWipeCard
             ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.65)
-            : staticPreviewTime;
+            : (isLineFocusCard
+                ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.35)
+                : staticPreviewTime);
         const draw = (time, animated = false) => {
             const activeSegment = animated
                 ? (previewSegments.find(segment => time >= segment.start && time <= segment.end) || previewSegment)

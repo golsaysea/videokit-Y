@@ -1532,12 +1532,17 @@
             // through subtitle gaps (and cover/hook phases) whenever enabled.
             drawSubtitleRange(ctx, style, w, h);
             if (!show || phase.inCover || phase.inHook) return;
+            const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
+                typeof state.renderer.renderKineticGlowBackdrop === 'function';
+            if (hasKineticBackdrop) {
+                state.renderer.renderKineticGlowBackdrop(style, w, h);
+            }
             const segment = findActiveSegment(task, time, style);
             if (!segment) return;
             if (typeof state.renderer.setContextSegments === 'function') {
                 state.renderer.setContextSegments(task.segments || [segment], task.ttsText || task.aiScript || '');
             }
-            state.renderer.renderSubtitle(style, segment, time, w, h);
+            state.renderer.renderSubtitle(style, segment, time, w, h, false, hasKineticBackdrop);
         } catch (err) {
             console.warn('[PreviewV2] subtitle render failed', err);
         }

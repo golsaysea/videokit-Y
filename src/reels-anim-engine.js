@@ -130,7 +130,9 @@ const ANIM_TYPE_LABELS = [
     ['逐行出现', 'bullet_reveal'],
     ['底条进度擦除', 'box_wipe'],
     ['远景打字推进', 'zoom_typewriter'],
+    ['双行焦点放大', 'line_focus'],
     ['闪光高亮', 'flash_highlight'],
+    ['黄绿辉光逐词叠排', 'kinetic_glow_stack'],
 ];
 
 const CHAR_ANIM_TYPES = [
@@ -752,6 +754,42 @@ function computeZoomTypewriterState(currentTime, segStart, segEnd, totalChars, o
     };
 }
 
+/**
+ * Compute per-line scale factors for the Active Line Focus ("双行焦点放大") effect.
+ * The line containing the currently spoken word renders at activeScale (1.0x),
+ * while all other visible lines render at inactiveScale (~0.62x).
+ *
+ * @param {Array<{startWordIdx: number, endWordIdx: number}>} lineWordRanges
+ * @param {number} activeWordIdx
+ * @param {number} [activeScale=1.0]
+ * @param {number} [inactiveScale=0.62]
+ * @returns {{ activeLineIdx: number, scales: number[] }}
+ */
+function computeActiveLineFocusScales(lineWordRanges, activeWordIdx, activeScale = 1.0, inactiveScale = 0.62) {
+    const ranges = Array.isArray(lineWordRanges) ? lineWordRanges : [];
+    const actS = Number.isFinite(Number(activeScale)) ? Number(activeScale) : 1.0;
+    const inactS = Math.max(0.35, Math.min(0.95, Number.isFinite(Number(inactiveScale)) ? Number(inactiveScale) : 0.62));
+    if (ranges.length === 0) {
+        return { activeLineIdx: 0, scales: [] };
+    }
+    if (ranges.length === 1) {
+        return { activeLineIdx: 0, scales: [actS] };
+    }
+    let activeLineIdx = 0;
+    if (Number.isFinite(activeWordIdx) && activeWordIdx >= 0) {
+        const found = ranges.findIndex(r => activeWordIdx >= r.startWordIdx && activeWordIdx < r.endWordIdx);
+        if (found >= 0) {
+            activeLineIdx = found;
+        } else if (activeWordIdx >= ranges[ranges.length - 1].endWordIdx) {
+            activeLineIdx = ranges.length - 1;
+        }
+    }
+    return {
+        activeLineIdx,
+        scales: ranges.map((_, idx) => (idx === activeLineIdx ? actS : inactS)),
+    };
+}
+
 // Spectrum shape types
 const SPECTRUM_SHAPES = [
     ['频谱条', 'bars'],
@@ -801,6 +839,7 @@ const ReelsAnimEngine = {
     computeBoxColorTransition,
     computeBoxWipeLineWidths,
     computeZoomTypewriterState,
+    computeActiveLineFocusScales,
 };
 
 // Browser global

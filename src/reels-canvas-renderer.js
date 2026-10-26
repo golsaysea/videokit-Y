@@ -544,7 +544,7 @@ class ReelsCanvasRenderer {
     /**
      * 主渲染入口
      */
-    renderSubtitle(style, segment, currentTime, videoW, videoH, _isSubCall = false) {
+    renderSubtitle(style, segment, currentTime, videoW, videoH, _isSubCall = false, _skipKineticBackdrop = false) {
         if (!segment) return;
         const ctx = this.ctx;
         const s = {
@@ -578,6 +578,14 @@ class ReelsCanvasRenderer {
 
         if (!_isSubCall && s.anim_in_type === 'word_random_position') {
             this._renderWordRandomPosition(s, segment, currentTime, videoW, videoH);
+            return;
+        }
+
+        if (!_isSubCall && s.anim_in_type === 'kinetic_glow_stack') {
+            if (!_skipKineticBackdrop) {
+                this.renderKineticGlowBackdrop(s, videoW, videoH);
+            }
+            this._renderKineticGlowStack(s, segment, currentTime, videoW, videoH);
             return;
         }
 
@@ -684,6 +692,64 @@ class ReelsCanvasRenderer {
             return;
         }
 
+        const isLineFocus = Boolean(s.active_line_focus_enabled || (s.anim_in_type || 'none') === 'line_focus');
+        if (!_isSubCall && isLineFocus && this._contextSegments && this._contextSegments.length > 1) {
+            const curTextRaw = String(segment.edited_text || segment.text || '').trim();
+            const curWordsRaw = curTextRaw ? curTextRaw.split(/\s+/).filter(Boolean) : [];
+            if (curTextRaw && !curTextRaw.includes('\n') && curWordsRaw.length >= 1 && curWordsRaw.length <= 3) {
+                const segIdx = this._contextSegments.findIndex(seg =>
+                    seg === segment ||
+                    (seg.start === segment.start && seg.end === segment.end && (seg.edited_text || seg.text) === (segment.edited_text || segment.text))
+                );
+                if (segIdx >= 0) {
+                    const pairBaseIdx = segIdx - (segIdx % 2);
+                    const segA = this._contextSegments[pairBaseIdx];
+                    const segB = this._contextSegments[pairBaseIdx + 1];
+                    if (segA && segB) {
+                        const textA = String(segA.edited_text || segA.text || '').trim();
+                        const textB = String(segB.edited_text || segB.text || '').trim();
+                        const tokensA = textA ? textA.split(/\s+/).filter(Boolean) : [];
+                        const tokensB = textB ? textB.split(/\s+/).filter(Boolean) : [];
+                        const gapAB = (Number(segB.start) || 0) - (Number(segA.end) || 0);
+                        if (textA && textB && !textA.includes('\n') && !textB.includes('\n') &&
+                            tokensA.length <= 3 && tokensB.length <= 3 && gapAB <= 1.5) {
+                            const buildSegWords = (segObj, tokens) => {
+                                const s0 = Number(segObj.start) || 0;
+                                const s1 = Math.max(s0 + 0.001, Number(segObj.end) || (s0 + 1));
+                                const dur = s1 - s0;
+                                const rawW = Array.isArray(segObj.words) ? segObj.words : [];
+                                if (rawW.length === tokens.length && rawW.length > 0) {
+                                    return rawW.map((w, i) => ({
+                                        word: w?.word ?? w?.text ?? tokens[i],
+                                        start: Number.isFinite(Number(w?.start)) ? Number(w.start) : (s0 + dur * (i / tokens.length)),
+                                        end: Number.isFinite(Number(w?.end)) ? Number(w.end) : (s0 + dur * ((i + 1) / tokens.length)),
+                                    }));
+                                }
+                                return tokens.map((tok, i) => ({
+                                    word: tok,
+                                    start: s0 + dur * (i / Math.max(1, tokens.length)),
+                                    end: s0 + dur * ((i + 1) / Math.max(1, tokens.length)),
+                                }));
+                            };
+                            const combinedText = `${textA}\n${textB}`;
+                            const pairedStart = Number(segA.start) || 0;
+                            const pairedEnd = Number(segB.end) || 0;
+                            if (currentTime < pairedStart || currentTime > pairedEnd) return;
+                            const pairedSeg = {
+                                ...segment,
+                                start: pairedStart,
+                                end: pairedEnd,
+                                text: combinedText,
+                                edited_text: combinedText,
+                                words: [...buildSegWords(segA, tokensA), ...buildSegWords(segB, tokensB)],
+                            };
+                            this.renderSubtitle(style, pairedSeg, currentTime, videoW, videoH, true);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
         // For non-scrolling lines, we only render if active
         if (!_isSubCall && (currentTime < segStart || currentTime > segEnd)) return;
@@ -833,6 +899,21 @@ class ReelsCanvasRenderer {
                 }
             }
         }
+        if (isLineFocus && paragraphs.length === 1 && flatWords.length >= 2) {
+            const mid = Math.ceil(flatWords.length / 2);
+            const half1 = flatWords.slice(0, mid);
+            const half2 = flatWords.slice(mid);
+            const wrapWordSpacing = wordSpacing + randomWordSpacingMax + antiCollisionPaddingGlobal;
+            const lines1 = this._wrapTokensByPixelWidth(half1, autoWrap ? maxWidth : Infinity, joiner, letterSpacing, wrapWordSpacing);
+            const lines2 = this._wrapTokensByPixelWidth(half2, autoWrap ? maxWidth : Infinity, joiner, letterSpacing, wrapWordSpacing);
+            if (lines1.length === 1 && lines2.length === 1) {
+                lines.length = 0;
+                lines.push(lines1[0], lines2[0]);
+            } else if (lines.length === 1) {
+                lines.length = 0;
+                lines.push(...lines1, ...lines2);
+            }
+        }
         if (lines.length === 0) return;
 
         // ── 行高与布局 ──
@@ -864,6 +945,67 @@ class ReelsCanvasRenderer {
             if (!line || !line.trim()) return { top: 0, bottom: lineH, height: lineH };
             return getTopBaselineGlyphBounds(ctx.measureText(line), fontSize, lineH);
         });
+
+        // Precompute word timings & active spoken word index so line-level focus scaling and word rendering share it
+        const animInType_ = s.anim_in_type || 'none';
+        const _isWPR_ = animInType_ === 'word_pop_random';
+        const _isWPRP_ = animInType_ === 'word_pop_random_pulse';
+        const _isLJ_ = animInType_ === 'letter_jump';
+        const totalWordCount = Math.max(1, words.length);
+        const segDur = Math.max(0.001, segEnd - segStart);
+        const wordPopGroups = (_isWPR_ && words.length > 0)
+            ? this._buildWordPopGroups(words.length, segStart, segEnd, wordsInfo)
+            : null;
+        const resolvedWordTimings = Array.from({ length: totalWordCount }, (_, idx) => {
+            const wInfo = idx < wordsInfo.length ? wordsInfo[idx] : null;
+            const fbStart = segStart + segDur * (idx / totalWordCount);
+            const fbEnd = segStart + segDur * ((idx + 1) / totalWordCount);
+            const rawStart = wInfo ? Number(wInfo.start) : NaN;
+            const rawEnd = wInfo ? Number(wInfo.end) : NaN;
+            let ws = Number.isFinite(rawStart) ? rawStart : fbStart;
+            let we = Number.isFinite(rawEnd) ? rawEnd : fbEnd;
+            if (wordPopGroups && idx < wordPopGroups.starts.length) {
+                ws = wordPopGroups.starts[idx];
+                we = wordPopGroups.ends[idx];
+            }
+            return { start: ws, end: we };
+        });
+        const highlightEnabled = s.highlight_enabled !== false && s.karaoke_highlight !== false;
+        const highlightScaleEnabled = Boolean(s.highlight_scale_enabled);
+        const highlightScaleFactor = highlightScaleEnabled
+            ? Math.max(0.5, Math.min(3.0, (Number(s.highlight_scale) || 125) / 100))
+            : 1.0;
+        const hideUntilSpoken = Boolean(s.hide_until_spoken);
+        const unreadOpacityFactor = Math.max(0, Math.min(1, Number(s.unread_opacity ?? 0) / 100));
+        let activeSpokenIdx = -1;
+        if ((highlightEnabled || highlightScaleEnabled || hideUntilSpoken || s.dynamic_box || isLineFocus) &&
+            currentTime != null && currentTime >= segStart - 1e-6 && currentTime <= segEnd + 1e-6) {
+            activeSpokenIdx = resolvedWordTimings.findIndex((wt, idx) =>
+                currentTime >= wt.start && (idx === totalWordCount - 1 ? currentTime <= wt.end : currentTime < wt.end)
+            );
+            if (activeSpokenIdx < 0) {
+                for (let k = totalWordCount - 1; k >= 0; k--) {
+                    if (currentTime >= resolvedWordTimings[k].start - 1e-6) {
+                        activeSpokenIdx = k;
+                        break;
+                    }
+                }
+                if (activeSpokenIdx < 0 && totalWordCount > 0) {
+                    activeSpokenIdx = 0;
+                }
+            }
+        }
+        const lineWordRanges = [];
+        let rangeWordCursor = 0;
+        for (let li = 0; li < visibleLines.length; li++) {
+            const cnt = visibleLines[li].split(/\s+/).filter(Boolean).length;
+            lineWordRanges.push({ startWordIdx: rangeWordCursor, endWordIdx: rangeWordCursor + cnt });
+            rangeWordCursor += cnt;
+        }
+        const lineFocusState = (isLineFocus && visibleLines.length > 1 && anim && typeof anim.computeActiveLineFocusScales === 'function')
+            ? anim.computeActiveLineFocusScales(lineWordRanges, activeSpokenIdx, 1.0, Number(s.inactive_line_scale ?? 0.62))
+            : null;
+
         const lineScales = lineWidths.map((w, lineIndex) => {
             const lineTokens = visibleLines[lineIndex].split(/\s+/).filter(Boolean);
             let maxAnimatedTokenW = 0;
@@ -874,10 +1016,11 @@ class ReelsCanvasRenderer {
                 );
             }
             const overflowFit = maxAnimatedTokenW > maxWidth ? maxWidth / maxAnimatedTokenW : 1.0;
-            if (!blockTypography) return Math.min(1.0, overflowFit);
+            const focusScale = lineFocusState ? (lineFocusState.scales[lineIndex] ?? 1.0) : 1.0;
+            if (!blockTypography) return Math.min(1.0, overflowFit) * focusScale;
             const safeW = Math.max(1, w);
             const fit = blockTargetWidth / safeW;
-            return Math.min(overflowFit, Math.max(blockScaleMin, Math.min(blockScaleMax, fit)));
+            return Math.min(overflowFit, Math.max(blockScaleMin, Math.min(blockScaleMax, fit))) * focusScale;
         });
         const lineHeights = lineScales.map(sc => lineH * sc * popMaxScaleGlobal);
         const lineSpacings = visibleLines.map((_, i) => {
@@ -899,11 +1042,7 @@ class ReelsCanvasRenderer {
         const totalH = accumY;
 
         // ── 精确计算每行实际渲染宽度（模拟渲染循环的 currX 推进） ──
-        const animInType_ = s.anim_in_type || 'none';
-        const _isWPR_ = animInType_ === 'word_pop_random';
-        const _isWPRP_ = animInType_ === 'word_pop_random_pulse';
-        const _isLJ_ = animInType_ === 'letter_jump';
-        const segDur_ = Math.max(0.001, segEnd - segStart);
+        const segDur_ = segDur;
         const baseSpaceW_ = ctx.measureText(' ').width + wordSpacing;
         const popMaxScale_ = popMaxScaleGlobal;
         const antiCollisionPadding_ = (popMaxScale_ > 1.05) ? (baseSpaceW_ * (popMaxScale_ - 1.0) * 1.2) : 0;
@@ -1215,9 +1354,6 @@ class ReelsCanvasRenderer {
         const isLetterJump = animInType === 'letter_jump';
         const isFlash = animInType === 'flash_highlight';
         const isHolyGlow = animInType === 'holy_glow';
-        const wordPopGroups = (isWordPopRandom && words.length > 0)
-            ? this._buildWordPopGroups(words.length, segStart, segEnd, wordsInfo)
-            : null;
 
         // ── Advanced textbox background ──
         if (advEnabled && s.adv_bg_enabled) {
@@ -1569,7 +1705,8 @@ class ReelsCanvasRenderer {
         // would leak the expanded outline for text that is still hidden.
         const needsPerWordStrokeExpand = s.only_show_active_word || Boolean(s.hide_until_spoken) ||
             Boolean(s.highlight_scale_enabled) || isTypewriter || isMetronome ||
-            isWordPopRandom || isWordPopRandomPulse || isBullet || isExtendedCharAnim;
+            isWordPopRandom || isWordPopRandomPulse || isBullet || isExtendedCharAnim ||
+            isLineFocus || lineScales.some(sc => Math.abs(sc - 1.0) > 0.001);
         if (s.stroke_expand_enabled && !needsPerWordStrokeExpand) {
             this._renderStrokeExpand(ctx, s, visibleLines, lineWidths, cx, advEnabled, advAlign, advX, advW,
                 cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX);
@@ -1581,7 +1718,6 @@ class ReelsCanvasRenderer {
         }
         const textColor = s.color_text || '#FFFFFF';
         const highColor = s.color_high || '#FFD700';
-        const highlightEnabled = s.highlight_enabled !== false && s.karaoke_highlight !== false;
         const outlineColor = s.color_outline || '#3E2723';
         const outlineAlpha = (s.opacity_outline || 255) / 255;
         const configuredDrawBorderWidth = Number(s.border_width);
@@ -1617,48 +1753,6 @@ class ReelsCanvasRenderer {
         const totalAnimChars = isExtendedCharAnim
             ? visibleLines.reduce((sum, ln) => sum + ln.split(/\s+/).filter(Boolean).reduce((c, w) => c + Array.from(w).length, 0), 0)
             : 0;
-
-        const totalWordCount = Math.max(1, words.length);
-        const segDur = Math.max(0.001, segEnd - segStart);
-        const resolvedWordTimings = Array.from({ length: totalWordCount }, (_, idx) => {
-            const wInfo = idx < wordsInfo.length ? wordsInfo[idx] : null;
-            const fbStart = segStart + segDur * (idx / totalWordCount);
-            const fbEnd = segStart + segDur * ((idx + 1) / totalWordCount);
-            const rawStart = wInfo ? Number(wInfo.start) : NaN;
-            const rawEnd = wInfo ? Number(wInfo.end) : NaN;
-            let ws = Number.isFinite(rawStart) ? rawStart : fbStart;
-            let we = Number.isFinite(rawEnd) ? rawEnd : fbEnd;
-            if (wordPopGroups && idx < wordPopGroups.starts.length) {
-                ws = wordPopGroups.starts[idx];
-                we = wordPopGroups.ends[idx];
-            }
-            return { start: ws, end: we };
-        });
-
-        const highlightScaleEnabled = Boolean(s.highlight_scale_enabled);
-        const highlightScaleFactor = highlightScaleEnabled
-            ? Math.max(0.5, Math.min(3.0, (Number(s.highlight_scale) || 125) / 100))
-            : 1.0;
-        const hideUntilSpoken = Boolean(s.hide_until_spoken);
-        const unreadOpacityFactor = Math.max(0, Math.min(1, Number(s.unread_opacity ?? 0) / 100));
-
-        let activeSpokenIdx = -1;
-        if ((highlightEnabled || highlightScaleEnabled || hideUntilSpoken || s.dynamic_box) && currentTime != null && currentTime >= segStart - 1e-6 && currentTime <= segEnd + 1e-6) {
-            activeSpokenIdx = resolvedWordTimings.findIndex((wt, idx) =>
-                currentTime >= wt.start && (idx === totalWordCount - 1 ? currentTime <= wt.end : currentTime < wt.end)
-            );
-            if (activeSpokenIdx < 0) {
-                for (let k = totalWordCount - 1; k >= 0; k--) {
-                    if (currentTime >= resolvedWordTimings[k].start - 1e-6) {
-                        activeSpokenIdx = k;
-                        break;
-                    }
-                }
-                if (activeSpokenIdx < 0 && totalWordCount > 0) {
-                    activeSpokenIdx = 0;
-                }
-            }
-        }
         const activeHighlightIdx = highlightEnabled ? activeSpokenIdx : -1;
 
         for (let i = 0; i < visibleLines.length; i++) {
@@ -1666,12 +1760,14 @@ class ReelsCanvasRenderer {
             const lineW = lineWidths[i];
             const lineScale = lineScales[i] || 1.0;
             const lineHScaled = lineH * lineScale;
+            const scaledLineW = lineW * lineScale;
+            const hasCustomLineScale = Math.abs(lineScale - 1.0) > 0.001;
 
             // Text alignment — 使用最终行宽（所有词展开后）来锚定位置，避免逐词弹出时偏移
-            const anchorLineW = (finalLineWidths[i] != null && finalLineWidths[i] > lineW)
-                ? finalLineWidths[i] : lineW;
-            const effectiveLineW = (actualLineWidths[i] != null && actualLineWidths[i] > lineW)
-                ? actualLineWidths[i] : lineW;
+            const anchorLineW = (finalLineWidths[i] != null && (hasCustomLineScale || finalLineWidths[i] > lineW))
+                ? finalLineWidths[i] : scaledLineW;
+            const effectiveLineW = (actualLineWidths[i] != null && (hasCustomLineScale || actualLineWidths[i] > lineW))
+                ? actualLineWidths[i] : scaledLineW;
             const lineAlignMode = resolveLineAlignMode(i);
             const xStart = computeAlignedLineX(i, lineAlignMode === 'right' ? effectiveLineW : anchorLineW);
 
@@ -1749,6 +1845,7 @@ class ReelsCanvasRenderer {
                 const isWordActive = !s.only_show_active_word || (currentTime == null || (currentTime >= wordStart && (wordIdx === totalWordCount - 1 ? currentTime <= wordEnd : currentTime < wordEnd)));
                 const wordCenterX = s.only_show_active_word ? cx : (slotX + slotW / 2);
                 const drawX = wordCenterX - (wordW * lineScale) / 2;
+                const textDrawX = wordCenterX - wordW / 2;
 
                 const wordCenterY = y + lineHScaled / 2;
                 let wordY = y;
@@ -1955,6 +2052,7 @@ class ReelsCanvasRenderer {
                 // ── Render word ──
                 if (isWordActive && wordOpacity > 0.001) {
                     const wordScale = letterJumpScale * randomPopScale * (isHighlightZoom ? highlightScaleFactor : 1.0);
+                    const textDrawY = (wordCenterY - lineH / 2) + (wordY - y);
 
                     // ── Local multi-layer stroke expand ──
                     if (s.stroke_expand_enabled && needsPerWordStrokeExpand) {
@@ -1971,17 +2069,17 @@ class ReelsCanvasRenderer {
                             ctx.translate(-wordCenterX, -wordCenterY);
                         }
                         if (typewriterPartial) {
-                            this._renderWordStrokeExpand(ctx, s, typewriterPartial.revealed, drawX, wordY, fontStr, letterSpacing);
+                            this._renderWordStrokeExpand(ctx, s, typewriterPartial.revealed, textDrawX, textDrawY, fontStr, letterSpacing);
                             const revealedW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing);
                             // The unread half needs its own opacity.  In
                             // particular, opacity 0 must hide both text and
                             // expanded outline.
                             if (twUnreadOpacity > 0.01) {
                                 ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity;
-                                this._renderWordStrokeExpand(ctx, s, typewriterPartial.unrevealed, drawX + revealedW, wordY, fontStr, letterSpacing);
+                                this._renderWordStrokeExpand(ctx, s, typewriterPartial.unrevealed, textDrawX + revealedW, textDrawY, fontStr, letterSpacing);
                             }
                         } else {
-                            this._renderWordStrokeExpand(ctx, s, wordStr, drawX, wordY, fontStr, letterSpacing);
+                            this._renderWordStrokeExpand(ctx, s, wordStr, textDrawX, textDrawY, fontStr, letterSpacing);
                         }
                         ctx.restore();
                     }
@@ -2056,8 +2154,8 @@ class ReelsCanvasRenderer {
                     }
 
                     const wordGradBounds = {
-                        x: drawX,
-                        y: wordY,
+                        x: textDrawX,
+                        y: textDrawY,
                         w: Math.max(1, wordW),
                         h: Math.max(1, fontSize * 0.95),
                     };
@@ -2066,9 +2164,9 @@ class ReelsCanvasRenderer {
                     if (zoomTwActivePop) {
                         const revealedColor = s.tw_revealed_color || textColor;
                         const revealedStroke = s.tw_revealed_stroke_color || outlineColor;
-                        let activeX = drawX;
+                        let activeX = textDrawX;
                         if (zoomTwActivePop.prefix) {
-                            this._drawWord(ctx, zoomTwActivePop.prefix, drawX, wordY, revealedColor,
+                            this._drawWord(ctx, zoomTwActivePop.prefix, textDrawX, textDrawY, revealedColor,
                                 useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                             activeX += this._measureTextWithSpacing(ctx, zoomTwActivePop.prefix, letterSpacing);
@@ -2076,7 +2174,7 @@ class ReelsCanvasRenderer {
                         if (zoomTwActivePop.activeChar) {
                             const chW = this._measureTextWithSpacing(ctx, zoomTwActivePop.activeChar, letterSpacing);
                             const chCx = activeX + chW / 2;
-                            const chCy = wordY + fontSize * 0.55;
+                            const chCy = textDrawY + fontSize * 0.55;
                             const p = zoomTwActivePop.progress;
                             const chScale = 0.72 + 0.28 * p;
                             const chDy = (1 - p) * fontSize * 0.08;
@@ -2084,7 +2182,7 @@ class ReelsCanvasRenderer {
                             ctx.translate(chCx, chCy + chDy);
                             ctx.scale(chScale, chScale);
                             ctx.translate(-chCx, -chCy);
-                            this._drawWord(ctx, zoomTwActivePop.activeChar, activeX, wordY, revealedColor,
+                            this._drawWord(ctx, zoomTwActivePop.activeChar, activeX, textDrawY, revealedColor,
                                 useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                             ctx.restore();
@@ -2095,18 +2193,18 @@ class ReelsCanvasRenderer {
                         const unrevealedColor = s.tw_unrevealed_color || '#808080';
                         const unrevealedStroke = s.tw_unrevealed_stroke_color || '#404040';
                         const revealedW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing);
-                        this._drawWord(ctx, typewriterPartial.revealed, drawX, wordY, revealedColor,
+                        this._drawWord(ctx, typewriterPartial.revealed, textDrawX, textDrawY, revealedColor,
                             useStroke && !s.stroke_expand_enabled, revealedStroke, borderW, outlineAlpha,
                             currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                         if (twUnreadOpacity > 0.001) {
                             ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity;
-                            this._drawWord(ctx, typewriterPartial.unrevealed, drawX + revealedW, wordY, unrevealedColor,
+                            this._drawWord(ctx, typewriterPartial.unrevealed, textDrawX + revealedW, textDrawY, unrevealedColor,
                                 useStroke && !s.stroke_expand_enabled, unrevealedStroke, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                         }
                     } else if (isExtendedCharAnim && anim) {
                         const chars = Array.from(wordStr);
-                        let charX = drawX;
+                        let charX = textDrawX;
                         const charAnimOpts = {
                             intensity: s.char_anim_intensity ?? 1.0,
                             duration: s.char_anim_duration ?? 0.28,
@@ -2130,7 +2228,7 @@ class ReelsCanvasRenderer {
                                 ctx.save();
                                 ctx.globalAlpha *= tf.alpha;
                                 const chCx = charX + chW / 2;
-                                const chCy = wordY + fontSize * 0.55;
+                                const chCy = textDrawY + fontSize * 0.55;
                                 if (tf.dx !== 0 || tf.dy !== 0) {
                                     ctx.translate(tf.dx, tf.dy);
                                 }
@@ -2139,7 +2237,7 @@ class ReelsCanvasRenderer {
                                     ctx.scale(tf.scaleX, tf.scaleY);
                                     ctx.translate(-chCx, -chCy);
                                 }
-                                this._drawWord(ctx, ch, charX, wordY, wordColor,
+                                this._drawWord(ctx, ch, charX, textDrawY, wordColor,
                                     useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
                                     currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, 0, s, activeGradBounds);
                                 ctx.restore();
@@ -2153,14 +2251,14 @@ class ReelsCanvasRenderer {
                         if (punctMatch) {
                             const [, corePart, punctPart] = punctMatch;
                             const coreW = this._measureTextWithSpacing(ctx, corePart, letterSpacing);
-                            this._drawWord(ctx, corePart, drawX, wordY, wordColor,
+                            this._drawWord(ctx, corePart, textDrawX, textDrawY, wordColor,
                                 useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
-                            this._drawWord(ctx, punctPart, drawX + coreW, wordY, textColor,
+                            this._drawWord(ctx, punctPart, textDrawX + coreW, textDrawY, textColor,
                                 useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                         } else {
-                            this._drawWord(ctx, wordStr, drawX, wordY, wordColor,
+                            this._drawWord(ctx, wordStr, textDrawX, textDrawY, wordColor,
                                 useStroke && !s.stroke_expand_enabled, wordStrokeColor, borderW, outlineAlpha,
                                 currentShadowBlur, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha, letterSpacing, s, activeGradBounds);
                         }
@@ -2391,6 +2489,48 @@ class ReelsCanvasRenderer {
         ctx.restore();
     }
 
+    // ─── Independent outline/glow controls ───
+    _resolveStrokeExpandLayerMetrics(s, li, seLayers = 3, seStep = 4, seFeather = 8, seLayerWidths = s?.stroke_expand_layer_widths || [], seLayerFeathers = s?.stroke_expand_layer_feathers || []) {
+        const fallbackWidth = Number.isFinite(parseFloat(seLayerWidths[li]))
+            ? parseFloat(seLayerWidths[li])
+            : seStep * (li + 1);
+        const fallbackFeather = Number.isFinite(parseFloat(seLayerFeathers[li]))
+            ? parseFloat(seLayerFeathers[li])
+            : seFeather;
+        const controlsEnabled = s.effect_controls_enabled === true || s.effect_controls_enabled === 1 || s.effect_controls_enabled === 'true';
+        if (!controlsEnabled) return { width: fallbackWidth, feather: fallbackFeather };
+
+        const parseOr = (value, fallback) => {
+            const parsed = parseFloat(value);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+        const innerWidth = Math.max(0, parseOr(s.effect_inner_outline_width, 5));
+        const glowRange = Math.max(innerWidth, parseOr(s.effect_glow_range, 22));
+        const glowBlur = Math.max(0, parseOr(s.effect_glow_blur, 18));
+
+        if (seLayers <= 1 || li === 0) {
+            return { width: innerWidth, feather: Math.min(2, glowBlur * 0.11) };
+        }
+        if (li === seLayers - 1) {
+            return { width: glowRange + innerWidth * 1.6, feather: glowBlur * 0.9 };
+        }
+
+        const lastGlowLayer = Math.max(1, seLayers - 2);
+        const progress = Math.min(1, li / lastGlowLayer);
+        return {
+            width: innerWidth + (glowRange - innerWidth) * progress,
+            feather: glowBlur * progress,
+        };
+    }
+
+    _resolveStrokeExpandLayerOpacity(s, li) {
+        const controlsEnabled = s.effect_controls_enabled === true || s.effect_controls_enabled === 1 || s.effect_controls_enabled === 'true';
+        if (!controlsEnabled || li === 0) return 1;
+        const parsed = parseFloat(s.effect_glow_opacity);
+        const percent = Number.isFinite(parsed) ? parsed : 70;
+        return Math.max(0, Math.min(1, percent / 100));
+    }
+
     // ─── Multi-layer stroke expand ───
     _renderStrokeExpand(ctx, s, lines, lineWidths, cx, advEnabled, advAlign, advX, advW,
         cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX = null) {
@@ -2423,9 +2563,13 @@ class ReelsCanvasRenderer {
 
         // Draw layers from outermost to innermost
         for (let li = seLayers - 1; li >= 0; li--) {
-            const lw = li < seLayerWidths.length ? parseFloat(seLayerWidths[li]) : seStep * (li + 1);
-            const lf = li < seLayerFeathers.length ? parseFloat(seLayerFeathers[li]) : seFeather;
+            const metrics = this._resolveStrokeExpandLayerMetrics(
+                s, li, seLayers, seStep, seFeather, seLayerWidths, seLayerFeathers
+            );
+            const lw = metrics.width;
+            const lf = metrics.feather;
             const color = li < seColors.length ? seColors[li] : seColors[seColors.length - 1] || '#000000';
+            const layerOpacity = this._resolveStrokeExpandLayerOpacity(s, li);
 
             if (lf > 0) {
                 // Feathered stroke: multiple passes with decreasing alpha
@@ -2435,7 +2579,7 @@ class ReelsCanvasRenderer {
                     const expandW = lw + lf * t;
                     const alpha = Math.exp(-((t * 2.5) ** 2));
                     ctx.save();
-                    ctx.globalAlpha = ctx.globalAlpha * alpha * 0.4;
+                    ctx.globalAlpha = ctx.globalAlpha * alpha * 0.4 * layerOpacity;
                     ctx.strokeStyle = color;
                     ctx.lineWidth = expandW * 2;
                     ctx.lineJoin = 'round';
@@ -2454,6 +2598,7 @@ class ReelsCanvasRenderer {
                 }
             } else {
                 ctx.save();
+                ctx.globalAlpha = ctx.globalAlpha * layerOpacity;
                 ctx.strokeStyle = color;
                 ctx.lineWidth = lw * 2;
                 ctx.lineJoin = 'round';
@@ -2490,9 +2635,13 @@ class ReelsCanvasRenderer {
         ctx.textBaseline = 'top';
 
         for (let li = seLayers - 1; li >= 0; li--) {
-            const lw = li < seLayerWidths.length ? parseFloat(seLayerWidths[li]) : seStep * (li + 1);
-            const lf = li < seLayerFeathers.length ? parseFloat(seLayerFeathers[li]) : seFeather;
+            const metrics = this._resolveStrokeExpandLayerMetrics(
+                s, li, seLayers, seStep, seFeather, seLayerWidths, seLayerFeathers
+            );
+            const lw = metrics.width;
+            const lf = metrics.feather;
             const color = li < seColors.length ? seColors[li] : seColors[seColors.length - 1] || '#000000';
+            const layerOpacity = this._resolveStrokeExpandLayerOpacity(s, li);
 
             if (lf > 0) {
                 const featherSteps = Math.min(8, Math.max(3, Math.floor(lf)));
@@ -2501,7 +2650,7 @@ class ReelsCanvasRenderer {
                     const expandW = lw + lf * t;
                     const alpha = Math.exp(-((t * 2.5) ** 2));
                     ctx.save();
-                    ctx.globalAlpha = ctx.globalAlpha * alpha * 0.4;
+                    ctx.globalAlpha = ctx.globalAlpha * alpha * 0.4 * layerOpacity;
                     ctx.strokeStyle = color;
                     ctx.lineWidth = expandW * 2;
                     ctx.lineJoin = 'round';
@@ -2514,6 +2663,7 @@ class ReelsCanvasRenderer {
                 }
             } else {
                 ctx.save();
+                ctx.globalAlpha = ctx.globalAlpha * layerOpacity;
                 ctx.strokeStyle = color;
                 ctx.lineWidth = lw * 2;
                 ctx.lineJoin = 'round';
@@ -2887,7 +3037,11 @@ class ReelsCanvasRenderer {
         const w = this.canvas.width;
         const h = this.canvas.height;
         ctx.drawImage(videoEl, 0, 0, w, h);
-        this.renderSubtitle(style, segment, videoEl.currentTime, w, h);
+        const hasKineticBackdrop = style && style.anim_in_type === 'kinetic_glow_stack';
+        if (hasKineticBackdrop) {
+            this.renderKineticGlowBackdrop(style, w, h);
+        }
+        this.renderSubtitle(style, segment, videoEl.currentTime, w, h, false, hasKineticBackdrop);
     }
 
     // ═══════════════════════════════════════════════
@@ -3654,23 +3808,62 @@ class ReelsCanvasRenderer {
 
         if (lines.length === 0) return;
 
-        // Limit lines if advanced textbox
+        const parsePadding = (val, fallback) => {
+            if (val === undefined || val === null || val === '') return fallback;
+            const parsed = parseFloat(val);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        };
+
+        const padLeft = parsePadding(s.box_padding_left, parsePadding(s.box_padding_x, 24));
+        const padRight = parsePadding(s.box_padding_right, parsePadding(s.box_padding_x, 24));
+        const padTop = parsePadding(s.box_padding_top, parsePadding(s.box_padding_y, 20));
+        const padBottom = parsePadding(s.box_padding_bottom, parsePadding(s.box_padding_y, 20));
+
+        // Limit lines if advanced textbox. When auto-page is enabled, split all
+        // wrapped lines into height-safe pages and select the page whose first
+        // visible token has started. This lets a writing tip keep writing through
+        // a long script without silently dropping the overflow lines.
         let visibleLines = lines;
+        let visibleLineIndices = lines.map((_, index) => index);
         if (advEnabled) {
-            const firstLineH = getLineHeight(0);
             const lineSpacing = s.line_spacing || 8;
-            let currentAccumH = firstLineH;
-            let maxVisLines = 1;
-            for (let li = 1; li < lines.length; li++) {
-                const h = getLineHeight(li) + lineSpacing;
-                if (currentAccumH + h <= advH) {
-                    currentAccumH += h;
-                    maxVisLines++;
+            const availablePageH = Math.max(1, advH - padTop - padBottom);
+            const pages = [];
+            let pageStart = 0;
+            let pageHeight = 0;
+
+            for (let li = 0; li < lines.length; li++) {
+                const lineH = getLineHeight(li);
+                const nextHeight = pageHeight + (li > pageStart ? lineSpacing : 0) + lineH;
+                if (li > pageStart && nextHeight > availablePageH) {
+                    pages.push({ start: pageStart, end: li });
+                    pageStart = li;
+                    pageHeight = lineH;
                 } else {
-                    break;
+                    pageHeight = nextHeight;
                 }
             }
-            visibleLines = lines.slice(0, maxVisLines);
+            pages.push({ start: pageStart, end: lines.length });
+
+            let activePage = pages[0];
+            if (s.fullpage_typewriter_auto_page !== false && pages.length > 1) {
+                const getPageStartTime = (page) => {
+                    for (let li = page.start; li < page.end; li++) {
+                        const token = lines[li].find(item => item && item.text && item.text.trim().length > 0);
+                        if (token && Number.isFinite(Number(token.start))) return Number(token.start);
+                    }
+                    return Infinity;
+                };
+
+                for (let pi = 1; pi < pages.length; pi++) {
+                    if (currentTime >= getPageStartTime(pages[pi])) activePage = pages[pi];
+                    else break;
+                }
+            }
+
+            visibleLineIndices = [];
+            for (let li = activePage.start; li < activePage.end; li++) visibleLineIndices.push(li);
+            visibleLines = visibleLineIndices.map(li => lines[li]);
         }
 
         // Measure actual widths of all lines using their specific font size/weight
@@ -3683,14 +3876,14 @@ class ReelsCanvasRenderer {
             return total;
         };
 
-        const lineWidths = visibleLines.map((line, li) => measureTokens(line, li));
+        const lineWidths = visibleLines.map((line, li) => measureTokens(line, visibleLineIndices[li]));
         let maxLineW = 0;
         for (const w of lineWidths) maxLineW = Math.max(maxLineW, w);
 
         const lineSpacing = s.line_spacing || 8;
         let totalH = 0;
         for (let li = 0; li < visibleLines.length; li++) {
-            totalH += getLineHeight(li);
+            totalH += getLineHeight(visibleLineIndices[li]);
         }
         totalH += (visibleLines.length - 1) * lineSpacing;
 
@@ -3703,17 +3896,6 @@ class ReelsCanvasRenderer {
             cx = typeof s.pos_x === 'number' && s.pos_x <= 1 ? s.pos_x * videoW : (s.pos_x || videoW / 2);
             cy = typeof s.pos_y === 'number' && s.pos_y <= 1 ? s.pos_y * videoH : (s.pos_y || videoH * 0.5);
         }
-
-        const parsePadding = (val, fallback) => {
-            if (val === undefined || val === null || val === '') return fallback;
-            const parsed = parseFloat(val);
-            return Number.isFinite(parsed) ? parsed : fallback;
-        };
-
-        const padLeft = parsePadding(s.box_padding_left, parsePadding(s.box_padding_x, 24));
-        const padRight = parsePadding(s.box_padding_right, parsePadding(s.box_padding_x, 24));
-        const padTop = parsePadding(s.box_padding_top, parsePadding(s.box_padding_y, 20));
-        const padBottom = parsePadding(s.box_padding_bottom, parsePadding(s.box_padding_y, 20));
 
         let rectX, rectY, rectW, rectH;
         if (advEnabled) {
@@ -3788,6 +3970,7 @@ class ReelsCanvasRenderer {
         const shadowAlpha = (s.opacity_shadow || 150) / 255;
 
         for (let li = 0; li < visibleLines.length; li++) {
+            const globalLi = visibleLineIndices[li];
             const lineTokens = visibleLines[li];
             const lineW = lineWidths[li];
             let startX;
@@ -3804,10 +3987,10 @@ class ReelsCanvasRenderer {
             let currX = textDirection === 'rtl' ? startX + lineW : startX;
             let y = advEnabled ? advY + padTop : cy - totalH / 2;
             for (let prevLi = 0; prevLi < li; prevLi++) {
-                y += getLineHeight(prevLi) + lineSpacing;
+                y += getLineHeight(visibleLineIndices[prevLi]) + lineSpacing;
             }
 
-            ctx.font = getLineFontStr(li);
+            ctx.font = getLineFontStr(globalLi);
 
             for (const tok of lineTokens) {
                 const tokW = this._measureTextWithSpacing(ctx, tok.text, letterSpacing);
@@ -3816,14 +3999,14 @@ class ReelsCanvasRenderer {
                 let color, opacity;
                 let isHighlight = false;
                 if (currentTime >= tok.end) {
-                    color = (li === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
+                    color = (globalLi === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
                     opacity = 1.0;
                 } else if (currentTime >= tok.start && currentTime < tok.end) {
-                    color = imageTip ? ((li === 0 ? s.fullpage_typewriter_first_line_color : '') || s.color_text || '#FFFFFF') : (s.color_high || '#FFD700');
+                    color = imageTip ? ((globalLi === 0 ? s.fullpage_typewriter_first_line_color : '') || s.color_text || '#FFFFFF') : (s.color_high || '#FFD700');
                     opacity = 1.0;
                     isHighlight = true;
                 } else {
-                    color = (li === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
+                    color = (globalLi === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
                     opacity = s.fullpage_typewriter_unrevealed_opacity ?? s.tw_unrevealed_opacity ?? 0.0;
                 }
 
@@ -3832,7 +4015,7 @@ class ReelsCanvasRenderer {
                         ? Math.max(0, Math.min(1, (currentTime - tok.start) / (tok.end - tok.start))) : 1;
                     cursorX = textDirection === 'rtl' ? tokenX + tokW * (1-p) : tokenX + tokW * p;
                     cursorY = y;
-                    cursorLineIdx = li;
+                    cursorLineIdx = globalLi;
                     hasWritingStarted = true;
                 }
 
@@ -3848,7 +4031,7 @@ class ReelsCanvasRenderer {
                     // draw it token-by-token so it remains in sync with reveal.
                     if (s.stroke_expand_enabled) {
                         this._renderWordStrokeExpand(ctx, s, tok.text, tokenX, y,
-                            getLineFontStr(li), letterSpacing);
+                            getLineFontStr(globalLi), letterSpacing);
                     }
                     this._drawWord(ctx, tok.text, tokenX, y, color,
                         useStroke && !s.stroke_expand_enabled, outlineColor, borderW, outlineAlpha,
@@ -5285,6 +5468,188 @@ class ReelsCanvasRenderer {
                     s.color_shadow || '#000000', Number(s.opacity_shadow ?? 210) / 255, 0, s);
             }
             ctx.restore();
+        }
+        ctx.restore();
+    }
+
+    renderKineticGlowBackdrop(style, videoW, videoH) {
+        const s = style || {};
+        const ctx = this.ctx;
+        const clamp01 = (v) => Math.max(0, Math.min(1, v));
+        const cx = (typeof s.pos_x === 'number' && s.pos_x <= 1)
+            ? s.pos_x * videoW : (Number(s.pos_x) || videoW * 0.5);
+        const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1)
+            ? s.pos_y * videoH : (Number(s.pos_y) || videoH * 0.40);
+
+        ctx.save();
+        const dimOpacity = clamp01(Number(s.kinetic_background_dim ?? 0.50));
+        ctx.fillStyle = `rgba(0,0,0,${dimOpacity})`;
+        ctx.fillRect(0, 0, videoW, videoH);
+
+        const tintOpacity = clamp01(Number(s.kinetic_tint_opacity ?? 0.18));
+        ctx.fillStyle = `rgba(118,108,0,${tintOpacity})`;
+        ctx.fillRect(0, 0, videoW, videoH);
+
+        const vignetteStrength = clamp01(Number(s.kinetic_vignette_strength ?? 0.96));
+        const vignetteRadiusFactor = Math.max(0.35, Math.min(1.2, Number(s.kinetic_vignette_radius ?? 0.62)));
+        const vignetteRadius = Math.max(videoW, videoH) * vignetteRadiusFactor;
+        const vignette = ctx.createRadialGradient(cx, cy, Math.min(videoW, videoH) * 0.10, cx, cy, vignetteRadius);
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(0.46, `rgba(0,0,0,${vignetteStrength * 0.20})`);
+        vignette.addColorStop(1, `rgba(0,0,0,${vignetteStrength})`);
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, videoW, videoH);
+
+        const spotlightOpacity = clamp01(Number(s.kinetic_spotlight_opacity ?? 0.24));
+        const spotlightRadius = Math.min(videoW, videoH) * 0.34;
+        const glowColor = s.kinetic_glow_color || s.holy_glow_color || '#E7FF00';
+        const [glowR, glowG, glowB] = this._parseColor(glowColor);
+        const spotlight = ctx.createRadialGradient(cx, cy, 0, cx, cy, spotlightRadius);
+        spotlight.addColorStop(0, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity})`);
+        spotlight.addColorStop(0.34, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity * 0.48})`);
+        spotlight.addColorStop(1, `rgba(${glowR},${glowG},${glowB},0)`);
+        ctx.fillStyle = spotlight;
+        ctx.fillRect(0, 0, videoW, videoH);
+        ctx.restore();
+    }
+
+    _renderKineticGlowStack(s, segment, currentTime, videoW, videoH) {
+        const segStart = Number(segment.start) || 0;
+        const segEnd = Number(segment.end) || segStart;
+        if (currentTime < segStart || currentTime > segEnd) return;
+
+        const words = this._getTimedWords(segment).map(w => ({
+            ...w,
+            word: this._applyTextTransform(w.word || '', s),
+        }));
+        if (!words.length) return;
+
+        let activeIdx = -1;
+        for (let i = 0; i < words.length; i++) {
+            if (currentTime >= words[i].start) activeIdx = i;
+            else break;
+        }
+        if (activeIdx < 0) return;
+
+        const ctx = this.ctx;
+        const clamp01 = (v) => Math.max(0, Math.min(1, v));
+        const maxGroupWords = Math.max(2, Math.min(6, parseInt(s.kinetic_group_words, 10) || 4));
+        let groupStart = 0;
+        let wordsInGroup = 0;
+        for (let i = 0; i < activeIdx; i++) {
+            wordsInGroup++;
+            const endsPhrase = /[.!?;:，。！？；：]$/.test(words[i].word || '');
+            if (endsPhrase || wordsInGroup >= maxGroupWords) {
+                groupStart = i + 1;
+                wordsInGroup = 0;
+            }
+        }
+
+        const visible = [];
+        for (let i = groupStart; i <= activeIdx; i++) {
+            visible.push({ ...words[i], globalIndex: i });
+        }
+        if (!visible.length) return;
+
+        const cx = (typeof s.pos_x === 'number' && s.pos_x <= 1)
+            ? s.pos_x * videoW : (Number(s.pos_x) || videoW * 0.5);
+        const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1)
+            ? s.pos_y * videoH : (Number(s.pos_y) || videoH * 0.40);
+
+        const segIn = clamp01((currentTime - segStart) / 0.12);
+        const segOut = clamp01((segEnd - currentTime) / 0.18);
+        const overallAlpha = Math.min(segIn, segOut);
+        const groupIntro = clamp01((currentTime - words[groupStart].start) / 0.12);
+
+        if (groupStart > 0 && groupIntro < 1) {
+            ctx.save();
+            ctx.fillStyle = `rgba(0,0,0,${(1 - groupIntro) * 0.72})`;
+            ctx.fillRect(0, 0, videoW, videoH);
+            ctx.restore();
+        }
+
+        const fontFamily = s.font_family || 'Playfair Display';
+        const fallbackFamily = _resolveGenericFallback(fontFamily);
+        const fontWeight = _resolveFontWeight(s.font_weight, 800);
+        const italic = !!s.italic;
+        const baseSize = Math.max(22, Number(s.fontsize) || 92);
+        const minScale = Number(s.kinetic_scale_min ?? 0.62);
+        const maxScale = Math.max(minScale, Number(s.kinetic_scale_max ?? 1.34));
+        const maxTextWidth = Math.max(80, videoW * (Number(s.wrap_width_percent ?? 76) / 100));
+        const popDuration = Math.max(0.06, Number(s.kinetic_pop_duration ?? 0.22));
+        const oldOpacity = clamp01(Number(s.kinetic_old_word_opacity ?? 0.92));
+        const letterSpacing = Number(s.letter_spacing) || 0;
+        const lineGap = Math.max(0, Number(s.kinetic_line_gap ?? 0.08)) * baseSize;
+        const glowBlur = Math.max(0, Number(s.kinetic_glow_blur ?? 38));
+        const glowColor = s.kinetic_glow_color || s.holy_glow_color || '#E7FF00';
+        const textColor = s.color_text || '#FFFDF2';
+
+        const layout = visible.map((w, localIndex) => {
+            // Reference layout: a small lead word, one oversized hero word,
+            // then a smaller trailing word with a slight rightward offset.
+            const scalePattern = [
+                minScale,
+                maxScale,
+                Math.min(maxScale, minScale * 1.08),
+                minScale + (maxScale - minScale) * 0.42,
+            ];
+            let finalScale = scalePattern[localIndex % scalePattern.length];
+            const localT = clamp01((currentTime - w.start) / popDuration);
+            const eased = 1 - Math.pow(1 - localT, 3);
+            const isActive = w.globalIndex === activeIdx;
+            const entranceScale = isActive ? (1.30 - 0.30 * eased) : 1;
+            let fontSize = baseSize * finalScale * entranceScale;
+            let fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+            ctx.font = fontStr;
+            let width = this._measureTextWithSpacing(ctx, w.word, letterSpacing);
+            if (width > maxTextWidth) {
+                const fit = maxTextWidth / Math.max(1, width);
+                fontSize *= fit;
+                fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+                ctx.font = fontStr;
+                width = this._measureTextWithSpacing(ctx, w.word, letterSpacing);
+            }
+            const xOffsetPattern = [-0.38, 0, 0.42, -0.22];
+            return {
+                ...w,
+                isActive,
+                localT,
+                eased,
+                fontSize,
+                fontStr,
+                width,
+                xOffset: xOffsetPattern[localIndex % xOffsetPattern.length] * baseSize,
+                // Reserve the complete visual height of each word before placing
+                // the next line. This keeps the deliberately large hero word
+                // from colliding with the smaller lead/trailing words.
+                advance: Math.max(baseSize * 0.5, fontSize * 0.92 + lineGap),
+            };
+        });
+
+        const totalH = layout.reduce((sum, item) => sum + item.advance, 0);
+        let y = cy - totalH / 2;
+        ctx.save();
+        ctx.textBaseline = 'top';
+        for (const item of layout) {
+            ctx.font = item.fontStr;
+            const drawX = cx - item.width / 2 + item.xOffset;
+            const wordAlpha = item.isActive
+                ? (0.24 + 0.76 * item.eased)
+                : oldOpacity;
+            const wordGlow = item.isActive
+                ? (0.35 + 0.65 * item.eased)
+                : Number(s.kinetic_old_glow_opacity ?? 0.62);
+
+            ctx.save();
+            ctx.globalAlpha = overallAlpha * wordAlpha;
+            this._drawWord(
+                ctx, item.word, drawX, y, textColor,
+                false, '#000000', 0, 0,
+                glowBlur * (item.isActive ? 1 : 0.72), 0, 0,
+                glowColor, clamp01(wordGlow), letterSpacing, s
+            );
+            ctx.restore();
+            y += item.advance;
         }
         ctx.restore();
     }

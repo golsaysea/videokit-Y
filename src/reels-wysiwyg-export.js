@@ -1155,6 +1155,11 @@ async function reelsWysiwygExport(params) {
             // ── 动态字幕 ──
             const renderSubtitle = () => {
                 if (!showSubtitle) return;
+                const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
+                    typeof renderer.renderKineticGlowBackdrop === 'function';
+                if (hasKineticBackdrop) {
+                    renderer.renderKineticGlowBackdrop(style, targetWidth, targetHeight);
+                }
                 let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
                 // Scrolling/typewriter mode: find nearest segment during gaps (same as preview logic)
                 if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter) && segments.length > 0) {
@@ -1166,7 +1171,7 @@ async function reelsWysiwygExport(params) {
                 }
                 if (activeSeg) {
                     renderer.setContextSegments(segments, originalScript);
-                    renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);
+                    renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight, false, hasKineticBackdrop);
                 }
             };
 
