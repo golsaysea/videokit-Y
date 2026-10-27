@@ -36,39 +36,27 @@ let _pendingPortableUpdate = null; // { version, zipUrl, releaseNotes }
 let _pendingPortableStagingDir = ''; // Windows 文件被占用时的暂存解压目录
 
 async function prepareForUpdateRestart() {
+    // Template editors own their unsaved work; never destroy them during update.
+    const windows = BrowserWindow.getAllWindows().filter(win => !win.isDestroyed());
+    if (windows.some(win => win !== mainWindow)) {
+        await dialog.showMessageBox(mainWindow, {type:'info', title:'请先保存工程', message:'请先保存并关闭其它工程窗口，等待导出结束后再安装更新。', buttons:['返回软件']});
+        throw new Error('更新已暂停：请先保存并关闭其它工程窗口。');
+    }
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed() && !mainWindow.webContents.isCrashed()) {
+        const result = await mainWindow.webContents.executeJavaScript(`(()=>{
+            if(window._reelsState?.isExporting)return {ok:false,error:'正在导出，请结束后再更新'};
+            if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:false,error:'工程尚未加载完成'};
+            return window.reelsFlushWorkspaceBeforeClose();
+        })()`, true);
+        if (!result?.ok) throw new Error(result?.error || '更新前保存工程失败');
+        try { await mainWindow.webContents.session.clearCodeCaches({}); } catch (_) {}
+    }
     app.isQuitting = true;
     app._updateRestartApproved = true;
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed() && !mainWindow.webContents.isCrashed()) {
-        try {
-            await Promise.race([
-                mainWindow.webContents.executeJavaScript(`(()=>{
-                    if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
-                    const result=window.reelsFlushWorkspaceBeforeClose();
-                    if(result?.ok)window._workspaceCloseAlreadySaved=true;
-                    return result;
-                })()`, true),
-                new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 1500)),
-            ]);
-        } catch (err) {
-            log(`[Updater] 重启前自动保存工作区跳过: ${err.message}`);
-        }
-        try {
-            await mainWindow.webContents.session.clearCodeCaches({});
-        } catch (_) {}
-    }
-    try {
-        for (const win of BrowserWindow.getAllWindows()) {
-            if (win && win !== mainWindow && !win.isDestroyed()) {
-                win.destroy();
-            }
-        }
-    } catch (_) {}
-    try {
-        if (typeof app.releaseSingleInstanceLock === 'function') {
-            app.releaseSingleInstanceLock();
-        }
-    } catch (_) {}
+    try { app.releaseSingleInstanceLock(); } catch (_) {}
 }
+
+function _quotePowerShellLiteral(value) { return "'" + String(value).replace(/'/g, "''") + "'"; }
 
 function launchPortableRestart() {
     if (process.platform === 'win32' && _pendingPortableStagingDir && fs.existsSync(_pendingPortableStagingDir)) {
@@ -82,22 +70,23 @@ function launchPortableRestart() {
                 }
             } catch (_) {}
             const psContent = [
-                '$ErrorActionPreference = "SilentlyContinue"',
+                '$ErrorActionPreference = "Stop"',
                 `$targetPid = ${process.pid}`,
                 'for ($i = 0; $i -lt 60; $i++) {',
                 '    if (-not (Get-Process -Id $targetPid -ErrorAction SilentlyContinue)) { break }',
                 '    Start-Sleep -Milliseconds 250',
                 '}',
-                `$src = ${JSON.stringify(unpackRoot)}`,
-                `$dst = ${JSON.stringify(_portableDir)}`,
-                `$staging = ${JSON.stringify(_pendingPortableStagingDir)}`,
+                `$src = ${_quotePowerShellLiteral(unpackRoot)}`,
+                `$dst = ${_quotePowerShellLiteral(_portableDir)}`,
+                `$staging = ${_quotePowerShellLiteral(_pendingPortableStagingDir)}`,
+                'if (Get-Process -Id $targetPid -ErrorAction SilentlyContinue) { throw "VideoKit has not exited" }',
                 'if (Test-Path -LiteralPath $src) {',
                 '    Get-ChildItem -LiteralPath $src -Force | ForEach-Object {',
                 '        Copy-Item -LiteralPath $_.FullName -Destination $dst -Recurse -Force',
                 '    }',
                 '}',
                 'Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue',
-                `Start-Process -FilePath ${JSON.stringify(process.execPath)} -WorkingDirectory $dst`,
+                `Start-Process -FilePath ${_quotePowerShellLiteral(process.execPath)} -WorkingDirectory $dst -WindowStyle Hidden`,
                 'Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue',
             ].join('\r\n');
             fs.writeFileSync(scriptPath, psContent, 'utf8');
@@ -408,6 +397,7 @@ async function portableUpdate(info) {
         const extract = require('./services/safeExtract');
         _pendingPortableStagingDir = '';
         try {
+            if (process.platform === 'win32') throw new Error('Windows 更新使用退出后覆盖');
             await extract(zipPath, { dir: _portableDir });
             log(`[Updater-Portable] 解压完成 v${version}`);
         } catch (extractErr) {

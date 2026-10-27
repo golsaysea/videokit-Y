@@ -25,10 +25,12 @@
         hookVideo: null,
         coverVideo: null,
         bgImage: null,
+        bgPoster: null,
         contentImage: null,
         coverImage: null,
         multiBgImages: new Map(),
         raf: null,
+        loopTimer: null,
         isOpen: false,
         isPlaying: false,
         startedAt: 0,
@@ -383,6 +385,7 @@
             media.addEventListener('canplay', () => {
                 markMediaHealthy();
                 releaseSeekFrameWhenReady();
+                if (state.isOpen && state.isPlaying) playMedia();
             });
             if (media.tagName === 'VIDEO') {
                 media.addEventListener('error', () => {
@@ -407,10 +410,12 @@
             }
             if (state.wasDocumentHidden) {
                 state.wasDocumentHidden = false;
+                startLoop();
                 scheduleMediaRecovery('window-visible', true, 120);
             }
         });
         window.addEventListener('focus', () => {
+            startLoop();
             if (!document.hidden) scheduleMediaRecovery('window-focus', false, 120);
         });
 
@@ -467,6 +472,8 @@
         state.isPlaying = false;
         if (state.raf) cancelAnimationFrame(state.raf);
         state.raf = null;
+        clearTimeout(state.loopTimer);
+        state.loopTimer = null;
         updatePlayButton();
         updateModeButton();
     }
@@ -520,11 +527,22 @@
     function startLoop() {
         if (!state.isOpen) return;
         if (state.raf) cancelAnimationFrame(state.raf);
+        clearTimeout(state.loopTimer);
+        state.raf = null;
+        state.loopTimer = null;
         const tick = () => {
+            state.raf = null;
+            state.loopTimer = null;
             if (!state.isOpen) return;
+            // Keep audio/media clocks intact, but avoid painting occluded windows.
+            if (document.hidden) {
+                state.loopTimer = setTimeout(tick, 1000);
+                return;
+            }
             loadCurrentTask(false);
             render();
-            state.raf = requestAnimationFrame(tick);
+            if (state.isPlaying) state.raf = requestAnimationFrame(tick);
+            else state.loopTimer = setTimeout(tick, document.hasFocus() ? 250 : 1000);
         };
         state.raf = requestAnimationFrame(tick);
     }
@@ -764,6 +782,8 @@
         if (!force && sig === state.bgSig) return;
         state.bgSig = sig;
         state.bgImage = null;
+        state.bgPoster = null;
+        state.bgVideo._reelsPreviewCleanup?.();
         state.bgVideo.pause();
         state.bgFadeVideo.pause();
         state.bgVideo.removeAttribute('src');
@@ -780,6 +800,8 @@
             img.onerror = () => render();
             img.src = url;
         } else {
+            window.reelsPrimeBackgroundVideo?.(state.bgVideo, bgPath, render);
+            window.reelsLoadBackgroundPoster?.(bgPath).then(image => { if (state.bgSig === sig) { state.bgPoster = image; render(); } });
             state.bgVideo.src = url;
             state.bgVideo.load();
         }
@@ -899,6 +921,7 @@
         playMedia();
         state.isPlaying = true;
         updatePlayButton();
+        startLoop();
     }
 
     function playMedia() {
@@ -1258,6 +1281,8 @@
             drawMediaCover(ctx, state.bgImage, w, h, bgScale, bgX, bgY, !!task.bgFlipH, !!task.bgFlipV, bgRotation);
         } else if (state.bgVideo.src && state.bgVideo.readyState >= 2 && state.bgVideo.videoWidth > 0) {
             drawMediaCover(ctx, state.bgVideo, w, h, bgScale, bgX, bgY, !!task.bgFlipH, !!task.bgFlipV, bgRotation);
+        } else if (state.bgPoster && state.bgPoster.complete && state.bgPoster.naturalWidth > 0) {
+            drawMediaCover(ctx, state.bgPoster, w, h, bgScale, bgX, bgY, !!task.bgFlipH, !!task.bgFlipV, bgRotation);
         } else {
             const grad = ctx.createLinearGradient(0, 0, 0, h);
             grad.addColorStop(0, '#101622');
@@ -1393,7 +1418,7 @@
         for (const video of [state.bgVideo, state.bgFadeVideo]) {
             if (video.dataset.multiPath === clip.path && video.readyState >= 2 && video.videoWidth > 0) return video;
         }
-        return null;
+        return window.reelsGetBackgroundPoster?.(clip.path) || null;
     }
 
     function syncMultiVideoPlayers(task, clips) {
@@ -1436,6 +1461,8 @@
             if (video.dataset.multiPath !== clip.path || norm(video.src) !== norm(url)) {
                 video.pause();
                 video.dataset.multiPath = clip.path;
+                window.reelsPrimeBackgroundVideo?.(video, clip.path, render);
+                window.reelsLoadBackgroundPoster?.(clip.path).then(() => { if (video.dataset.multiPath === clip.path) render(); });
                 video.src = url;
                 video.load();
             }
@@ -2913,9 +2940,9 @@
         togglePlay,
         // 任务切换时不能复用上一任务的 pausedAt。若用户正在播放，保持播放状态，
         // 但让新任务从自己的 0:00 开始。
-        resetForTaskSwitch: () => {
+        resetForTaskSwitch: (options = {}) => {
             if (!state.isOpen) return;
-            const wasPlaying = state.isPlaying;
+            const wasPlaying = state.isPlaying || options.autoplay === true;
             if (state.recoveryTimer) clearTimeout(state.recoveryTimer);
             state.recoveryTimer = null;
             state.recoveryAttempts = 0;
@@ -2934,6 +2961,7 @@
             }
             updatePlayButton();
             render();
+            startLoop();
         },
         seek: (time) => {
             if (!state.isOpen) return;

@@ -424,6 +424,11 @@ function mergeStyle(overrides) {
                 : overrides[key];
         }
     }
+    if ('bold' in overrides && !('font_weight' in overrides)) {
+        base.font_weight = overrides.bold ? 700 : 400;
+    } else if ('font_weight' in overrides && !('bold' in overrides)) {
+        base.bold = (parseInt(overrides.font_weight, 10) || 400) >= 600;
+    }
     return base;
 }
 

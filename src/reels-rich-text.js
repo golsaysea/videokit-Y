@@ -248,6 +248,15 @@ const ReelsRichText = (() => {
                     for (const k of STYLE_KEYS) {
                         if (r[k] !== undefined) style[k] = r[k];
                     }
+                    if (r.bold !== undefined && r.font_weight === undefined) {
+                        if (r.bold && (parseInt(style.font_weight, 10) || 400) < 600) {
+                            style.font_weight = 700;
+                        } else if (!r.bold && (parseInt(style.font_weight, 10) || 700) >= 600) {
+                            style.font_weight = 400;
+                        }
+                    } else if (r.font_weight !== undefined && r.bold === undefined) {
+                        style.bold = (parseInt(r.font_weight, 10) || 400) >= 600;
+                    }
                 }
             }
             result.push({ text: segText, start: s, end: e, style });
@@ -323,7 +332,10 @@ const ReelsRichText = (() => {
                 if (match[0].length === 0) { pattern.lastIndex++; continue; }
                 const r = { start: match.index, end: match.index + match[0].length };
                 if (rule.color) r.color = rule.color;
-                if (rule.bold === true) r.bold = true;
+                if (rule.bold === true) {
+                    r.bold = true;
+                    r.font_weight = 700;
+                }
                 if (rule.fontsize && rule.fontsize > 0) r.fontsize = rule.fontsize;
                 if (rule.italic === true) r.italic = true;
                 ranges.push(r);

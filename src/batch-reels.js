@@ -951,7 +951,7 @@ function _initReelsModule() {
                         if (role === 'bgm' || track?.type === 'bgm') {
                             task.bgmPath = path;
                         } else {
-                            task.audioPath = path;
+                            window.ReelsRenderPlan.setVoice(task, path);
                         }
                         window.ReelsRenderPlan?.syncLegacyFields(task);
                         _updateTimelineForTask(task);
@@ -1476,6 +1476,7 @@ function _initCvPosControl() {
     // 控制器显示/隐藏: 按钮仅在有内容视频时显示，面板由用户手动开关
     const toggleBtn = document.getElementById('reels-cv-pos-toggle');
     setInterval(() => {
+        if (document.hidden) return;
         const task = _getTask();
         const hasCV = task && task.contentVideoPath;
         // 仅控制 toggle 按钮的可见性
@@ -2206,14 +2207,7 @@ async function _initFontManager() {
     }
     const fm = getFontManager();
     await fm.register();
-    _refreshReelsFontSelects(fm, {
-        'reels-font-family': _reelsState.renderer ? 'Arial' : undefined,
-        'rop-font': 'Arial',
-        'rop-title-font': 'Crimson Pro',
-        'rop-body-font': 'Arial',
-        'rop-footer-font': 'Arial',
-        'rop-scroll-font': 'Arial',
-    });
+    fm.refreshAllFontSelects();
     try { await fm.loadGoogleFont('Crimson Pro'); } catch (_) { }
     reelsRefreshSubtitleWeightOptions();
     console.log(`[Reels] FontManager ready — ${fm.getAllFonts().length} fonts available`);
@@ -2233,7 +2227,8 @@ function _refreshReelsFontSelects(fm, values = {}) {
     };
     const mergedValues = {};
     for (const [id, fallback] of Object.entries(defaults)) {
-        mergedValues[id] = Object.prototype.hasOwnProperty.call(values, id) ? values[id] : fallback;
+        const select=document.getElementById(id);
+        mergedValues[id] = Object.prototype.hasOwnProperty.call(values,id)?values[id]:(select&&(select.value||select.dataset.allowEmpty==='true')?select.value:fallback);
     }
     if (typeof fm.refreshAllFontSelects === 'function') {
         fm.refreshAllFontSelects(mergedValues);
@@ -2427,12 +2422,13 @@ function reelsRefreshAnimationParameterAvailability() {
     }
 }
 
-function reelsRefreshSubtitleWeightOptions() {
+function reelsRefreshSubtitleWeightOptions(preferredWeight) {
     const familyEl = document.getElementById('reels-font-family');
     const weightEl = document.getElementById('reels-font-weight');
     if (!familyEl || !weightEl) return;
 
-    const currentWeight = String(weightEl.value || '700');
+    const boldChecked = document.getElementById('reels-bold')?.checked !== false;
+    const currentWeight = String(preferredWeight || weightEl.value || (boldChecked ? '700' : '400'));
     const fallback = [
         { value: '100', label: 'Thin' },
         { value: '200', label: 'ExtraLight' },
@@ -2466,10 +2462,20 @@ function reelsRefreshSubtitleWeightOptions() {
         }
     }
 
+    if (!entries.some(e => e.value === '400')) {
+        entries.push({ value: '400', label: 'Regular' });
+    }
+    if (!entries.some(e => e.value === '700')) {
+        entries.push({ value: '700', label: 'Bold' });
+    }
+    entries.sort((a, b) => (parseInt(a.value, 10) || 400) - (parseInt(b.value, 10) || 400));
+
     const weights = entries.map(e => e.value);
     weightEl.innerHTML = entries.map(e => `<option value="${e.value}">${e.label}</option>`).join('');
     if (weights.includes(currentWeight)) {
         weightEl.value = currentWeight;
+    } else if ((parseInt(currentWeight, 10) || 700) < 600 && weights.includes('400')) {
+        weightEl.value = '400';
     } else if (weights.includes('700')) {
         weightEl.value = '700';
     } else {
@@ -2501,10 +2507,26 @@ function reelsSyncBoldToWeight() {
         weightEl.value = next;
     } else if (boldEl.checked) {
         const high = opts.filter(v => parseInt(v, 10) >= 600);
-        if (high.length > 0) weightEl.value = high[Math.min(1, high.length - 1)];
+        if (high.length > 0) {
+            weightEl.value = high[Math.min(1, high.length - 1)];
+        } else {
+            const opt = document.createElement('option');
+            opt.value = '700';
+            opt.textContent = 'Bold';
+            weightEl.appendChild(opt);
+            weightEl.value = '700';
+        }
     } else {
         const low = opts.filter(v => parseInt(v, 10) < 600);
-        if (low.length > 0) weightEl.value = low[Math.max(0, low.length - 2)];
+        if (low.length > 0) {
+            weightEl.value = low[Math.max(0, low.length - 2)];
+        } else {
+            const opt = document.createElement('option');
+            opt.value = '400';
+            opt.textContent = 'Regular';
+            weightEl.appendChild(opt);
+            weightEl.value = '400';
+        }
     }
 }
 
@@ -2590,12 +2612,31 @@ function reelsApplyFontPresetQuick() {
     return reelsApplyFontPreset(true);
 }
 
+function _normalizeSubtitleHighlight(style) {
+    if (!style || typeof style !== 'object') return style;
+    const copy = { ...style };
+    // Old presets saved a false legacy checkbox because its former input id
+    // did not exist. The visible highlight toggle is now authoritative.
+    if (typeof copy.highlight_enabled === 'boolean') {
+        copy.karaoke_highlight = copy.highlight_enabled;
+    } else if (copy.color_high) {
+        copy.highlight_enabled = true;
+        copy.karaoke_highlight = true;
+    }
+    return copy;
+}
+function _restoreSubtitleHighlightControls(style) {
+    const normalized=_normalizeSubtitleHighlight(style || {});
+    for(const id of ['reels-highlight-enabled','reels-karaoke-hl']){
+        const input=document.getElementById(id);if(input)input.checked=normalized.highlight_enabled !== false;
+    }
+}
 function _cloneSubtitleStyle(style) {
     if (!style || typeof style !== 'object') return null;
     try {
-        return JSON.parse(JSON.stringify(style));
+        return _normalizeSubtitleHighlight(JSON.parse(JSON.stringify(style)));
     } catch (_) {
-        return { ...style };
+        return _normalizeSubtitleHighlight(style);
     }
 }
 
@@ -2628,7 +2669,7 @@ function _getNamedSubtitlePresetStyle(name) {
     if (!name || !window.ReelsStyleEngine) return null;
     const data = ReelsStyleEngine.loadSubtitlePresets();
     if (!data.presets || !(name in data.presets)) return null;
-    return ReelsStyleEngine.applySubtitlePreset(name);
+    return _normalizeSubtitleHighlight(ReelsStyleEngine.applySubtitlePreset(name));
 }
 
 function _resolveSubtitleStyleForTask(task) {
@@ -2743,13 +2784,17 @@ function _readStyleFromUI() {
     if (wwLabel) wwLabel.textContent = val('reels-wrap-width') + '%';
 
     const existingStyle = _reelsState.style || {};
+    const uiBoldChecked = chk('reels-bold');
+    let uiFontWeight = num('reels-font-weight', uiBoldChecked ? 700 : 400);
+    if (uiBoldChecked && uiFontWeight < 600) uiFontWeight = 700;
+    else if (!uiBoldChecked && uiFontWeight >= 600) uiFontWeight = 400;
     const baseStyle = {
         // Font
         mixed_layout: val('reels-mixed-layout') || 'none',
         font_family: val('reels-font-family') || 'Arial',
-        font_weight: num('reels-font-weight', chk('reels-bold') ? 700 : 400),
+        font_weight: uiFontWeight,
         fontsize: num('reels-fontsize', 74),
-        bold: num('reels-font-weight', chk('reels-bold') ? 700 : 400) >= 600,
+        bold: uiFontWeight >= 600,
         italic: chk('reels-italic'),
         uppercase: chk('reels-uppercase'),
         letter_spacing: num('reels-letter-spacing', 0),
@@ -3208,6 +3253,7 @@ function _renderSubtitleAutoColorRules() {
 }
 
 function _writeStyleToUI(style) {
+    style = _normalizeSubtitleHighlight(style || {});
     const set = (id, val) => {
         const el = document.getElementById(id);
         if (el) {
@@ -3215,7 +3261,13 @@ function _writeStyleToUI(style) {
                 reelsWritingTitleFontFocus();
                 if(val && !Array.from(el.options).some(o=>o.value===val)){const option=document.createElement('option');option.value=val;option.textContent=val;el.appendChild(option);}
             }
-            el.value = val;
+            if (el.type === 'color') {
+                const colors = String(val || '').split(',').map(c => c.trim()).filter(Boolean);
+                if (colors.length > 1) el.dataset.gradientValue = colors.join(',');
+                else delete el.dataset.gradientValue;
+                el.value = colors[0] || '#000000';
+                _syncSubtitleGradientSwatch(el, null);
+            } else el.value = val;
             el.dataset.rawValue = val;
         }
         const rangeEl = document.getElementById(id + '-range');
@@ -3254,14 +3306,18 @@ function _writeStyleToUI(style) {
     }
     set('reels-fontsize', style.fontsize || 74);
     set('reels-fontsize-range', style.fontsize || 74);
-    const weight = Math.max(100, Math.min(900, parseInt(style.font_weight || ((style.bold !== false) ? 700 : 400), 10) || 700));
-    set('reels-font-weight', String(weight));
-    setChk('reels-bold', weight >= 600);
+    const rawWeight = parseInt(style.font_weight, 10);
+    let weight = Number.isFinite(rawWeight) ? rawWeight : (style.bold !== false ? 700 : 400);
+    if (style.bold === false && weight >= 600) weight = 400;
+    else if (style.bold === true && weight < 600) weight = 700;
+    weight = Math.max(100, Math.min(900, weight));
     setChk('reels-italic', style.italic);
     setChk('reels-uppercase', style.uppercase);
     set('reels-letter-spacing', style.letter_spacing || 0);
     set('reels-text-direction', style.text_direction || 'auto');
-    reelsRefreshSubtitleWeightOptions();
+    reelsRefreshSubtitleWeightOptions(String(weight));
+    set('reels-font-weight', String(weight));
+    setChk('reels-bold', weight >= 600);
     const colorTextEl = document.getElementById('reels-color-text');
     if (colorTextEl) {
         if (style.color_text && style.color_text.includes(',')) {
@@ -3277,9 +3333,7 @@ function _writeStyleToUI(style) {
         }
     }
     set('reels-text-gradient-scope', style.text_gradient_scope || 'line');
-    const hlEnabled = style.highlight_enabled !== false && style.karaoke_highlight !== false;
-    setChk('reels-highlight-enabled', hlEnabled);
-    setChk('reels-karaoke-hl', hlEnabled);
+    _restoreSubtitleHighlightControls(style);
     const hlScaleEnabled = Boolean(style.highlight_scale_enabled);
     setChk('reels-highlight-scale-enabled', hlScaleEnabled);
     setChk('reels-anim-highlight-scale-enabled', hlScaleEnabled);
@@ -3592,7 +3646,7 @@ function _reelsUpdatePreviewInternal() {
     // 独立预览打开时由 ReelsPreviewV2 自己驱动画布。旧预览即使已隐藏，过去
     // 仍会继续运行并操作 ReelsOverlay 共用的视频缓存：V2 seek 到当前时间，
     // 旧预览又按自己的 0 秒 seek 回去，插入视频因此永远拿不到稳定帧。
-    if (window.ReelsPreviewV2?.isOpen?.()) return;
+    if (window.ReelsPreviewV2?.isOpen?.()) { window.ReelsPreviewV2.render(); return; }
     const renderer = _reelsState.renderer;
     if (!renderer) return;
 
@@ -3614,7 +3668,7 @@ function _reelsUpdatePreviewInternal() {
     const video = document.getElementById('reels-preview-video');
     const hookVideo = document.getElementById('reels-preview-hook-video');
     // Check for image background
-    let bgImg = _reelsState._previewBgImage;
+    let bgImg = _reelsState._previewBgImage || (!(video && video.readyState >= 2 && video.videoWidth > 0) ? reelsGetBackgroundPoster(_resolvePreviewBackgroundPath(_getSelectedTask()).path) : null);
     let hasBgImg = bgImg && bgImg.complete && bgImg.naturalWidth > 0;
 
     // Removed noisy debug logs
@@ -3725,7 +3779,7 @@ function _reelsUpdatePreviewInternal() {
             _drawVideoCover(ctx, _reelsState._previewCoverVideo, w, h, coverBgScale, coverBgX, coverBgY, coverBgFlipH, coverBgFlipV, coverBgRotation);
         } else if (hasBgImg) {
             _drawVideoCover(ctx, bgImg, w, h, coverBgScale, coverBgX, coverBgY, coverBgFlipH, coverBgFlipV, coverBgRotation);
-        } else if (video && video.readyState >= 1) {
+        } else if (video && video.readyState >= 2) {
             _drawVideoCover(ctx, video, w, h, coverBgScale, coverBgX, coverBgY, coverBgFlipH, coverBgFlipV, coverBgRotation);
         } else {
             ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h);
@@ -3748,7 +3802,7 @@ function _reelsUpdatePreviewInternal() {
         const hookTransition = (_selectedTask && _selectedTask.hookTransition) || 'none';
         const transitionDur = hookTransition !== 'none' ? ((_selectedTask && _selectedTask.hookTransDuration) || 0.5) : 0;
         const timeToEnd = (coverDur + hookDur) - totalTime;
-        if (transitionDur > 0 && timeToEnd < transitionDur && video && video.src && video.readyState >= 1 && video.videoWidth > 0) {
+        if (transitionDur > 0 && timeToEnd < transitionDur && video && video.src && video.readyState >= 2 && video.videoWidth > 0) {
             const alpha = 1.0 - (timeToEnd / transitionDur);
             ctx.save();
             ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
@@ -3801,7 +3855,7 @@ function _reelsUpdatePreviewInternal() {
             ctx.fillRect(0, 0, w, h);
             ctx.restore();
         }
-    } else if (video && video.src && video.readyState >= 1 && video.videoWidth > 0) {
+    } else if (video && video.src && video.readyState >= 2 && video.videoWidth > 0) {
         _drawVideoCover(ctx, video, w, h, _bgScalePct, _bgXPct, _bgYPct, _selectedTask?.bgFlipH || false, _selectedTask?.bgFlipV || false, _bgRotation);
         const fadeFrame = _calcPreviewLoopFadeFrame();
         if (fadeFrame && fadeFrame.video && fadeFrame.video.readyState >= 2) {
@@ -4985,6 +5039,23 @@ function _syncSubtitleGradientSwatch(colorEl, btn) {
 }
 
 function _initSubtitleGradientPickers() {
+    let highlightControlsBound=false;
+    for (const id of ['reels-highlight-enabled','reels-karaoke-hl']) {
+        const toggle=document.getElementById(id);
+        if(toggle&&!toggle._subtitleHighlightBound){
+            highlightControlsBound=true;
+            toggle._subtitleHighlightBound=true;
+            toggle.addEventListener('change',()=>{
+                for(const otherId of ['reels-highlight-enabled','reels-karaoke-hl']){const other=document.getElementById(otherId);if(other)other.checked=toggle.checked;}
+                _persistSubtitleStyleByScope(_readStyleFromUI());
+                reelsUpdatePreview();
+            });
+        }
+    }
+    if(highlightControlsBound){
+        const main=document.getElementById('reels-highlight-enabled'),legacy=document.getElementById('reels-karaoke-hl');
+        if(main&&legacy)legacy.checked=main.checked;
+    }
     const btnText = document.getElementById('reels-color-text-gradient-btn');
     const colorTextEl = document.getElementById('reels-color-text');
     if (btnText && colorTextEl && !btnText.dataset.bound) {
@@ -5386,6 +5457,80 @@ function _syncCurrentOverlayEditorToSelectedTask() {
     }
     _updateTimelineForTask(task);
 }
+
+function reelsObservePresetFonts(root, selector, familyFor, onReady) {
+    let closed=false, active=0, queue=[];
+    const fonts=new Map(), waiting=new WeakSet();
+    const dispose=()=>{closed=true;queue=[];observer.disconnect();removed.disconnect();};
+    const pump=()=>{
+        if(closed)return;
+        if(!root.isConnected){dispose();return;}
+        while(active<3 && queue.length){
+            const el=queue.shift();if(!el.isConnected)continue;
+            const family=String(familyFor(el)||'Arial');active++;
+            let loaded=fonts.get(family);
+            if(!loaded){loaded=Promise.resolve().then(()=>typeof getFontManager==='function'?getFontManager().ensureFontsLoaded([family]):document.fonts.load(`16px "${family.replace(/"/g,'')}"`)).catch(()=>{});fonts.set(family,loaded);}
+            loaded.then(()=>{if(!closed&&el.isConnected){el.dataset.presetFontReady='1';if(el.getClientRects().length)onReady?.(el);}}).finally(()=>{active--;pump();});
+        }
+    };
+    const observer=new IntersectionObserver(entries=>{
+        for(const entry of entries){
+            if(!entry.isIntersecting)continue;
+            const el=entry.target;
+            if(el.dataset.presetFontReady==='1'){onReady?.(el);continue;}
+            if(!waiting.has(el)){waiting.add(el);queue.push(el);}
+        }
+        pump();
+    },{root,rootMargin:'60px'});
+    const removed=new MutationObserver(()=>{if(!root.isConnected)dispose();});
+    removed.observe(document.body,{childList:true});
+    root.querySelectorAll(selector).forEach(el=>observer.observe(el));
+    return dispose;
+}
+window.reelsObservePresetFonts=reelsObservePresetFonts;
+
+const _reelsBackgroundPosters=new Map();
+function reelsGetBackgroundPoster(path) {
+    const entry=_reelsBackgroundPosters.get(String(path||''));
+    return entry?.image?.complete && entry.image.naturalWidth>0 ? entry.image : null;
+}
+function reelsLoadBackgroundPoster(path) {
+    const key=String(path||'');if(!key)return Promise.resolve(null);
+    const old=_reelsBackgroundPosters.get(key);if(old)return old.promise;
+    const entry={image:null,promise:null};
+    entry.promise=Promise.resolve().then(()=>window._rbtResolveStaticVideoThumbnail?.(key,window.electronAPI?.toFileUrl?.(key)||key)).then(url=>new Promise(resolve=>{
+        if(!url){resolve(null);return;}
+        const image=new Image();image.onload=()=>{entry.image=image;resolve(image);};image.onerror=()=>resolve(null);image.src=url;
+    })).catch(()=>null);
+    _reelsBackgroundPosters.set(key,entry);
+    if(_reelsBackgroundPosters.size>12)_reelsBackgroundPosters.delete(_reelsBackgroundPosters.keys().next().value);
+    return entry.promise;
+}
+function reelsPrimeBackgroundVideo(video,path,onReady) {
+    video._reelsPreviewCleanup?.();
+    let live=true,frame=null,nativeFallback=false;
+    const refresh=()=>{
+        if(!live||video.readyState<2||video.videoWidth<=0)return;
+        onReady();
+        if(frame===null && typeof video.requestVideoFrameCallback==='function')frame=video.requestVideoFrameCallback(()=>{frame=null;if(live)onReady();});
+    };
+    const failed=()=>{
+        if(!live||nativeFallback||!(video.currentSrc||video.src).includes('reelsPreview='))return;
+        const native=window.electronAPI?.toFileUrl?.(path);if(!native)return;
+        nativeFallback=true;video.src=native;video.load();
+    };
+    for(const name of ['loadeddata','canplay','seeked'])video.addEventListener(name,refresh);
+    video.addEventListener('error',failed);
+    video._reelsPreviewCleanup=()=>{
+        live=false;
+        for(const name of ['loadeddata','canplay','seeked'])video.removeEventListener(name,refresh);
+        video.removeEventListener('error',failed);
+        if(frame!==null)video.cancelVideoFrameCallback?.(frame);
+    };
+}
+window.reelsGetBackgroundPoster=reelsGetBackgroundPoster;
+window.reelsLoadBackgroundPoster=reelsLoadBackgroundPoster;
+window.reelsPrimeBackgroundVideo=reelsPrimeBackgroundVideo;
 
 function _reelsFileExists(filePath) {
     if (!filePath || typeof filePath !== 'string') return false;
@@ -6266,6 +6411,17 @@ function _resolveTaskHookPath(task, globalIntroPath) {
     return globalIntroPath || '';
 }
 
+function _syncScrollAudioTiming(task) {
+    if (!task?.audioPath) return;
+    const duration = Number(_reelsState._mediaDurations?.[task.audioPath]);
+    if (!(duration > 0 && Number.isFinite(duration))) return;
+    for (const ov of task.overlays || []) {
+        if (ov?.type !== 'scroll' || ov.scroll_end_auto === false || ov.display_ranges?.length) continue;
+        ov.scroll_end_auto = true;
+        ov.end = Math.round(duration * 1000) / 1000;
+    }
+}
+
 function _getAudioDuration(task) {
     if (!task || !task.audioPath) return 0;
     if (_reelsState._mediaDurations && _reelsState._mediaDurations[task.audioPath] > 0) {
@@ -6611,6 +6767,19 @@ function _bindExportSliderNumber(id, opts = {}) {
     const range = document.getElementById(opts.rangeId || `${id}-range`);
     if (!num || !range || range.dataset.bound === 'true') return;
     range.dataset.bound = 'true';
+    // Keep four-digit volumes and decimal seconds visible and editable even
+    // in a narrow template window. Never normalize halfway through typing.
+    num.readOnly = false;
+    // Keep normal caret/select/paste behavior after Electron modal dialogs.
+    num.type = 'text';
+    num.inputMode = 'decimal';
+    num.style.minWidth = '68px';
+    num.style.flexShrink = '0';
+    num.style.padding = '3px 5px';
+    num.style.cursor = 'text';
+    num.addEventListener('mousedown', event => event.stopPropagation());
+    num.addEventListener('focus', () => { if (typeof num.select === 'function') num.select(); });
+    num.title = `${num.title || ''}（可直接输入数字）`;
     const normalizeForRange = (value) => {
         if (opts.blankOnZero && (value === '' || value == null)) return '0';
         return String(value);
@@ -6627,6 +6796,21 @@ function _bindExportSliderNumber(id, opts = {}) {
         fire();
     });
     num.addEventListener('input', () => {
+        if (num.value === '' && !opts.blankOnZero) return;
+        if (num.value !== '' && !Number.isFinite(Number(num.value))) return;
+        range.value = normalizeForRange(num.value);
+        fire();
+    });
+    num.addEventListener('change', () => {
+        if (opts.blankOnZero && num.value === '') {
+            range.value = '0'; fire(); return;
+        }
+        let value = Number(num.value);
+        if (num.value === '' || !Number.isFinite(value)) value = Number(range.value);
+        if (num.min !== '') value = Math.max(Number(num.min), value);
+        if (num.max !== '') value = Math.min(Number(num.max), value);
+        if ((num.step || '1') === '1') value = Math.round(value);
+        num.value = normalizeForNumber(value);
         range.value = normalizeForRange(num.value);
         fire();
     });
@@ -6675,7 +6859,7 @@ const REELS_EXPORT_SETTING_DEFAULTS = {
     'reels-fast-alpha-mode': true,
     'reels-loop-fade-dur': '1',
     'reels-resolution-select': '1080x1920',
-    'reels-export-concurrency': '1',
+    'reels-export-concurrency': '10',
     'reels-export-recycle-every': String(REELS_EXPORT_RECYCLE_EVERY_DEFAULT),
     'reels-copy-project-to-output': false,
 };
@@ -7539,7 +7723,7 @@ async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
     task.baseName = baseName || 'auto_edit';
     if (!Number.isFinite(Number(task.importedAt))) task.importedAt = Date.now();
     task.fileName = `${task.baseName}.mp4`;
-    task.audioPath = null;
+    window.ReelsRenderPlan.setVoice(task, null);
     task.srtPath = srtPath;
     task.aligned = true;
     task.alignSource = 'auto_edit';
@@ -8089,7 +8273,7 @@ async function _reelsAlignSubtitles(task, ignoreMismatch = false) {
 
     // 调用现有的 subtitle/generate API
     const language = document.getElementById('reels-align-lang')?.value || '英语';
-    const alignModel = document.getElementById('reels-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const alignModel = document.getElementById('reels-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
     // 输出目录 = 音频/视频文件所在目录（SRT 保存到文件旁边）
     const audioDir = audioPath.replace(/[\\/][^\\/]+$/, '');
     const response = await apiFetch(`${API_BASE}/subtitle/generate`, {
@@ -8767,38 +8951,13 @@ function _getBgAssignMode() {
 }
 
 function _applyFreeBackgroundAssignment({ backgrounds = [], targetTasks = [] } = {}) {
-    // 背景自动分配必须是“一次导入”的局部动作：历史背景库仅用于展示和
-    // 手动选择，不能在随后又导入一条音频/SRT 时把旧任务重新洗牌。
-    const library = backgrounds.filter(item => item?.path);
-    if (library.length === 0) return;
-
-    const assignMode = _getBgAssignMode();
-    // 只处理本次导入刚创建/刚补全、且尚未绑定背景的任务。已有背景不论是
-    // 自动还是手工设置，均视为用户已确认，绝不被后续导入覆盖。
-    const uniqueTargets = [...new Set(targetTasks)].filter(t =>
-        t && (t.audioPath || t.srtPath || t.txtContent || t.manualText)
-        && !(t._keepBackgroundOnly === true && (t.bgPath || t.videoPath))
-        && !(t.bgPath || t.videoPath)
-    );
-    const targets = uniqueTargets;
-    if (targets.length === 0) return;
-
-    if (assignMode === 'single') {
-        const firstBg = library[0];
-        for (const task of targets) {
-            task.bgPath = firstBg.path;
-            task.bgSrcUrl = firstBg.srcUrl || null;
-            task.videoPath = firstBg.path;
-            task.srcUrl = firstBg.srcUrl || null;
-        }
-        return;
-    }
-
-    for (let i = 0; i < targets.length; i++) {
-        const bg = library[i % library.length];
-        targets[i].bgPath = bg.path;
-        targets[i].bgSrcUrl = bg.srcUrl || null;
-        targets[i].videoPath = bg.path;
+    const library = backgrounds.filter(item => item?.path).slice().sort(_naturalCompareFileNames);
+    const targets = [...new Set(targetTasks)].filter(task => task && !(task.bgPath || task.videoPath)
+        && !(task.bgMode === 'multi' && task.bgClipPool?.length));
+    const count = Math.min(library.length, targets.length);
+    for (let i = 0; i < count; i++) {
+        const bg = library[i];
+        _setTaskSingleBackground(targets[i], bg.path, { bgSrcUrl: bg.srcUrl || null });
         targets[i].srcUrl = bg.srcUrl || null;
     }
 }
@@ -8812,9 +8971,7 @@ function _ensurePreviewTaskForBackgroundOnlyInFreeMode() {
     const task = _getOrCreateTaskByBase(firstBg.baseName || firstBg.name, firstBg.name || 'background.mp4');
     task.baseName = firstBg.baseName || _normalizeBaseName(firstBg.name || firstBg.path);
     task.fileName = firstBg.name || String(firstBg.path).split(/[\\/]/).pop() || 'background.mp4';
-    task.bgPath = firstBg.path;
-    task.bgSrcUrl = firstBg.srcUrl || null;
-    task.videoPath = firstBg.path;
+    _setTaskSingleBackground(task, firstBg.path, { bgSrcUrl: firstBg.srcUrl || null });
     task.srcUrl = firstBg.srcUrl || null;
 }
 
@@ -8873,30 +9030,18 @@ function reelsAutoMatchFiles() {
     // 清理仅背景占位任务，索引在这期间并不稳定。
     const importedTasks = new Set();
 
+    const backgroundOnlyImport = !_reelsState.tasks.length && !audios.length && !srts.length && !txts.length;
+    const pendingBackgrounds = [];
     for (const bg of backgrounds) {
         _upsertBackgroundLibrary(bg);
-        if (matchMode === 'free' && bg.createTask) {
-            const task = _getOrCreateTaskByBase(bg.baseName, bg.name);
-            importedTasks.add(task);
-            task.baseName = bg.baseName;
-            task.matchKey = bg.matchKey || _buildAudioSubtitleMatchKey(bg.name);
-            task.bgPath = bg.path;
-            task.bgSrcUrl = bg.srcUrl || null;
-            task.videoPath = bg.path;
-            task.srcUrl = bg.srcUrl || null;
-            task._keepBackgroundOnly = true;
-            if (!task.fileName) task.fileName = bg.name;
-            continue;
-        }
-        if (matchMode !== 'strict') continue;
+        if (!bg.createTask && !backgroundOnlyImport) { pendingBackgrounds.push(bg); continue; }
         const task = _getOrCreateTaskByBase(bg.baseName, bg.name);
         importedTasks.add(task);
         task.baseName = bg.baseName;
-        task.bgPath = bg.path;
-        task.bgSrcUrl = bg.srcUrl || null;
-        // 兼容旧导出逻辑字段
-        task.videoPath = bg.path;
+        task.matchKey = bg.matchKey || _buildAudioSubtitleMatchKey(bg.name);
+        _setTaskSingleBackground(task, bg.path, { bgSrcUrl: bg.srcUrl || null });
         task.srcUrl = bg.srcUrl || null;
+        task._keepBackgroundOnly = true;
         if (!task.fileName) task.fileName = bg.name;
     }
 
@@ -8906,7 +9051,7 @@ function reelsAutoMatchFiles() {
             : _getOrCreateTaskByBase(audio.baseName, audio.name);
         importedTasks.add(task);
         task.baseName = audio.baseName;
-        task.audioPath = audio.path;
+        window.ReelsRenderPlan.setVoice(task, audio.path);
         if (matchMode === 'free') {
             task.fileName = audio.name;
         } else if (!task.fileName) {
@@ -8946,10 +9091,10 @@ function reelsAutoMatchFiles() {
         if (!task.fileName) task.fileName = txt.name.replace(/\.txt$/i, '.mp4');
     }
 
+    _applyFreeBackgroundAssignment({ backgrounds: pendingBackgrounds, targetTasks: _reelsState.tasks });
     if (matchMode === 'free') {
         _pruneFreeBgOnlyTasks();
         _ensureBackgroundLibraryFromTasks();
-        _applyFreeBackgroundAssignment({ backgrounds, targetTasks: [...importedTasks] });
         _ensurePreviewTaskForBackgroundOnlyInFreeMode();
     }
 
@@ -9062,13 +9207,132 @@ function reelsSetTaskNameDisplay(mode) {
 }
 window.reelsSetTaskNameDisplay = reelsSetTaskNameDisplay;
 
+
+function _getReelsTaskCopyName(task) {
+    const pathName = value => String(value || '').split(/[\\/]/).pop().replace(/\.(txt|srt|vtt|docx?|mp3|wav|m4a|aac|flac|ogg)$/i, '').trim();
+    const filename = pathName(task.txtPath);
+    if (filename) return filename;
+    const title = String(task.writingTitle || task.scriptName || task.textName || '').trim();
+    if (title) return title;
+    if (!task.txtContent && !task.manualText && task.audioPath) return pathName(task.audioPath);
+    const text = String(task.txtContent || task.manualText || task.ttsText || task.aiScript || '').trim();
+    if (text) return text.split(/\r?\n/).find(line => line.trim())?.trim() || '';
+    if (task.srtPath) return pathName(task.srtPath);
+    if (task.audioPath) return pathName(task.audioPath);
+    return '';
+}
+
+// Paint selection without rebuilding rows while the mouse is held down.
+function reelsBindCheckboxRange(container, config) {
+    if (!container) return;
+    if (container._reelsCheckboxRange) { container._reelsCheckboxRange.config = config; return; }
+    const binding = container._reelsCheckboxRange = { config, anchor: null };
+    let gesture = null, skipClick = false, raf = null;
+    const boxes = () => [...container.querySelectorAll(binding.config.selector)].filter(cb => !cb.disabled && cb.getClientRects().length);
+    const sync = () => boxes().forEach(cb => { cb.checked = !!binding.config.read(cb); });
+    const paint = (list, a, b, checked) => {
+        let changed = false;
+        for (let i = Math.min(a,b); i <= Math.max(a,b); i++) {
+            const cb = list[i]; if (!cb) continue;
+            if (!!binding.config.read(cb) !== checked) { binding.config.write(cb,checked); changed = true; }
+            cb.checked = checked;
+        }
+        if (changed) binding.config.changed?.();
+    };
+    const rangeStart = (list, cb, shift) => {
+        const index = list.indexOf(cb), anchor = list.findIndex(item => binding.config.key(item) === binding.anchor);
+        return shift && anchor >= 0 ? anchor : index;
+    };
+    const scrollParent = cb => {
+        for (let el = cb.parentElement; el && el !== document.body; el = el.parentElement) {
+            if (el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY)) return el;
+        }
+        return document.scrollingElement;
+    };
+    const hit = () => {
+        if (!gesture) return;
+        const bounds = gesture.scroll === document.scrollingElement ? {top:0,bottom:innerHeight} : gesture.scroll.getBoundingClientRect();
+        const y = Math.max(Math.max(0,bounds.top)+2,Math.min(Math.min(innerHeight,bounds.bottom)-2,gesture.y));
+        const target = document.elementFromPoint(gesture.x,y);
+        const row = target?.closest(binding.config.row);
+        const cb = row && container.contains(row) ? row.querySelector(binding.config.selector) : null;
+        const index = gesture.list.indexOf(cb);
+        if (index >= 0) { paint(gesture.list,gesture.last,index,gesture.checked); gesture.last = index; }
+    };
+    const tick = () => {
+        raf = null; if (!gesture) return;
+        const el = gesture.scroll;
+        const rect = el === document.scrollingElement ? {top:0,bottom:innerHeight,left:0,right:innerWidth} : el.getBoundingClientRect();
+        let delta = 0;
+        if (gesture.x >= rect.left && gesture.x <= rect.right) {
+            if (gesture.y < rect.top + 28) delta = -Math.min(18,Math.max(2,(rect.top+28-gesture.y)/2));
+            else if (gesture.y > rect.bottom - 28) delta = Math.min(18,Math.max(2,(gesture.y-rect.bottom+28)/2));
+        }
+        if (delta) { el.scrollTop += delta; hit(); raf = requestAnimationFrame(tick); }
+    };
+    const move = e => {
+        if (!gesture || e.pointerId !== gesture.pointerId) return;
+        if (!(e.buttons & 1)) { finish(); return; }
+        e.preventDefault(); gesture.x=e.clientX; gesture.y=e.clientY; hit();
+        if (!raf) raf=requestAnimationFrame(tick);
+    };
+    const finish = () => {
+        if (!gesture) return;
+        gesture=null;
+        document.removeEventListener('pointermove',move,true);
+        document.removeEventListener('pointerup',finish,true);
+        document.removeEventListener('pointercancel',finish,true);
+        window.removeEventListener('blur',finish);
+        if (raf) cancelAnimationFrame(raf); raf=null;
+        setTimeout(() => { skipClick=false; binding.config.done?.(); },0);
+    };
+    container.addEventListener('pointerdown',e => {
+        const cb=e.target.closest(binding.config.selector);
+        if (!cb || !container.contains(cb) || e.button!==0 || cb.disabled) return;
+        const list=boxes(), index=list.indexOf(cb); if(index<0)return;
+        e.preventDefault();e.stopImmediatePropagation();
+        const checked=!binding.config.read(cb);
+        paint(list,rangeStart(list,cb,e.shiftKey),index,checked);
+        if(!e.shiftKey || !list.some(item=>binding.config.key(item)===binding.anchor)) binding.anchor=binding.config.key(cb);
+        skipClick=true;
+        gesture={list,last:index,checked,pointerId:e.pointerId,x:e.clientX,y:e.clientY,scroll:scrollParent(cb)};
+        document.addEventListener('pointermove',move,{capture:true,passive:false});
+        document.addEventListener('pointerup',finish,true);
+        document.addEventListener('pointercancel',finish,true);
+        window.addEventListener('blur',finish);
+    },true);
+    container.addEventListener('click',e => {
+        const cb=e.target.closest(binding.config.selector);
+        if(skipClick){e.preventDefault();e.stopImmediatePropagation();skipClick=false;setTimeout(sync,0);return;}
+        if(!cb || cb.disabled)return;
+        // Keyboard Space and accessibility activation still use the same range logic.
+        e.preventDefault();e.stopImmediatePropagation();
+        const list=boxes(),index=list.indexOf(cb);if(index<0)return;
+        paint(list,rangeStart(list,cb,e.shiftKey),index,cb.checked);
+        if(!e.shiftKey || !list.some(item=>binding.config.key(item)===binding.anchor))binding.anchor=binding.config.key(cb);
+        // Native checkbox activation rolls back after the click event is cancelled.
+        setTimeout(()=>{sync();binding.config.done?.();},0);
+    },true);
+    container.addEventListener('dragstart',e=>{if(gesture){e.preventDefault();e.stopImmediatePropagation();}},true);
+}
+window.reelsBindCheckboxRange = reelsBindCheckboxRange;
+
 function _renderTaskList(options = {}) {
     const container = document.getElementById('reels-task-list');
     const countEl = document.getElementById('reels-task-count');
     const countPanelEl = document.getElementById('reels-task-count-panel');
     if (!container) return;
+    reelsBindCheckboxRange(container, {
+        selector: '.reels-export-cb', row: '.reels-task-item',
+        key: cb => _reelsState.tasks[Number(cb.dataset.taskIdx)],
+        read: cb => _reelsState.tasks[Number(cb.dataset.taskIdx)]?._exportSelected !== false,
+        write: (cb, checked) => { const task=_reelsState.tasks[Number(cb.dataset.taskIdx)]; if(task)task._exportSelected=checked; },
+        changed: _updateExportSelectedCountUI,
+        done: () => _renderTaskList({preserveScroll:true}),
+    });
     const prevScrollTop = container.scrollTop;
 
+    window.reelsEnsureTaskBatchOwnership?.(_reelsState.tasks);
     const tasks = _reelsState.tasks;
     const taskNameDisplay = _getReelsTaskNameDisplay();
     container.classList.toggle('reels-task-list-compact', taskNameDisplay === 'compact');
@@ -9145,7 +9409,7 @@ function _renderTaskList(options = {}) {
         const internalName = String(task.fileName || task.baseName || '');
         const backgroundName = String(task.bgPath || task.videoPath || '').split(/[\\/]/).pop() || '';
         const isGeneratedCardName = /^card_\d+(?:\.[^.]+)?$/i.test(internalName);
-        const displayName = String(task.exportName || (isGeneratedCardName && backgroundName ? backgroundName : internalName) || '未命名任务');
+        const displayName = _getReelsTaskCopyName(task) || String(task.exportName || (isGeneratedCardName && backgroundName ? backgroundName : internalName) || '未命名任务');
         const baseName = displayName.replace(/\.[^.]+$/, '');
         // 左侧列表用于人工找任务：可在“完整名称”和“单行截断”间切换。
         const shortName = baseName;
@@ -9266,7 +9530,7 @@ function _renderTaskList(options = {}) {
                  draggable="true" data-task-idx="${i}"
                  ondragstart="reelsTaskDragStart(event, ${i})"
                  ondragend="reelsTaskDragEnd(event)"
-                 onclick="reelsSelectTask(${i})"
+                 onclick="reelsSelectTask(${i}, {autoplay:true})"
                  title="${escapeTaskText(displayName)}${task.versionTag ? ` [版本: ${escapeTaskText(task.versionTag)}]` : ''}${task.exportName && task.fileName ? `\n内部任务名：${escapeTaskText(task.fileName)}` : ''}"
                  style="display:flex; align-items:center; gap:4px; padding:5px 6px; margin-bottom:2px;
                         border-radius:5px; cursor:pointer; transition:background .12s, opacity .15s;
@@ -9275,6 +9539,7 @@ function _renderTaskList(options = {}) {
                         opacity: ${rowOpacity};
                         ${(queueCollapsed || batchGroupCollapsed) ? 'display:none;' : ''}
                         ${selected ? 'box-shadow: inset 0 0 0 1px rgba(0,212,255,0.3);' : ''}">
+                <span class="reels-task-number" title="序号" style="flex:0 0 28px;text-align:right;color:var(--text-secondary);font-size:11px;font-variant-numeric:tabular-nums;">${i + 1}</span>
                 <span title="拖动排序" style="color:var(--text-secondary);cursor:grab;font-size:12px;line-height:1;">⠿</span>
                 <input type="checkbox" class="reels-export-cb" data-task-idx="${i}" ${exportChecked ? 'checked' : ''}
                     style="accent-color:var(--accent-color,#7b8bef);transform:scale(1.25);margin:0 6px 0 4px;flex-shrink:0;cursor:pointer;"
@@ -9418,6 +9683,7 @@ async function _preFetchTaskMediaDurations(task) {
             paths.push(task.contentVideoPath);
         }
     }
+    _syncScrollAudioTiming(task);
     if (paths.length === 0) return;
     if (window.electronAPI && typeof window.electronAPI.getMediaDuration === 'function') {
         for (const p of paths) {
@@ -9433,13 +9699,16 @@ async function _preFetchTaskMediaDurations(task) {
         }
         // 读取媒体元数据是异步的。用户若在此期间切换了任务，不能让旧任务
         // 的回调重建当前时间线，否则预览会显示旧字幕/覆层轨而导出仍使用新任务。
+        _syncScrollAudioTiming(task);
         if (_getSelectedTask() !== task) return;
+        const panel = _reelsState.overlayPanel;
+        if (panel?._selectedOv?.type === 'scroll') panel._syncFromOverlay(panel._selectedOv);
         _updateTimelineForTask(task);
         _updatePreviewTimeUI(_getPreviewCurrentTime(), _getPreviewDuration());
     }
 }
 
-function reelsSelectTask(idx) {
+function reelsSelectTask(idx, options = {}) {
     // ── 保存当前任务的覆层 ──
     const prevTask = _reelsState.tasks[_reelsState.selectedIdx];
     if (prevTask && _reelsState.overlayProxy && _reelsState.overlayProxy.overlayMgr) {
@@ -9489,6 +9758,7 @@ function reelsSelectTask(idx) {
     }
 
     const video = document.getElementById('reels-preview-video');
+    video?._reelsPreviewCleanup?.();
     const audio = document.getElementById('reels-preview-audio');
     const playBtn = document.getElementById('reels-preview-play');
     const placeholder = document.getElementById('reels-preview-placeholder');
@@ -9582,7 +9852,7 @@ function reelsSelectTask(idx) {
             const imgUrl = _toPlayablePath(bgPath, bgSrc);
             const img = new Image();
             img.crossOrigin = 'anonymous';
-            img.onload = () => { _reelsState._previewBgImage = img; };
+            img.onload = () => { if (_getSelectedTask() === task) { _reelsState._previewBgImage = img; reelsUpdatePreview(); } };
             img.src = imgUrl;
             _reelsState._previewBgImage = img;
             if (placeholder) {
@@ -9596,6 +9866,8 @@ function reelsSelectTask(idx) {
             const filePath = _toPlayablePath(bgPath, bgSrc);
             // 总是重新设置 src（避免 URL 规范化导致比较失误）
             video.pause();
+            reelsPrimeBackgroundVideo(video, bgPath, reelsUpdatePreview);
+            reelsLoadBackgroundPoster(bgPath).then(() => { if (_getSelectedTask() === task) reelsUpdatePreview(); });
             video.src = filePath;
             video.load();
             // 强制加载第一帧 — seek 到 0.01s 触发帧数据加载
@@ -9791,8 +10063,9 @@ function reelsSelectTask(idx) {
     _reelsState.mockPausedTime = 0;
     _updatePreviewTimeUI(0, _getPreviewDuration());
     // V2 预览有独立时钟；播放中切换任务时也必须清掉旧任务进度。
-    window.ReelsPreviewV2?.resetForTaskSwitch?.();
+    window.ReelsPreviewV2?.resetForTaskSwitch?.({ autoplay: options.autoplay === true });
     if (playBtn) playBtn.textContent = '▶️';
+    if (options.autoplay === true && !window.ReelsPreviewV2?.isOpen?.()) reelsTogglePlay();
 }
 
 function reelsRemoveTask(idx) {
@@ -10704,7 +10977,7 @@ function reelsOpenSubtitlePresetLibrary() {
         const custom = g.category.startsWith('💾');
         const title = String(name).replace(/</g,'&lt;');
         const animated = (style.anim_in_type && style.anim_in_type !== 'none') || style.box_wipe_enabled || style.dynamic_box || style.karaoke_highlight || style.word_pop;
-        const previewIndex = previewStyles.push(style) - 1;
+        const previewIndex = previewStyles.push(window.ReelsStyleEngine?.mergeStyle?.(style) || style) - 1;
         // 画布显示时缩小，但渲染仍使用成片的 1080×1920 坐标系，保证预设
         // 内保存的像素字号、X/Y 坐标与最终导出完全一致。
         return `<article class="rsp-card" data-animated="${animated ? 'true' : 'false'}" data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-name="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><canvas class="rsp-preview-canvas" width="360" height="640" data-preview-index="${previewIndex}" aria-label="${title} 的字幕效果预览"></canvas><div class="rsp-name">${title}</div><div class="rsp-group">${String(g.category).replace(/</g,'&lt;')}${animated ? ' · 悬浮播放' : ''}</div><button class="rsp-use">选用</button>${custom ? '<button class="rsp-move-group">分组</button><button class="rsp-delete">删除</button>' : ''}</article>`;
@@ -10716,9 +10989,9 @@ function reelsOpenSubtitlePresetLibrary() {
     // 静态卡片只看第一句最终版式；悬浮时按连续多条 SRT 播放，方便判断
     // 逐词、入场、退场以及相邻字幕切换的真实效果。
     const previewSegments = [
-        { start: 0, end: 3, text: '示例 字幕 动画 预览', words: [
-            { word: '示例', start: 0, end: 0.75 }, { word: '字幕', start: 0.75, end: 1.5 },
-            { word: '动画', start: 1.5, end: 2.25 }, { word: '预览', start: 2.25, end: 3 },
+        { start: 0, end: 3, text: 'Sample subtitle font preview', words: [
+            { word: 'Sample', start: 0, end: 0.75 }, { word: 'subtitle', start: 0.75, end: 1.5 },
+            { word: 'font', start: 1.5, end: 2.25 }, { word: 'preview', start: 2.25, end: 3 },
         ] },
         { start: 3, end: 6, text: '悬浮 即可 预览 效果', words: [
             { word: '悬浮', start: 3, end: 3.75 }, { word: '即可', start: 3.75, end: 4.5 },
@@ -10740,11 +11013,7 @@ function reelsOpenSubtitlePresetLibrary() {
     modal.querySelectorAll('.rsp-preview-canvas').forEach(canvas => {
         const style = previewStyles[Number(canvas.dataset.previewIndex)] || {};
         if (!window.ReelsCanvasRenderer) return;
-        const renderer = new window.ReelsCanvasRenderer(canvas);
-        // 全页打字机、滚动等字幕预设会读取整条 SRT 上下文；没有这一步会
-        // 只剩光标或空画布，而不是最终成片中的字幕。
-        renderer.setContextSegments(previewSegments);
-        const ctx = canvas.getContext('2d');
+        let renderer = null, ctx = null;
         const outputWidth = 1080;
         const outputHeight = 1920;
         const renderScale = canvas.width / outputWidth;
@@ -10768,6 +11037,7 @@ function reelsOpenSubtitlePresetLibrary() {
                 ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.35)
                 : staticPreviewTime);
         const draw = (time, animated = false) => {
+            if (!renderer) { renderer = new window.ReelsCanvasRenderer(canvas); renderer.setContextSegments(previewSegments); ctx = canvas.getContext('2d'); }
             const activeSegment = animated
                 ? (previewSegments.find(segment => time >= segment.start && time <= segment.end) || previewSegment)
                 : previewSegment;
@@ -10781,13 +11051,15 @@ function reelsOpenSubtitlePresetLibrary() {
             renderer.renderSubtitle(animated ? style : finalStyle, activeSegment, time, outputWidth, outputHeight);
             ctx.restore();
         };
-        draw(cardStaticTime, false);
+        canvas._subtitlePresetDraw = () => draw(cardStaticTime, false);
         const card = canvas.closest('.rsp-card');
         let frameId = null;
         card.addEventListener('mouseenter', () => {
             if (frameId !== null) return;
             const beganAt = performance.now();
             const play = (now) => {
+                activePreviewFrames.delete(frameId);
+                if (!card.isConnected || !card.getClientRects().length) { frameId = null; return; }
                 const seconds = ((now - beganAt) / 1000) % previewDuration;
                 draw(seconds, true);
                 frameId = requestAnimationFrame(play);
@@ -10803,6 +11075,7 @@ function reelsOpenSubtitlePresetLibrary() {
             draw(cardStaticTime, false);
         });
     });
+    reelsObservePresetFonts(modal, '.rsp-preview-canvas', canvas => previewStyles[Number(canvas.dataset.previewIndex)]?.font_family, canvas => canvas._subtitlePresetDraw?.());
     modal.querySelectorAll('aside button').forEach(btn => btn.onclick = () => { modal.querySelectorAll('aside button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); const group = btn.dataset.group; modal.querySelectorAll('.rsp-card').forEach(card => card.style.display = group === 'all' || card.dataset.group === group ? '' : 'none'); });
     modal.querySelector('.rsp-close').onclick = () => { stopPreviewFrames(); modal.remove(); };
     modal.querySelector('.rsp-clear-mine').onclick = () => {
@@ -11135,7 +11408,10 @@ function reelsLoadPreset(silent = false) {
         }
         _reelsState.style = Object.assign({}, _reelsState.style || {}, style);
         _writeStyleToUI(style);
-        // 选择预设后立即回写目标任务；不能依赖后续手动改控件才能生效。
+        const scope = _getSubtitleStyleScope();
+        const targets = scope === 'all' ? _reelsState.tasks : scope === 'folder' ? _getCurrentReelsGroupTasks() : [_getSelectedTask()].filter(Boolean);
+        for (const task of targets) task._subtitlePreset = '';
+        // Apply saved colors to the model before requesting either preview renderer.
         _persistSubtitleStyleByScope(_readStyleFromUI());
         reelsUpdatePreview();
     }
@@ -11663,9 +11939,24 @@ function _initReelsIntroInput() {
     });
 }
 
+function _reelsFinishExportTiming() {
+    const timing = _reelsState.exportTiming;
+    if (timing && !timing.finishedAt) timing.finishedAt = Date.now();
+    window.VideoKitExportEta?.update();
+}
+
+function _prefixReelsExportRowName(name, rowNumber) {
+    const row = Math.max(1, Math.floor(Number(rowNumber) || 1));
+    const prefix = String(row).padStart(3, '0');
+    const text = String(name || '未命名');
+    const existing = new RegExp('^0*' + row + '[_、. -]+');
+    return `${prefix}_${text.replace(existing, '')}`;
+}
+
 function reelsCancelExport() {
     try { localStorage.removeItem(REELS_EXPORT_RESUME_KEY); } catch (_) { }
     if (_reelsState.isExporting) {
+        _reelsFinishExportTiming();
         _reelsState.isExporting = false;
         _reelsCancelUnfinishedJobProgressUI();
         const statusEl = document.getElementById('reels-export-status');
@@ -11744,7 +12035,11 @@ function _reelsPathBaseName(filePath) {
 }
 
 function _reelsTaskTextBaseName(task) {
-    let text = String(task?.txtContent || task?.aiScript || task?.ttsText || '')
+    const firstScroll = Array.isArray(task?.overlays) ? task.overlays.find(ov => ov?.type === 'scroll' && !ov.disabled) : null;
+    const scrollTitle = String(firstScroll?.scroll_title || '').trim();
+    const scrollBody = String(firstScroll?.content || firstScroll?.scroll_body || '').trim();
+    const scrollText = [scrollTitle,scrollBody].filter(Boolean).join('_');
+    let text = String(scrollText || task?.txtContent || task?.aiScript || task?.ttsText || '')
         .replace(/[\r\n\t]+/g, '')
         .trim();
     // 若主文案字段为空，尝试从覆层文字卡片中提取标题/正文作为命名
@@ -11820,8 +12115,8 @@ async function _exportSaveCoverPng(task, outputDirTrimmed, baseName) {
     if (!task.cover || !task.cover.enabled || task.cover.exportSeparate === false) return null;
 
     try {
-        const tw = _reelsState.targetWidth || 1080;
-        const th = _reelsState.targetHeight || 1920;
+        const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+        const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
         const offCanvas = document.createElement('canvas');
         offCanvas.width = tw;
         offCanvas.height = th;
@@ -11893,8 +12188,8 @@ async function _exportSaveCoverPng(task, outputDirTrimmed, baseName) {
 async function _exportCoverVideo(task, taskStyle, outputDirTrimmed, baseName) {
     if (!task.cover || !task.cover.enabled || !task.cover.duration || parseFloat(task.cover.duration) <= 0) return null;
     try {
-        const tw = _reelsState.targetWidth || 1080;
-        const th = _reelsState.targetHeight || 1920;
+        const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+        const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
         const offCanvas = document.createElement('canvas');
         offCanvas.width = tw;
         offCanvas.height = th;
@@ -12043,7 +12338,7 @@ function _updateMultiPresetSummary() {
 
 function _resolveSafeReelsExportConcurrency(requested, totalJobs, options = {}) {
     const wanted = Math.max(1, Math.min(10, parseInt(requested, 10) || 1));
-    // 导出并发由用户选择；不要根据内存解码器或队列长度静默降级。
+    // Reserve CPU and memory for editing while the shared export job is capped.
     return wanted;
 }
 
@@ -12071,7 +12366,7 @@ function _getMultiPresetConfig() {
     if (!enabled || !enabled.checked) return null;
     const presets = _getSelectedMultiPresets();
     if (presets.length === 0) return null;
-    const naming = (document.getElementById('reels-mp-naming') || {}).value || 'flat';
+    const naming = 'flat';
     return { presets, naming };
 }
 
@@ -12340,8 +12635,56 @@ window.reelsPackageSelectedProjects = reelsPackageSelectedProjects;
 // 初始化（需要在 DOM 就绪后调用）
 setTimeout(() => _initMultiPresetUI(), 200);
 
+function reelsUpdateDownloadRangeUI() {
+    const input = document.getElementById('reels-download-range');
+    const custom = document.getElementById('reels-download-mode')?.value === 'custom';
+    if (input) { input.style.display = custom ? 'inline-block' : 'none'; if (custom) input.focus(); }
+}
+
+function _parseReelsDownloadRange(text, total) {
+    const normalized = String(text || '').trim().replace(/[－–—~～至]/g, '-').replace(/\s*-\s*/g, '-');
+    if (!normalized) throw new Error('请填写任务序号，例如 1-10 或 1、3、5');
+    if (normalized.length > 2000) throw new Error('填写的任务范围过长');
+    const tokens = normalized.split(/[,，、;；\s]+/).filter(Boolean);
+    if (!tokens.length) throw new Error('请填写至少一个任务序号');
+    const selected = new Set();
+    for (const token of tokens) {
+        const match = token.match(/^(\d+)(?:-(\d+))?$/);
+        if (!match) throw new Error(`无法识别“${token}”，请使用 1-10 或 1、3、5`);
+        const first = Number(match[1]), last = Number(match[2] || match[1]);
+        if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 1 || last > total || first > last) {
+            throw new Error(`任务序号须在 1-${total} 以内，且起始序号不能大于结束序号`);
+        }
+        for (let number = first; number <= last; number++) selected.add(number - 1);
+    }
+    return selected;
+}
+
+function _selectReelsDownloadTasks(tasks, settings) {
+    if (settings?.mode !== 'custom') return tasks.filter(task => task._exportSelected !== false);
+    const selected = _parseReelsDownloadRange(settings.text, tasks.length);
+    return tasks.filter((task, index) => selected.has(index));
+}
+
 async function reelsStartExport(options = {}) {
+    // Freeze the task-list numbering before selection, validation or matrix
+    // expansion; the selected-job index is not the row the user sees.
+    const taskListRows = new Map();
+    const taskListIdRows = new Map();
+    (_reelsState.tasks || []).forEach((task, index) => {
+        taskListRows.set(task, index + 1);
+        if (task.id && !taskListIdRows.has(task.id)) taskListIdRows.set(task.id, index + 1);
+    });
+    const rowOfTask = task => taskListRows.get(task) || taskListIdRows.get(task?.id) || null;
+    const taskRowLabel = task => rowOfTask(task) ? `任务列表第 ${rowOfTask(task)} 项` : '任务列表任务';
     const resumeState = options && options.resumeState ? options.resumeState : null;
+    const exportRange = resumeState?.exportRange || {
+        mode: document.getElementById('reels-download-mode')?.value || 'all',
+        text: document.getElementById('reels-download-range')?.value || '',
+    };
+    let selectedForExport;
+    try { selectedForExport = _selectReelsDownloadTasks(_reelsState.tasks, exportRange); }
+    catch (error) { alert(error.message); return; }
     const workMode = _getWorkMode();
     
     if (!resumeState && !localStorage.getItem('reelsQualityReminderShown')) {
@@ -12364,7 +12707,7 @@ async function reelsStartExport(options = {}) {
 
     // 导出前自动对齐未对齐的 TXT 任务
     if (workMode !== 'srt') {
-        const unaligned = _reelsState.tasks.filter(t =>
+        const unaligned = selectedForExport.filter(t =>
             t.txtContent && !t.aligned && (t.segments || []).length === 0
         );
         if (unaligned.length > 0) {
@@ -12385,7 +12728,6 @@ async function reelsStartExport(options = {}) {
     if (!Number.isFinite(customDuration) || customDuration < 0) customDuration = 0;
 
     // ── 仅导出已勾选的任务 ──
-    const selectedForExport = _reelsState.tasks.filter(t => t._exportSelected !== false);
     if (selectedForExport.length === 0) {
         if (typeof showToast === 'function') {
             showToast('没有选中任何任务用于导出。请在任务列表中勾选要导出的任务。', 'warning');
@@ -12395,6 +12737,15 @@ async function reelsStartExport(options = {}) {
         return;
     }
 
+    for (const task of selectedForExport) {
+        if (task.audioPath && (task.overlays || []).some(ov => ov?.type === 'scroll' && ov.scroll_end_auto !== false)) {
+            if (!_reelsState._mediaDurations?.[task.audioPath] && window.electronAPI?.getMediaDuration) {
+                const duration = await window.electronAPI.getMediaDuration(task.audioPath).catch(() => 0);
+                if (duration > 0) (_reelsState._mediaDurations ||= {})[task.audioPath] = duration;
+            }
+            _syncScrollAudioTiming(task);
+        }
+    }
     const invalidTasks = [];
     const tasks = selectedForExport.filter((t, idx) => {
         const hasSub = !!t.srtPath && (t.segments || []).length > 0;
@@ -12420,7 +12771,7 @@ async function reelsStartExport(options = {}) {
             // 带声视频模式：需要背景 + (字幕 或 文字卡片)
             // 但如果只有背景视频（无字幕无覆层），也允许导出（直出视频）
             if (!hasBg) {
-                invalidTasks.push(`${idx + 1}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 带声视频`);
+                invalidTasks.push(`${taskRowLabel(t)}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 带声视频`);
                 return false;
             }
             return true;
@@ -12429,7 +12780,7 @@ async function reelsStartExport(options = {}) {
         // SRT 模式和配音+文本模式
         // 允许导出条件放宽：有背景即可（无字幕时导出纯视频+覆层）
         if (!hasBg) {
-            invalidTasks.push(`${idx + 1}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 背景`);
+            invalidTasks.push(`${taskRowLabel(t)}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 背景`);
             return false;
         }
 
@@ -12450,7 +12801,7 @@ async function reelsStartExport(options = {}) {
             // 无配音时仅兼容视频背景（旧模式）
             const allowNoVoice = !_isImagePath(bgPath);
             if (!allowNoVoice) {
-                invalidTasks.push(`${idx + 1}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 人声音频（图片背景添加字幕时必须配合音频以确定字幕时间轴与总时长）`);
+                invalidTasks.push(`${taskRowLabel(t)}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 人声音频（图片背景添加字幕时必须配合音频以确定字幕时间轴与总时长）`);
             }
             return allowNoVoice;
         }
@@ -12461,7 +12812,7 @@ async function reelsStartExport(options = {}) {
         if (hasVoice) {
             return true; // 有配音可以确定时长
         }
-        invalidTasks.push(`${idx + 1}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 字幕、人声音频或覆层卡片（图片背景需要添加字幕+音频、或仅人声音频、或覆层卡片才能确定导出内容与时长）`);
+        invalidTasks.push(`${taskRowLabel(t)}. ${(t.fileName || t.baseName || '未命名任务')} 缺少: 字幕、人声音频或覆层卡片（图片背景需要添加字幕+音频、或仅人声音频、或覆层卡片才能确定导出内容与时长）`);
         return false;
     });
 
@@ -12514,7 +12865,7 @@ async function reelsStartExport(options = {}) {
     const customBitrate = quality === 'custom' ? _readReelsCustomBitrate() : null;
     const targetBitrateMbps = customBitrate ? customBitrate.target : null;
     const maxBitrateMbps = customBitrate ? customBitrate.max : null;
-    const useKaraoke = document.getElementById('reels-karaoke-hl');
+    const useKaraoke = document.getElementById('reels-highlight-enabled') || document.getElementById('reels-karaoke-hl');
     const karaokeHL = useKaraoke ? useKaraoke.checked : false;
     let voiceVolume = parseFloat((document.getElementById('reels-voice-volume') || {}).value || '100');
     let bgVolume = _getGlobalBgVolumePercent();
@@ -12540,6 +12891,7 @@ async function reelsStartExport(options = {}) {
     const fcpxmlBatchTasks = [];
 
     _reelsState.isExporting = true;
+    _reelsState.exportTiming = { startedAt: resumeState?.startedAt || Date.now(), finishedAt: null };
     const progressBar = document.getElementById('reels-export-progress');
     const statusEl = document.getElementById('reels-export-status');
     const exportBtn = document.getElementById('reels-export-btn');
@@ -12600,6 +12952,7 @@ async function reelsStartExport(options = {}) {
 
     // ═══ 多模板矩阵展开 ═══
     const multiPresetCfg = resumeState?.multiPresetCfg || _getMultiPresetConfig();
+    if (multiPresetCfg) multiPresetCfg.naming = 'flat';
     const exportJobs = [];
     if (multiPresetCfg) {
         // 矩阵模式：tasks × presets
@@ -12609,6 +12962,7 @@ async function reelsStartExport(options = {}) {
                 task = _cloneTaskWithPreset(task, presetName);
                 exportJobs.push({
                     task,
+                    taskListRowNo: rowOfTask(sourceTask),
                     subtitleStyle: _cloneSubtitleStyle(_resolveSubtitleStyleForTask(sourceTask)),
                     presetName,
                     naming: multiPresetCfg.naming,
@@ -12621,6 +12975,7 @@ async function reelsStartExport(options = {}) {
         for (const sourceTask of tasks) {
             exportJobs.push({
                 task: _cloneReelsTaskForExport(sourceTask),
+                taskListRowNo: rowOfTask(sourceTask),
                 subtitleStyle: _cloneSubtitleStyle(_resolveSubtitleStyleForTask(sourceTask)),
                 presetName: null,
                 naming: null,
@@ -12663,11 +13018,12 @@ async function reelsStartExport(options = {}) {
         version: 1,
         active: true,
         reloadPending: false,
-        startedAt: resumeState?.startedAt || Date.now(),
+        startedAt: _reelsState.exportTiming.startedAt,
         outputDirTrimmed,
         requestedConcurrency,
         recycleEvery,
         multiPresetCfg,
+        exportRange,
         totalJobs,
         jobKeys: exportJobKeys,
         nextIndex: Math.max(0, Math.min(totalJobs, Number(resumeState?.nextIndex) || 0)),
@@ -12716,10 +13072,11 @@ async function reelsStartExport(options = {}) {
     {
         // 先给每个任务加上行号
         const namedWithRow = exportJobs.map((job, idx) => {
+            const rowNo = job.taskListRowNo || idx + 1;
             if (namingMode === 'index') {
                 const prefix = localStorage.getItem('reels_naming_prefix') || '';
                 const suffixVal = localStorage.getItem('reels_naming_suffix') || '';
-                return `${prefix}${idx + 1}${suffixVal}`;
+                return `${String(rowNo).padStart(3, '0')}${prefix || suffixVal ? '_' + prefix + suffixVal : ''}`;
             }
             if (namingMode === 'date-auto') {
                 const startDateStr = localStorage.getItem('reels_naming_start_date') || '';
@@ -12751,11 +13108,11 @@ async function reelsStartExport(options = {}) {
                 const dd = String(targetDate.getDate()).padStart(2, '0');
                 const dateFormatted = `${yyyy}${mm}${dd}`;
 
-                return `${prefix}${dateFormatted}-${seq}${suffixVal}`;
+                return _prefixReelsExportRowName(`${prefix}${dateFormatted}-${seq}${suffixVal}`, rowNo);
             }
 
             const raw = _resolveReelsExportBaseName(job.task, namingMode);
-            return `${raw}_行${idx + 1}`;
+            return _prefixReelsExportRowName(raw, rowNo);
         });
         // 再检测加完行号后是否仍有重名（极端情况），追加编号
         const freq = {};
@@ -12803,11 +13160,12 @@ async function reelsStartExport(options = {}) {
                     height: _reelsState.targetHeight || 1920,
                 });
             }
-            const tw = _reelsState.targetWidth || 1080;
-            const th = _reelsState.targetHeight || 1920;
+            const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+            const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
 
         const taskStyle = job.subtitleStyle || _resolveSubtitleStyleForTask(task);
         const presetLabel = job.presetName ? ` [${job.presetName}]` : '';
+        const taskListLabel = job.taskListRowNo ? `任务列表第 ${job.taskListRowNo} 项` : '任务列表任务';
 
         // ── 确保当前任务的所有覆层与字幕使用的字体全部预加载完成 ──
         _reelsUpdateJobProgressUI(i, 0, '加载字体', 'running');
@@ -12827,37 +13185,18 @@ async function reelsStartExport(options = {}) {
 
         _reelsUpdateJobProgressUI(i, Math.max(1, jobProgress[i] || 0), '准备导出', 'running');
         if (statusEl) statusEl.textContent = `导出中 ${i + 1}/${totalJobs}: ${task.fileName}${presetLabel}`;
-        _reelsAppendExportLogUI(`任务 ${i + 1}/${totalJobs}：开始处理 ${task.fileName}${presetLabel}`);
+        _reelsAppendExportLogUI(`${taskListLabel}${presetLabel}：开始处理（进度 ${i + 1}/${totalJobs}，${task.fileName}）`);
         _reelsAppendExportLogUI(`[绑定核验] ${_summarizeExportBinding(task)}`);
 
         try {
             let baseName = _exportResolvedNames[i] || _resolveReelsExportBaseName(task, namingMode);
 
-            // ── 多模板矩阵：调整输出路径 ──
-            let jobOutputDir = outputDirTrimmed;
+            // One batch folder for every tab, queue and preset. Keep presets in filenames.
+            const jobOutputDir = outputDirTrimmed;
             let jobBaseName = baseName;
-            if (task._batchTabId) {
-                const safeGroupName = String(task._batchTabName || '未命名分组')
-                    .replace(/[<>:"/\\|?*]+/g, '_')
-                    .replace(/[. ]+$/g, '')
-                    .trim() || '未命名分组';
-                jobOutputDir = `${jobOutputDir}${outputJoinSep}${safeGroupName}`;
-            }
-            if (task._folderQueueId) {
-                const safeQueueName = String(task._folderQueueName || '文件夹队列')
-                    .replace(/[<>:"/\\|?*]+/g, '_')
-                    .trim() || '文件夹队列';
-                jobOutputDir = `${jobOutputDir}${outputJoinSep}${safeQueueName}`;
-            }
             if (job.presetName) {
-                const safePresetName = job.presetName.replace(/[<>:"/\\|?*]+/g, '_');
-                if (job.naming === 'folder') {
-                    // 按模板分目录
-                    jobOutputDir = `${jobOutputDir}${outputJoinSep}${safePresetName}`;
-                } else {
-                    // 平铺命名
-                    jobBaseName = `${baseName}_${safePresetName}`;
-                }
+                const safePresetName = String(job.presetName).replace(/[<>:"/\\|?*]+/g, '_').replace(/[. ]+$/g, '').trim() || '模板';
+                jobBaseName = `${baseName}_${safePresetName}`;
             }
             const outputPath = `${jobOutputDir}${outputJoinSep}${jobBaseName}${suffix}.mp4`;
             if (window.electronAPI && window.electronAPI.ensureDirectory) {
@@ -12923,8 +13262,8 @@ async function reelsStartExport(options = {}) {
 
             // ═══ PNG 分层序列导出 ═══
             if (doPng && typeof window.reelsLayeredExport === 'function') {
-                const tw = _reelsState.targetWidth || 1080;
-                const th = _reelsState.targetHeight || 1920;
+                const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+                const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
                 const offCanvas = document.createElement('canvas');
                 offCanvas.width = tw;
                 offCanvas.height = th;
@@ -13027,8 +13366,8 @@ async function reelsStartExport(options = {}) {
                 }
 
                 if (taskOverlays.length > 0 && taskOverlays.some(o => !o.disabled)) {
-                    const tw = _reelsState.targetWidth || 1080;
-                    const th = _reelsState.targetHeight || 1920;
+                    const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+                    const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
                     if (hasTimeSlice) {
                         // ⏱️ 时间切片模式：为每个切片生成独立的 PNG
                         overlayPngSlices = [];
@@ -13246,8 +13585,8 @@ async function reelsStartExport(options = {}) {
             if (doMp4 && (typeof window.reelsWysiwygExport === 'function')
                 && window.electronAPI && window.electronAPI.reelsComposeWysiwyg) {
                 // 创建离屏 canvas
-                const tw = _reelsState.targetWidth || 1080;
-                const th = _reelsState.targetHeight || 1920;
+                const tw = Math.min(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
+                const th = Math.max(_reelsState.targetWidth || 1080, _reelsState.targetHeight || 1920);
                 const offCanvas = document.createElement('canvas');
                 offCanvas.width = tw;
                 offCanvas.height = th;
@@ -13676,17 +14015,17 @@ async function reelsStartExport(options = {}) {
             _reelsUpdateJobProgressUI(i, 100, '已完成', 'success');
             _reelsState.lastExportOutputPath = finalOutputPath;
             _reelsUpdateLastOutputUI(finalOutputPath);
-            _reelsAppendExportLogUI(`${task.fileName}${presetLabel}：导出完成 → ${finalOutputPath}`);
+            _reelsAppendExportLogUI(`${taskListLabel}${presetLabel}：导出完成 → ${finalOutputPath}`);
         } catch (err) {
             console.error('[Reels] Export failed:', task.fileName, err);
             failCount += 1;
-            const rawErrMsg = err && err.message ? err.message : String(err || '未知错误');
-            const errMsg = rawErrMsg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)*/i, '');
-            failDetails.push(`${task.fileName}${presetLabel}: ${errMsg}`);
-            _reelsAppendExportLogUI(`${task.fileName}${presetLabel} 导出失败：${errMsg}`, 'error');
+            const errMsg = err && err.message ? err.message : String(err || '未知错误');
+            const displayErr = errMsg.replace(/^(?:Error invoking remote method '[^']+':\s*(?:Error:\s*)*)+/i, '');
+            failDetails.push(`${taskListLabel}${presetLabel}: ${displayErr}`);
+            _reelsAppendExportLogUI(`${taskListLabel}${presetLabel} 导出失败：${displayErr}`, 'error');
             _reelsUpdateJobProgressUI(i, jobProgress[i], '失败', 'failed');
-            if (statusEl) statusEl.textContent = `❌ 导出失败: ${task.fileName}${presetLabel} - ${errMsg}`;
-            _reelsUpdateLastErrorUI(`${task.fileName}${presetLabel}: ${errMsg}`);
+            if (statusEl) statusEl.textContent = `❌ 导出失败: ${taskListLabel}${presetLabel} - ${displayErr}`;
+            _reelsUpdateLastErrorUI(`${taskListLabel}${presetLabel}: ${displayErr}`);
         }
         updateConcurrentOverallProgress(i, 100);
         completedOutOfOrder.add(i);
@@ -13747,9 +14086,7 @@ async function reelsStartExport(options = {}) {
                 .replace(/[<>:"/\\|?*]+/g, '_')
                 .replace(/[. ]+$/g, '')
                 .trim();
-            const groupOutputDir = safeGroupName
-                ? `${outputDirTrimmed}${outputJoinSep}${safeGroupName}`
-                : outputDirTrimmed;
+            const groupOutputDir = outputDirTrimmed;
             const batchName = safeGroupName
                 ? `${safeGroupName}_Timeline_${dateStr}_${timeStr}`
                 : `BatchTimeline_${dateStr}_${timeStr}`;
@@ -13781,6 +14118,7 @@ async function reelsStartExport(options = {}) {
     }
 
     const doneCount = okCount + failCount;
+    _reelsFinishExportTiming();
     _reelsUpdateExportProgressUI(doneCount, totalJobs);
     if (statusEl) {
         if (canceled) {
@@ -13962,7 +14300,7 @@ function collectCurrentProjectState() {
         namingVidsPerDay: parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3,
         namingPrefix: localStorage.getItem('reels_naming_prefix') || '',
         namingSuffix: localStorage.getItem('reels_naming_suffix') || '',
-        voiceVolume: parseFloat((document.getElementById('reels-voice-volume') || {}).value || '100') || 100,
+        voiceVolume: _getGlobalVoiceVolumePercent(),
         bgVolume: _getGlobalBgVolumePercent(),
         bgmVolume: _getGlobalBgmVolumePercent(),
         useGPU: (document.getElementById('reels-use-gpu') || {}).checked || false,
@@ -13971,7 +14309,7 @@ function collectCurrentProjectState() {
         loopFade: (document.getElementById('reels-loop-fade') || {}).checked !== false,
         loopFadeDuration: parseFloat((document.getElementById('reels-loop-fade-dur') || {}).value || '1') || 1,
         introPath: (document.getElementById('reels-intro-path') || {}).value || '',
-        karaokeHighlight: (document.getElementById('reels-karaoke-hl') || {}).checked || false,
+        karaokeHighlight: (document.getElementById('reels-highlight-enabled') || document.getElementById('reels-karaoke-hl') || {}).checked !== false,
         reverbEnabled: (document.getElementById('reels-reverb-enabled') || {}).checked || false,
         reverbPreset: (document.getElementById('reels-reverb-preset') || {}).value || 'hall',
         reverbMix: parseFloat((document.getElementById('reels-reverb-mix') || {}).value || '30') || 30,
@@ -14096,7 +14434,10 @@ function applyRestoredProject(result) {
             if (Number.isFinite(dur) && dur > 0) setVal('reels-loop-fade-dur', String(dur));
         }
         if (opts.introPath) setVal('reels-intro-path', opts.introPath);
-        setCheck('reels-karaoke-hl', opts.karaokeHighlight);
+        const restoredHighlight=_normalizeSubtitleHighlight(result.style || {});
+        const highlightOn=typeof restoredHighlight.highlight_enabled==='boolean' ? restoredHighlight.highlight_enabled : opts.karaokeHighlight !== false;
+        setCheck('reels-karaoke-hl', highlightOn);
+        setCheck('reels-highlight-enabled', highlightOn);
         setCheck('reels-reverb-enabled', opts.reverbEnabled);
         if (opts.reverbPreset) setVal('reels-reverb-preset', opts.reverbPreset);
         if (opts.reverbMix !== undefined) setVal('reels-reverb-mix', String(opts.reverbMix));
@@ -14111,8 +14452,8 @@ function applyRestoredProject(result) {
 
         
         // 恢复分辨率设置
-        const tw = opts.targetWidth || 1080;
-        const th = opts.targetHeight || 1920;
+        const tw = Math.min(opts.targetWidth || 1080, opts.targetHeight || 1920);
+        const th = Math.max(opts.targetWidth || 1080, opts.targetHeight || 1920);
         _reelsState.targetWidth = tw;
         _reelsState.targetHeight = th;
         
@@ -14215,7 +14556,7 @@ function reelsSaveProject(event) {
         namingVidsPerDay: parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3,
         namingPrefix: localStorage.getItem('reels_naming_prefix') || '',
         namingSuffix: localStorage.getItem('reels_naming_suffix') || '',
-        voiceVolume: parseFloat((document.getElementById('reels-voice-volume') || {}).value || '100') || 100,
+        voiceVolume: _getGlobalVoiceVolumePercent(),
         bgVolume: _getGlobalBgVolumePercent(),
         useGPU: (document.getElementById('reels-use-gpu') || {}).checked || false,
         useMemoryDecoder: (document.getElementById('reels-use-memory-decoder') || {}).checked || false,
@@ -14223,7 +14564,7 @@ function reelsSaveProject(event) {
         loopFade: (document.getElementById('reels-loop-fade') || {}).checked !== false,
         loopFadeDuration: parseFloat((document.getElementById('reels-loop-fade-dur') || {}).value || '1') || 1,
         introPath: (document.getElementById('reels-intro-path') || {}).value || '',
-        karaokeHighlight: (document.getElementById('reels-karaoke-hl') || {}).checked || false,
+        karaokeHighlight: (document.getElementById('reels-highlight-enabled') || document.getElementById('reels-karaoke-hl') || {}).checked !== false,
         reverbEnabled: (document.getElementById('reels-reverb-enabled') || {}).checked || false,
         reverbPreset: (document.getElementById('reels-reverb-preset') || {}).value || 'hall',
         reverbMix: parseFloat((document.getElementById('reels-reverb-mix') || {}).value || '30') || 30,
@@ -14325,7 +14666,7 @@ function _captureReelsHistoryState() {
         namingVidsPerDay: parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3,
         namingPrefix: localStorage.getItem('reels_naming_prefix') || '',
         namingSuffix: localStorage.getItem('reels_naming_suffix') || '',
-        voiceVolume: parseFloat((document.getElementById('reels-voice-volume') || {}).value || '100') || 100,
+        voiceVolume: _getGlobalVoiceVolumePercent(),
         bgVolume: _getGlobalBgVolumePercent(),
         bgmVolume: _getGlobalBgmVolumePercent(),
         useGPU: (document.getElementById('reels-use-gpu') || {}).checked || false,
@@ -14334,7 +14675,7 @@ function _captureReelsHistoryState() {
         loopFade: (document.getElementById('reels-loop-fade') || {}).checked !== false,
         loopFadeDuration: parseFloat((document.getElementById('reels-loop-fade-dur') || {}).value || '1') || 1,
         introPath: (document.getElementById('reels-intro-path') || {}).value || '',
-        karaokeHighlight: (document.getElementById('reels-karaoke-hl') || {}).checked || false,
+        karaokeHighlight: (document.getElementById('reels-highlight-enabled') || document.getElementById('reels-karaoke-hl') || {}).checked !== false,
         reverbEnabled: (document.getElementById('reels-reverb-enabled') || {}).checked || false,
         reverbPreset: (document.getElementById('reels-reverb-preset') || {}).value || 'hall',
         reverbMix: parseFloat((document.getElementById('reels-reverb-mix') || {}).value || '30') || 30,
@@ -14668,6 +15009,7 @@ window.reelsHandleCustomResolutionChange = function() {
 };
 
 function _reelsUpdateResolution(w, h) {
+    [w, h] = [Math.min(w, h), Math.max(w, h)];
     _reelsState.targetWidth = w;
     _reelsState.targetHeight = h;
 
@@ -15503,7 +15845,7 @@ function _flushBgQueueTableAndHistory(options = {}) {
     const immediate = options.immediate === true;
     const totalTasks = Array.isArray(_reelsState?.tasks) ? _reelsState.tasks.length : 0;
     const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
-    const isRangeDragging = !immediate && totalTasks > 50 && activeEl && activeEl.tagName === 'INPUT' && activeEl.type === 'range';
+    const isRangeDragging = !immediate && totalTasks > 1 && activeEl && activeEl.tagName === 'INPUT' && activeEl.type === 'range';
 
     const doFlush = () => {
         if (typeof _renderBatchTable === 'function') {
@@ -16015,6 +16357,9 @@ window.reelsApplyBgmMediaAndConfigToAllTasks = function() {
         if (t && t !== sourceTask) {
             t.bgmMode = sourceTask.bgmMode || 'single';
             t.bgmPath = sourceTask.bgmPath || '';
+            t.bgm_path = t.bgmPath;
+            if (typeof t.bgm === 'string') t.bgm = t.bgmPath;
+            else if (t.bgm && typeof t.bgm === 'object') t.bgm = {...t.bgm, path:t.bgmPath};
             t.bgmClipPool = Array.isArray(sourceTask.bgmClipPool) ? [...sourceTask.bgmClipPool] : [];
             t.bgmClipActivePool = Array.isArray(sourceTask.bgmClipActivePool) ? [...sourceTask.bgmClipActivePool] : [];
             _copyBgmParamsToTask(sourceTask, t);
@@ -16087,10 +16432,7 @@ window.reelsCopyCvToBgAllTasks = function() {
         if (!t) continue;
         if (t.contentVideoPath) {
             const oldPaths = [t.bgPath, t.videoPath, t.concatVideoPath].filter(Boolean);
-            t.bgPath = t.contentVideoPath;
-            t.videoPath = t.contentVideoPath;
-            t.bgSrcUrl = null;
-            t.srcUrl = null;
+            _setTaskSingleBackground(t, t.contentVideoPath, { clearBgSrcUrl:true, detectImage:true });
             if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
                 window.reelsPurgeTaskBackgroundMedia(t, { extraPaths: [...oldPaths, t.bgPath] });
             } else {
@@ -16121,6 +16463,7 @@ window.reelsClearCvPathAllTasks = function() {
     for (const t of targets) {
         if (t && t.contentVideoPath) {
             t.contentVideoPath = '';
+            t.content_video_path = '';
             clearedCount++;
         }
     }
@@ -16326,10 +16669,7 @@ window.reelsSelectBgPathUI = async function() {
     const path = await _pickSingleFile('选择背景素材 (图片/视频)', ['mp4', 'mov', 'avi', 'mkv', 'webm', 'jpg', 'jpeg', 'png', 'webp', 'gif']);
     if (path) {
         const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
-        task.bgPath = path;
-        task.videoPath = path;
-        task.bgSrcUrl = null;
-        task.srcUrl = null;
+        _setTaskSingleBackground(task, path, { clearBgSrcUrl: true, detectImage: true });
         document.getElementById('reels-bg-path-ui').value = path;
         if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
             window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: [...oldPaths, path] });
@@ -16354,10 +16694,7 @@ window.reelsClearBgPathUI = function() {
     if (!task) return;
 
     const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
-    task.bgPath = '';
-    task.videoPath = '';
-    task.bgSrcUrl = '';
-    task.srcUrl = '';
+    _setTaskSingleBackground(task, '', { clearBgSrcUrl: true });
     document.getElementById('reels-bg-path-ui').value = '';
     if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
         window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: oldPaths });
@@ -16520,10 +16857,7 @@ window.reelsCopyCvToBgUI = function() {
     }
 
     const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
-    task.bgPath = task.contentVideoPath;
-    task.videoPath = task.contentVideoPath;
-    task.bgSrcUrl = null;
-    task.srcUrl = null;
+    _setTaskSingleBackground(task, task.contentVideoPath, { clearBgSrcUrl: true, detectImage: true });
     document.getElementById('reels-bg-path-ui').value = task.bgPath;
     if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
         window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: [...oldPaths, task.bgPath] });

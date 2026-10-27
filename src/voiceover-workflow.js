@@ -112,15 +112,28 @@ function vwApplyFolderGrouping(rows) {
 }
 
 // 刷新音色列表
+function _isVWVoicePageActive() {
+    if (window.location.hash.startsWith('#template=') && !vwPageInitialized) return false;
+    const library=document.getElementById('template-library-modal');
+    if(library && library.style.display!=='none') return false;
+    return !!document.getElementById('voiceover-workflow-panel')?.classList.contains('active');
+}
+let vwVoicesLoading = false;
+let vwVoicesLoaded = false;
 async function refreshVWVoices() {
     const select = document.getElementById('vw-default-voice');
-    if (!select) return;
+    // Template editors share this script with the voiceover page, but opening
+    // a local template must never start unrelated online provider requests.
+    if (!select || !_isVWVoicePageActive() || vwVoicesLoading) return;
+    vwVoicesLoading = true;
 
     try {
         const response = await apiFetch(`${API_BASE}/elevenlabs/voices`);
         const data = await response.json();
 
         if (data.voices && data.voices.length > 0) {
+            vwVoicesLoaded = true;
+            const previousVoice = select.value;
             select.innerHTML = data.voices.map(v => {
                 const shortId = v.voice_id ? escapeHtml(v.voice_id.slice(0, 8)) + '...' : '';
                 const catLabel = (typeof _voiceCategoryLabel === 'function')
@@ -129,19 +142,22 @@ async function refreshVWVoices() {
                 const cleanName = String(v.name || '').replace(/^\[[^\]]+\]\s*/, '');
                 return `<option value="${escapeHtml(v.voice_id)}" data-category="${escapeHtml(v.category || 'premade')}" data-full-voice-id="${escapeHtml(v.voice_id)}">${escapeHtml(catLabel)} ${escapeHtml(cleanName)} (${shortId})</option>`;
             }).join('');
+            if (previousVoice && Array.from(select.options).some(option=>option.value===previousVoice)) select.value=previousVoice;
 
             // 设置或刷新 Voice ID 提示行
             _setupVWVoiceTip(select);
         } else if (data.error) {
             select.innerHTML = `<option value="">错误: ${escapeHtml(data.error)}</option>`;
-            showToast(`获取音色失败: ${data.error}`, 'error');
+            if (_isVWVoicePageActive()) showToast(`获取音色失败: ${data.error}`, 'error');
         } else {
             select.innerHTML = '<option value="">[未找到音色，请检查网络或Key]</option>';
         }
     } catch (error) {
         console.error('获取音色失败:', error);
         select.innerHTML = '<option value="">[网络或后端错误]</option>';
-        showToast('获取音色异常，后端可能未响应', 'error');
+        if (_isVWVoicePageActive()) showToast('获取音色异常，后端可能未响应', 'error');
+    } finally {
+        vwVoicesLoading = false;
     }
 }
 
@@ -1209,7 +1225,10 @@ async function retryAllVWSubtitles() {
 // 页面加载时刷新音色
 let vwPageInitialized = false;
 function initVWPageOnce() {
-    if (vwPageInitialized) return;
+    if (vwPageInitialized) {
+        if (!vwVoicesLoaded) refreshVWVoices();
+        return;
+    }
     vwPageInitialized = true;
     if (restoreVWResumeState()) {
         renderVWTasks();

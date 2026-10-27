@@ -2514,8 +2514,20 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             return { status: 'ok', backend: 'nodejs', uptime: process.uptime() };
 
         // ==================== 视频模板预设 ====================
+        case 'templates/folders/delete': return templateService.deleteEmptyTemplateFolder(data.id);
+        case 'templates/folders/reorder': return templateService.reorderTemplateLibrary(data.order);
+        case 'templates/folders/list': return templateService.readTemplateFolders();
+        case 'templates/folders/create': return templateService.createTemplateFolder(data.name);
+        case 'templates/folders/rename': return templateService.renameTemplateFolder(data.id,data.name);
+        case 'templates/folders/move': return templateService.moveTemplatesToFolder(data.ids,data.folderId);
+
         case 'templates/list':
             return templateService.listTemplates();
+
+        case 'templates/reorder':
+            return templateService.reorderTemplates(data.ids);
+        case 'templates/thumbnail':
+            return templateService.updateTemplateThumbnail(data.id, data.thumbnail);
 
         case 'templates/get':
             if (!data.id) throw new Error('缺少模板 ID');

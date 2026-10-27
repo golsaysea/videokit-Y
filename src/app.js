@@ -322,6 +322,40 @@ function organizeReelsExportLayout() {
         const label = control.closest('label');
         if (label) label.title = text;
     });
+    // Export fields remain usable when a template window becomes narrow.
+    const exportSection = layout.closest('.nle-export-bar') || layout;
+    exportSection.querySelectorAll('input[type="number"]').forEach(number => {
+        number.readOnly = false;
+        number.style.minWidth = '68px';
+        number.style.flexShrink = '0';
+        number.style.padding = '3px 5px';
+    });
+    exportSection.querySelectorAll('input[type="range"]').forEach(range => {
+        const id = range.id;
+        if (!id) return;
+        const numberId = id === 'reels-bg-volume-range-global' ? 'reels-bg-volume' : id.replace(/-range$/, '');
+        const existing = document.getElementById(numberId);
+        // Bound export fields use text + decimal input mode for reliable typing.
+        // Reuse them instead of creating a second, independently valued control.
+        if ((existing && existing !== range && ['number', 'text'].includes(existing.type)) || document.getElementById(`${id}-manual`)) return;
+        const number = document.createElement('input');
+        number.type = 'number'; number.id = `${id}-manual`;
+        number.className = 'input input-small';
+        for (const key of ['min', 'max', 'step', 'value']) number[key] = range[key];
+        number.style.cssText = 'width:68px;min-width:68px;flex-shrink:0;padding:3px 5px;font-size:11px;';
+        number.title = '可直接输入数字';
+        range.insertAdjacentElement('afterend', number);
+        range.addEventListener('input', () => { number.value = range.value; });
+        number.addEventListener('input', () => {
+            if (number.value === '' || !Number.isFinite(Number(number.value))) return;
+            range.value = number.value;
+            range.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        number.addEventListener('change', () => {
+            number.value = range.value;
+            range.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
 }
 
 // ==================== 字幕面板语言搜索选择器 ====================
@@ -2787,7 +2821,7 @@ async function loadSettings(autoLoadVoices = false) {
         const data = await response.json();
         const primary = document.getElementById('transcription-primary');
         if (primary && data.primary) primary.value = data.primary;
-        const savedAlignModel = localStorage.getItem('rbt_align_model') || 'music_mv';
+        const savedAlignModel = localStorage.getItem('rbt_align_model') || 'auto';
         const subAlignModelEl = document.getElementById('subtitle-align-model');
         if (subAlignModelEl) subAlignModelEl.value = savedAlignModel;
         const reelsAlignModelEl = document.getElementById('reels-align-model');
@@ -3676,7 +3710,7 @@ async function startBatchGeneration() {
         if (sourceTextCandidates.length > 1) {
             formData.append('source_text_candidates', JSON.stringify(sourceTextCandidates));
         }
-        const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+        const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
         formData.append('language', language);
         formData.append('audio_cut_length', cutLength);
         formData.append('preferred_provider', alignModel);
@@ -3964,7 +3998,7 @@ async function retrySingleSubtitleTask(index) {
     if (sourceTextCandidates.length > 1) {
         formData.append('source_text_candidates', JSON.stringify(sourceTextCandidates));
     }
-    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
     formData.append('language', language);
     formData.append('audio_cut_length', cutLength);
     formData.append('preferred_provider', alignModel);
@@ -4082,7 +4116,7 @@ async function startGeneration() {
     const exportFcpxml = document.getElementById('export-fcpxml').checked;
     const sourceUp = document.getElementById('source-up').checked;
     const mergeSrt = document.getElementById('merge-srt').checked;
-    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const alignModel = document.getElementById('subtitle-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
 
     const requestData = {
         audio_path: audioPath,
@@ -32182,3 +32216,93 @@ if(document.getElementById('autoedit-batch-task-list')?.offsetParent){try{render
 if(document.getElementById('organizer-rules-list')?.offsetParent){try{_renderOrganizerRulesList();}catch(error){console.warn('[GlobalUndo] Render _renderOrganizerRulesList:',error.message);}}
 if(organizerState.plan&&document.getElementById('organizer-groups')?.offsetParent){_renderOrganizerSummary();_renderOrganizerGroups();}}});
 window.VideoKitGlobalHistory.register('theme-settings',{contexts:['settings'],capture:()=>({theme:localStorage.getItem(THEME_KEY)||'dark',custom:localStorage.getItem(CUSTOM_THEME_KEY)}),restore:s=>{applyTheme(s.theme,s.custom?JSON.parse(s.custom):undefined);}});
+// VideoKit export ETA: lightweight remaining-time display.
+// Lightweight UI-only remaining-time estimate; never changes export scheduling.
+(function installVideoKitExportEta() {
+    if (window.VideoKitExportEta) { window.VideoKitExportEta.attach(); return; }
+    function createEstimator() {
+        let samples = [], started = null, initial = 0, rate = 0;
+        return {
+            reset() { samples = []; started = null; initial = 0; rate = 0; },
+            sample(progress, now) {
+                const p = Math.max(0, Math.min(1, Number(progress) || 0));
+                if (started === null || (samples.length && p < samples[samples.length - 1].p - 0.001)) {
+                    started = now; initial = p; samples = []; rate = 0;
+                }
+                samples.push({ p, now });
+                while (samples.length > 2 && samples[1].now < now - 15000) samples.shift();
+                if (now - started < 8000 || p <= initial || p >= 1) return null;
+                const first = samples[0];
+                const recent = (p - first.p) / Math.max(1, now - first.now);
+                const average = (p - initial) / Math.max(1, now - started);
+                const measured = recent > 0 ? recent : average;
+                rate = rate > 0 ? rate * 0.75 + measured * 0.25 : measured;
+                return rate > 0 ? Math.max(1, Math.ceil((1 - p) / rate / 1000 - 1e-9)) : null;
+            },
+        };
+    }
+    function formatSeconds(seconds) {
+        const whole = Math.max(0, Math.ceil(Number(seconds) || 0));
+        return `${Math.floor(whole / 60)}分${whole % 60}秒`;
+    }
+    let timer = null, observer = null, mountedList = null, firstRow = null, wasActive = false;
+    const estimator = createEstimator();
+    function update() {
+        if (timer !== null) { clearTimeout(timer); timer = null; }
+        const output = document.getElementById('reels-export-eta');
+        if (!output || !mountedList) return;
+        const rows = [...mountedList.querySelectorAll('[data-job-index]')];
+        const active = window._reelsState?.isExporting === true;
+        if ((active && !wasActive) || firstRow !== rows[0]) estimator.reset();
+        firstRow = rows[0]; wasActive = active;
+        const terminal = state => ['success', 'failed', 'canceled'].includes(state);
+        const progress = rows.length ? rows.reduce((sum, row) => sum + (terminal(row.dataset.jobState) ? 1 : Math.max(0, Math.min(100, Number(row.dataset.jobProgress) || 0)) / 100), 0) / rows.length : 0;
+        let value = '--分--秒';
+        if (active) {
+            const seconds = estimator.sample(progress, performance.now());
+            value = seconds === null ? (progress >= 1 ? '即将完成' : '估算中…') : formatSeconds(seconds);
+            timer = setTimeout(update, 1000);
+        } else if (rows.length) {
+            value = rows.some(row => row.dataset.jobState === 'canceled') ? '已取消' : (progress >= 1 ? '0分0秒' : '已停止');
+        }
+        const text = `预计导出时间：${value}`;
+        if (output.textContent !== text) output.textContent = text;
+        const elapsedOutput = document.getElementById('reels-export-elapsed');
+        const timing = window._reelsState?.exportTiming;
+        if (timing && !active && !timing.finishedAt) timing.finishedAt = Date.now();
+        const elapsedSeconds = timing?.startedAt ? Math.max(0, Math.floor(((timing.finishedAt || Date.now()) - timing.startedAt) / 1000)) : 0;
+        const elapsedText = `导出时间：${formatSeconds(elapsedSeconds)}`;
+        if (elapsedOutput && elapsedOutput.textContent !== elapsedText) elapsedOutput.textContent = elapsedText;
+    }
+    function attach() {
+        const actions = document.querySelector('#reels-video-output-layout [data-export-group="actions"]');
+        const list = document.getElementById('reels-export-job-progress-list');
+        if (!actions || !list) return;
+        if (!document.getElementById('reels-export-eta')) {
+            const output = document.createElement('span');
+            output.id = 'reels-export-eta';
+            output.style.cssText = 'margin-left:auto;align-self:center;flex:0 0 auto;white-space:nowrap;font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums;';
+            output.title = '按当前批次实际处理速度估算的剩余时间，会随素材、特效和电脑负载动态调整。';
+            actions.appendChild(output);
+        }
+        if (!document.getElementById('reels-export-elapsed')) {
+            const elapsed = document.createElement('span');
+            elapsed.id = 'reels-export-elapsed';
+            elapsed.style.cssText = 'margin-left:12px;align-self:center;flex:0 0 auto;white-space:nowrap;font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums;';
+            elapsed.title = '本批次从开始导出到全部处理结束的实际总用时，结束后保留结果。';
+            actions.appendChild(elapsed);
+        }
+        if (mountedList !== list) {
+            observer?.disconnect(); mountedList = list;
+            // Export jobs can report together; keep ETA work to once a second.
+            observer = new MutationObserver(() => { if (timer === null) update(); });
+            observer.observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-job-progress', 'data-job-state'] });
+            const button = document.getElementById('reels-export-btn');
+            if (button) observer.observe(button, { attributes: true, attributeFilter: ['disabled'] });
+        }
+        update();
+    }
+    window.VideoKitExportEta = { createEstimator, formatSeconds, attach, update };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach, { once: true });
+    else attach();
+})();

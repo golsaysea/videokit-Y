@@ -290,8 +290,85 @@
         return timeline;
     }
 
+    // A background-column replacement is authoritative. Remove only the old
+    // background and its bound source audio before legacy projection can restore it.
+    function resetBackground(task) {
+        if (!task?.timeline || !TimelineLib) return;
+        const timeline = typeof task.timeline.findTrackByType === 'function'
+            ? task.timeline : TimelineLib.Timeline.fromJSON(task.timeline);
+        const oldSources = new Set();
+        const isBackground = (track, clip) => {
+            const role = clip?._extra?.role || track?._extra?.trackRole || '';
+            if (role === 'background' || role === 'source_audio') return true;
+            // The editor treats unlabelled legacy video tracks as background too.
+            return !role && track.type === 'video' && track._extra?.label !== '插入素材';
+        };
+        for (const track of timeline.tracks) {
+            for (const clip of track.clips || []) if (isBackground(track, clip)) oldSources.add(clip.sourceId);
+        }
+        const protectedAudio = new Set([task.audioPath, task.bgmPath, task.contentVideoPath].filter(Boolean));
+        for (const track of timeline.tracks) {
+            track.clips = (track.clips || []).filter(clip => {
+                if (isBackground(track, clip)) return false;
+                const role = clip?._extra?.role || track?._extra?.trackRole || '';
+                const sourcePath = timeline.sources[clip.sourceId]?.path;
+                return !(!role && track.domain === 'audio' && oldSources.has(clip.sourceId) && !protectedAudio.has(sourcePath));
+            });
+        }
+        delete timeline._extra.backgroundSegmentKey;
+        task.timeline = timeline;
+        delete task.timelineBackgroundTrim;
+        delete task.renderPlan;
+    }
+
+    function resetVoice(task) {
+        if (!task?.timeline || !TimelineLib) return;
+        const tl = typeof task.timeline.findTrackByType === 'function' ? task.timeline : TimelineLib.Timeline.fromJSON(task.timeline);
+        for (const track of tl.tracks) track.clips = (track.clips || []).filter(clip => {
+            const role = clip?._extra?.role || track?._extra?.trackRole || '';
+            return role !== 'voice' && !(track.domain === 'audio' && !role && track._extra?.label === '人声 MP3');
+        });
+        task.timeline = tl;
+        delete task.renderPlan;
+    }
+
+    function setVoice(task, filePath) {
+        if (!task) return;
+        resetVoice(task);
+        task.audioPath = filePath || '';
+        task._voicePathAuthoritative = true;
+        for (const key of ['voicePath', 'voice_path', 'audio_path', 'audio', 'audioSrcUrl', 'audioUrl', 'audioDuration', 'renderedAudioPath']) delete task[key];
+        const state = root._reelsState;
+        if (state?.tasks?.[state.selectedIdx] === task && typeof root.reelsSelectTask === 'function') {
+            if (state._mediaDurations && filePath) delete state._mediaDurations[filePath];
+            const audio = root.document?.getElementById('reels-preview-audio');
+            if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); }
+            if (state._voiceRefreshRaf) root.cancelAnimationFrame(state._voiceRefreshRaf);
+            state._voiceRefreshRaf = root.requestAnimationFrame(() => {
+                state._voiceRefreshRaf = null;
+                if (state.tasks[state.selectedIdx] === task) root.reelsSelectTask(state.selectedIdx);
+            });
+        }
+    }
+
     function ensureTimeline(task, options = {}) {
         if (!task || !TimelineLib) return null;
+        const configuredVoice = task.audioPath || '';
+        if (task.timeline?.tracks && (configuredVoice || task._voicePathAuthoritative)) {
+            const voices = task.timeline.tracks.flatMap(track => (track.clips || [])
+                .filter(clip => (clip._extra?.role || clip.role || track._extra?.trackRole || track.trackRole) === 'voice')
+                .map(clip => task.timeline.sources?.[clip.sourceId || clip.source_id]?.path).filter(Boolean));
+            if (voices.some(p => p !== configuredVoice)) resetVoice(task);
+        }
+        // Preview/background-column state is authoritative when opening an older
+        // task or exporting a snapshot with stale timeline background bindings.
+        const configuredBackground = task.bgPath || task.videoPath || '';
+        if (configuredBackground && task.bgMode !== 'multi' && task.timeline?.tracks) {
+            const storedPaths = task.timeline.tracks.flatMap(track => (track.clips || [])
+                .filter(clip => (clip._extra?.role || clip.role || track._extra?.trackRole || track.trackRole) === 'background')
+                .map(clip => task.timeline.sources?.[clip.sourceId || clip.source_id]?.path).filter(Boolean));
+            if (storedPaths.length && !storedPaths.includes(configuredBackground)) resetBackground(task);
+        }
         if (task.timeline && typeof task.timeline.findTrackByType === 'function') {
             return ensureLegacyTracks(task.timeline, task, options);
         }
@@ -902,7 +979,7 @@
         return addedCount > 0;
     }
 
-    const api = { ensureTimeline, syncLegacyFields, getEditorTracks, applyEditorClip, fillBackgroundLoops, syncInsertClipsFromTimeline, addInsertClip, getInsertOverlays, getCompositedOverlays, moveCompositedOverlay };
+    const api = { ensureTimeline, resetBackground, resetVoice, setVoice, syncLegacyFields, getEditorTracks, applyEditorClip, fillBackgroundLoops, syncInsertClipsFromTimeline, addInsertClip, getInsertOverlays, getCompositedOverlays, moveCompositedOverlay };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.ReelsRenderPlan = api;
 })(typeof window !== 'undefined' ? window : globalThis);

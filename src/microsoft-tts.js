@@ -1002,6 +1002,8 @@
         }
 
         render();
-        setTimeout(() => loadVoices(false), 2000);
+        setTimeout(() => {
+            if (document.getElementById('microsoft-tts-panel')?.classList.contains('active')) loadVoices(false);
+        }, 2000);
     });
 })();

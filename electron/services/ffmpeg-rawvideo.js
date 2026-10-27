@@ -9,14 +9,34 @@
  *   5. cleanup-bg: 清理临时帧文件
  */
 
-const { spawn, execFileSync } = require('child_process');
+const { spawn: nativeSpawn, spawnSync, execFileSync } = require('child_process');
 const { formatMediaError, formatProcessStartError } = require('./media-error');
+const { classifyVideoColorProfile } = require('./reels-hdr-preview');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+function _resolveCpuBudgetModulePath() {
+    if (process.resourcesPath) {
+        const resCandidate = path.join(process.resourcesPath, 'export-cpu-budget.js');
+        if (fs.existsSync(resCandidate)) return resCandidate;
+    }
+    return path.join(__dirname, '..', '..', 'resources', 'export-cpu-budget.js');
+}
+
+function spawn(command, args, options) {
+    const proc = nativeSpawn(command, args, { ...options, windowsHide: true });
+    if (process.platform === 'win32' && proc.pid) {
+        proc._cpuBudget = require(_resolveCpuBudgetModulePath()).assign(proc.pid);
+        proc._cpuBudget.catch(error => { console.error('[Export CPU budget]', error.message); try { proc.kill(); } catch (_) {} });
+    }
+    return proc;
+}
+
 const sessions = new Map();
+const _cachedColorProfiles = new Map();
+const _cachedLibplaceboAvailable = new Map();
 
 function generateId() {
     return Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
@@ -283,31 +303,32 @@ function _findFileRecursive(dir, fileName, maxDepth) {
     return null;
 }
 
+const _missingMediaResolution = new Map();
 function _resolveMissingMediaFile(filePath, tag = 'WYSIWYG') {
     if (!filePath || typeof filePath !== 'string') return '';
     if (path.isAbsolute(filePath) && fs.existsSync(filePath)) return filePath;
-    const bareFileName = path.basename(filePath);
-    if (!bareFileName) return '';
-    console.log(`[${tag}] 素材路径不存在，尝试搜索文件: "${bareFileName}" (原路径: "${filePath}")`);
-
-    const searchDirs = [
-        path.join(os.homedir(), 'Downloads'),
-        path.join(os.homedir(), 'Desktop'),
-        path.join(os.homedir(), 'Documents'),
-        'D:\\AI素材库',
-        'D:\\素材存储',
-        'D:\\专业发帖',
-    ];
-
-    for (const searchDir of searchDirs) {
-        if (!fs.existsSync(searchDir)) continue;
-        const found = _findFileRecursive(searchDir, bareFileName, 4);
-        if (found) {
-            console.log(`[${tag}] 自动找到文件: "${bareFileName}" → "${found}"`);
-            return found;
+    const key = path.resolve(filePath).toLowerCase();
+    const cached = _missingMediaResolution.get(key);
+    if (cached && Date.now() - cached.at < 30000 && (!cached.path || fs.existsSync(cached.path))) return cached.path;
+    const name = path.basename(filePath), matches = new Set();
+    const roots = [path.join(os.homedir(), 'Downloads'), path.join(os.homedir(), 'Desktop'), path.join(os.homedir(), 'Documents')];
+    const deadline = Date.now() + 250; let scanned = 0, complete = true;
+    function scan(dir, depth) {
+        if (Date.now() > deadline || scanned > 3000) { complete = false; return; }
+        let entries; try { entries = fs.readdirSync(dir, {withFileTypes:true}); } catch (_) { return; }
+        for (const entry of entries) {
+            if (++scanned > 3000 || Date.now() > deadline) { complete = false; return; }
+            if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) matches.add(path.join(dir, entry.name));
+            else if (depth > 0 && entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') scan(path.join(dir, entry.name), depth - 1);
+            if (matches.size > 1) return;
         }
     }
-    return '';
+    for (const dir of roots) { scan(dir, 3); if (!complete || matches.size > 1) break; }
+    const found = complete && matches.size === 1 ? [...matches][0] : '';
+    if (_missingMediaResolution.size > 256) _missingMediaResolution.clear();
+    _missingMediaResolution.set(key, {at:Date.now(),path:found});
+    if (found) console.log(`[${tag}] 已找到唯一匹配素材: ${found}`);
+    return found;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -748,7 +769,8 @@ async function prepareBg(opts) {
                 for (let i = 0; i < selectedClips.length; i++) {
                     const clip = selectedClips[i];
                     const clipPtsFilter = clip.isImage ? 'setpts=PTS-STARTPTS' : ptsFilter;
-                    const normalizeVideoFilter = `${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,settb=AVTB,${clipPtsFilter}`;
+                    const clipColorFilter = clip.isImage ? '' : `${buildInputBt709ConvertFilter(clip.path, ffmpeg)},`;
+                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=AVTB,${clipPtsFilter}`;
                     filterParts.push(`[${i}:v]${normalizeVideoFilter}[v${i}]`);
                 }
 
@@ -792,7 +814,8 @@ async function prepareBg(opts) {
                 for (let i = 0; i < selectedClips.length; i++) {
                     const clip = selectedClips[i];
                     const clipPtsFilter = clip.isImage ? 'setpts=PTS-STARTPTS' : ptsFilter;
-                    const normalizeVideoFilter = `${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,settb=AVTB,${clipPtsFilter}`;
+                    const clipColorFilter = clip.isImage ? '' : `${buildInputBt709ConvertFilter(clip.path, ffmpeg)},`;
+                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=AVTB,${clipPtsFilter}`;
                     filterParts.push(`[${i}:v]${normalizeVideoFilter}[v${i}]`);
                 }
                 const concatLabels = selectedClips.map((_, i) => `[v${i}]`).join('');
@@ -969,7 +992,7 @@ async function prepareBg(opts) {
                 args.push('-i', backgroundPath);
             }
 
-            const filterParts = [normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, safeFps, 'v0', 2)];
+            const filterParts = [normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, safeFps, 'v0', 2, backgroundPath)];
             let prevLabel = 'v0';
 
             for (let i = 1; i < segCount; i++) {
@@ -977,7 +1000,7 @@ async function prepareBg(opts) {
                 const outLabel = i === segCount - 1 ? 'vout' : `vx${i}`;
                 const offset = Math.max(0, i * step).toFixed(3);
                 const padSec = i === segCount - 1 ? 10 : 2;
-                filterParts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, safeFps, inLabel, padSec));
+                filterParts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, safeFps, inLabel, padSec, backgroundPath));
                 filterParts.push(
                     `[${prevLabel}][${inLabel}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${offset}[${outLabel}]`
                 );
@@ -1027,9 +1050,10 @@ async function prepareBg(opts) {
 }
 
 async function extractSimpleLoopWithTrim(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor = 1.0, shouldLoop = false, trimStart = null, trimEnd = null) {
-    let vf = scaleCropFilter;
+    const colorPrefix = isImageMedia(backgroundPath) ? '' : `${buildInputBt709ConvertFilter(backgroundPath, ffmpeg)},`;
+    let vf = `${colorPrefix}${scaleCropFilter}`;
     if (Math.abs(ptsFactor - 1.0) > 0.01) {
-        vf = `${scaleCropFilter},setpts=PTS*${ptsFactor.toFixed(3)}`;
+        vf = `${vf},setpts=PTS*${ptsFactor.toFixed(3)}`;
     }
     const args = ['-y'];
     if (shouldLoop) {
@@ -1055,9 +1079,10 @@ async function extractSimpleLoopWithTrim(ffmpeg, backgroundPath, framesDir, scal
 }
 
 async function extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor = 1.0, shouldLoop = false) {
-    let vf = scaleCropFilter;
+    const colorPrefix = isImageMedia(backgroundPath) ? '' : `${buildInputBt709ConvertFilter(backgroundPath, ffmpeg)},`;
+    let vf = `${colorPrefix}${scaleCropFilter}`;
     if (Math.abs(ptsFactor - 1.0) > 0.01) {
-        vf = `${scaleCropFilter},setpts=PTS*${ptsFactor.toFixed(3)}`;
+        vf = `${vf},setpts=PTS*${ptsFactor.toFixed(3)}`;
     }
     const args = ['-y'];
     if (shouldLoop) {
@@ -1132,15 +1157,153 @@ function normalizeDisplayAspectFilter() {
     return 'scale=trunc(iw*sar/2)*2:ih:flags=lanczos,setsar=1';
 }
 
-function normalizedDirectBackgroundFilter(inputIndex, scaleCropFilter, ptsFilter, fps, outputLabel, stopPadSeconds = 0) {
+function probeVideoColorProfile(filePath) {
+    if (!filePath || typeof filePath !== 'string' || isImageMedia(filePath) || /\.gif$/i.test(filePath)) {
+        return { needsConversion: false, reason: 'non-video', isHdr: false, isWideGamut: false, hasIncompleteMetadata: false };
+    }
+    try {
+        if (!fs.existsSync(filePath)) {
+            return { needsConversion: false, reason: 'missing', isHdr: false, isWideGamut: false, hasIncompleteMetadata: false };
+        }
+        const stat = fs.statSync(filePath);
+        const cacheKey = `${path.resolve(filePath)}|${stat.size}|${stat.mtimeMs}`;
+        if (_cachedColorProfiles.has(cacheKey)) {
+            return _cachedColorProfiles.get(cacheKey);
+        }
+        const rawJson = execFileSync(findFFprobe(), [
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=color_transfer,color_primaries,color_space,color_range,pix_fmt,bits_per_raw_sample:stream_side_data',
+            '-of', 'json',
+            filePath,
+        ], { timeout: 15000 }).toString().trim();
+        const stream = JSON.parse(rawJson || '{}')?.streams?.[0] || null;
+        const profile = classifyVideoColorProfile(stream);
+        _cachedColorProfiles.set(cacheKey, profile);
+        return profile;
+    } catch (_) {
+        return { needsConversion: false, reason: 'probe-error', isHdr: false, isWideGamut: false, hasIncompleteMetadata: false };
+    }
+}
+
+function _canUseLibplacebo(ffmpegPath = findFFmpeg()) {
+    const key = String(ffmpegPath || 'ffmpeg');
+    if (_cachedLibplaceboAvailable.has(key)) {
+        return _cachedLibplaceboAvailable.get(key);
+    }
+    try {
+        const res = spawnSync(key, [
+            '-v', 'error',
+            '-f', 'lavfi', '-i', 'color=c=black:s=16x16:r=1:d=1,format=yuv420p',
+            '-vf', 'libplacebo=format=yuv420p:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv',
+            '-frames:v', '1',
+            '-f', 'null', '-',
+        ], { timeout: 10000 });
+        const ok = res && res.status === 0;
+        _cachedLibplaceboAvailable.set(key, ok);
+        return ok;
+    } catch (_) {
+        _cachedLibplaceboAvailable.set(key, false);
+        return false;
+    }
+}
+
+function buildInputBt709ConvertFilter(sourcePathOrProfile, ffmpegPath = findFFmpeg()) {
+    const profile = (sourcePathOrProfile && typeof sourcePathOrProfile === 'object')
+        ? sourcePathOrProfile
+        : probeVideoColorProfile(sourcePathOrProfile);
+    const cleanHdrMeta = 'sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv';
+    if (profile && profile.needsConversion) {
+        if (!(profile.hasIncompleteMetadata && !profile.isHdr) && _canUseLibplacebo(ffmpegPath)) {
+            const tonemap = profile.isHdr ? ':tonemapping=bt.2390:apply_dolbyvision=true' : '';
+            return `libplacebo=format=yuv420p:colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv${tonemap}:gamut_mode=perceptual,format=yuv420p,${cleanHdrMeta}`;
+        }
+        if (profile.isHdr) {
+            return `zscale=t=linear:npl=100,format=gbrpf32le,tonemap=tonemap=hable:desat=0,zscale=t=bt709:p=bt709:m=bt709:r=tv,format=yuv420p,${cleanHdrMeta}`;
+        }
+        return `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,${cleanHdrMeta}`;
+    }
+    return `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,${cleanHdrMeta}`;
+}
+
+function normalizedDirectBackgroundFilter(inputIndex, scaleCropFilter, ptsFilter, fps, outputLabel, stopPadSeconds = 0, sourcePathOrProfile = null) {
     const safeFps = Math.max(1, Number(fps) || 30);
     const padFilter = Number(stopPadSeconds) > 0
         ? `,tpad=stop_mode=clone:stop_duration=${Number(stopPadSeconds).toFixed(2)}`
         : '';
-    return `[${inputIndex}:v]${scaleCropFilter},${ptsFilter},fps=${safeFps},format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS${padFilter}[${outputLabel}]`;
+    const isImageSource = typeof sourcePathOrProfile === 'string' && isImageMedia(sourcePathOrProfile);
+    const inputColorFilter = isImageSource
+        ? ''
+        : `${buildInputBt709ConvertFilter(sourcePathOrProfile)},`;
+    return `[${inputIndex}:v]${inputColorFilter}${scaleCropFilter},${ptsFilter},fps=${safeFps},scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=AVTB,setpts=PTS-STARTPTS${padFilter}[${outputLabel}]`;
+}
+
+// A GIF is a short repeating animation. Decode one complete cycle once, even
+// when ten jobs request different output durations at the same time.
+const _gifOverlayPreparations = new Map();
+async function prepareGifOverlayCycle(opts) {
+    const fps = Number(opts.fps ?? 30);
+    const duration = Number(opts.duration ?? 10);
+    const overlayPath = path.resolve(opts.overlayPath);
+    if (!Number.isFinite(fps) || fps <= 0 || !Number.isFinite(duration) || duration <= 0) throw new Error('动图时长或帧率无效');
+    const stat = fs.statSync(overlayPath);
+    const key = crypto.createHash('sha256').update(JSON.stringify([overlayPath, stat.size, stat.mtimeMs, fps, 'gif-cycle-rgba-v3'])).digest('hex');
+    if (_gifOverlayPreparations.has(key)) return _gifOverlayPreparations.get(key);
+    const work = (async () => {
+        const settings = require('./settings');
+        const cacheBase = path.join(settings.getSecureTmpDir(), 'videokit_overlay_cache');
+        fs.mkdirSync(cacheBase, { recursive: true });
+        const framesDir = path.join(cacheBase, `gif_${key}`);
+        const readComplete = () => {
+            try {
+                const meta = JSON.parse(fs.readFileSync(path.join(framesDir, 'complete.json'), 'utf8'));
+                if (meta.key !== key || !(meta.cycleDuration > 0) || !Number.isInteger(meta.frameCount) || meta.frameCount < 1) return null;
+                const names = fs.readdirSync(framesDir).filter(n => /^frame_\d{6}\.png$/.test(n));
+                if (names.length !== meta.frameCount || !names.includes('frame_000001.png') || !names.includes(`frame_${String(meta.frameCount).padStart(6, '0')}.png`)) return null;
+                return { framesDir, frameCount: meta.frameCount, cycleDuration: meta.cycleDuration };
+            } catch (_) { return null; }
+        };
+        const hit = readComplete();
+        if (hit) return hit;
+        const cycleDuration = await getMediaDuration(overlayPath);
+        if (!(cycleDuration > 0) || !Number.isFinite(cycleDuration)) throw new Error(`无法读取动图时长：${path.basename(overlayPath)}`);
+        const frameLimit = Math.max(1, Math.ceil(cycleDuration * fps));
+        const building = path.join(cacheBase, `gif_${key}.building_${generateId()}`);
+        fs.mkdirSync(building);
+        try {
+            await runFFmpegSync(findFFmpeg(), [
+                '-y', '-threads', '1', '-ignore_loop', '1', '-i', overlayPath,
+                '-t', String(cycleDuration), '-r', String(fps),
+                '-vf', `format=rgba,${normalizeDisplayAspectFilter()}`,
+                '-frames:v', String(frameLimit), '-an', '-threads:v', '1', '-compression_level', '1',
+                path.join(building, 'frame_%06d.png'),
+            ], { timeoutMs: 120000, action: `透明 GIF 单轮解码（${path.basename(overlayPath)}）` });
+            const frameCount = fs.readdirSync(building).filter(n => /^frame_\d{6}\.png$/.test(n)).length;
+            if (frameCount < Math.max(1, frameLimit - 1)) throw new Error(`动图单轮解码不完整：${frameCount}/${frameLimit} 帧`);
+            fs.writeFileSync(path.join(building, 'complete.json'), JSON.stringify({ key, frameCount, cycleDuration }));
+            // Only publish completed sequences. No job can read or clear a
+            // sequence another job is still writing.
+            if (fs.existsSync(framesDir)) {
+                const concurrentHit = readComplete();
+                if (concurrentHit) return concurrentHit;
+                fs.rmSync(framesDir, { recursive: true, force: true });
+            }
+            fs.renameSync(building, framesDir);
+            console.log(`[WYSIWYG-OVERLAY] GIF 共享单轮缓存：${frameCount} 帧，${cycleDuration}s`);
+            return { framesDir, frameCount, cycleDuration };
+        } finally {
+            if (fs.existsSync(building)) fs.rmSync(building, { recursive: true, force: true });
+        }
+    })();
+    _gifOverlayPreparations.set(key, work);
+    try { return await work; }
+    finally { if (_gifOverlayPreparations.get(key) === work) _gifOverlayPreparations.delete(key); }
 }
 
 async function prepareOverlay(opts) {
+    if (opts.overlayPath && /\.gif$/i.test(opts.overlayPath) && (opts.trimStart == null || opts.trimStart === '') && (opts.trimEnd == null || opts.trimEnd === '')) {
+        return prepareGifOverlayCycle(opts);
+    }
     let {
         overlayPath,
         fps = 30,
@@ -1179,8 +1342,8 @@ async function prepareOverlay(opts) {
     try {
         const stat = fs.statSync(overlayPath);
         // Version the cache because older extractions lost SAR metadata when
-        // video frames were written as PNG files.
-        cacheHash = crypto.createHash('md5').update(`${overlayPath}_${stat.size}_${stat.mtimeMs}_${fps}_${duration}_${trimStart}_${trimEnd}_display-aspect-v2`).digest('hex');
+        // video frames were written as PNG files, and HDR/WCG videos need BT.709 conversion.
+        cacheHash = crypto.createHash('md5').update(`${overlayPath}_${stat.size}_${stat.mtimeMs}_${fps}_${duration}_${trimStart}_${trimEnd}_display-aspect-v3-bt709`).digest('hex');
     } catch(e) { /* fallback generates unique id */ }
 
     const cacheBase = path.join(settings.getSecureTmpDir(), 'videokit_overlay_cache');
@@ -1231,13 +1394,18 @@ async function prepareOverlay(opts) {
         }
     }
 
+    const overlayProfile = !isAnimatedGif ? probeVideoColorProfile(overlayPath) : null;
+    const overlayColorPrefix = (overlayProfile && overlayProfile.needsConversion)
+        ? `${buildInputBt709ConvertFilter(overlayProfile, ffmpeg)},`
+        : '';
+
     args.push(
         '-i', overlayPath,
         '-t', String(duration),
         '-r', String(fps),
         // Decode GIF through RGBA before scaling so palette transparency is
         // retained in the PNG sequence rather than composited onto black.
-        '-vf', isAnimatedGif ? `format=rgba,${normalizeDisplayAspectFilter()}` : normalizeDisplayAspectFilter(),
+        '-vf', isAnimatedGif ? `format=rgba,${normalizeDisplayAspectFilter()}` : `${overlayColorPrefix}${normalizeDisplayAspectFilter()}`,
         // `-t` limits elapsed timestamps, but malformed GIF timing metadata
         // can prevent it from terminating under `-stream_loop`.  Bound the
         // output count as well, so the requested timeline duration is exact.
@@ -1495,7 +1663,7 @@ async function startSession(opts) {
             const parts = [];
             for (let i = 0; i < bgInputCount; i++) {
                 const padSec = i === bgInputCount - 1 ? Math.max(10, Math.ceil(targetDuration) + 5) : 2;
-                parts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, fps, `bg${i}`, padSec));
+                parts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, fps, `bg${i}`, padSec, opts.alphaOverlayBgPath));
             }
             let previous = 'bg0';
             for (let i = 1; i < bgInputCount; i++) {
@@ -1511,10 +1679,12 @@ async function startSession(opts) {
             // the graph (drop=... in FFmpeg), then miss the finalization wait.
             // Normalize before overlay just like the xfade branch already did.
             const fallbackPadSec = isAlphaBgImage ? 0 : Math.max(10, Math.ceil(targetDuration) + 5);
-            bgFilter = normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, fps, 'bg', fallbackPadSec);
+            bgFilter = normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, fps, 'bg', fallbackPadSec, opts.alphaOverlayBgPath);
         }
         const fgInput = bgInputCount;
-        const filterComplex = `${bgFilter};[${fgInput}:v]scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuva420p[fg];[bg][fg]overlay=0:0:format=auto:shortest=1,fps=${fps}[outv]`;
+        // Retain final-frame protection when the original overlay/fps path hits EOF.
+        const finalFramePad = totalFrames > 0 ? `,tpad=stop_mode=clone:stop_duration=${(1 / Math.max(1, fps)).toFixed(8)}` : '';
+        const filterComplex = `${bgFilter};[${fgInput}:v]scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuva420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv[fg];[bg][fg]overlay=0:0:format=auto:shortest=1${finalFramePad},fps=${fps},format=yuv420p,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv[outv]`;
         args.push('-filter_complex', filterComplex, '-map', '[outv]');
 
     } else {
@@ -1527,13 +1697,14 @@ async function startSession(opts) {
             '-color_range', 'pc',
             '-i', 'pipe:0',
             '-an',
-            '-vf', 'scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709'
+            '-vf', 'scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv'
         );
     }
 
     args.push(
         ...encoderArgs,
         '-pix_fmt', 'yuv420p',
+        '-map_metadata', '-1',
         '-color_range', 'tv',
         '-colorspace', 'bt709',
         '-color_primaries', 'bt709',
@@ -1545,6 +1716,10 @@ async function startSession(opts) {
 
     console.log(`[WYSIWYG] 启动编码: ${ffmpeg} ${args.join(' ')}`);
     const proc = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    if (process.platform === 'win32') {
+        try { await proc._cpuBudget; }
+        catch (error) { proc.kill(); throw error; }
+    }
 
     const session = {
         id: sessionId, proc, tempVideo, outputPath,
@@ -2945,5 +3120,7 @@ module.exports = {
         validateFrameCompletion,
         normalizeDisplayAspectFilter,
         normalizedDirectBackgroundFilter,
+        probeVideoColorProfile,
+        buildInputBt709ConvertFilter,
     },
 };

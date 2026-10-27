@@ -445,6 +445,7 @@ function createScrollOverlay(opts = {}) {
         scroll_to_x: opts.scroll_to_x ?? 540,
         scroll_to_y: opts.scroll_to_y ?? -200,      // 向上滚出
         scroll_speed: opts.scroll_speed ?? 0.8,
+        scroll_end_y_auto: opts.scroll_end_y_auto !== false,
         scroll_auto_stop: opts.scroll_auto_stop === true, // 默认关闭
         scroll_auto_stop_lead: opts.scroll_auto_stop_lead ?? 0, // 提前完成秒数，默认0
         scroll_static: opts.scroll_static === true,       // 固定显示模式（关闭滚动）
@@ -477,6 +478,8 @@ function createScrollOverlay(opts = {}) {
         scroll_offset_y: opts.scroll_offset_y ?? 0,
         // ── 出字效果（朗诵打字机/手写跟读）──
         scroll_typewriter_enabled: opts.scroll_typewriter_enabled === true,
+        scroll_tw_start: opts.scroll_tw_start ?? null,
+        scroll_tw_end: opts.scroll_tw_end ?? null,
         scroll_tw_speech_sync: opts.scroll_tw_speech_sync !== false,
         scroll_tw_reveal_type: opts.scroll_tw_reveal_type || 'char', // 'char' | 'word' | 'sentence'
         scroll_tw_unrevealed_opacity: opts.scroll_tw_unrevealed_opacity ?? 0, // 0~100 (%)
@@ -3463,7 +3466,21 @@ function _drawSolidMaskOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTim
  * 渲染滚动字幕覆层。
  * x/y/w/h = 裁切区域; 文本从 scroll_from → scroll_to 移动。
  */
+let _scrollMotionMeasureCanvas = null;
+function measureScrollMotion(overlay) {
+    if (!overlay || overlay.type !== 'scroll' || !overlay.content || typeof document === 'undefined') return null;
+    const canvas = _scrollMotionMeasureCanvas || (_scrollMotionMeasureCanvas = document.createElement('canvas'));
+    const ctx = canvas.getContext('2d');
+    const copy = { ...overlay, _scrollBindingMeasureOnly: true };
+    ctx.save();
+    try {
+        _drawScrollOverlay(ctx, copy, Number(copy.x)||0, Number(copy.y)||0, Number(copy.w)||1000, Number(copy.h)||800, Number(copy.end)||20, 1080, 1920);
+        return Number.isFinite(copy._scrollResolvedEndY) ? { endY: copy._scrollResolvedEndY, lastBottomY: copy._scrollBodyLastBottomY, endTime: copy._scrollResolvedEndTime } : null;
+    } finally { ctx.restore(); }
+}
+
 function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, canvasW, canvasH) {
+    ctx.textBaseline = 'alphabetic';
     // 整体偏移：裁切区域 + 滚动坐标一起移动
     const offsetX = parseFloat(ov.scroll_offset_x ?? 0);
     const offsetY = parseFloat(ov.scroll_offset_y ?? 0);
@@ -3507,7 +3524,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     // 进度 = (当前时间 - 开始) / 有效时长，clamp 到 [0, 1]
     // scroll_auto_stop_lead: 提前N秒完成滚动（默认0，即不提前）
     const leadTime = Math.max(0, parseFloat(ov.scroll_auto_stop_lead ?? 0));
-    const effectiveDuration = Math.max(0.1, duration - leadTime);
+    const effectiveDuration = Math.max(0.1, duration - (ov.scroll_end_y_auto !== false ? 0 : leadTime));
     let progress = (currentTime - start) / effectiveDuration;
     progress = Math.max(0, Math.min(1, progress));
 
@@ -3603,7 +3620,37 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     // ── 自动停止：到达最终位置后冻结 ──
     let effectiveToY = toY;
-    if (ov.scroll_auto_stop) {
+    ctx.save();
+    ctx.textBaseline = 'alphabetic';
+    let lastLineIndex = Math.max(0, lines.length - 1);
+    while (lastLineIndex > 0 && !lines[lastLineIndex].trim()) lastLineIndex--;
+    const lastLine = lines[lastLineIndex] || '';
+    const bottomMetrics = ctx.measureText(lastLine);
+    let lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
+    const endRanges = _getAutoColorMergedRanges(ov, 'scroll_body', content) || ov.scroll_styled_ranges;
+    if (endRanges?.length && typeof ReelsRichText !== 'undefined') {
+        const lineStart = content.lastIndexOf(lastLine);
+        const lineEnd = lineStart + lastLine.length;
+        const chunks = ReelsRichText.splitByRanges(content, endRanges, { fontsize: fontSize, bold: fontWeight >= 700 });
+        lastDescent = -Infinity;
+        for (const chunk of chunks) {
+            const a = Math.max(chunk.start, lineStart), b = Math.min(chunk.end, lineEnd);
+            if (a >= b) continue;
+            ctx.font = `${chunk.style.bold ? 700 : fontWeight} ${chunk.style.fontsize || fontSize}px "${fontFamily}", ${fallback}`;
+            lastDescent = Math.max(lastDescent, Number(ctx.measureText(content.substring(a, b)).actualBoundingBoxDescent) || 0);
+        }
+        if (!Number.isFinite(lastDescent)) lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
+    }
+    ctx.restore();
+    const movingTitleH = (ov.scroll_title_fixed !== false && (ov.scroll_title || '').trim()) ? 0 : titleOccupiedH;
+    const bodyBottomOffset = movingTitleH + fontSize + lastLineIndex * lineHeight + lastDescent;
+    if (ov.scroll_end_y_auto !== false) {
+        // Keep 0.4 line above the fully visible edge of the bottom feather.
+        // Never reverse an upward scroll if a short text is already fully inside.
+        const featherBottom = Math.max(0, Number(ov.feather_bottom) || 0) + Math.max(0, Number(ov.feather_bottom_offset) || 0);
+        const bottomClearance = featherBottom + lineHeight * 0.4;
+        effectiveToY = Math.min(fromY, clipY + clipH - bottomClearance - 1 - bodyBottomOffset);
+    } else if (ov.scroll_auto_stop) {
         // 正文行高度
         let totalTextH = lines.length * lineHeight;
         // 非固定标题会跟随滚动，它的高度也要计入总文本高度
@@ -3664,6 +3711,9 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     const _titleFixed = ov.scroll_title_fixed !== false && (ov.scroll_title || '').trim();
     ov._scrollBodyFirstLineY = _titleFixed ? curY : (curY + titleOccupiedH);
     ov._scrollBodyLineHeight = lineHeight;
+    ov._scrollResolvedEndY = effectiveToY - offsetY;
+    ov._scrollBodyLastBottomY = curY + bodyBottomOffset;
+    ov._scrollResolvedEndTime = end;
     ov._scrollBodyCurX = curAxisX;
     if (ov._scrollBindingResult) {
         ov._scrollBindingResult.x = curAxisX;
@@ -4273,7 +4323,7 @@ function _buildScrollTypewriterLines(ov, lines, textDirection, twContext) {
         ? `${rawSegments.length}:${rawSegments[0]?.start ?? 0}:${rawSegments[rawSegments.length - 1]?.end ?? 0}:${(rawSegments[0]?.edited_text ?? rawSegments[0]?.text ?? '').slice(0, 20)}`
         : 'none';
     const cacheId = ov.id || '_default';
-    const cacheKey = `${lines.join('\n')}|${revealType}|${speechSync ? 1 : 0}|${start.toFixed(3)}|${effectiveDur.toFixed(3)}|${segSig}|${ov.scroll_title || ''}`;
+    const cacheKey = `${lines.join('\n')}|${revealType}|${speechSync ? 1 : 0}|${start.toFixed(3)}|${effectiveDur.toFixed(3)}|${segSig}|${ov.scroll_title || ''}|${ov.scroll_tw_start ?? ''}|${ov.scroll_tw_end ?? ''}`;
     const existing = _scrollTwTokenCache.get(cacheId);
     if (existing && existing.key === cacheKey) {
         return existing.lineTokensList;
@@ -4506,12 +4556,36 @@ function _buildScrollTypewriterLines(ov, lines, textDirection, twContext) {
         flushSentenceGroup();
     }
 
+    // Blank values preserve the original speech alignment. Explicit values
+    // retime the same tokens (including pauses) without moving the scroll layer.
+    const writingWindow = _getScrollWritingWindow(ov, twContext);
+    if (writingWindow && allTokens.length) {
+        const from = Math.min(...allTokens.map(t => t.start));
+        const to = Math.max(...allTokens.map(t => t.end));
+        const sourceDuration = Math.max(0.001, to - from);
+        const ratio = (writingWindow.end - writingWindow.start) / sourceDuration;
+        for (const token of allTokens) {
+            token.start = writingWindow.start + (token.start - from) * ratio;
+            token.end = writingWindow.start + (token.end - from) * ratio;
+        }
+    }
     if (_scrollTwTokenCache.size > 120) {
         const oldestKey = _scrollTwTokenCache.keys().next().value;
         _scrollTwTokenCache.delete(oldestKey);
     }
     _scrollTwTokenCache.set(cacheId, { key: cacheKey, lineTokensList });
     return lineTokensList;
+}
+
+function _getScrollWritingWindow(ov, twContext) {
+    const optionalTime = value => value == null || String(value).trim() === ''
+        ? null : (Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : null);
+    const customStart = optionalTime(ov.scroll_tw_start);
+    const customEnd = optionalTime(ov.scroll_tw_end);
+    if (customStart === null && customEnd === null) return null;
+    const start = customStart ?? Math.max(0, Number(twContext?.start) || 0);
+    const end = customEnd ?? (Math.max(0, Number(twContext?.start) || 0) + Math.max(0.1, Number(twContext?.effectiveDuration) || 10));
+    return { start, end: Math.max(start + 0.1, end) };
 }
 
 function _measureScrollSubstrWidth(ctx, line, startIdx, endIdx, letterSpacing) {
@@ -4726,7 +4800,9 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
     }
 
     // Draw writing tip / cursor
-    if (cursorEnabled && cursorX !== null && cursorBaselineY !== null) {
+    const writingWindow = _getScrollWritingWindow(ov, twContext);
+    const cursorInWindow = !writingWindow || (currentTime >= writingWindow.start && currentTime < writingWindow.end);
+    if (cursorEnabled && cursorInWindow && cursorX !== null && cursorBaselineY !== null) {
         if (isImageTip && hasWritingStarted) {
             const rawScale = Number(ov.scroll_tw_cursor_scale) || 100;
             const scale = Math.max(0.2, Math.min(4, rawScale > 10 ? (rawScale / 100) * 1.15 : rawScale));
@@ -4884,11 +4960,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
     }
 
     // ── 出字效果（朗诵打字机/手写跟读模式）──
-    const shouldRenderScrollTw = Boolean(
-        ov.scroll_typewriter_enabled ||
-        ov.scroll_tw_active_scale_enabled ||
-        ov.scroll_tw_hide_unread === true
-    );
+    const shouldRenderScrollTw = ov.scroll_typewriter_enabled === true;
     if (shouldRenderScrollTw && lines.length > 0) {
         _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHeight, fontSize, align, bLetterSpacing, twContext);
         return;
@@ -5993,6 +6065,7 @@ const ReelsOverlay = {
     createTextCardOverlay,
     createSolidMaskOverlay,
     createScrollOverlay,
+    measureScrollMotion,
     drawOverlay,
     prepareScrollWritingCursorImage,
     splitBodyText,

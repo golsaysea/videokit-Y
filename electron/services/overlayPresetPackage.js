@@ -6,8 +6,22 @@ const archiver = require('archiver');
 const extract = require('./safeExtract');
 
 function sourcePath(value) {
-    if (typeof value !== 'string' || value.startsWith('data:')) return '';
-    try { return value.startsWith('file:') ? fileURLToPath(value) : (path.isAbsolute(value) ? value : ''); } catch (_) { return ''; }
+    if (typeof value !== 'string' || /^(data:|blob:|https?:)/i.test(value)) return '';
+    try {
+        if (/^local-media:\/\//i.test(value)) {
+            const raw = value.replace(/^local-media:\/\//i, '');
+            const decode = text => {
+                let local = decodeURIComponent(text);
+                if (/^\/[a-z]:[\\/]/i.test(local)) local = local.slice(1);
+                return path.isAbsolute(local) ? path.normalize(local) : '';
+            };
+            // Older toFileUrl versions left a real filename's # unescaped.
+            const complete = decode(raw);
+            if (complete && fs.existsSync(complete)) return complete;
+            return decode(raw.split(/[?#]/)[0]);
+        }
+        return /^file:/i.test(value) ? fileURLToPath(value) : (path.isAbsolute(value) ? value : '');
+    } catch (_) { return ''; }
 }
 
 function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -54,33 +68,63 @@ async function importPackage({ packagePath, destinationDir }) {
     return { presets: manifest.presets, assetDir: target, missing: manifest.missingMedia || [] };
 }
 
-async function savePresetAssets({ preset, destinationDir }) {
-    const saved = clone(preset);
-    const assetDir = path.join(destinationDir, `saved-overlay-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`, 'assets');
-    let copied = 0;
-    const missing = [];
-    for (const [index, layer] of (saved.layers || []).entries()) {
-        if (!['image', 'video', 'audio'].includes(layer?.type)) continue;
-        const source = sourcePath(layer?.content);
-        // data: URL 已直接存入预设，不需要额外复制。其余媒体必须能被解析为
-        // 本机文件；过去这里静默跳过，UI 却仍提示“已复制”，导致跨任务加载失效。
-        if (typeof layer?.content === 'string' && layer.content.startsWith('data:')) continue;
-        if (!source || !fs.existsSync(source) || !fs.statSync(source).isFile()) {
-            missing.push(`第 ${index + 1} 层${layer?.name ? `（${layer.name}）` : ''}：${String(layer?.content || '未指定文件')}`);
-            continue;
-        }
-        await fs.promises.mkdir(assetDir, { recursive: true });
-        const ext = path.extname(source), stem = path.basename(source, ext).replace(/[^\w.-]+/g, '_').slice(0, 80) || 'media';
-        const target = path.join(assetDir, `${crypto.createHash('sha256').update(source).digest('hex').slice(0, 12)}_${stem}${ext}`);
-        await fs.promises.copyFile(source, target);
-        layer.content = pathToFileURL(target).href;
-        copied++;
+function presetMediaReferences(layers) {
+    const refs = [];
+    for (const [index, layer] of (layers || []).entries()) {
+        if (!layer || typeof layer !== 'object') continue;
+        if (['image', 'video', 'audio'].includes(layer.type) && !layer.is_img_sequence) refs.push({ owner: layer, key: 'content', index, name: layer.name });
+        if (layer.scroll_tw_cursor_image) refs.push({ owner: layer, key: 'scroll_tw_cursor_image', index, name: layer.name });
+        if (layer.is_img_sequence && Array.isArray(layer.sequence_frames)) layer.sequence_frames.forEach((_, key) => refs.push({ owner: layer.sequence_frames, key, index, name: layer.name }));
     }
-    if (missing.length) {
-        throw new Error(`以下媒体无法复制到预设库，请确认原文件仍存在：\n${missing.join('\n')}`);
-    }
-    saved.meta = { ...(saved.meta || {}), mediaStorage: copied ? 'packaged' : 'linked', packagedMediaCount: copied };
-    return { preset: saved, copied };
+    return refs;
 }
 
-module.exports = { exportPackage, importPackage, savePresetAssets };
+async function savePresetAssets({ preset, destinationDir }) {
+    const saved = clone(preset);
+    const refs = presetMediaReferences(saved.layers);
+    const missing = [], files = [];
+    for (const ref of refs) {
+        const value = ref.owner[ref.key];
+        if (typeof value === 'string' && value.startsWith('data:')) continue;
+        const source = sourcePath(value);
+        let stat = null;
+        try { if (source) stat = fs.statSync(source); } catch (_) {}
+        if (!source || !stat?.isFile()) {
+            missing.push(`第 ${ref.index + 1} 层${ref.name ? `（${ref.name}）` : ''}：${String(value || '未指定文件')}`);
+        } else files.push({ ref, source, stat });
+    }
+    if (missing.length) throw new Error(`以下媒体无法复制到预设库，请确认原文件仍存在：\n${missing.join('\n')}`);
+    const root = path.resolve(destinationDir), assets = path.join(root, 'shared-assets');
+    let copied = 0, reused = 0;
+    const processed = new Map();
+    for (const { ref, source, stat } of files) {
+        const canonical = path.resolve(source);
+        const relative = path.relative(root, canonical);
+        let target = processed.get(canonical);
+        if (!target) {
+            if (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) {
+                target = canonical; reused++;
+            } else {
+                const ext = path.extname(source), stem = path.basename(source, ext).replace(/[^\w.-]+/g, '_').slice(0, 80) || 'media';
+                const key = crypto.createHash('sha256').update(`${canonical}\0${stat.size}\0${stat.mtimeMs}`).digest('hex').slice(0, 20);
+                target = path.join(assets, `${key}_${stem}${ext}`);
+                await fs.promises.mkdir(assets, { recursive: true });
+                if (fs.existsSync(target) && fs.statSync(target).size === stat.size) reused++;
+                else {
+                    const temporary = target + '.partial-' + crypto.randomUUID();
+                    try {
+                        await fs.promises.copyFile(source, temporary);
+                        await fs.promises.rename(temporary, target);
+                    } finally { if (fs.existsSync(temporary)) await fs.promises.unlink(temporary); }
+                    copied++;
+                }
+            }
+            processed.set(canonical, target);
+        }
+        ref.owner[ref.key] = pathToFileURL(target).href;
+    }
+    saved.meta = { ...(saved.meta || {}), mediaStorage: refs.length ? 'packaged' : 'none', packagedMediaCount: processed.size };
+    return { preset: saved, copied, reused };
+}
+
+module.exports = { exportPackage, importPackage, savePresetAssets, sourcePath, presetMediaReferences };

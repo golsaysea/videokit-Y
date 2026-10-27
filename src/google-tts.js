@@ -1098,6 +1098,8 @@
         }
 
         render();
-        setTimeout(() => loadVoices(false), 2200);
+        setTimeout(() => {
+            if (document.getElementById('google-tts-panel')?.classList.contains('active')) loadVoices(false);
+        }, 2200);
     });
 })();

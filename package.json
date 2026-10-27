@@ -213,6 +213,10 @@
         "to": "DEPENDENCY_LICENSE_AUDIT.md"
       },
       {
+        "from": "resources/export-cpu-budget.js",
+        "to": "export-cpu-budget.js"
+      },
+      {
         "from": "electron/services/edge_tts_bridge.py",
         "to": "edge-tts/edge_tts_bridge.py"
       }

@@ -363,9 +363,36 @@ function reelsArchiveTaskToActiveBatchTab(task) {
 }
 window.reelsArchiveTaskToActiveBatchTab = reelsArchiveTaskToActiveBatchTab;
 
+// New imports belong to the current project, regardless of its original task count.
+// Explicit folder queues and other existing project groups keep their identities.
+function reelsEnsureTaskBatchOwnership(tasks = window._reelsState?.tasks || []) {
+    const activeTab = _getActiveTab();
+    if (!activeTab) return;
+    const groups = new Set(tasks.map(task => task?._batchTabId).filter(Boolean));
+    const ownerId = groups.has(activeTab.id) ? activeTab.id
+        : groups.size === 1 ? [...groups][0]
+        : groups.size === 0 ? activeTab.id : '';
+    if (!ownerId) return;
+    const ownerTasks = tasks.filter(task => task?._batchTabId === ownerId);
+    const tab = _batchTableState.tabs.find(item => item.id === ownerId);
+    const ownerName = tab?.name || ownerTasks[0]?._batchTabName || activeTab.name || '当前工程';
+    const projected = ownerTasks.some(task => task._batchProjection);
+    let order = ownerTasks.reduce((max, task, i) => Math.max(max,
+        Number.isFinite(task._batchTaskOrder) ? task._batchTaskOrder : i), -1);
+    for (const task of tasks) {
+        if (!task || task._batchTabId || task._folderQueueId) continue;
+        task._batchTabId = ownerId;
+        task._batchTabName = ownerName;
+        task._batchTaskOrder = ++order;
+        if (projected) task._batchProjection = true;
+    }
+}
+window.reelsEnsureTaskBatchOwnership = reelsEnsureTaskBatchOwnership;
+
 function _syncTasksToActiveTab() {
     const tab = _getActiveTab();
     if (!tab) return;
+    reelsEnsureTaskBatchOwnership();
 
     // Ensure all active tasks have IDs
     (window._reelsState.tasks || []).forEach(t => _ensureTaskId(t));
@@ -1272,7 +1299,7 @@ function _renderBatchTable() {
                         <button class="rbt-btn" id="rbt-relocate-btn" style="padding:2px 8px;font-size:11px;background:rgba(60,60,120,0.5);border:1px solid rgba(100,100,200,0.3);color:#a0a0e0;" title="查找并重新关联缺失的素材文件">🔍 查找素材</button>
                         <input type="file" id="rbt-file-config" class="rbt-hidden-input" accept=".json">
                         <span style="color:rgba(255,255,255,0.2);margin:0 2px;">|</span>
-                        <button class="rbt-btn" id="rbt-col-settings-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">列设置</button>
+                        <button class="rbt-btn" id="rbt-col-settings-btn" title="勾选显示或隐藏列；拖动表头右边界调整宽度，双击边界恢复默认" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">显示 / 隐藏列</button>
                         <button class="rbt-btn" id="rbt-close-btn" style="padding:2px 8px;font-size:11px;background:rgba(120,40,40,0.6);border:1px solid rgba(220,80,80,0.3);color:#f48484;" title="放弃本次打开表格后的修改">关闭不保存</button>
                         <span class="rbt-batch-rowbreak"></span>
                         <span class="rbt-batch-subgroup">数据录入</span>
@@ -1458,11 +1485,11 @@ function _renderBatchTable() {
                         <span class="rbt-batch-rowbreak"></span>
                         <span class="rbt-batch-subgroup">对齐设定</span>
                         <select id="rbt-align-model" class="rbt-select" title="选择听译/字幕对齐模型（标注各模型适用场景与优点；做唱歌MV有歌词强烈推荐【🎸 音乐MV专享】）" style="width:auto;max-width:320px;height:24px;font-size:11px;padding:0 6px;background:rgba(168,85,247,0.16);border:1px solid rgba(168,85,247,0.45);color:#e9d5ff;font-weight:600;">
-                            <option value="music_mv" ${(localStorage.getItem('rbt_align_model') || 'music_mv') === 'music_mv' ? 'selected' : ''}>🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
+                            <option value="music_mv" ${(localStorage.getItem('rbt_align_model') || 'auto') === 'music_mv' ? 'selected' : ''}>🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
                             <option value="groq" ${localStorage.getItem('rbt_align_model') === 'groq' ? 'selected' : ''}>🎵 Groq · Whisper-V3-Turbo (抗伴奏强 · 极速 · 支持歌词引导)</option>
                             <option value="gladia" ${localStorage.getItem('rbt_align_model') === 'gladia' ? 'selected' : ''}>🎤 Gladia · Whisper增强版 (歌曲/多语种稳健 · 时间戳高精)</option>
                             <option value="deepgram" ${localStorage.getItem('rbt_align_model') === 'deepgram' ? 'selected' : ''}>🎙️ Deepgram · Nova-3 (纯人声口播极速50并发 · 伴奏易吞词)</option>
-                            <option value="auto" ${localStorage.getItem('rbt_align_model') === 'auto' ? 'selected' : ''}>⚙️ 跟随总设置默认平台</option>
+                            <option value="auto" ${(localStorage.getItem('rbt_align_model') || 'auto') === 'auto' ? 'selected' : ''}>⚙️ 跟随总设置默认平台</option>
                         </select>
                         <button class="rbt-btn" id="rbt-align-model-guide-btn" style="padding:2px 7px;font-size:11px;background:rgba(168,85,247,0.12);border:1px solid rgba(168,85,247,0.35);color:#d8b4fe;" title="查看各识别模型优缺点对比与唱歌MV最佳配置说明">💡 模型优点</button>
                         <select id="rbt-align-source" class="rbt-select" style="width:auto;height:24px;font-size:11px;padding:0 4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:#ccc;">
@@ -1779,6 +1806,8 @@ function _renderBatchTable() {
     // 应用列显示设置
     _applyColVisibility();
 
+    _installBatchColumnResize(container);
+
     // 更新批量选中计数
     _updateBatchSelectCount();
 
@@ -2054,7 +2083,7 @@ function _createTaskFromTemplate(state, taskName) {
         newTask.fileName = `${taskName}.mp4`;
         newTask.bgPath = null;
         newTask.bgSrcUrl = null;
-        newTask.audioPath = null;
+        window.ReelsRenderPlan.setVoice(newTask, null);
         newTask.srtPath = null;
         newTask.segments = [];
         newTask.videoPath = null;
@@ -2959,6 +2988,13 @@ function _renderBatchRow(task, idx, subtitlePresets, cardTemplates, textcards, s
 
 function _bindBatchTableEvents() {
     const container = _batchTableState.container;
+    window.reelsBindCheckboxRange?.(container, {
+        selector: '.rbt-row-check', row: '.rbt-row',
+        key: cb => window._reelsState?.tasks?.[Number(cb.dataset.idx)],
+        read: cb => _batchTableState.selectedRows.has(Number(cb.dataset.idx)),
+        write: (cb, checked) => { const idx=Number(cb.dataset.idx); if(checked)_batchTableState.selectedRows.add(idx);else _batchTableState.selectedRows.delete(idx); },
+        changed: _updateBatchSelectCount,
+    });
 
     // Toggle actions panel
     const toggleActionsBtn = container.querySelector('#rbt-toggle-actions-btn');
@@ -4740,6 +4776,8 @@ function _bindBatchTableEvents() {
         e.target.value = '';
     });
 
+    _prepareBatchTextEditing(container);
+
     // ── 表格内输入框快捷批量粘贴 ──
     container.querySelector('#rbt-tbody')?.addEventListener('paste', (e) => {
         const target = e.target;
@@ -4749,7 +4787,7 @@ function _bindBatchTableEvents() {
         if (!pastedData) return;
 
         // 使用 TSV 引号解析器，正确处理 Google Sheets 单元格内的换行
-        const tsvRows = _parseBatchTSV(pastedData);
+        const tsvRows = _parseBatchTSV(pastedData, true);
 
         const startIdx = parseInt(target.dataset.idx, 10);
         if (isNaN(startIdx)) return;
@@ -4771,6 +4809,7 @@ function _bindBatchTableEvents() {
         else if (target.classList.contains('rbt-flipper-loop-input')) fieldCategory = 'overlay_flipper_loop';
         else if (target.classList.contains('rbt-flipper-transition-duration-input')) fieldCategory = 'overlay_flipper_transition_duration';
         else if (target.dataset.field) fieldCategory = target.dataset.field;
+        if (!fieldCategory) fieldCategory = _batchTextField(target);
 
         let maxCols = Math.max(...tsvRows.map(r => r.length));
         while (maxCols > 1) {
@@ -4790,14 +4829,15 @@ function _bindBatchTableEvents() {
             return;
         }
 
-        // ── 单列粘贴：不再自动拆分多行到多个任务行 ──
-        // 用户如果需要批量填充多行，请使用列标题上的 📋 按钮
-        // 直接粘贴到输入框时，保留原始换行，填入当前单元格
-        const preservedText = tsvRows.map(row => (row[0] || '')).join('\n');
-        if (preservedText.trim()) {
+        if (tsvRows.length > 1 && fieldCategory) {
             e.preventDefault();
-            target.value = preservedText;
-            // 触发 input/change 事件同步 state
+            _pasteBatchTextRows(tsvRows, startIdx, fieldCategory, target.dataset);
+            return;
+        }
+        // A quoted spreadsheet cell may contain line breaks and remains one cell.
+        if (tsvRows.length === 1) {
+            e.preventDefault();
+            target.value = tsvRows[0][0] || '';
             target.dispatchEvent(new Event('input', { bubbles: true }));
             target.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -4892,7 +4932,7 @@ function _bindBatchTableEvents() {
                     task.hook.path = item.path;
                     task.hookFile = item.path;
                 }
-                else if (targetField === 'audio') { task.audioPath = item.path; }
+                else if (targetField === 'audio') { window.ReelsRenderPlan.setVoice(task, item.path); }
                 else if (targetField === 'bgm') {
                     if (task.bgmMode === 'multi') {
                         if (!task.bgmClipPool) task.bgmClipPool = [];
@@ -4906,7 +4946,7 @@ function _bindBatchTableEvents() {
                 else if (targetField === 'pip') { task.pipPath = item.path; }
                 // Default fallback if dropped on non-specific column
                 else if (item.type === 'seq') { _setTaskSingleBackground(task, item.path); }
-                else if (item.isAudio) { task.audioPath = item.path; }
+                else if (item.isAudio) { window.ReelsRenderPlan.setVoice(task, item.path); }
                 else if (item.ext === 'srt') { task.srtPath = item.path; }
                 else if (item.ext === 'txt') { task.txtContent = ''; task.txtPath = item.path; }
                 else { _setTaskSingleBackground(task, item.path); }
@@ -5016,7 +5056,7 @@ function _bindBatchTableEvents() {
                 const task = window._reelsState.tasks[idx];
                 if (task) {
                     const filePath = _rbtGetNativeFilePath(files[0]) || files[0].path || files[0].name;
-                    task.audioPath = filePath;
+                    window.ReelsRenderPlan.setVoice(task, filePath);
                     _renderBatchTable();
                     if (typeof showToast === 'function') showToast(`✅ 已设置第 ${idx + 1} 行人声音频`, 'success');
                 }
@@ -5131,10 +5171,11 @@ function _bindBatchTableEvents() {
                         _setTaskSingleBackground(task, bgPaths[0], { bgSrcUrl: null });
                         task.srcUrl = null;
                     } else if (bgPaths.length > 1) {
+                        _rbtPurgeTaskBackgroundMedia(task, { purgeCache: true });
                         task.bgMode = 'multi';
                         task.bgClipPool = bgPaths;
                         task.bgClipActivePool = [];
-                        task.bgClipOrder = task.bgClipOrder || 'sequence';
+                        task.bgClipOrder = 'sequence';
                         task.bgTransition = task.bgTransition || 'crossfade';
                         task.bgTransDur = task.bgTransDur ?? 0.5;
                         task.bgPath = bgPaths[0];
@@ -5266,19 +5307,9 @@ function _bindBatchTableEvents() {
                 task.pipPath = '';
                 break;
             case 'audio':
-                task.audioPath = '';
-                if (task.timeline && Array.isArray(task.timeline.tracks)) {
-                    task.timeline.tracks.forEach((tr) => {
-                        if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'voice');
-                    });
-                }
-                if ((document.getElementById('rbt-align-source')?.value || 'video') === 'audio') {
-                    task.aligned = false;
-                    task.srtPath = '';
-                    task.segments = [];
-                    task.alignSource = '';
-                    task.alignMatchedText = '';
-                }
+                const oldAudio = task.audioPath || '';
+                window.ReelsRenderPlan.setVoice(task, '');
+                if (oldAudio) _rbtPurgeMediaCaches([oldAudio]);
                 break;
             case 'srt':
                 task.srtPath = '';
@@ -5573,6 +5604,7 @@ function _bindBatchTableEvents() {
             newScrollWrap.scrollLeft = scrollLeft;
         }
 
+        if (baseField === 'bg') _refreshClearedBackgroundPreview(indices);
         if (typeof showToast === 'function') {
             const cacheSuffix = (baseField === 'bg' || baseField === 'clipPool') ? '（已同步清理识别与视频缓存）' : '';
             showToast(`✅ 已清空${label}的${fieldLabel}${cacheSuffix}`, 'success');
@@ -5766,7 +5798,7 @@ function _bindBatchTableEvents() {
                 if (colType === 'bg') {
                     _setTaskSingleBackground(task, fpath, { clearBgSrcUrl: true });
                 } else if (colType === 'audio') {
-                    task.audioPath = fpath;
+                    window.ReelsRenderPlan.setVoice(task, fpath);
                 } else if (colType === 'srt') {
                     task.srtPath = fpath;
                 } else if (colType === 'bgm') {
@@ -5801,7 +5833,7 @@ function _bindBatchTableEvents() {
                             aligned: false, bgScale: 100, bgDurScale: 100, audioDurScale: 100
                         };
                         if (colType === 'bg') { _setTaskSingleBackground(newTask, fpath); }
-                        else if (colType === 'audio') newTask.audioPath = fpath;
+                        else if (colType === 'audio') window.ReelsRenderPlan.setVoice(newTask, fpath);
                         else if (colType === 'srt') newTask.srtPath = fpath;
                         else if (colType === 'bgm') newTask.bgmPath = fpath;
                         else if (colType === 'pip') {
@@ -5818,7 +5850,9 @@ function _bindBatchTableEvents() {
                 }
             }
 
+            _skipNextApply = true;
             _renderBatchTable();
+            if (colType === 'bg') _refreshClearedBackgroundPreview(state.tasks.map((_, index) => index));
             const colLabels = { bg: '背景素材', audio: '人声-音频文件', srt: '人声-SRT字幕', bgm: '配乐', pip: '图像覆层', contentvideo: '内容视频' };
             showToast(`✅ ${colLabels[colType] || colType}：分配 ${filled} 个文件，新建 ${created} 行`, 'success');
         } finally {
@@ -6384,7 +6418,7 @@ function _bindBatchTableEvents() {
                         task.hook.path = '';
                         break;
                     case 'clipPool': {
-                        const oldPaths = _rbtCollectTaskBackgroundPaths(task);
+                        const oldPaths = [...new Set([..._rbtCollectTaskBackgroundPaths(task), ...(options.extraPaths || [])])];
                         task.clipPoolDir = '';
                         task.clipPool = [];
                         task.concatVideoPath = '';
@@ -6414,13 +6448,7 @@ function _bindBatchTableEvents() {
                     case 'pip': task.pipPath = ''; break;
                     case 'audio': {
                         const oldAudio = task.audioPath || '';
-                        task.audioPath = '';
-                        if (task.timeline && Array.isArray(task.timeline.tracks)) {
-                            task.timeline.tracks.forEach((tr) => { if (Array.isArray(tr.clips)) tr.clips = tr.clips.filter(c => c?._extra?.role !== 'voice'); });
-                        }
-                        if ((document.getElementById('rbt-align-source')?.value || 'video') === 'audio') {
-                            task.aligned = false; task.srtPath = ''; task.segments = []; task.alignSource = ''; task.alignMatchedText = '';
-                        }
+                        window.ReelsRenderPlan.setVoice(task, '');
                         if (oldAudio) _rbtPurgeMediaCaches([oldAudio]);
                         break;
                     }
@@ -6428,11 +6456,13 @@ function _bindBatchTableEvents() {
                     case 'txt': task.txtContent = ''; task.aligned = false; task.segments = []; break;
                     case 'ai_script': task.aiScript = ''; break;
                 }
+                _skipNextApply = true;
                 if ((field === 'bg' || field === 'clipPool') && window._reelsState?.selectedIdx === idx) {
                     if (typeof reelsSelectTask === 'function') reelsSelectTask(idx);
                     else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
                 }
                 _renderBatchTable();
+                if (field === 'bg') _refreshClearedBackgroundPreview([idx]);
                 if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
                 if ((field === 'bg' || field === 'clipPool') && typeof showToast === 'function') {
                     showToast(`✅ 已清除第 ${idx + 1} 行背景素材及缓存`, 'success');
@@ -6717,12 +6747,7 @@ function _execMultiColumnPaste(tsvRows, startIdx, colMappings, maxCols) {
     const container = _batchTableState.container;
     if (!state || !container) return;
 
-    const validRows = tsvRows.filter(r => {
-        for (let i = 0; i < maxCols; i++) {
-            if (r[i] && r[i].trim().length > 0) return true;
-        }
-        return false;
-    });
+    const validRows = tsvRows;
     if (validRows.length === 0) return;
 
     let overflown = validRows.length - (state.tasks.length - startIdx);
@@ -7883,6 +7908,7 @@ async function _batchPasteScrollFromSheet(targetId = null, targetIdx = null) {
 // ═══════════════════════════════════════════════════════
 
 const _RBT_COLUMNS = [
+    { key: 'insert', label: '插入素材', default: true },
     { key: 'exportname', label: '导出命名', default: true },
     { key: 'cover-media', label: '封面素材', default: true },
     { key: 'cover-text', label: '封面文案', default: true },
@@ -7918,12 +7944,107 @@ const _RBT_COLUMNS = [
     { key: 'flipper-lines', label: '翻转行数', default: true },
     { key: 'flipper-effect', label: '翻转效果', default: true },
     { key: 'flipper-loop', label: '翻转循环', default: true },
+    { key: 'flipper-transition-duration', label: '翻转过渡时长', default: true },
     { key: 'scroll-title', label: '滚动标题', default: true },
     { key: 'scroll-body', label: '滚动内容', default: true },
     { key: 'subtime', label: '字幕时间', default: true },
     { key: 'dur', label: '时长(s)', default: true },
     { key: 'tpl', label: '动态字幕模版与覆层预设', default: true },
 ];
+
+function _batchColumnWidthKey(){return 'rbt-column-widths-v1-'+(_batchTableState.activeTabId||'default');}
+function _readBatchColumnWidths(){try{const data=JSON.parse(localStorage.getItem(_batchColumnWidthKey())||'{}');return data&&typeof data==='object'&&!Array.isArray(data)?data:{};}catch(_){return {};}}
+function _syncBatchColumnWidths(table){
+    const layout=table?._rbtColumnLayout;if(!layout)return;
+    let total=0,left=0,pin=0;const visibleColumns=[];
+    for(const item of layout){
+        const visible=getComputedStyle(item.th).display!=='none';
+        item.col.style.width=item.width+'px';
+        if(visible){total+=item.width;visibleColumns.push(item);}
+        if(['drag','chk','num','act'].includes(item.kind)){
+            table.style.setProperty('--rbt-pin-'+pin++,left+'px');if(visible)left+=item.width;
+        }
+        item.handle?.setAttribute('aria-valuenow',String(Math.round(item.width)));
+    }
+    table.style.width=Math.max(1,total)+'px';
+    const signature=visibleColumns.map(item=>item.key).join('|');
+    if(table._rbtVisibleColumns!==signature){
+        table._rbtVisibleColumns=signature;
+        table.querySelector('colgroup').replaceChildren(...visibleColumns.map(item=>item.col));
+        _syncBatchHiddenColumnMarkers(table);
+    }
+}
+function _syncBatchHiddenColumnMarkers(table){
+    table.querySelectorAll('.rbt-hidden-column-toggle').forEach(button=>button.remove());
+    const layout=table._rbtColumnLayout;let previous=null,hidden=[];
+    const marker=()=>{
+        if(!hidden.length)return;
+        const anchor=previous||layout.find(item=>getComputedStyle(item.th).display!=='none');if(!anchor)return;
+        const keys=[...new Set(hidden.map(item=>item.kind))];
+        const labels=keys.map(key=>_RBT_COLUMNS.find(column=>column.key===key)?.label||key);
+        const button=document.createElement('button');button.type='button';button.className='rbt-hidden-column-toggle';button.textContent='◀▶';
+        button.title='展开隐藏列：'+labels.join('、');button.setAttribute('aria-label',button.title);
+        button.style.cssText='position:absolute;right:-7px;top:50%;transform:translateY(-50%);z-index:25;width:16px;height:22px;padding:0;border:1px solid #77809a;border-radius:3px;background:#242b3b;color:#bccbff;font-size:8px;line-height:20px;letter-spacing:-2px;cursor:pointer;';
+        button.addEventListener('pointerdown',event=>{event.stopPropagation();});
+        button.addEventListener('mousedown',event=>event.stopPropagation());
+        button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const vis=_getColVisibility();keys.forEach(key=>vis[key]=true);_saveColVisibility(vis);_applyColVisibility();});
+        anchor.th.appendChild(button);hidden=[];
+    };
+    for(const item of layout){if(getComputedStyle(item.th).display==='none')hidden.push(item);else{marker();previous=item;}}
+    marker();
+}
+function _installBatchColumnResize(container){
+    const table=container.querySelector('#rbt-table');if(!table||table._rbtColumnLayout)return;
+    if(!document.getElementById('rbt-column-resize-style')){
+        const style=document.createElement('style');style.id='rbt-column-resize-style';
+        style.textContent=`.rbt-table.rbt-resizable{table-layout:fixed}.rbt-table.rbt-resizable :is(th,td){min-width:0!important;max-width:none;box-sizing:border-box}.rbt-table.rbt-resizable th{position:relative}.rbt-table.rbt-resizable th:is(.rbt-col-drag,.rbt-col-chk,.rbt-col-num,.rbt-col-act){position:sticky}.rbt-table.rbt-resizable td{overflow:hidden}.rbt-col-resize-handle{position:absolute;top:0;bottom:0;right:-1px;width:8px;cursor:col-resize;touch-action:none;z-index:12;user-select:none}.rbt-col-resize-handle:hover,.rbt-col-resize-handle:focus-visible{background:#7c8cff55;outline:none}.rbt-resizing,.rbt-resizing *{cursor:col-resize!important;user-select:none!important}`;
+        document.head.appendChild(style);
+    }
+    const widths=_readBatchColumnWidths(),counts=new Map(),group=document.createElement('colgroup');
+    const headers=[...table.querySelectorAll('thead tr:last-child th')];
+    const layout=headers.map((th,index)=>{
+        const kind=[...th.classList].find(c=>c.startsWith('rbt-col-'))?.slice(8)||'column';
+        const groupId=th.dataset.cardId||th.dataset.scrollId||'';
+        const base=kind+':'+groupId,occ=counts.get(base)||0;counts.set(base,occ+1);
+        const key=base+':'+occ,normal=Math.round(th.getBoundingClientRect().width)||parseFloat(getComputedStyle(th).width)||100;
+        const minimum=kind==='act'?116:['drag','chk','num'].includes(kind)?normal:56;
+        const stored=Number(widths[key]),width=Number.isFinite(stored)&&stored>=minimum?Math.min(1600,stored):Math.max(minimum,normal);
+        const col=document.createElement('col');group.appendChild(col);
+        return{th,col,index,kind,key,normal,width,minimum,handle:null};
+    });
+    table.insertBefore(group,table.firstChild);table._rbtColumnLayout=layout;table.classList.add('rbt-resizable');
+    const persist=item=>{const data=_readBatchColumnWidths();data[item.key]=Math.round(item.width);try{localStorage.setItem(_batchColumnWidthKey(),JSON.stringify(data));}catch(_){}};
+    const reset=item=>{const data=_readBatchColumnWidths();delete data[item.key];try{localStorage.setItem(_batchColumnWidthKey(),JSON.stringify(data));}catch(_){}item.width=Math.max(item.minimum,item.normal);_syncBatchColumnWidths(table);};
+    for(const item of layout){
+        const {th}=item;
+        if(!['drag','chk','num'].includes(item.kind)){
+            const handle=document.createElement('span');item.handle=handle;handle.className='rbt-col-resize-handle';handle.tabIndex=0;handle.role='separator';handle.setAttribute('aria-orientation','vertical');handle.setAttribute('aria-label','调整 '+(th.querySelector('.rbt-th-wrap > span')?.textContent||th.textContent).trim()+' 列宽');handle.title='拖动调整列宽；双击恢复默认；方向键微调';th.appendChild(handle);
+            let drag=null,raf=null;
+            const paint=()=>{raf=null;if(drag){item.width=Math.max(item.minimum,Math.min(1600,drag.width+drag.x-drag.start));_syncBatchColumnWidths(table);}};
+            const finish=(save=true)=>{if(!drag)return;if(raf){cancelAnimationFrame(raf);raf=null;}paint();const id=drag.id;drag=null;document.body.classList.remove('rbt-resizing');if(handle.hasPointerCapture?.(id))handle.releasePointerCapture(id);if(save)persist(item);};
+            handle.addEventListener('pointerdown',event=>{if(event.button!==0)return;event.preventDefault();event.stopPropagation();drag={id:event.pointerId,start:event.clientX,x:event.clientX,width:item.width};handle.setPointerCapture(event.pointerId);document.body.classList.add('rbt-resizing');});
+            handle.addEventListener('mousedown',event=>event.stopPropagation());
+            handle.addEventListener('pointermove',event=>{if(!drag)return;drag.x=event.clientX;if(!raf)raf=requestAnimationFrame(paint);});
+            handle.addEventListener('pointerup',()=>finish());
+            handle.addEventListener('pointercancel',()=>finish());handle.addEventListener('lostpointercapture',()=>finish());
+            handle.addEventListener('dblclick',event=>{event.preventDefault();event.stopPropagation();reset(item);});
+            handle.addEventListener('click',event=>event.stopPropagation());
+            handle.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home'].includes(event.key))return;event.preventDefault();event.stopPropagation();if(event.key==='Home')reset(item);else{item.width=Math.max(item.minimum,Math.min(1600,item.width+(event.key==='ArrowRight'?1:-1)*(event.shiftKey?20:5)));_syncBatchColumnWidths(table);persist(item);}});
+        }
+        th.addEventListener('contextmenu',event=>{
+            event.preventDefault();event.stopPropagation();document.getElementById('rbt-column-context')?.remove();
+            const menu=document.createElement('div');menu.id='rbt-column-context';menu.style.cssText='position:fixed;z-index:500000;background:#202330;border:1px solid #4a4d61;border-radius:7px;padding:5px;color:#eee;box-shadow:0 8px 24px #0008;';
+            const add=(text,fn)=>{const button=document.createElement('button');button.textContent=text;button.style.cssText='display:block;width:100%;text-align:left;padding:7px 12px;background:none;color:inherit;border:0;cursor:pointer;white-space:nowrap';button.onclick=()=>{menu.remove();fn();};menu.appendChild(button);};
+            const column=_RBT_COLUMNS.find(c=>c.key===item.kind);
+            if(column)add('隐藏「'+column.label+'」列',()=>{const vis=_getColVisibility();vis[column.key]=false;_saveColVisibility(vis);_applyColVisibility();});
+            if(item.handle)add('恢复此列默认宽度',()=>reset(item));
+            add('显示 / 隐藏列…',()=>_showColumnSettingsPopup(document.getElementById('rbt-col-settings-btn')||th));
+            document.body.appendChild(menu);menu.style.left=Math.max(4,Math.min(event.clientX,innerWidth-menu.offsetWidth-4))+'px';menu.style.top=Math.max(4,Math.min(event.clientY,innerHeight-menu.offsetHeight-4))+'px';
+            setTimeout(()=>document.addEventListener('pointerdown',event=>{if(!menu.contains(event.target))menu.remove();},{once:true}),0);
+        });
+    }
+    _syncBatchColumnWidths(table);
+}
 
 function _getColVisStorageKey() {
     const tabId = _batchTableState.activeTabId || 'default';
@@ -7994,6 +8115,8 @@ function _applyColVisibility() {
         }
     }
     styleEl.textContent = rules.join('\n');
+    const table=document.getElementById('rbt-table');
+    if(table?._rbtColumnLayout)_syncBatchColumnWidths(table);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -8013,7 +8136,7 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
         const m = window.ReelsStyleEngine ? ReelsStyleEngine.mergeStyle(style) : { ...style };
         const tc = m.color_text || m.color || '#FFFFFF';
         const sc = m.color_outline || m.stroke_color || '#000000';
-        const bw = m.border_width || m.stroke_width || 3;
+        const bw = m.border_width ?? m.stroke_width ?? 3;
         const useStk = m.use_stroke !== false && m.stroke !== false;
         const bgC = m.color_bg || m.bg_color || '#000000';
         const useBg = m.use_box || m.bg_enabled || false;
@@ -8021,17 +8144,17 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
 
         let ts = 'none';
         if (useStk && bw > 0) {
-            const s = Math.max(1, Math.round(bw * 0.5));
+            const s = Math.max(0.25, Math.round(bw * 15 / (Number(m.fontsize) || 52) * 100) / 100);
             ts = `${s}px 0 0 ${sc}, -${s}px 0 0 ${sc}, 0 ${s}px 0 ${sc}, 0 -${s}px 0 ${sc}, ${s}px ${s}px 0 ${sc}, -${s}px -${s}px 0 ${sc}`;
         }
         if (m.shadow_blur > 0) {
-            const extra = `2px 2px ${m.shadow_blur}px ${m.color_shadow || '#000'}`;
+            const extra = `1px 1px ${Math.round(m.shadow_blur * 15 / (Number(m.fontsize) || 52) * 100) / 100}px ${m.color_shadow || '#000'}`;
             ts = ts === 'none' ? extra : ts + ', ' + extra;
         }
 
         let bgCss = '';
         if (useBg || m.box_wipe_enabled || m.anim_in_type === 'box_wipe') {
-            const bgGradCols = m.bg_gradient_colors || [];
+            const bgGradCols = (Array.isArray(m.bg_gradient_colors) ? m.bg_gradient_colors : String(m.bg_gradient_colors || '').split(',')).map(c => String(c).trim()).filter(c => CSS.supports('color', c));
             if (m.box_wipe_enabled || m.anim_in_type === 'box_wipe') {
                 bgCss = `background:linear-gradient(90deg,${bgC} 0%,${bgC} 68%,rgba(255,255,255,0.08) 68%,rgba(255,255,255,0.08) 100%);`;
             } else if (m.bg_gradient_enabled && bgGradCols.length >= 2) {
@@ -8043,12 +8166,14 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
             bgCss += `border-radius:${bgR}px;padding:2px 8px;margin-left:-8px;`;
         }
 
-        const fw = m.bold || m.font_weight >= 700 ? 'bold' : 'normal';
+        const fw = Math.max(100, Math.min(900, Number(m.font_weight) || (m.bold ? 700 : 400)));
         const fsStyle = m.italic ? 'font-style:italic;' : '';
-        const ffStyle = m.font_family ? `font-family:"${_escHtml(m.font_family)}",sans-serif;` : '';
+        const ffStyle = m.font_family ? `font-family:${_escHtml(JSON.stringify(String(m.font_family)))},sans-serif;` : '';
         const ttStyle = m.text_transform ? `text-transform:${m.text_transform};` : '';
         const lsStyle = m.letter_spacing ? `letter-spacing:${m.letter_spacing}px;` : '';
 
+        const textColors = String(tc).split(',').map(c => c.trim()).filter(c => c && CSS.supports('color', c));
+        const textFill = textColors.length > 1 ? `background-image:linear-gradient(90deg,${textColors.join(',')});background-clip:text;-webkit-background-clip:text;color:transparent;` : `color:${textColors[0] || '#fff'};`;
         const eName = _escHtml(name);
 
         // Accurate Preview for Karaoke/Dynamic Box
@@ -8074,9 +8199,9 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
                 const dynR = Math.round((m.dynamic_radius || 6) * 0.4);
                 highStyle += `background:${dynBg};border-radius:${dynR}px;padding:1px 4px;margin:0 1px;`;
             }
-            htmlName = `<span style="color:${tc};text-shadow:${ts};">${part1}</span><span style="${highStyle}text-shadow:${ts};">${part2}</span>`;
+            htmlName = `<span style="${textFill}text-shadow:${ts};">${part1}</span><span style="${highStyle}text-shadow:${ts};">${part2}</span>`;
         } else {
-            htmlName = `<span style="color:${tc};text-shadow:${ts};">${eName}</span>`;
+            htmlName = `<span style="${textFill}text-shadow:${ts};">${eName}</span>`;
         }
 
         // 用户预设：显示重命名和删除按钮
@@ -8086,9 +8211,10 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
                 <button class="rbt-ssp-delete-btn" data-preset-name="${eName}" title="删除" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;color:#f87171;line-height:1;">🗑</button>
             </span>` : '';
 
-        return `<div class="rbt-sub-styled-item" data-val="${eName}" data-user-preset="${isUserPreset ? '1' : ''}" style="padding:5px 18px;cursor:pointer;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:6px;">
+        return `<div class="rbt-sub-styled-item" data-val="${eName}" data-user-preset="${isUserPreset ? '1' : ''}" data-preview-font="${_escHtml(m.font_family || 'Arial')}" style="padding:5px 18px;cursor:pointer;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:6px;">
             <span style="font-size:15px;font-weight:${fw};line-height:1.5;${bgCss}${fsStyle}${ffStyle}${ttStyle}${lsStyle}display:inline-block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                 ${htmlName}
+                ${isUserPreset ? `<span class="rbt-preset-font-sample" style="display:block;font-size:17px;line-height:1.4;${textFill}text-shadow:${ts};">Aa Bb Cc 123</span>` : ''}
             </span>
             ${mgmtBtns}
         </div>`;
@@ -8177,7 +8303,7 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
     let listHtml = '<div id="rbt-ssp-list" style="padding-bottom:8px;">';
     if (categorized.length > 0) {
         for (const group of categorized) {
-            const isUserPresets = group.category.includes('我的预设');
+            const isUserPresets = group.category.startsWith('💾');
             listHtml += `<details class="rbt-ssp-category" ${isUserPresets ? 'open' : 'open'} style="margin:0;">
                 <summary style="cursor:pointer;padding:8px 14px;font-size:12px;font-weight:700;color:#8af;background:rgba(74,158,255,0.05);border-bottom:1px solid #2a2a3e;user-select:none;position:sticky;top:0;z-index:5;">
                     ${_escHtml(group.category)} <span style="font-size:10px;color:#666;font-weight:400;">(${group.names.length})</span>
@@ -8195,6 +8321,7 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
 
     popup.innerHTML = searchHtml + defaultHtml + listHtml;
     document.body.appendChild(popup);
+    window.reelsObservePresetFonts?.(popup, '.rbt-sub-styled-item[data-preview-font]', el => el.dataset.previewFont);
 
     // 标记当前选中项
     if (currentVal) {
@@ -8408,8 +8535,8 @@ function _showColumnSettingsPopup(anchor) {
         { label: '背景控制', keys: ['hook', 'bg', 'clippool', 'bgclipsettings', 'bgscale', 'bgdurscale', 'bgvol', 'bgm'] },
         { label: '内容视频', keys: ['contentvideo', 'cvtrim', 'cvcrop', 'cvblurbg', 'cvscale', 'cvpos', 'cvvol'] },
         { label: '人声音轨', keys: ['ai_script', 'tts_text', 'txtcontent', 'tts_voice', 'srt', 'audio', 'voicevol', 'audiodurscale'] },
-        { label: '文字覆层', keys: ['pip', 'title', 'body', 'footer', 'flipper-enabled', 'flipper-duration', 'flipper-lines', 'flipper-effect', 'flipper-loop', 'scroll-title', 'scroll-body', 'subtime'] },
-        { label: '基础配置', keys: ['dur', 'tpl', 'exportname'] },
+        { label: '文字覆层', keys: ['pip', 'title', 'body', 'footer', 'flipper-enabled', 'flipper-duration', 'flipper-lines', 'flipper-effect', 'flipper-loop', 'flipper-transition-duration', 'scroll-title', 'scroll-body', 'subtime'] },
+        { label: '基础配置', keys: ['insert', 'dur', 'tpl', 'exportname'] },
     ];
 
     // Build column label map
@@ -9567,6 +9694,7 @@ function _rbtResetTaskBackgroundTimeline(task) {
 
 function _rbtResetTaskVideoRecognitionState(task, options = {}) {
     if (!task || typeof task !== 'object' || options.keepSubtitles === true) return;
+    if (task.audioPath && options.forceResetRecognition !== true) return;
     const alignSourceVal = typeof document !== 'undefined'
         ? (document.getElementById('rbt-align-source')?.value || 'video')
         : 'video';
@@ -9642,6 +9770,7 @@ function _rbtPurgeTaskBackgroundMedia(task, options = {}) {
     if (task.srcUrl && String(task.srcUrl).startsWith('blob:')) {
         try { URL.revokeObjectURL(task.srcUrl); } catch (_) {}
     }
+    if (!options.preserveBackground) {
     task.bgPath = '';
     task.videoPath = '';
     task.bgSrcUrl = '';
@@ -9654,19 +9783,22 @@ function _rbtPurgeTaskBackgroundMedia(task, options = {}) {
     task.concatVideoPath = '';
     task.concatStatus = '';
 
-    _rbtResetTaskBackgroundTimeline(task);
-    _rbtResetTaskVideoRecognitionState(task, options);
+    }
+    if (window.ReelsRenderPlan?.resetBackground) window.ReelsRenderPlan.resetBackground(task);
+    else _rbtResetTaskBackgroundTimeline(task);
+    _rbtResetTaskVideoRecognitionState(task, {...options, keepSubtitles: options.keepSubtitles || !!task.audioPath});
 
     if (options.purgeCache !== false && (oldPaths.length > 0 || options.clearAll)) {
         _rbtPurgeMediaCaches(oldPaths, options);
     }
     return oldPaths;
 }
-window.reelsPurgeTaskBackgroundMedia = _rbtPurgeTaskBackgroundMedia;
+window.reelsPurgeTaskBackgroundMedia = (task, options = {}) => _rbtPurgeTaskBackgroundMedia(task, {...options, preserveBackground:true});
 window.reelsPurgeMediaCaches = _rbtPurgeMediaCaches;
 
 function _setTaskSingleBackground(task, filePath, options = {}) {
     if (!task) return;
+    if (typeof window !== 'undefined') window.ReelsRenderPlan?.resetBackground?.(task);
     const path = filePath || '';
     const detectImage = options.detectImage === true;
     const isImage = detectImage && /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(path);
@@ -9682,6 +9814,9 @@ function _setTaskSingleBackground(task, filePath, options = {}) {
 
     task.bgPath = path;
     task.videoPath = isImage ? '' : path;
+    // A previous blob/file URL must never override the newly assigned native path.
+    task.srcUrl = null;
+    task._previewBgImage = null;
     if (Object.prototype.hasOwnProperty.call(options, 'bgSrcUrl')) {
         task.bgSrcUrl = options.bgSrcUrl || '';
         task.srcUrl = options.bgSrcUrl || '';
@@ -9702,6 +9837,23 @@ function _setTaskSingleBackground(task, filePath, options = {}) {
             _rbtPurgeMediaCaches(prevPaths.filter(p => p !== path));
         }
     }
+}
+
+// Refresh only after a background mutation; no polling or additional idle work.
+function _refreshClearedBackgroundPreview(indices) {
+    const state = window._reelsState;
+    if (!state) return;
+    if (indices.includes(state.selectedIdx) && typeof reelsSelectTask === 'function') reelsSelectTask(state.selectedIdx);
+    else if (typeof _renderTaskList === 'function') _renderTaskList();
+}
+
+// Keep historical pool entries available for manual dragging, but an explicit new
+// background import must not pick the old entries at the front of the pool again.
+function _getCurrentBackgroundImportItems(items) {
+    const backgrounds = (items || []).filter(item => item?.isVideo || item?.isImage);
+    const latest = new Set(window._mediaPool?.lastImportedItems || []);
+    const imported = backgrounds.filter(item => latest.has(item));
+    return imported.length ? imported : backgrounds;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -10165,7 +10317,7 @@ function _doCycleFill(fieldKey, items, weights, mode) {
             }
             _setTaskSingleBackground(task, filePath, bgOptions);
         } else if (fieldKey === 'audio') {
-            task.audioPath = filePath;
+            window.ReelsRenderPlan.setVoice(task, filePath);
         } else if (fieldKey === 'bgm') {
             task.bgmPath = filePath;
         }
@@ -10928,7 +11080,84 @@ function _showBatchEditDialog(badRows, minLines, totalRows) {
 // 8. TSV Parser (same as overlay panel)
 // ═══════════════════════════════════════════════════════
 
-function _parseBatchTSV(raw) {
+function _batchTextField(input) {
+    const fields = {
+        'rbt-ai-script-input':'aiScript', 'rbt-tts-text-input':'ttsText',
+        'rbt-txtcontent-input':'txtContent', 'rbt-cover-text-input':'cover_text',
+        'rbt-title-input':'overlay_title', 'rbt-body-input':'overlay_body',
+        'rbt-footer-input':'overlay_footer', 'rbt-scroll-title-input':'scroll_title',
+        'rbt-scroll-body-input':'scroll_body',
+    };
+    return Object.keys(fields).find(name => input.classList.contains(name))
+        ? fields[Object.keys(fields).find(name => input.classList.contains(name))] : null;
+}
+
+function _pasteBatchTextRows(rows, startIndex, field, target = {}) {
+    const state = window._reelsState;
+    if (!state || !rows.length || startIndex < 0) return;
+    const needed = startIndex + rows.length - state.tasks.length;
+    let count = rows.length;
+    if (needed > 0) {
+        if (confirm(`需要增加 ${needed} 行文案任务，是否继续？`)) {
+            for (let i = 0; i < needed; i++) state.tasks.push(_createEmptyTask());
+        } else count = Math.max(0, state.tasks.length - startIndex);
+    }
+    for (let i = 0; i < count; i++) {
+        const task = state.tasks[startIndex + i], text = rows[i][0] ?? '';
+        if (field.startsWith('overlay_') || field.startsWith('scroll_')) {
+            const scroll = field.startsWith('scroll_');
+            _applyOverlayFieldWithTarget(task, field, text,
+                scroll ? target.scrollId : target.cardId,
+                scroll ? target.scrollIdx : target.cardIdx, scroll ? 'scroll' : 'textcard');
+        } else if (field === 'cover_text') {
+            if (!task.cover) task.cover = { enabled: true, overlays: [] };
+            if (!task.cover.overlays?.length) task.cover.overlays = [{ type:'textcard', title_text:'', body_text:'', footer_text:'' }];
+            task.cover.overlays[0].title_text = text;
+        } else {
+            if (field === 'txtContent' && task.txtContent !== text) { task.aligned = false; task.segments = []; }
+            task[field] = text;
+        }
+    }
+    const selected = state.selectedIdx;
+    if (selected >= startIndex && selected < startIndex + count && state.overlayProxy?.overlayMgr && !state._coverEditMode) {
+        state.overlayProxy.overlayMgr.overlays = state.tasks[selected].overlays || [];
+    }
+    _skipNextApply = true;
+    _renderBatchTable();
+    if (selected >= startIndex && selected < startIndex + count && typeof reelsSelectTask === 'function') reelsSelectTask(selected);
+    else if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+}
+
+function _prepareBatchTextEditing(container) {
+    const table = container.querySelector('#rbt-table');
+    if (table) {
+        const classes = ['rbt-col-drag','rbt-col-chk','rbt-col-num','rbt-col-act'];
+        let left = 0;
+        classes.forEach((name, index) => {
+            table.style.setProperty('--rbt-pin-' + index, left + 'px');
+            left += table.querySelector('th.' + name)?.getBoundingClientRect().width || [28,34,40,116][index];
+        });
+    }
+    container.querySelectorAll('#rbt-tbody textarea').forEach(input => {
+        if (!_batchTextField(input)) return;
+        input.classList.add('rbt-has-clear');
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'rbt-text-clear'; button.textContent = '×';
+        button.title = '清空此格文案，保留任务及素材';
+        input.insertAdjacentElement('afterend', button);
+    });
+    container.querySelector('#rbt-tbody')?.addEventListener('click', event => {
+        const button = event.target.closest('.rbt-text-clear');
+        if (!button) return;
+        event.preventDefault(); event.stopPropagation();
+        const input = button.previousElementSibling;
+        const field = _batchTextField(input);
+        if (field) _pasteBatchTextRows([['']], Number(input.dataset.idx), field, input.dataset);
+    });
+}
+
+function _parseBatchTSV(raw, preserveEmptyRows = false) {
     const rows = [];
     let i = 0;
     const len = raw.length;
@@ -10955,7 +11184,7 @@ function _parseBatchTSV(raw) {
                 break;
             }
         }
-        if (cells.length > 0 && cells.some(c => c.trim())) {
+        if (cells.length > 0 && (preserveEmptyRows || cells.some(c => c.trim()))) {
             rows.push(cells);
         }
     }
@@ -11894,7 +12123,7 @@ async function _runSingleTTS(idx, batchOutputDir = '') {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || '生成失败');
 
-        task.audioPath = data.audio_path;
+        window.ReelsRenderPlan.setVoice(task, data.audio_path);
         task.srtPath = ''; task.segments = []; task.aligned = false; // 新音频不能沿用旧字幕
         if (data.subtitle_error) showToast(data.subtitle_error, 'warning', 8000);
         if (data.srt_path) {
@@ -12098,7 +12327,7 @@ async function _runGeminiBatchProcessing() {
                 const task = tasks[res.idx];
                 if (task) {
                     if (task.ttsText !== res.tts_text) {
-                        task.audioPath = null;
+                        window.ReelsRenderPlan.setVoice(task, null);
                         task.srtPath = null;
                         task.aligned = false;
                     }
@@ -12748,7 +12977,7 @@ function _importMaterialGroupFolders(rootDir, options = {}) {
         task.baseName = group.name || _generateUniqueCardName(state.tasks || [], 'group');
         task.fileName = `${task.baseName}.mp4`;
         task.exportName = task.baseName;
-        task.audioPath = group.audioPath;
+        window.ReelsRenderPlan.setVoice(task, group.audioPath);
         task.bgMode = 'multi';
         task.bgClipPool = [...group.videoPaths];
         task.bgClipActivePool = [];
@@ -12917,9 +13146,9 @@ async function _importFoldersAsFileTaskTabs(dirs) {
                 task.fileName = `${task.baseName}.mp4`;
                 if (group.visuals.length) {
                     _setTaskSingleBackground(task, primary.path, { clearBgSrcUrl: true, detectImage: true });
-                    if (group.audio || sharedAudio) task.audioPath = (group.audio || sharedAudio).path;
+                    if (group.audio || sharedAudio) window.ReelsRenderPlan.setVoice(task, (group.audio || sharedAudio).path);
                 } else {
-                    task.audioPath = primary.path;
+                    window.ReelsRenderPlan.setVoice(task, primary.path);
                 }
                 const subtitleFile = group.srt || sharedSrt;
                 if (subtitleFile) {
@@ -13355,7 +13584,7 @@ function _assignFileToTask(task, file, field) {
         // Clear stale blob/srcUrl — force preview to use native file path
         task.srcUrl = null;
     } else if (field === 'audio') {
-        task.audioPath = filePath;
+        window.ReelsRenderPlan.setVoice(task, filePath);
     } else if (field === 'srt') {
         task.srtPath = filePath;
         _readSrtFileToTask(task, file);
@@ -13414,6 +13643,11 @@ async function _batchAssignFiles(files, field) {
 
     const mode = await _showBatchModeDialog(files.length, field);
     if (mode === 'cancel') return;
+    const backgroundExistence = new Map();
+    const backgroundExists = path => {
+        if (!backgroundExistence.has(path)) backgroundExistence.set(path, _rbtFileExists(path));
+        return backgroundExistence.get(path);
+    };
 
     if (mode === 'applyall') {
         // 应用单个文件到所有现有行
@@ -13431,10 +13665,11 @@ async function _batchAssignFiles(files, field) {
                 let occupied = false;
                 if (field === 'hook') occupied = !!tk.hookFile;
                 else if (field === 'bg') {
-                    const hasMultiBg = tk.bgMode === 'multi'
-                        && Array.isArray(tk.bgClipPool)
-                        && tk.bgClipPool.some(Boolean);
-                    occupied = !!(tk.bgPath || tk.videoPath || hasMultiBg);
+                    // A deleted file is a vacant slot even when an old template still stores its path.
+                    const candidates = tk.bgMode === 'multi'
+                        ? (tk.bgClipPool || [])
+                        : [tk.bgPath || tk.videoPath].filter(Boolean);
+                    occupied = candidates.some(backgroundExists);
                 }
                 else if (field === 'audio') occupied = !!tk.audioPath;
                 else if (field === 'srt') occupied = !!tk.srtPath;
@@ -13670,7 +13905,7 @@ function _assignSingleFile(idx, field, file) {
         _setTaskSingleBackground(task, filePath, { bgSrcUrl: null });
         task.srcUrl = null;
     } else if (field === 'audio') {
-        task.audioPath = filePath;
+        window.ReelsRenderPlan.setVoice(task, filePath);
     } else if (field === 'srt') {
         task.srtPath = filePath;
         _readSrtFileToTask(task, file);
@@ -13999,7 +14234,7 @@ function _showCandidateDiffDialog(taskName, recognizedText, candidates, currentS
             <div style="padding:12px 20px;background:rgba(59,130,246,0.06);border-bottom:1px solid rgba(255,255,255,0.04);flex-shrink:0;display:flex;gap:20px;">
                 <div style="flex:1;">
                     <div style="font-size:12px;color:#60a5fa;font-weight:700;margin-bottom:6px;">🎙️ 这条音频实际说了什么（AI 听写，仅用于查找）</div>
-                    <div style="font-size:12px;color:#d0d8ff;line-height:1.55;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">${esc(recognizedText || '[无识别文案]')}</div>
+                    <div style="font-size:12px;color:#d0d8ff;line-height:1.55;max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;">${_batchAlignRecognitionDiffHtml(recognizedText, [{label:'当前文案',text:currentSourceText}])}</div>
                 </div>
                 <div style="width:1px;background:rgba(255,255,255,0.08);"></div>
                 <div style="flex:1;">
@@ -14324,55 +14559,141 @@ function _extractPlainTextFromSrtContent(srtContent) {
         .trim();
 }
 
+// Report comparison is independent of alignment acceptance: never hide ASR differences.
+function _batchAlignTextCheck(recognizedText, matchedText, srtText) {
+    const normalize = value => String(value || '').replace(/\s+/gu, '');
+    const values = [matchedText, recognizedText, srtText].map(normalize);
+    const labels = ['文案', '识别文案', 'SRT 文案'];
+    const differences = [];
+    values.forEach((value, i) => { if (!value) differences.push(`${labels[i]}缺失`); });
+    for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) {
+        if (!values[a] || !values[b] || values[a] === values[b]) continue;
+        const left = Array.from(values[a]), right = Array.from(values[b]);
+        let at = 0;
+        while (at < Math.min(left.length, right.length) && left[at] === right[at]) at++;
+        const snippet = text => text.slice(Math.max(0, at - 12), at + 30).join('') || '[结束]';
+        differences.push(`${labels[a]} ≠ ${labels[b]}，第 ${at + 1} 字起：${snippet(left)} / ${snippet(right)}`);
+    }
+    return {
+        allSame: values.every(Boolean) && values[0] === values[1] && values[0] === values[2],
+        sourceSrtSame: !!values[0] && values[0] === values[2],
+        recognizedExact: !!values[0] && values[0] === values[1],
+        differences,
+    };
+}
+
 function _buildBatchAlignTripleReport(taskName, recognizedText, matchedCandidate, srtText, matchDesc) {
-    const label = matchedCandidate?.label || matchedCandidate?.field || '文案';
-    const rowNo = (matchedCandidate?.rowIndex ?? -1) + 1;
-    const matchedText = matchedCandidate?.sourceText || '';
-    const recognizedNorm = _normalizeStrictSubtitleMatch(recognizedText);
-    const matchedNorm = _normalizeStrictSubtitleMatch(matchedText);
-    const srtNorm = _normalizeStrictSubtitleMatch(srtText);
-    // ASR 识别文案允许有口头词、拼写和标点差异，不能用来否决已按正确原文生成的 SRT。
-    // 硬校验只检查“找到的文案”与“SRT 文案”是否一致。
-    const allSame = !!matchedNorm && matchedNorm === srtNorm;
-    const recognizedExact = !!recognizedNorm && recognizedNorm === matchedNorm;
-    return `${taskName}: ${allSame ? '✅ 文案与 SRT 一致' : '⚠️ 文案与 SRT 不一致'}${recognizedExact ? '' : '（识别稿仅供参考）'} ${label} 第 ${rowNo} 行（${matchDesc}）\n` +
-        `| 识别文案 | 找到的文案 | SRT 文案 |\n` +
-        `| ${_compactBatchAlignText(recognizedText)} | ${_compactBatchAlignText(matchedText)} | ${_compactBatchAlignText(srtText)} |`;
+    return _buildBatchAlignTripleTableRow(taskName, recognizedText, matchedCandidate, srtText, matchDesc).table;
 }
 
 function _buildBatchAlignTripleTableRow(taskName, recognizedText, matchedCandidate, srtText, matchDesc, audioPath = '') {
     const label = matchedCandidate?.label || matchedCandidate?.field || '文案';
     const rowNo = (matchedCandidate?.rowIndex ?? -1) + 1;
     const matchedText = matchedCandidate?.sourceText || '';
-    const recognizedNorm = _normalizeStrictSubtitleMatch(recognizedText);
-    const matchedNorm = _normalizeStrictSubtitleMatch(matchedText);
-    const srtNorm = _normalizeStrictSubtitleMatch(srtText);
-    // 只有原文和最终 SRT 不一致才是生成失败；ASR 文本差异只做提示。
-    const allSame = !!matchedNorm && matchedNorm === srtNorm;
-    const recognizedExact = !!recognizedNorm && recognizedNorm === matchedNorm;
+    const check = _batchAlignTextCheck(recognizedText, matchedText, srtText);
+    const text = value => String(value || '').replace(/\s+/g, ' ').trim();
+    const table = [
+        `任务: ${taskName}  ${check.allSame ? '✅ 三方一致' : '⚠️ 三方核对有差异'}  (${label}第${rowNo}行 / ${matchDesc})`,
+        `识别源: ${audioPath}`,
+        ...check.differences,
+        `文案: ${text(matchedText) || '[缺失]'}`,
+        `识别文案: ${text(recognizedText) || '[缺失]'}`,
+        `SRT 文案: ${text(srtText) || '[缺失]'}`,
+    ].join('\n');
     return {
-        allSame,
-        recognizedExact,
-        summary: `${taskName} | ${allSame ? '✅一致' : '⚠️不一致'} | ${label}第${rowNo}行 | ${matchDesc}`,
-        taskName,
-        label,
-        rowNo,
-        matchDesc,
-        audioPath,
-        recognizedText: String(recognizedText || '').replace(/\s+/g, ' ').trim(),
-        matchedText: String(matchedText || '').replace(/\s+/g, ' ').trim(),
-        srtText: String(srtText || '').replace(/\s+/g, ' ').trim(),
-        table: [
-            `任务: ${taskName}  ${allSame ? '✅ 文案与 SRT 一致' : '⚠️ 文案与 SRT 不一致'}${recognizedExact ? '' : ' / 识别稿有差异'}  (${label}第${rowNo}行 / ${matchDesc})`,
-            `识别源: ${audioPath}`,
-            `┌──────────┬────────────────────────────────────────┐`,
-            `│ 识别文案 │ ${String(recognizedText || '').replace(/\s+/g, ' ').trim()}`,
-            `│ 找到文案 │ ${String(matchedText || '').replace(/\s+/g, ' ').trim()}`,
-            `│ SRT文案  │ ${String(srtText || '').replace(/\s+/g, ' ').trim()}`,
-            `└──────────┴────────────────────────────────────────┘`,
-        ].join('\n'),
-        full: _buildBatchAlignTripleReport(taskName, recognizedText, matchedCandidate, srtText, matchDesc),
+        ...check, taskName, label, rowNo, matchDesc, audioPath,
+        summary: `${taskName} | ${check.allSame ? '✅三方一致' : '⚠️三方有差异'} | ${label}第${rowNo}行`,
+        recognizedText: text(recognizedText), matchedText: text(matchedText), srtText: text(srtText),
+        table, full: table,
     };
+}
+
+// Display-only word alignment. Linear-space LCS avoids a full text comparison matrix.
+function _batchAlignRecognitionDiffHtml(recognizedText, references = []) {
+    const text = String(recognizedText || '');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const mark = (content, title, missing = false) => `<mark data-align-diff="${missing ? 'missing' : 'word'}" title="${esc(title)}" style="background:#ffe66d;color:#202124;border-radius:3px;padding:1px 2px;box-decoration-break:clone;-webkit-box-decoration-break:clone;">${esc(content)}</mark>`;
+    if (!text.trim()) return mark('〔识别文案缺失〕', '未返回识别文案，无法逐词核对', true);
+    const tokenize = value => Array.from(value.matchAll(/\p{Script=Han}|[\p{L}\p{N}\p{M}]+(?:['’\-][\p{L}\p{N}\p{M}]+)*|[^\s]/gu), m => ({value:m[0],start:m.index,end:m.index+m[0].length}));
+    const words = tokenize(text), changed = new Map(), missing = new Map();
+    for (const reference of references) {
+        const expected = String(reference?.text || '');
+        const label = reference?.label || '文案';
+        if (!expected.trim() || text.replace(/\s+/gu, '') === expected.replace(/\s+/gu, '')) continue;
+        const target = tokenize(expected), pairs = [];
+        function splitPoint(a0, middle, a1, b0, b1) {
+            const length = b1 - b0;
+            const left = new Uint32Array(length + 1), right = new Uint32Array(length + 1);
+            for (let i = a0; i < middle; i++) {
+                let diagonal = 0;
+                for (let j = 1; j <= length; j++) {
+                    const old = left[j];
+                    left[j] = words[i].value === target[b0+j-1].value ? diagonal + 1 : Math.max(left[j], left[j-1]);
+                    diagonal = old;
+                }
+            }
+            for (let i = a1 - 1; i >= middle; i--) {
+                let diagonal = 0;
+                for (let j = 1; j <= length; j++) {
+                    const old = right[j];
+                    right[j] = words[i].value === target[b1-j].value ? diagonal + 1 : Math.max(right[j], right[j-1]);
+                    diagonal = old;
+                }
+            }
+            let best = -1, at = 0;
+            for (let j = 0; j <= length; j++) {
+                const score = left[j] + right[length-j];
+                if (score > best) { best = score; at = j; }
+            }
+            return b0 + at;
+        }
+        function align(a0, a1, b0, b1) {
+            while (a0 < a1 && b0 < b1 && words[a0].value === target[b0].value) pairs.push([a0++, b0++]);
+            let suffix = 0;
+            while (a0 < a1-suffix && b0 < b1-suffix && words[a1-1-suffix].value === target[b1-1-suffix].value) suffix++;
+            const endA = a1-suffix, endB = b1-suffix;
+            if (a0 < endA && b0 < endB) {
+                if (endA-a0 === 1) {
+                    for (let j=b0;j<endB;j++) if (words[a0].value===target[j].value) { pairs.push([a0,j]); break; }
+                } else {
+                    const middle = (a0+endA) >>> 1;
+                    const split = splitPoint(a0,middle,endA,b0,endB);
+                    align(a0,middle,b0,split); align(middle,endA,split,endB);
+                }
+            }
+            for (let i=0;i<suffix;i++) pairs.push([endA+i,endB+i]);
+        }
+        align(0,words.length,0,target.length);
+        const matched = new Set(pairs.map(pair => pair[0]));
+        words.forEach((word,i) => {
+            if (!matched.has(i)) {
+                if (!changed.has(i)) changed.set(i,new Set());
+                changed.get(i).add(label);
+            }
+        });
+        let previousA = -1, previousB = -1;
+        for (const [a,b] of [...pairs,[words.length,target.length]]) {
+            if (a === previousA+1 && b > previousB+1) {
+                const omitted = expected.slice(target[previousB+1].start,target[b-1].end);
+                const key = a+'\u0000'+omitted;
+                if (!missing.has(key)) missing.set(key,{at:a,text:omitted,labels:new Set()});
+                missing.get(key).labels.add(label);
+            }
+            previousA=a; previousB=b;
+        }
+    }
+    const gaps = new Map();
+    for (const item of missing.values()) {
+        if (!gaps.has(item.at)) gaps.set(item.at,[]);
+        gaps.get(item.at).push(mark(`〔缺：${item.text}〕`, `相较${[...item.labels].join('、')}缺少内容；仅为核对提示，不修改文案`, true));
+    }
+    let html = '', cursor = 0;
+    words.forEach((word,i) => {
+        html += esc(text.slice(cursor,word.start)) + (gaps.get(i) || []).join('');
+        html += changed.has(i) ? mark(word.value,`与${[...changed.get(i)].join('、')}不同`) : esc(word.value);
+        cursor = word.end;
+    });
+    return html + esc(text.slice(cursor)) + (gaps.get(words.length) || []).join('');
 }
 
 function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, footer }) {
@@ -14384,16 +14705,18 @@ function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, foot
         box.style.cssText = 'width:min(1180px,96vw);max-height:90vh;background:#f5f6f8;color:#202124;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,0.35);display:flex;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;';
 
         const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-        const textCell = (text) => `<div style="max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-word;line-height:1.45;font-size:12px;color:#1f2937;">${esc(text)}</div>`;
+        const textCell = (text, references = null) => `<div style="max-height:180px;overflow:auto;white-space:pre-wrap;word-break:break-word;line-height:1.45;font-size:12px;color:#1f2937;">${references ? _batchAlignRecognitionDiffHtml(text, references) : esc(text)}</div>`;
 
-        const tableRows = (rows || []).map(r => `
+        const checkedRows = [...(rows || [])].sort((a, b) => Number(a.allSame) - Number(b.allSame) || a.rowNo - b.rowNo);
+        const differenceCount = checkedRows.filter(r => !r.allSame).length;
+        const tableRows = checkedRows.map(r => `
             <tr>
                 <td style="width:120px;vertical-align:top;padding:10px;border-bottom:1px solid #d8dde6;font-weight:700;color:${r.allSame ? '#15803d' : '#b45309'};">
                     ${esc(r.taskName)}<br>
-                    <span style="font-size:11px;font-weight:600;">${r.manualConfirmed ? '人工确认通过' : (r.allSame ? (r.recognizedExact === false ? '已生成，识别稿有差异' : '一致') : '待人工处理')}</span><br>
-                    <span style="font-size:11px;color:#6b7280;">${esc(r.label)}第${r.rowNo}行</span>
+                    <span style="font-size:11px;font-weight:600;">${r.allSame ? '三方一致' : '三方有差异'}${r.manualConfirmed ? '（已人工确认）' : ''}</span><br>
+                    <span style="font-size:11px;color:#6b7280;">${esc(r.label)}第${r.rowNo}行</span><br><span style="font-size:11px;color:#b45309;white-space:pre-wrap;">${esc((r.differences || []).join('\n'))}</span>
                 </td>
-                <td style="vertical-align:top;padding:10px;border-bottom:1px solid #d8dde6;">${textCell(r.recognizedText)}</td>
+                <td style="vertical-align:top;padding:10px;border-bottom:1px solid #d8dde6;">${textCell(r.recognizedText, [{label:'文案',text:r.matchedText},{label:'SRT 文案',text:r.srtText}])}</td>
                 <td style="vertical-align:top;padding:10px;border-bottom:1px solid #d8dde6;">${textCell(r.matchedText)}</td>
                 <td style="vertical-align:top;padding:10px;border-bottom:1px solid #d8dde6;">${textCell(r.srtText)}</td>
             </tr>
@@ -14451,10 +14774,10 @@ function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, foot
             <div style="padding:16px 20px;overflow:auto;">
                 <div style="margin-bottom:14px;padding:10px 12px;background:#eef6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e3a5f;font-size:12px;line-height:1.6;">
                     <b>处理说明：</b>
-                    “一致”表示自动校验通过；
-                    “已生成，识别稿有差异”表示 SRT 与选中原文一致，但需听音频确认是语音说错还是识别偏差；
-                    “人工确认通过”可继续预览和导出；
-                    “待人工处理”表示 SRT 已保留，请核对音频、原文和 SRT 后重新对齐或人工确认。
+                    已检查 ${checkedRows.length} 个任务，<b>${differenceCount} 个存在差异或缺少文案</b>，差异任务优先列出。<br>
+                    同时核对文案、识别文案和 SRT 文案；仅忽略空格、换行，保留大小写、标点及数字差异。
+                    识别文案中不同的单词用黄色底色标出；〔缺：…〕表示该位置漏词，仅为核对提示，不改写文案。缺少识别文案时标为缺失。
+                    此报告用于核查，不会自动覆盖文案或改变已确认的对齐结果。
                 </div>
                 ${phaseSummary}
                 ${(rows || []).length ? `
@@ -14633,7 +14956,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
     if (!state) return;
 
     const alignSource = alignOptions.alignSource || document.getElementById('rbt-align-source')?.value || 'video';
-    const alignModel = alignOptions.alignModel || document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const alignModel = alignOptions.alignModel || document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
     const isMusicMode = alignModel === 'music_mv';
     const forceRealign = alignOptions.forceRealign ?? (legacyForce || (document.getElementById('rbt-force-realign')?.checked || false));
     const forceTranscribe = alignOptions.forceTranscribe ?? (document.getElementById('rbt-force-transcribe')?.checked || false);
@@ -14841,6 +15164,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
             let confirmedMatchedCandidate = null;
             let confirmedMatchDesc = '';
             let confirmedRecognizedText = '';
+            let finalSrtPlainText = '';
 
             if (strictRefind && sourceTextCandidates.length === 0 && !ownText.trim()) {
                 if (effectiveAllowBlind) {
@@ -15186,7 +15510,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                         task.alignMatchedText = `${matchedCandidate.label || matchedCandidate.field || '文案'} 第 ${matchedCandidate.rowIndex + 1} 行`;
                         confirmedMatchedCandidate = matchedCandidate;
                         confirmedMatchDesc = matchDesc;
-                        confirmedRecognizedText = finalMatchText || '';
+                        confirmedRecognizedText = data.recognized_text || '';
 
                         if (currentNorm !== matchedNorm) {
                             await _deleteGeneratedSubtitleFiles(data.files, taskName);
@@ -15377,6 +15701,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
                     throw new Error(`生成的 SRT 为空或无法读取：${srtFile}`);
                 }
                 const srtPlainText = _extractPlainTextFromSrtContent(srtContent);
+                finalSrtPlainText = srtPlainText;
                 const rawSegs = (typeof parseSRT === 'function' ? parseSRT(srtContent) : []).map(seg => ({ ...seg, _timeUnit: 'sec' }));
                 task.segments = window.ReelsSubtitleProcessor
                     ? ReelsSubtitleProcessor.srtToSegmentsWithWords(rawSegs)
@@ -15395,19 +15720,20 @@ async function _batchAlignAllTasks(overrideForce = false) {
                 }
 
                 if (isRealignRedo && confirmedMatchedCandidate) {
-                        const recognizedForReport = confirmedRecognizedText || data.recognized_text || sourceText;
+                        const recognizedForReport = confirmedRecognizedText || data.recognized_text || '';
                         const triple = _buildBatchAlignTripleTableRow(
                             taskName,
-                            recognizedForReport || '[后端未返回识别文案]',
+                            recognizedForReport,
                             confirmedMatchedCandidate,
                             srtPlainText,
                             confirmedMatchDesc || '已确认匹配',
                             audioPath
                         );
+                        triple.taskIndex = state.tasks.indexOf(task);
                         autoMatchDetails.push(triple.table);
                         tripleReportRows.push(triple);
                         console.log(`[BatchAlign] 三列完整核对\n${triple.full}`);
-                        if (!triple.allSame) {
+                        if (!_normalizeStrictSubtitleMatch(triple.matchedText) || _normalizeStrictSubtitleMatch(triple.matchedText) !== _normalizeStrictSubtitleMatch(triple.srtText)) {
                             const keepSrt = window.confirm(
                                 `${taskName}：原文与最终 SRT 文案不一致。\n\n` +
                                 `说明：这可能是断行、字符归一化或实际文案差异导致。SRT 已保留，请对照音频检查字幕内容和时间轴。\n\n` +
@@ -15415,7 +15741,6 @@ async function _batchAlignAllTasks(overrideForce = false) {
                                 `点击“取消”：保留 SRT，标记为待处理；修改原文或音频后再执行重新对齐。`
                             );
                             if (keepSrt) {
-                                triple.allSame = true;
                                 triple.manualConfirmed = true;
                                 triple.matchDesc = `${triple.matchDesc || ''} / 人工确认`;
                                 task.alignManualConfirmed = true;
@@ -15448,21 +15773,16 @@ async function _batchAlignAllTasks(overrideForce = false) {
                 task.alignMatchedText = '✅ 本行文案匹配';
             }
             // Phase 3: 为所有成功任务构建报告行
-            if (!tripleReportRows.find(r => r.taskName === taskName)) {
+            if (!tripleReportRows.some(r => r.taskIndex === state.tasks.indexOf(task))) {
                 const taskIdx = state.tasks.indexOf(task);
-                const srtPlain = task.srtPath && window.electronAPI?.readFileText
-                    ? _extractPlainTextFromSrtContent(window.electronAPI.readFileText(task.srtPath) || '') : '';
-                tripleReportRows.push({
-                    allSame: true,
-                    taskName,
-                    label: task.alignMatchedText || '文案',
-                    rowNo: taskIdx + 1,
-                    matchDesc: confirmedMatchDesc || (task.alignMatchedText === '当前行文案 ✓' ? '当前行直接匹配' : '自动匹配'),
-                    audioPath: audioPath,
-                    recognizedText: confirmedRecognizedText || data.recognized_text || '',
-                    matchedText: sourceText.replace(/\s+/g, ' ').trim(),
-                    srtText: srtPlain,
-                });
+                const candidate = confirmedMatchedCandidate || matchedCandidate || {
+                    rowIndex: taskIdx, label: '文案', sourceText,
+                };
+                const triple = _buildBatchAlignTripleTableRow(taskName,
+                    confirmedRecognizedText || data.recognized_text || '', candidate,
+                    finalSrtPlainText, confirmedMatchDesc || '自动匹配', audioPath);
+                triple.taskIndex = taskIdx;
+                tripleReportRows.push(triple);
             }
             ok++;
         } catch (err) {
@@ -15505,7 +15825,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
 
     // Phase 3: 始终弹出可视化报告弹窗
     if (silent) {
-        return { ok, fail, total: tasksToAlign.length, failDetails };
+        return { ok, fail, total: tasksToAlign.length, failDetails, rows: tripleReportRows };
     }
     if (tripleReportRows.length > 0 || fail > 0) {
         await _showBatchAlignResultModal({
@@ -15527,7 +15847,7 @@ window.showAlignModelGuideModal = function showAlignModelGuideModal() {
     const currentModel = document.getElementById('rbt-align-model')?.value
         || document.getElementById('subtitle-align-model')?.value
         || localStorage.getItem('rbt_align_model')
-        || 'music_mv';
+        || 'auto';
 
     const applyModelSelection = (val) => {
         localStorage.setItem('rbt_align_model', val);
@@ -15619,7 +15939,7 @@ async function _batchAlignWithMultipleKeys(opts = {}) {
     const state = window._reelsState;
     if (!state?.tasks?.length) return;
 
-    const selectedModel = document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'music_mv';
+    const selectedModel = document.getElementById('rbt-align-model')?.value || localStorage.getItem('rbt_align_model') || 'auto';
     let concurrency = 1;
     let providerName = selectedModel === 'music_mv' ? 'groq' : (selectedModel === 'auto' ? 'deepgram' : selectedModel);
     try {
@@ -15682,6 +16002,7 @@ async function _batchAlignWithMultipleKeys(opts = {}) {
     let ok = 0;
     let fail = 0;
     const failures = [];
+    const reportRows = [];
     const activeTasks = new Set();
 
     const workers = Array.from({ length: workerCount }, (_, workerIndex) => (async () => {
@@ -15708,6 +16029,7 @@ async function _batchAlignWithMultipleKeys(opts = {}) {
                 ok += result?.ok || 0;
                 fail += result?.fail || 0;
                 if (result?.failDetails?.length) failures.push(...result.failDetails);
+                if (result?.rows?.length) reportRows.push(...result.rows);
             } finally {
                 activeTasks.delete(taskIndex + 1);
                 completed++;
@@ -15733,11 +16055,12 @@ async function _batchAlignWithMultipleKeys(opts = {}) {
             : `✅ 并发对齐完成（${ok} 个）`;
         setTimeout(() => { if (progressEl) progressEl.textContent = ''; }, 8000);
     }
-    if (fail > 0) {
-        alert(`并发对齐完成：成功 ${ok}/${targetIndices.length}，失败 ${fail}\n\n${failures.slice(0, 8).join('\n')}`);
-    } else {
-        alert(`✅ 并发对齐完成：${ok} 个任务\n已按 ${workerCount} 路并发同时处理。`);
-    }
+    await _showBatchAlignResultModal({
+        title: `并发对齐完成：成功 ${ok}/${targetIndices.length}，失败 ${fail}`,
+        sourceInfo: `已按 ${workerCount} 路并发处理，并核对三份文案`,
+        rows: reportRows, failDetails: failures,
+        footer: 'SRT 文件已自动保存到音频文件所在目录',
+    });
 }
 
 async function _batchAlignSingleTask(idx, forceTranscribe = false) {
@@ -15797,38 +16120,6 @@ const _MAT_AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma
 const _MAT_SRT_EXTS = new Set(['srt']);
 const _MAT_TXT_EXTS = new Set(['txt']);
 
-function _shuffleArray(arr) {
-    const out = [...arr];
-    for (let i = out.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [out[i], out[j]] = [out[j], out[i]];
-    }
-    return out;
-}
-
-function _randomUniqueFirstAssign(targetTasks, poolPaths, applyFn) {
-    if (!Array.isArray(targetTasks) || targetTasks.length === 0) return 0;
-    const uniquePool = Array.from(new Set((poolPaths || []).filter(Boolean)));
-    if (uniquePool.length === 0) return 0;
-
-    // 先使用不重复随机序列；不够时再重复（每轮重洗）
-    let deck = _shuffleArray(uniquePool);
-    let cursor = 0;
-    let filled = 0;
-    for (const task of targetTasks) {
-        if (!task) continue;
-        if (cursor >= deck.length) {
-            deck = _shuffleArray(uniquePool);
-            cursor = 0;
-        }
-        const path = deck[cursor++];
-        if (!path) continue;
-        applyFn(task, path);
-        filled++;
-    }
-    return filled;
-}
-
 async function _refreshMaterialFolder() {
     const tab = _getActiveTab();
     if (!tab.materialDir) {
@@ -15879,13 +16170,11 @@ async function _refreshMaterialFolder() {
             if (audioBase) existingMap.set(audioBase, i);
         });
 
-        let newCount = 0, updateCount = 0, randomFillCount = 0;
+        let newCount = 0, updateCount = 0, backgroundAssigned = 0;
 
         // Match by baseName: group files
         const groups = new Map(); // baseName → { bg, audio, srt, txt }
-        const matchedBgPaths = new Set();
         const allFiles = [
-            ...classified.bg.map(f => ({ ...f, type: 'bg' })),
             ...classified.audio.map(f => ({ ...f, type: 'audio' })),
             ...classified.srt.map(f => ({ ...f, type: 'srt' })),
             ...classified.txt.map(f => ({ ...f, type: 'txt' })),
@@ -15900,7 +16189,6 @@ async function _refreshMaterialFolder() {
         for (const [base, group] of groups) {
             let taskIdx = existingMap.get(base);
             let task;
-            if (group.bg && group.bg.path) matchedBgPaths.add(group.bg.path);
 
             if (taskIdx != null) {
                 task = tasks[taskIdx];
@@ -15910,7 +16198,7 @@ async function _refreshMaterialFolder() {
                     _setTaskSingleBackground(task, group.bg.path, { clearBgSrcUrl: true }); changed = true;
                 }
                 if (group.audio && task.audioPath !== group.audio.path) {
-                    task.audioPath = group.audio.path; changed = true;
+                    window.ReelsRenderPlan.setVoice(task, group.audio.path); changed = true;
                 }
                 if (group.srt && task.srtPath !== group.srt.path) {
                     task.srtPath = group.srt.path; changed = true;
@@ -15926,7 +16214,7 @@ async function _refreshMaterialFolder() {
                 if (group.bg) {
                     _setTaskSingleBackground(task, group.bg.path);
                 }
-                if (group.audio) { task.audioPath = group.audio.path; }
+                if (group.audio) { window.ReelsRenderPlan.setVoice(task, group.audio.path); }
                 if (group.srt) { task.srtPath = group.srt.path; }
                 task._justRefreshed = true;
                 tasks.push(task);
@@ -15934,25 +16222,22 @@ async function _refreshMaterialFolder() {
             }
         }
 
-        // 随机补齐背景：
-        // 1) 优先使用“未参与同名匹配”的背景素材
-        // 2) 素材不足时允许重复随机分配
-        const unmatchedTasks = tasks.filter(t => !(t.bgPath || t.videoPath));
-        if (unmatchedTasks.length > 0 && classified.bg.length > 0) {
-            const bgAllPaths = classified.bg.map(f => f.path).filter(Boolean);
-            const bgUnmatchedFirst = bgAllPaths.filter(p => !matchedBgPaths.has(p));
-            const primaryPool = bgUnmatchedFirst.length > 0 ? bgUnmatchedFirst : bgAllPaths;
-
-            randomFillCount = _randomUniqueFirstAssign(unmatchedTasks, primaryPool, (task, bgPath) => {
-                _setTaskSingleBackground(task, bgPath, { clearBgSrcUrl: true });
-                task._justRefreshed = true;
-            });
-        }
+        // One file maps to one row in natural filename order, with no cycling.
+        const orderedBackgrounds = classified.bg.slice().sort(_naturalSortByName);
+        orderedBackgrounds.forEach((file, index) => {
+            if (!tasks[index]) { tasks.push(_createEmptyTask()); newCount++; }
+            _setTaskSingleBackground(tasks[index], file.path, { clearBgSrcUrl: true });
+            tasks[index]._justRefreshed = true;
+            backgroundAssigned++;
+        });
 
         tab.lastRefreshTime = Date.now();
         state.tasks = tasks;
 
+        _skipNextApply = true;
         _renderBatchTable();
+        if (typeof _renderTaskList === 'function') _renderTaskList();
+        if (state.selectedIdx >= 0 && typeof reelsSelectTask === 'function') reelsSelectTask(state.selectedIdx);
 
         // Clear _justRefreshed flags after animation
         setTimeout(() => {
@@ -15962,7 +16247,7 @@ async function _refreshMaterialFolder() {
         const summary = [];
         if (newCount > 0) summary.push(`🆕 新增 ${newCount} 行`);
         if (updateCount > 0) summary.push(`🔄 更新 ${updateCount} 行`);
-        if (randomFillCount > 0) summary.push(`🎲 随机补齐背景 ${randomFillCount} 行（未匹配优先）`);
+        if (backgroundAssigned > 0) summary.push(`按顺序分配背景 ${backgroundAssigned} 行`);
         if (summary.length === 0) summary.push('✅ 没有新变化');
         alert(`刷新完成\n${summary.join('\n')}\n\n文件夹: ${tab.materialDir}\n共 ${files.length} 个文件`);
 
@@ -16292,7 +16577,42 @@ function _injectBatchTableCSS() {
         .rbt-col-subtime { width:100px; min-width:80px; }
         .rbt-col-flipper-enabled, .rbt-col-flipper-duration, .rbt-col-flipper-lines, .rbt-col-flipper-effect, .rbt-col-flipper-loop, .rbt-col-flipper-transition-duration { width:80px; text-align:center; }
         .rbt-col-tpl { width:120px; }
-        .rbt-col-act { width:70px; white-space:nowrap; }
+        .rbt-col-act { width:116px; min-width:116px; white-space:nowrap; }
+        /* Compact secondary settings; keep text, primary media and presets unchanged. */
+        .rbt-table :is(.rbt-col-bgscale,.rbt-col-bgdurscale,.rbt-col-audiodurscale,.rbt-col-bgvol,.rbt-col-voicevol,.rbt-col-cvscale,.rbt-col-cvvol,.rbt-col-dur) {
+            width:60px; min-width:60px; padding-left:4px; padding-right:4px;
+        }
+        .rbt-table :is(.rbt-col-flipper-enabled,.rbt-col-flipper-duration,.rbt-col-flipper-lines,.rbt-col-flipper-loop,.rbt-col-flipper-transition-duration) {
+            width:64px; min-width:64px; padding-left:4px; padding-right:4px;
+        }
+        .rbt-table :is(.rbt-col-flipper-effect,.rbt-col-cvtrim,.rbt-col-cvcrop,.rbt-col-cvblurbg,.rbt-col-cvpos,.rbt-col-subtime,.rbt-col-bgclipsettings) {
+            width:88px; min-width:80px; padding-left:4px; padding-right:4px;
+        }
+        .rbt-table :is(.rbt-col-hook,.rbt-col-pip,.rbt-col-bgm,.rbt-col-cover-media) { width:112px; padding-left:4px; padding-right:4px; }
+        .rbt-table .rbt-col-clippool { width:128px; min-width:128px; }
+        .rbt-table th:is(.rbt-col-bgscale,.rbt-col-bgdurscale,.rbt-col-audiodurscale,.rbt-col-bgvol,.rbt-col-voicevol,.rbt-col-cvscale,.rbt-col-cvvol,.rbt-col-flipper-enabled,.rbt-col-flipper-duration,.rbt-col-flipper-lines,.rbt-col-flipper-effect,.rbt-col-flipper-loop,.rbt-col-flipper-transition-duration,.rbt-col-cvtrim,.rbt-col-cvcrop,.rbt-col-cvblurbg,.rbt-col-cvpos,.rbt-col-subtime,.rbt-col-bgclipsettings) .rbt-th-wrap {
+            position:relative; min-height:28px;
+        }
+        .rbt-table th:is(.rbt-col-bgscale,.rbt-col-bgdurscale,.rbt-col-audiodurscale,.rbt-col-bgvol,.rbt-col-voicevol,.rbt-col-cvscale,.rbt-col-cvvol,.rbt-col-flipper-enabled,.rbt-col-flipper-duration,.rbt-col-flipper-lines,.rbt-col-flipper-effect,.rbt-col-flipper-loop,.rbt-col-flipper-transition-duration,.rbt-col-cvtrim,.rbt-col-cvcrop,.rbt-col-cvblurbg,.rbt-col-cvpos,.rbt-col-subtime,.rbt-col-bgclipsettings) .rbt-th-wrap > span {
+            white-space:normal; overflow-wrap:anywhere; line-height:14px;
+        }
+        .rbt-table th:is(.rbt-col-bgscale,.rbt-col-bgdurscale,.rbt-col-audiodurscale,.rbt-col-bgvol,.rbt-col-voicevol,.rbt-col-cvscale,.rbt-col-cvvol,.rbt-col-flipper-enabled,.rbt-col-flipper-duration,.rbt-col-flipper-lines,.rbt-col-flipper-effect,.rbt-col-flipper-loop,.rbt-col-flipper-transition-duration,.rbt-col-cvtrim,.rbt-col-cvcrop,.rbt-col-cvblurbg,.rbt-col-cvpos,.rbt-col-subtime,.rbt-col-bgclipsettings) .rbt-th-wrap > button {
+            position:absolute; top:100%; z-index:10; right:0;
+        }
+        .rbt-table th:is([class*="rbt-col-flipper-"],.rbt-col-bgclipsettings) .rbt-th-wrap > .rbt-th-paste { right:20px; }
+        .rbt-table thead { z-index:8; }
+        .rbt-table :is(th,td):is(.rbt-col-drag,.rbt-col-chk,.rbt-col-num,.rbt-col-act) { position:sticky; z-index:3; background:#1c1e24; }
+        .rbt-table .rbt-col-drag { left:var(--rbt-pin-0,0px); min-width:28px; width:28px; }
+        .rbt-table .rbt-col-chk { left:var(--rbt-pin-1,28px); min-width:34px; width:34px; }
+        .rbt-table .rbt-col-num { left:var(--rbt-pin-2,62px); min-width:40px; width:40px; }
+        .rbt-table .rbt-col-act { left:var(--rbt-pin-3,102px); box-shadow:3px 0 4px #0003; }
+        .rbt-table thead :is(.rbt-col-drag,.rbt-col-chk,.rbt-col-num,.rbt-col-act) { z-index:9; }
+        body.theme-light .rbt-table td:is(.rbt-col-drag,.rbt-col-chk,.rbt-col-num,.rbt-col-act) { background:var(--bg-secondary); }
+        .rbt-table td:has(> .rbt-has-clear) { position:relative; }
+        .rbt-has-clear { padding-right:20px !important; }
+        .rbt-text-clear { position:absolute; right:3px; top:3px; border:0; background:transparent; color:var(--text-secondary,#999); cursor:pointer; opacity:0; padding:0 4px; font-size:15px; }
+        .rbt-table td:hover > .rbt-text-clear, .rbt-table td:focus-within > .rbt-text-clear { opacity:1; }
+
         .rbt-file-name {
             display:block; padding:3px 6px; background:#101020; border:1px solid #1e1e3a;
             border-radius:3px; color:#8888cc; font-size:11px; min-height:24px; line-height:18px;
@@ -19285,11 +19605,15 @@ function _bindMediaSidebarEvents(container) {
         const sortedPaths = Array.from(filePaths).filter(Boolean).sort(_naturalSortByName);
         if (sortedPaths.length === 0) return;
         const pathMod = window.require ? window.require('path') : null;
+        const importedItems = [];
         for (const fp of sortedPaths) {
             const name = pathMod ? pathMod.basename(fp) : fp.split(/[\\/]/).pop();
             const cls = _classifyFile(name);
-            window._mediaPool.items.push({ name, path: fp, size: 0, file: null, type: 'file', role: '', ...cls });
+            const item = { name, path: fp, size: 0, file: null, type: 'file', role: '', ...cls };
+            window._mediaPool.items.push(item);
+            importedItems.push(item);
         }
+        window._mediaPool.lastImportedItems = importedItems;
         _renderPoolItems();
         if (typeof showToast === 'function') showToast(`📥 已导入 ${sortedPaths.length} 个文件到素材池`, 'success');
         console.log(`[MediaPool] Ingested ${sortedPaths.length} files (abs path), pool size: ${window._mediaPool.items.length}`);
@@ -19396,7 +19720,7 @@ function _bindMediaSidebarEvents(container) {
         const role = roleSelect ? roleSelect.value : '';
         if (!role) { if (typeof showToast === 'function') showToast('请先选择一个角色', 'warning'); return; }
         const allItems = window._mediaPool.items || [];
-        const items = _activeFilter === 'all' ? allItems : allItems.filter(it => {
+        let items = _activeFilter === 'all' ? allItems : allItems.filter(it => {
             switch (_activeFilter) {
                 case 'bg': return it.isVideo || it.isImage;
                 case 'overlay': return it.isVideo || it.isImage || it.type === 'seq';
@@ -19407,6 +19731,7 @@ function _bindMediaSidebarEvents(container) {
                 default: return true;
             }
         });
+        if (role === 'bg') items = _getCurrentBackgroundImportItems(items);
         if (items.length === 0) { if (typeof showToast === 'function') showToast('素材池为空（或当前分类下无素材）', 'warning'); return; }
         const tasks = window._reelsState?.tasks || [];
         if (tasks.length === 0) { if (typeof showToast === 'function') showToast('请先创建任务（行）', 'warning'); return; }
@@ -19424,13 +19749,15 @@ function _bindMediaSidebarEvents(container) {
                     applied++;
                     break;
                 case 'universal': _setTaskSingleBackground(task, item.path); applied++; break;
-                case 'voice': task.audioPath = item.path; applied++; break;
+                case 'voice': window.ReelsRenderPlan.setVoice(task, item.path); applied++; break;
                 case 'bgm': task.bgmPath = item.path; applied++; break;
             }
             item.role = role;
         }
         if (applied > 0) {
+            _skipNextApply = true;
             _renderBatchTable();
+            if (role === 'bg') _refreshClearedBackgroundPreview(tasks.map((_, index) => index));
             const roleLabels = { bg: '背景素材', overlay: '内容视频', hook: '前置Hook', universal: '通用', voice: '人声-音频文件', bgm: '配乐' };
             if (typeof showToast === 'function') showToast(`✅ 已将 ${applied} 个素材按「${roleLabels[role] || role}」角色依次分配到前 ${applied} 行`, 'success');
         }

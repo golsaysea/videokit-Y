@@ -683,6 +683,9 @@ class ReelsOverlayPanel {
                             <span style="font-size:11px;color:var(--text-muted);">关闭则保持原版正常滚动</span>
                         </div>
 
+                        <label>开始(S)</label><input type="number" id="rop-scroll-tw-start" class="rop-input" min="0" step="0.1" placeholder="跟随滚动开始">
+                        <label>结束(S)</label><input type="number" id="rop-scroll-tw-end" class="rop-input" min="0" step="0.1" placeholder="跟随滚动结束">
+                        <div style="grid-column:span 2;font-size:11px;color:var(--text-muted);">留空沿用原来的语音时间；填写后仅调整出字时间，不改变滚动运动。</div>
                         <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="quill" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.12);color:#fde68a;cursor:pointer;">🪶 羽毛笔朗诵写出</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rose" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🌹 玫瑰花朗诵写出</button>
@@ -827,6 +830,7 @@ class ReelsOverlayPanel {
                         <label>结束(s)</label><input type="number" id="rop-scroll-end-time" class="rop-input" step="0.1" min="0">
                         <label title="文字开始向上滚动时的初始Y坐标">起始Y</label><input type="number" id="rop-scroll-from-y" class="rop-input" step="10" value="960">
                         <label title="文字向上滚动最终消失或停留的结束Y坐标">结束Y</label><input type="number" id="rop-scroll-to-y" class="rop-input" step="10" value="-200">
+                        <label>结束Y自动适配</label><label style="display:flex;gap:5px;align-items:center;font-size:11px;"><input type="checkbox" id="rop-scroll-end-y-auto" checked>底部羽化上方留 0.4 行</label>
                         <label title="文字中心轴 X；文本宽度会从这个中心向左右展开">中心X</label><input type="number" id="rop-scroll-from-x" class="rop-input" step="10">
                         <!-- 速度参数已移除：速度由 距离÷时间 自动决定 -->
                         <input type="hidden" id="rop-scroll-speed" value="1">
@@ -1914,7 +1918,7 @@ class ReelsOverlayPanel {
             'rop-scroll-body-bg-enabled', 'rop-scroll-body-bg-mode', 'rop-scroll-body-bg-color',
             'rop-scroll-body-bg-opacity', 'rop-scroll-body-bg-radius',
             'rop-scroll-body-bg-pad-h', 'rop-scroll-body-bg-pad-top', 'rop-scroll-body-bg-pad-bottom',
-            'rop-scroll-from-y', 'rop-scroll-to-y', 'rop-scroll-from-x', 'rop-scroll-to-x',
+            'rop-scroll-from-y', 'rop-scroll-to-y', 'rop-scroll-end-y-auto', 'rop-scroll-from-x', 'rop-scroll-to-x',
             'rop-scroll-offset-x', 'rop-scroll-offset-y',
             'rop-scroll-final-y', 'rop-scroll-start-offset',
             'rop-scroll-start-time', 'rop-scroll-end-time',
@@ -1932,7 +1936,7 @@ class ReelsOverlayPanel {
             'rop-scroll-bg-border-style', 'rop-scroll-bg-border-opacity',
             'rop-scroll-bg-blur-enabled', 'rop-scroll-bg-blur-amount',
             // 滚动字幕出字效果
-            'rop-scroll-tw-enabled', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
+            'rop-scroll-tw-enabled', 'rop-scroll-tw-start', 'rop-scroll-tw-end', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
             'rop-scroll-tw-hide-unread', 'rop-scroll-tw-unrevealed-opacity',
             'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color',
             'rop-scroll-tw-active-scale-enabled', 'rop-scroll-tw-active-scale',
@@ -1946,8 +1950,22 @@ class ReelsOverlayPanel {
         for (const fid of fields) {
             const el = this.container.querySelector('#' + fid);
             if (!el) continue;
-            el.addEventListener('input', () => this._syncToOverlay());
-            el.addEventListener('change', () => this._syncToOverlay());
+            const syncField = () => {
+                if (fid === 'rop-scroll-start-time' || fid === 'rop-scroll-end-time') {
+                    const main = this.container.querySelector(fid === 'rop-scroll-start-time' ? '#rop-start' : '#rop-end');
+                    if (main) main.value = el.value;
+                }
+                if (fid === 'rop-scroll-to-y' && this._selectedOv?.type === 'scroll') {
+                    this._selectedOv.scroll_end_y_auto = false;
+                    this._val('rop-scroll-end-y-auto', false);
+                    this._selectedOv.scroll_auto_stop = false;
+                    this._val('rop-scroll-auto-stop', false);
+                }
+                if ((fid === 'rop-scroll-end-time' || fid === 'rop-end') && this._selectedOv?.type === 'scroll') this._selectedOv.scroll_end_auto = false;
+                this._syncToOverlay();
+            };
+            el.addEventListener('input', syncField);
+            el.addEventListener('change', syncField);
         }
 
         // 滚动字幕出字效果：快捷按钮、16款小图标点选与图片上传
@@ -2255,9 +2273,13 @@ class ReelsOverlayPanel {
             if (!boldEl || !weightEl) return;
             boldEl.addEventListener('change', () => {
                 const target = boldEl.checked ? boldValue : normalValue;
-                if (Array.from(weightEl.options).some(o => o.value === target)) {
-                    weightEl.value = target;
+                if (!Array.from(weightEl.options).some(o => o.value === target)) {
+                    const opt = document.createElement('option');
+                    opt.value = target;
+                    opt.textContent = boldEl.checked ? 'Bold' : 'Regular';
+                    weightEl.appendChild(opt);
                 }
+                weightEl.value = target;
                 this._syncToOverlay();
             });
             weightEl.addEventListener('change', () => {
@@ -2904,7 +2926,7 @@ class ReelsOverlayPanel {
                 'shadow_enabled', 'shadow_color', 'shadow_blur', 'shadow_opacity',
                 'shadow_offset_x', 'shadow_offset_y',
                 'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
-                'scroll_speed', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+                'scroll_speed', 'scroll_end_y_auto', 'scroll_end_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
                 'scroll_title_fontsize', 'scroll_title_font_family', 'scroll_title_font_weight',
                 'scroll_title_bold', 'scroll_title_color', 'scroll_title_gradient_direction', 'scroll_title_align', 'scroll_title_gap', 'scroll_title_fixed',
                 'scroll_title_independent', 'scroll_title_x', 'scroll_title_y',
@@ -3743,9 +3765,17 @@ class ReelsOverlayPanel {
                 }
             }
         }
+        if (!entries.some(x => x.value === '400')) {
+            entries.push({ value: '400', label: 'Regular' });
+        }
+        if (!entries.some(x => x.value === '700')) {
+            entries.push({ value: '700', label: 'Bold' });
+        }
+        entries.sort((a, b) => (parseInt(a.value, 10) || 400) - (parseInt(b.value, 10) || 400));
         const weights = entries.map(x => x.value);
         select.innerHTML = entries.map(x => `<option value="${x.value}">${x.label}</option>`).join('');
         if (weights.includes(current)) select.value = current;
+        else if ((parseInt(current, 10) || 700) < 600 && weights.includes('400')) select.value = '400';
         else if (weights.includes('700')) select.value = '700';
         else select.value = weights[weights.length - 1] || '700';
     }
@@ -3785,6 +3815,11 @@ class ReelsOverlayPanel {
         ov.start = _ropRound(ov.start || 0);
         this._val('rop-start', ov.start);
         // 9999 = 全程，面板显示实际时长但不修改数据
+        if (ov.type === 'scroll' && ov.scroll_end_auto !== false && !ov.display_ranges?.length) {
+            const task = this.videoCanvas?.scopedTask || (typeof _getSelectedTask === 'function' ? _getSelectedTask() : null);
+            const duration = Number(window._reelsState?._mediaDurations?.[task?.audioPath]);
+            if (duration > 0 && Number.isFinite(duration)) { ov.end = _ropRound(duration); ov.scroll_end_auto = true; }
+        }
         let displayEnd = ov.end || 0;
         if (displayEnd >= 9999) {
             const v2Duration = this.videoCanvas?.getDuration ? this.videoCanvas.getDuration() : window.ReelsPreviewV2?.isOpen?.()
@@ -4216,6 +4251,11 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-body-bg-pad-bottom', ov.scroll_body_bg_pad_bottom ?? 0);
             // 独立同步 起始Y 和 结束Y
             this._val('rop-scroll-from-y', ov.scroll_from_y ?? 960);
+            this._val('rop-scroll-end-y-auto', ov.scroll_end_y_auto !== false);
+            if (ov.scroll_end_y_auto !== false) {
+                const motion = window.ReelsOverlay?.measureScrollMotion?.(ov);
+                if (motion) ov.scroll_to_y = Math.round(motion.endY * 10) / 10;
+            }
             this._val('rop-scroll-to-y', ov.scroll_to_y ?? -200);
             const legacyDefaultLeftX = ov.scroll_x_anchor == null
                 && Math.abs((ov.scroll_from_x ?? 90) - 90) < 0.001
@@ -4260,6 +4300,8 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-bg-blur-amount', ov.bg_blur_amount ?? 10);
             // ── 出字效果（朗诵打字机 / 手写跟读）──
             this._val('rop-scroll-tw-enabled', ov.scroll_typewriter_enabled === true);
+            this._val('rop-scroll-tw-start', ov.scroll_tw_start ?? '');
+            this._val('rop-scroll-tw-end', ov.scroll_tw_end ?? '');
             this._val('rop-scroll-tw-speech-sync', ov.scroll_tw_speech_sync !== false);
             this._val('rop-scroll-tw-reveal-type', ov.scroll_tw_reveal_type || 'char');
             const scrollUnreadOp = ov.scroll_tw_unrevealed_opacity ?? 0;
@@ -4804,6 +4846,7 @@ class ReelsOverlayPanel {
             ov.scroll_body_bg_pad_bottom = this._get('rop-scroll-body-bg-pad-bottom') ?? 0;
             // 独立获取设置，解耦拖动逻辑防止双重偏移修改死循环
             ov.scroll_from_y = this._get('rop-scroll-from-y') ?? 960;
+            ov.scroll_end_y_auto = !!this._get('rop-scroll-end-y-auto');
             ov.scroll_to_y = this._get('rop-scroll-to-y') ?? -200;
             ov.scroll_x_anchor = 'center';
             ov.scroll_from_x = this._get('rop-scroll-from-x') ?? 540;
@@ -4847,6 +4890,10 @@ class ReelsOverlayPanel {
             ov.bg_blur_amount = this._get('rop-scroll-bg-blur-amount');
             // 出字效果（朗诵写出/打字机）
             ov.scroll_typewriter_enabled = !!this._get('rop-scroll-tw-enabled');
+            for (const name of ['start', 'end']) {
+                const raw = this.container.querySelector(`#rop-scroll-tw-${name}`)?.value?.trim() || '';
+                ov[`scroll_tw_${name}`] = raw !== '' && Number.isFinite(Number(raw)) ? Math.max(0, Number(raw)) : null;
+            }
             ov.scroll_tw_hide_unread = this._get('rop-scroll-tw-hide-unread') !== false;
             ov.scroll_tw_unrevealed_opacity = ov.scroll_tw_hide_unread
                 ? Number(this._get('rop-scroll-tw-unrevealed-opacity') ?? 0)
@@ -4904,6 +4951,10 @@ class ReelsOverlayPanel {
             this._updateFlipperInfo(ov);
         }
 
+        if (ov.type === 'scroll' && ov.scroll_end_y_auto) {
+            const motion = window.ReelsOverlay?.measureScrollMotion?.(ov);
+            if (motion) { ov.scroll_to_y = Math.round(motion.endY * 10) / 10; this._val('rop-scroll-to-y', ov.scroll_to_y); }
+        }
         this._syncOverlayStyleToScopeTasks(ov);
 
         // Re-render canvas to reflect changes, coalesced to avoid intermediate frames while applying panel values.
@@ -5151,9 +5202,9 @@ class ReelsOverlayPanel {
             // 滚动参数
             'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
             'scroll_offset_x', 'scroll_offset_y',
-            'scroll_speed', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+            'scroll_speed', 'scroll_end_y_auto', 'scroll_end_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
             // 出字效果（朗诵写出/打字机）
-            'scroll_typewriter_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
+            'scroll_typewriter_enabled', 'scroll_tw_start', 'scroll_tw_end', 'scroll_tw_hide_unread', 'scroll_tw_active_scale_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
             'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
             'scroll_tw_cursor_enabled', 'scroll_tw_cursor_kind', 'scroll_tw_cursor_char', 'scroll_tw_cursor_color',
             'scroll_tw_cursor_scale', 'scroll_tw_cursor_offset_x', 'scroll_tw_cursor_offset_y', 'scroll_tw_cursor_angle',
@@ -5199,6 +5250,7 @@ class ReelsOverlayPanel {
                 if (targetOv) {
                     const styleCopy = JSON.parse(JSON.stringify(styleObj));
                     Object.assign(targetOv, styleCopy);
+                    if (typeof _syncScrollAudioTiming === 'function') _syncScrollAudioTiming(task);
                 }
             });
         } finally {
@@ -5816,12 +5868,13 @@ class ReelsOverlayPanel {
             cancelBtn.onclick = () => close(null);
             overlay.onclick = (e) => { if (e.target === overlay) close(null); };
             input.addEventListener('keydown', (e) => {
+                e.stopPropagation();
                 if (e.key === 'Enter') close((input.value || '').trim() || null);
                 if (e.key === 'Escape') close(null);
             });
             // 多次尝试 focus 确保 Electron 渲染完成后能获得焦点
-            setTimeout(() => input.focus(), 50);
-            setTimeout(() => { if (!box.contains(document.activeElement)) input.focus(); }, 150);
+            setTimeout(() => { if (overlay.isConnected) { window.focus(); input.focus(); input.select(); } }, 50);
+            setTimeout(() => { if (overlay.isConnected && !box.contains(document.activeElement)) input.focus(); }, 150);
         });
     }
 
@@ -6322,7 +6375,13 @@ class ReelsOverlayPanel {
         const newPreset = this._migratePresetFormat(name, serialized);
         newPreset.meta.category = category || presets[name]?.meta?.category || '我的预设';
         if (thumbnail) newPreset.thumbnail = thumbnail;
-        const linkedMedia = serialized.filter(layer => ['video', 'image', 'audio'].includes(layer?.type) && typeof layer.content === 'string' && !layer.content.startsWith('data:'));
+        const linkedMedia = serialized.flatMap(layer => {
+            const values = [];
+            if (['video', 'image', 'audio'].includes(layer?.type) && !layer.is_img_sequence) values.push(layer.content);
+            if (layer?.scroll_tw_cursor_image) values.push(layer.scroll_tw_cursor_image);
+            if (layer?.is_img_sequence && Array.isArray(layer.sequence_frames)) values.push(...layer.sequence_frames);
+            return values.filter(value => typeof value === 'string' && !value.startsWith('data:'));
+        });
         if (linkedMedia.length && window.electronAPI?.saveOverlayPresetAssets) {
             const storageChoice = await this._showPresetMediaStorageDialog(linkedMedia.length);
             if (!storageChoice) return;
@@ -6348,7 +6407,7 @@ class ReelsOverlayPanel {
                 alert(`✅ 预设 "${name}" 已更新`);
             }
         } else {
-            alert(`✅ 覆层组预设 "${name}" 已保存 (${serialized.length} 层)`);
+            if (typeof window.showToast === 'function') window.showToast(`✅ 覆层组预设 "${name}" 已保存 (${serialized.length} 层)`, 'success');
         }
     }
 
@@ -6903,6 +6962,9 @@ class ReelsOverlayPanel {
             }
         }
 
+        if (typeof _syncScrollAudioTiming === 'function') {
+            for (const task of new Set([selectedTask, ...(scopedTasks || [])].filter(Boolean))) _syncScrollAudioTiming(task);
+        }
         if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
             try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
         }

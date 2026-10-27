@@ -20,12 +20,75 @@ const overlayPresetPackage = require('./services/overlayPresetPackage');
 const sharedProfile = require('./services/sharedProfile');
 const codeCacheGuard = require('./services/codeCacheGuard');
 
+ipcMain.on('profile:runtime-paths', (event) => {
+    try {
+        assertTrustedRenderer(event);
+        event.returnValue = { ok: true, current: app.getPath('userData'), primary: sharedProfile.getPrimarySharedProfileDir(), candidates: sharedProfile.getCandidateProfileDirs(), isolated: sharedProfile.isIsolatedTestProfile() };
+    } catch (_) { event.returnValue = { ok: false }; }
+});
+
+ipcMain.on('workspace:read-startup', (event) => { try { assertTrustedRenderer(event); event.returnValue = sharedProfile.readUnifiedBatchWorkspace(); } catch (_) { event.returnValue = ''; } });
 let mainWindow;
 let appIsReady = false;
 let powerSaveId = null;
 let isQuitting = false;
 const templateWindows = new Map(); // templateId → BrowserWindow
 const isolatedReelsRenderers = new Map(); // requestId → BrowserWindow
+let idleCacheMaintenance = null;
+let manualCacheCleaning = false;
+function startIdleCacheMaintenance() {
+    const {powerMonitor}=require('electron');
+    const {execFile}=require('child_process');
+    const {createIdleCacheCleaner}=require(path.join(process.resourcesPath,'idle-cache-cleaner.js'));
+    let processCheckAt=0,processBusy=true;
+    const canRun=()=>{
+        try{return !isQuitting&&!manualCacheCleaning&&isolatedReelsRenderers.size===0&&BrowserWindow.getAllWindows().length>0&&powerMonitor.getSystemIdleTime()>=120;}catch(_){return false;}
+    };
+    const isIdle=async()=>{
+        if(!canRun())return false;
+        for(const win of BrowserWindow.getAllWindows()){
+            if(win.isDestroyed()||win.webContents.isDestroyed()||win.webContents.isLoading())return false;
+            let timeout;
+            try{
+                const busy=await Promise.race([
+                    win.webContents.executeJavaScript(`(()=>{
+                        const state=typeof _reelsState==='object'?_reelsState:null;
+                        return !!state?.isExporting || !!state?.isPlaying ||
+                            !!state?.tasks?.some(t=>t.status==='generating'||t.concatStatus==='generating') ||
+                            [...document.querySelectorAll('video,audio')].some(m=>!m.paused&&!m.ended);
+                    })()`),
+                    new Promise(resolve=>{timeout=setTimeout(()=>resolve(true),2000);})
+                ]);
+                if(busy)return false;
+            }catch(_){return false;}finally{clearTimeout(timeout);}
+        }
+        if(process.platform==='win32'&&Date.now()-processCheckAt>10000){
+            processBusy=await new Promise(resolve=>execFile('tasklist.exe',['/FI','IMAGENAME eq ffmpeg.exe','/FO','CSV','/NH'],{windowsHide:true,timeout:5000},(error,stdout)=>resolve(!!error||/"ffmpeg\.exe"/i.test(stdout))));
+            processCheckAt=Date.now();
+        }else if(process.platform!=='win32')processBusy=false;
+        return canRun()&&!processBusy;
+    };
+    const userData=app.getPath('userData');
+    const tmp=require('./services/settings').getSecureTmpDir();
+    idleCacheMaintenance=createIdleCacheCleaner({
+        canRun,isIdle,log,
+        getRoots:()=>[
+            ...['Cache','Code Cache','GPUCache','DawnGraphiteCache','DawnWebGPUCache'].map(name=>({path:path.join(userData,name),remove:false})),
+            {path:path.join(tmp,'videokit_overlay_cache'),remove:true},
+            {path:path.join(tmp,'reels-hdr-preview'),remove:true}
+        ],
+        clearHttpCache:async()=>{
+            const sessions=new Set(BrowserWindow.getAllWindows().map(w=>w.webContents.session));
+            for(const session of sessions){
+                if(!canRun())break;
+                await session.clearCache();
+                if(canRun()&&typeof session.clearCodeCaches==='function')await session.clearCodeCaches({});
+            }
+        }
+    });
+    idleCacheMaintenance.start();
+    log('[IdleCache] enabled: threshold=10GiB, target=8GiB, idle=120s, interval=300s');
+}
 let latestRendererCrashReport = null;
 
 // 保留不含任务内容的崩溃诊断，用户可将该文件反馈给开发者定位问题。
@@ -755,6 +818,7 @@ function createWindow() {
     }
 
     mainWindow = new BrowserWindow(windowOptions);
+    attachTemplateLibraryNavigation(mainWindow);
     if (!app.isPackaged) {
         mainWindow.webContents.on('page-title-updated', event => {
             event.preventDefault();
@@ -949,10 +1013,10 @@ function createWindow() {
         mainWindow.webContents.on('did-finish-load', async () => {
             if (!mainWindow || mainWindow.isDestroyed()) return;
             try {
-                // Verify both DOM structure AND core frontend JS bundle execution (`window.switchTab` & `window._reelsState`).
+                // Verify both DOM structure AND core frontend JS bundle execution (`window.reelsSelectTask`, `window.ReelsStyleEngine` and `window._reelsState`).
                 // Static HTML alone has document.body.children.length > 0 even when V8 Code Cache fails to execute scripts.
                 const jsAndDomHealthy = await mainWindow.webContents.executeJavaScript(
-                    'Boolean(document.body && document.body.children && document.body.children.length > 0 && typeof window.switchTab === "function" && window._reelsState)',
+                    'Boolean(document.body && document.body.children && document.body.children.length > 0 && typeof window.reelsSelectTask === "function" && typeof window.ReelsStyleEngine?.mergeStyle === "function" && window._reelsState)',
                     true
                 );
                 if (jsAndDomHealthy) {
@@ -975,10 +1039,13 @@ function createWindow() {
                 } catch (_) {}
             }
             if (mainWindow && !mainWindow.isDestroyed()) {
-                bootWatchdogTimer = setTimeout(() => {
-                    if (!rendererBootVerified) {
-                        recoverFromWhiteScreen('startup-watchdog-timeout');
-                    }
+                bootWatchdogTimer = setTimeout(async () => {
+                    if (rendererBootVerified || !mainWindow || mainWindow.isDestroyed()) return;
+                    try {
+                        const ready = await mainWindow.webContents.executeJavaScript('Boolean(window._reelsState && typeof window.reelsSelectTask === "function" && typeof window.ReelsStyleEngine?.mergeStyle === "function")', true);
+                        if (ready) { rendererBootVerified = true; codeCacheGuard.markRendererBootComplete(userDataDir); return; }
+                    } catch (_) {}
+                    await recoverFromWhiteScreen('startup-watchdog-timeout');
                 }, 10000);
                 mainWindow.loadFile(distHtmlPath);
             }
@@ -986,60 +1053,22 @@ function createWindow() {
     }
 
     mainWindow.on('close',async event=>{
-        if(
-            workspaceCloseApproved ||
-            app._updateRestartApproved ||
-            isQuitting ||
-            app.isQuitting ||
-            mainWindow?.webContents?.isDestroyed() ||
-            mainWindow?.webContents?.isCrashed()
-        ){
-            isQuitting = true;
-            app.isQuitting = true;
-            try {
-                if (typeof app.releaseSingleInstanceLock === 'function') {
-                    app.releaseSingleInstanceLock();
-                }
-            } catch (_) {}
-            return;
-        }
+        if(workspaceCloseApproved || app._updateRestartApproved || mainWindow?.webContents?.isDestroyed())return;
         event.preventDefault();
         if(workspaceCloseSaving)return;
         workspaceCloseSaving=true;
         const closingWindow=mainWindow;
         try{
-            const result=await Promise.race([
-                closingWindow.webContents.executeJavaScript(`(()=>{
-                    if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
-                    const result=window.reelsFlushWorkspaceBeforeClose();
-                    if(result?.ok)window._workspaceCloseAlreadySaved=true;
-                    return result;
-                })()`,true),
-                new Promise(resolve => setTimeout(() => resolve({ ok: true, timeout: true }), 2500))
-            ]);
+            const result=await closingWindow.webContents.executeJavaScript(`(()=>{
+                if(typeof window.reelsFlushWorkspaceBeforeClose!=='function')return {ok:true,skipped:true};
+                const result=window.reelsFlushWorkspaceBeforeClose();
+                if(result?.ok)window._workspaceCloseAlreadySaved=true;
+                return result;
+            })()`,true);
             if(!result?.ok)throw new Error(result?.error||'自动保存未完成');
             workspaceCloseApproved=true;
-            isQuitting = true;
-            app.isQuitting = true;
-            try {
-                if (typeof app.releaseSingleInstanceLock === 'function') {
-                    app.releaseSingleInstanceLock();
-                }
-            } catch (_) {}
             closingWindow.close();
         }catch(error){
-            if (closingWindow.isDestroyed() || closingWindow.webContents?.isDestroyed() || closingWindow.webContents?.isCrashed()) {
-                workspaceCloseApproved = true;
-                isQuitting = true;
-                app.isQuitting = true;
-                try {
-                    if (typeof app.releaseSingleInstanceLock === 'function') {
-                        app.releaseSingleInstanceLock();
-                    }
-                } catch (_) {}
-                if (!closingWindow.isDestroyed()) closingWindow.close();
-                return;
-            }
             log('[Workspace] Close save failed: '+error.message);
             if(!closingWindow.isDestroyed())dialog.showMessageBoxSync(closingWindow,{type:'error',title:'自动保存失败',message:'当前编辑未能保存，已取消退出。',detail:error.message,buttons:['返回软件'],defaultId:0});
         }finally{workspaceCloseSaving=false;}
@@ -1047,14 +1076,6 @@ function createWindow() {
 
     mainWindow.on('closed', () => {
         mainWindow = null;
-        for (const [, win] of templateWindows) {
-            try { if (win && !win.isDestroyed()) win.destroy(); } catch (_) {}
-        }
-        templateWindows.clear();
-        for (const [, win] of isolatedReelsRenderers) {
-            try { if (win && !win.isDestroyed()) win.destroy(); } catch (_) {}
-        }
-        isolatedReelsRenderers.clear();
     });
 }
 
@@ -1200,6 +1221,11 @@ app.whenReady().then(async () => {
     log(`FFmpeg PATH configured`);
 
     // ==================== IPC 处理 - 基本功能 ====================
+    const fontPreferences=require('./services/fontPreferences').createFontPreferences(app.getPath('userData'));
+    ipcMain.on('font-favorites:get',(event,seed)=>{try{assertTrustedRenderer(event);event.returnValue={ok:true,favorites:fontPreferences.read(seed)};}catch(error){event.returnValue={ok:false,error:error.message};}});
+    ipcMain.on('font-favorites:toggle',(event,family)=>{try{assertTrustedRenderer(event);event.returnValue={ok:true,favorites:fontPreferences.toggle(family)};}catch(error){event.returnValue={ok:false,error:error.message};}});
+    ipcMain.on('font-favorites:set',(event,values)=>{try{assertTrustedRenderer(event);if(!Array.isArray(values))throw Error('无效的字体收藏');event.returnValue={ok:true,favorites:fontPreferences.save(values)};}catch(error){event.returnValue={ok:false,error:error.message};}});
+
     // 预设先在 preload 同步恢复，确保页面脚本读取 localStorage 前已经拿到
     // 免安装包之间共用的用户目录副本。
     ipcMain.on('persistent-presets:hydrate', (event, values) => {
@@ -1641,8 +1667,11 @@ app.whenReady().then(async () => {
                 else resolve(result);
             };
             const fromThisWindow = ipcEvent => ipcEvent.sender === win.webContents;
-            const onReady = ipcEvent => {
+            const onReady = async ipcEvent => {
                 if (!fromThisWindow(ipcEvent)) return;
+                try { await require(process.resourcesPath && fs.existsSync(path.join(process.resourcesPath, 'export-cpu-budget.js')) ? path.join(process.resourcesPath, 'export-cpu-budget.js') : path.join(__dirname, '..', 'resources', 'export-cpu-budget.js')).assign(win.webContents.getOSProcessId()); }
+                catch (error) { finish(error); return; }
+                if (win.isDestroyed()) return;
                 win.webContents.send('isolated-wysiwyg-run', {
                     requestId,
                     params: opts.params || {},
@@ -2085,6 +2114,26 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 扫描本地字体目录 + 系统字体（缓存系统字体，避免重复扫描 Windows 字体；本地字体目录变化时自动更新）
+    const uploadedFontHashCache=new Map();
+    handleTrusted('import-local-font',async(_event,{fileName,bytes}={})=>{
+        const name=path.basename(String(fileName||'')).replace(/[<>:"/\\|?*]/g,'_');
+        if(!['.ttf','.otf','.woff','.woff2','.ttc','.dfont'].includes(path.extname(name).toLowerCase()))throw Error('不支持的字体格式');
+        const body=Buffer.from(bytes||[]);if(!body.length||body.length>32*1024*1024)throw Error('字体文件为空或超过32MB');
+        const hash=require('crypto').createHash('sha256').update(body).digest('hex').slice(0,16);
+        const dir=path.join(path.dirname(process.execPath),'Fonts');fs.mkdirSync(dir,{recursive:true});
+        const fontExtensions=new Set(['.ttf','.otf','.woff','.woff2','.ttc','.dfont']);
+        const fileHash=file=>{const stat=fs.statSync(file),signature=stat.size+':'+stat.mtimeMs,previous=uploadedFontHashCache.get(file);if(previous?.signature===signature)return previous.hash;const digest=require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0,16);uploadedFontHashCache.set(file,{signature,hash:digest});return digest;};
+        const findExisting=(folder,depth=0)=>{if(depth>8)return null;for(const entry of fs.readdirSync(folder,{withFileTypes:true})){const candidate=path.join(folder,entry.name);if(entry.isDirectory()){const found=findExisting(candidate,depth+1);if(found)return found;}else if(entry.isFile()&&fontExtensions.has(path.extname(entry.name).toLowerCase())){const stat=fs.statSync(candidate);if(stat.size===body.length&&fileHash(candidate)===hash)return candidate;}}return null;};
+        const existing=findExisting(dir);let file=existing||path.join(dir,name);
+        if(!existing&&fs.existsSync(file)&&fileHash(file)!==hash){const parsed=path.parse(name);file=path.join(dir,parsed.name+'-'+hash+parsed.ext);}
+        if(!fs.existsSync(file))fs.writeFileSync(file,body);
+        let savedMetadata={};try{savedMetadata=JSON.parse(fs.readFileSync(path.join(path.dirname(file),'font-metadata.json'),'utf8'))[path.basename(file)]||{};}catch(_){}
+        const details={...require('./services/fontMetadata').readFontMetadata(file),...savedMetadata};
+        const family=details.family||path.parse(name).name.replace(/[-_]/g,' ').trim();
+        const data={family,weight:details.weight||'400',style:'normal',path:file,system:false};
+        const manifest=path.join(path.dirname(file),'font-metadata.json');let metadata={};if(fs.existsSync(manifest))metadata=JSON.parse(fs.readFileSync(manifest,'utf8'));metadata[path.basename(file)]={family,weight:data.weight,style:data.style};const temporary=manifest+'.'+process.pid+'.tmp';fs.writeFileSync(temporary,JSON.stringify(metadata,null,2),'utf8');fs.renameSync(temporary,manifest);
+        return data;
+    });
     let _cachedSystemFonts = null;
     let _cachedLocalFonts = null;
     let _cachedLocalFontsSig = '';
@@ -2164,6 +2213,7 @@ app.whenReady().then(async () => {
                 const results = [];
                 if (!dirPath || !fs.existsSync(dirPath)) return results;
                 try {
+                    let directoryMetadata={};try{directoryMetadata=JSON.parse(fs.readFileSync(path.join(dirPath,'font-metadata.json'),'utf8'));}catch(_){}
                     const items = fs.readdirSync(dirPath, { withFileTypes: true });
                     for (const item of items) {
                         if (item.name.startsWith('.')) continue;
@@ -2177,8 +2227,12 @@ app.whenReady().then(async () => {
 
                                 for (const fontFile of files) {
                                     const ext = path.extname(fontFile).toLowerCase();
-                                    if (!fontExts.has(ext)) continue;
-                                    const meta = importedMetadata[fontFile] || inferWeightAndStyle(fontFile);
+                                    if (!fontExts.has(ext)) {
+                                        const child=path.join(fullPath,fontFile);
+                                        try{if(fs.lstatSync(child).isDirectory())results.push(...scanDir(child,isSystemFont));}catch(_){}
+                                        continue;
+                                    }
+                                    const meta = {...inferWeightAndStyle(fontFile),...require('./services/fontMetadata').readFontMetadata(path.join(fullPath,fontFile)),...(importedMetadata[fontFile] || {})};
                                     results.push({
                                         family: meta.family || familyName,
                                         path: path.join(fullPath, fontFile),
@@ -2189,8 +2243,9 @@ app.whenReady().then(async () => {
                                 }
                             } catch { /* skip unreadable dirs */ }
                         } else if (item.isFile() && fontExts.has(path.extname(item.name).toLowerCase())) {
-                            const familyName = cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
-                            const meta = inferWeightAndStyle(item.name);
+                            const details={...require('./services/fontMetadata').readFontMetadata(fullPath),...(directoryMetadata[item.name]||{})};
+                            const familyName = details.family || cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
+                            const meta = {...inferWeightAndStyle(item.name),...details};
                             results.push({
                                 family: familyName,
                                 path: fullPath,
@@ -2210,7 +2265,7 @@ app.whenReady().then(async () => {
             const fontsDir = app.isPackaged
                 ? path.join(process.resourcesPath, 'assets', 'fonts')
                 : path.join(__dirname, '..', 'assets', 'fonts');
-            const localDirs = [fontsDir];
+            const localDirs = [path.join(path.dirname(process.execPath),'Fonts'), fontsDir];
             if (!app.isPackaged) localDirs.push(path.join(__dirname, '..', 'fonts-local'));
 
             const currentLocalSig = computeLocalDirSig(localDirs);
@@ -2282,6 +2337,9 @@ app.whenReady().then(async () => {
     });
 
     handleTrusted('clear-cache', async () => {
+        manualCacheCleaning = true;
+        idleCacheMaintenance?.cancel();
+        try {
         const userDataPath = app.getPath('userData');
         const cacheDirs = ['Cache', 'Code Cache', 'GPUCache', 'DawnGraphiteCache', 'DawnWebGPUCache', 'blob_storage'];
         let freedSize = 0;
@@ -2310,6 +2368,7 @@ app.whenReady().then(async () => {
             }
         }
         return { ok: true, freedSize };
+        } finally { manualCacheCleaning = false; }
     });
 
     handleTrusted('open-cache-folder', () => {
@@ -2579,6 +2638,7 @@ app.whenReady().then(async () => {
         }
 
         const win = new BrowserWindow(winOpts);
+        attachTemplateLibraryNavigation(win);
         win.webContents.on('will-navigate', (event, url) => {
             if (!isTrustedRendererUrl(url, { packaged: app.isPackaged, port: DEV_SERVER_PORT })) event.preventDefault();
         });
@@ -2615,8 +2675,10 @@ app.whenReady().then(async () => {
     // 直接创建窗口（不需要等待后端启动了！）
     createWindow();
 
+    try { startIdleCacheMaintenance(); } catch (error) { log('[IdleCache] 初始化失败: '+error.message); }
+
     // 自动更新：仅在打包版启用（开发模式跳过）
-    if (app.isPackaged && mainWindow) {
+    if (app.isPackaged && mainWindow && !_portableMode) {
         initAutoUpdater(mainWindow, log);
     } else {
         log('[Updater] 开发模式，跳过自动更新初始化');
@@ -2647,6 +2709,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
     isQuitting = true;
+    idleCacheMaintenance?.stop();
     app.isQuitting = true;
     try {
         if (typeof app.releaseSingleInstanceLock === 'function') {
@@ -2654,3 +2717,10 @@ app.on('before-quit', () => {
         }
     } catch (_) {}
 });
+
+function attachTemplateLibraryNavigation(win){
+    win.on('app-command',(_event,command)=>{
+        const direction=command==='browser-backward'?'back':command==='browser-forward'?'forward':null;
+        if(direction&&!win.isDestroyed()&&!win.webContents.isDestroyed())win.webContents.send('template-library:navigate',direction);
+    });
+}

@@ -38,6 +38,7 @@ const REELS_TASK_EXTRA_FIELDS = [
     'autoEditProject',
     '_overlayPresetName',
     'firstSubtitleStyleOverride',
+    'writingTitle', 'writingSplit',
 ];
 
 function _clonePlain(value) {
@@ -178,6 +179,7 @@ function applyProjectData(data) {
             }
         }
         const task = {
+            ...(_clonePlain(t) || {}),
             baseName: t.baseName || _extractFileName(bgPath).replace(/\.[^.]+$/, ''),
             bgPath: bgPath,
             videoPath: t.videoPath || bgPath,

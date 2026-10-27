@@ -14,12 +14,12 @@
 
 /**
  * Canvas → Raw RGBA Uint8Array（零压缩，专业级画质）
- * 精准模式复制一个独立副本；流水线模式直接转移 ArrayBuffer，避免额外复制。
+ * getImageData 每次已创建独立像素快照，两种模式都可直接交给 IPC。
  */
 function _canvasToRawRGBA(canvas, transferable = false) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    return transferable ? imageData.data.buffer : imageData.data.buffer.slice(0);
+    return imageData.data.buffer;
 }
 
 function _createFramePipeline(sessionId, batchSize = 3) {
@@ -59,6 +59,26 @@ function _loadImage(src) {
         img.onerror = () => reject(new Error(`图片加载失败: ${normSrc}`));
         img.src = normSrc;
     });
+}
+
+async function _refreshExportOverlayFrame(ov, src) {
+    if (ov._currentFramePath === src && ov._currentFrameImage) return;
+    const previous = ov._currentFrameImage;
+    try {
+        ov._currentFrameImage = await _loadImage(src);
+        ov._currentFramePath = src;
+    } catch (_) {
+        ov._currentFrameImage = null;
+        delete ov._currentFramePath;
+    } finally {
+        if (previous && previous !== ov._currentFrameImage) previous.src = '';
+    }
+}
+
+function _releaseExportOverlayFrame(ov) {
+    if (ov._currentFrameImage) ov._currentFrameImage.src = '';
+    delete ov._currentFrameImage;
+    delete ov._currentFramePath;
 }
 
 function _normalizeOverlayLocalPath(filePath) {
@@ -148,6 +168,8 @@ function _cloneOverlaysForWysiwygExport(overlays) {
         '_fcpxml_generating',
         '_flipper_drawing',
         '_frameCount',
+        '_frameCycleDuration',
+        '_currentFramePath',
         '_framesDir',
         '_imageEl',
         '_img',
@@ -427,6 +449,7 @@ async function reelsWysiwygExport(params) {
 
     if (!canvas) throw new Error('需要提供 canvas');
     if (!backgroundPath && !isMultiClip && !contentVideoBlurBg && !contentVideoDirectBg) throw new Error('缺少背景素材');
+    [targetWidth, targetHeight] = [Math.min(targetWidth, targetHeight), Math.max(targetWidth, targetHeight)];
     if (!outputPath) throw new Error('缺少输出路径');
     if (!window.electronAPI || !window.electronAPI.reelsComposeWysiwyg) {
         throw new Error('需要 reelsComposeWysiwyg IPC 接口');
@@ -793,6 +816,7 @@ async function reelsWysiwygExport(params) {
             if (oPrep && oPrep.framesDir) {
                 ov._framesDir = oPrep.framesDir;
                 ov._frameCount = oPrep.frameCount;
+                ov._frameCycleDuration = oPrep.cycleDuration || 0;
             }
         }
     }
@@ -915,7 +939,7 @@ async function reelsWysiwygExport(params) {
     const wantsPipeline = normalizedEngine === 'pipeline' || normalizedEngine === 'hardware';
     if (normalizedEngine === 'hardware') log('极速硬件模式：正在自动探测系统 H.264 硬件编码器，不可用时回退 CPU。');
     if (wantsPipeline) {
-        framePipeline = _createFramePipeline(sessionId, 3);
+        framePipeline = _createFramePipeline(sessionId, Math.max(1, Math.min(3, Math.floor(24 * 1024 * 1024 / (targetWidth * targetHeight * 4)))));
         log('阶段2.1: 已启用三帧批量流水线（同画布、同 FFmpeg 编码）。');
     }
 
@@ -1055,6 +1079,11 @@ async function reelsWysiwygExport(params) {
                 for (const ov of taskOverlays) {
                     if (ov.type === 'video' && !ov.disabled) {
                         const ovStart = parseFloat(ov.start || 0);
+                        const ovEnd = parseFloat(ov.end || 9999);
+                        if (t < ovStart || t > ovEnd) {
+                            _releaseExportOverlayFrame(ov);
+                            continue;
+                        }
                         let relTime = Math.max(0, t - ovStart);
                         let frameIdxOv = Math.floor(relTime * fps);
                         
@@ -1066,6 +1095,10 @@ async function reelsWysiwygExport(params) {
                             // sequence_frames 已经是合法的 url，若为原生路径等由外部处理（通常已处理好）
                             fPath = ov.sequence_frames[frameIdxOv];
                         } else if (ov._framesDir) {
+                            if (ov._frameCycleDuration > 0) {
+                                const offset = Math.max(0, Number(ov.video_start_offset) || 0);
+                                frameIdxOv = Math.min(ov._frameCount - 1, Math.floor(((relTime + offset) % ov._frameCycleDuration) * fps));
+                            }
                             if (frameIdxOv >= ov._frameCount) {
                                 frameIdxOv = frameIdxOv % Math.max(1, ov._frameCount);
                             }
@@ -1074,11 +1107,7 @@ async function reelsWysiwygExport(params) {
                         }
 
                         if (fPath) {
-                            try {
-                                ov._currentFrameImage = await _loadImage(fPath);
-                            } catch (e) {
-                                ov._currentFrameImage = null;
-                            }
+                            await _refreshExportOverlayFrame(ov, fPath);
                         }
                     }
                 }
@@ -1256,8 +1285,7 @@ async function reelsWysiwygExport(params) {
         for (const ov of taskOverlays || []) {
             if (ov._exportImage) ov._exportImage.src = '';
             delete ov._exportImage;
-            if (ov._currentFrameImage) ov._currentFrameImage.src = '';
-            delete ov._currentFrameImage;
+            _releaseExportOverlayFrame(ov);
             delete ov._allOverlays;
         }
         if (canvas) { canvas.width = 1; canvas.height = 1; }
@@ -1290,8 +1318,7 @@ async function reelsWysiwygExport(params) {
         for (const ov of taskOverlays || []) {
             if (ov._exportImage) ov._exportImage.src = '';
             delete ov._exportImage;
-            if (ov._currentFrameImage) ov._currentFrameImage.src = '';
-            delete ov._currentFrameImage;
+            _releaseExportOverlayFrame(ov);
             delete ov._allOverlays;
         }
         if (canvas) { canvas.width = 1; canvas.height = 1; }

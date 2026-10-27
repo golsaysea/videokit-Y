@@ -60,6 +60,10 @@ window.addEventListener('drop', (event) => {
 const fs = require('fs');
 const path = require('path');
 const sharedProfile = require('./services/sharedProfile');
+// Electron's renderer has no app.getPath(). Ask the trusted main process so a
+// custom/test profile cannot fall back to ~/.videokit and overwrite a workspace.
+let _runtimeProfilePaths = null;
+try { const result = ipcRenderer.sendSync('profile:runtime-paths'); if (result?.ok) _runtimeProfilePaths = result; } catch (_) {}
 
 // Rebase profile-owned paths when moving this personal portable copy,
 // without breaking valid paths that point to an existing installed profile.
@@ -148,8 +152,15 @@ function toFileUrl(filePath) {
         let suffix = '';
         const hashIdx = nativePath.indexOf('#');
         if (hashIdx !== -1) {
-            suffix = nativePath.slice(hashIdx);
-            nativePath = nativePath.slice(0, hashIdx);
+            let completePath = nativePath;
+            if (/^(local-media|file):\/\//i.test(completePath)) {
+                completePath = fileURLToPath(completePath.replace(/^local-media:/i, 'file:').replace(/#/g, '%23'));
+            }
+            if (fs.existsSync(completePath)) nativePath = completePath;
+            else {
+                suffix = nativePath.slice(hashIdx);
+                nativePath = nativePath.slice(0, hashIdx);
+            }
         }
         if (/^local-media:\/\//i.test(nativePath)) {
             nativePath = fileURLToPath(nativePath.replace(/^local-media:/i, 'file:'));
@@ -187,15 +198,15 @@ function fileExists(filePath) {
 }
 
 // 暴露 API 给渲染进程
-const _autoSaveDir = sharedProfile.getPrimarySharedProfileDir() || path.join(require('os').homedir(), '.videokit');
+const _autoSaveDir = _runtimeProfilePaths?.primary || sharedProfile.getPrimarySharedProfileDir() || path.join(require('os').homedir(), '.videokit');
 const _autoSavePath = path.join(_autoSaveDir, 'autosave.json');
 try { if (!fs.existsSync(_autoSaveDir)) fs.mkdirSync(_autoSaveDir, { recursive: true }); } catch (_) {}
 const _getProfileDataDir = () => {
-    return sharedProfile.getPrimarySharedProfileDir() || _autoSaveDir;
+    return _runtimeProfilePaths?.primary || sharedProfile.getPrimarySharedProfileDir() || _autoSaveDir;
 };
 const _getAllProfileDataDirs = () => {
     const primary = _getProfileDataDir();
-    const candidates = sharedProfile.getCandidateProfileDirs();
+    const candidates = _runtimeProfilePaths?.candidates || sharedProfile.getCandidateProfileDirs();
     return [...new Set([primary, ...candidates].filter(Boolean))];
 };
 const _getDefaultProjectDir = () => {
@@ -343,7 +354,17 @@ const localFilesBridge = {
     }
 };
 
+function _getGlobalFontFavorites(){
+    let seed=[];try{seed=JSON.parse(localStorage.getItem('fp_favorites') || '[]');}catch(_){}
+    const response=ipcRenderer.sendSync('font-favorites:get',seed);
+    if(response?.ok){try{localStorage.setItem('fp_favorites',JSON.stringify(response.favorites));}catch(_){}return response.favorites;}
+    return Array.isArray(seed)?seed:[];
+}
 contextBridge.exposeInMainWorld('electronAPI', {
+    importLocalFont:(fileName,bytes)=>ipcRenderer.invoke('import-local-font',{fileName,bytes}),
+    getFontFavorites:()=>_getGlobalFontFavorites(),
+    toggleFontFavorite:(family)=>{_getGlobalFontFavorites();const response=ipcRenderer.sendSync('font-favorites:toggle',family);if(!response?.ok)throw Error(response?.error || '字体收藏保存失败');try{localStorage.setItem('fp_favorites',JSON.stringify(response.favorites));}catch(_){}return response.favorites;},
+    saveFontFavorites:(values)=>{const response=ipcRenderer.sendSync('font-favorites:set',values);if(!response?.ok)throw Error(response?.error || '字体收藏保存失败');try{localStorage.setItem('fp_favorites',JSON.stringify(response.favorites));}catch(_){}return response.favorites;},
     readReelsOutputDirectory: () => {
         for (const profile of _getAllProfileDataDirs()) {
             try {
@@ -703,7 +724,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readBatchWorkspace: () => {
         if (location.hash.startsWith('#template=')) return '';
         try {
-            const raw = sharedProfile.readUnifiedBatchWorkspace();
+            const raw = ipcRenderer.sendSync('workspace:read-startup');
             if (raw) {
                 try {
                     _workspaceLastHash = require('crypto').createHash('sha256').update(raw.replace(/"timestamp":"[^"]*",?/, '')).digest('hex');
@@ -867,3 +888,5 @@ contextBridge.exposeInMainWorld('bridge', {
     removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
     localFiles: localFilesBridge
 });
+
+ipcRenderer.on('template-library:navigate',(_event,direction)=>{if(direction==='back'||direction==='forward')window.dispatchEvent(new CustomEvent('videokit-template-navigation',{detail:direction}));});

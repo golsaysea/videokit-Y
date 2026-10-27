@@ -784,7 +784,7 @@ class ReelsCanvasRenderer {
         // ── 字体设置 ──
         const fontFamily = s.font_family || 'Arial';
         const fallbackFamily = _resolveGenericFallback(fontFamily);
-        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold);
         const fontSize = s.fontsize || 74;
         const italic = s.italic || false;
         // Drawing Arabic-family scripts character-by-character breaks joining.
@@ -1929,7 +1929,7 @@ class ReelsCanvasRenderer {
 
                 // ── Letter jump scale ──
                 let letterJumpScale = 1.0;
-                if (anim && isLetterJump && isHighlight) {
+                if (anim && isLetterJump && currentTime != null && currentTime >= wordStart && currentTime <= wordEnd) {
                     letterJumpScale = anim.computeLetterJumpScale(
                         currentTime, wordStart, wordEnd,
                         s.letter_jump_scale || 1.5, s.letter_jump_duration || 0.2
@@ -3065,7 +3065,7 @@ class ReelsCanvasRenderer {
         // 1. 基础配置提取
         const fontFamily = s.font_family || 'Arial';
         const fallbackFamily = (typeof _resolveGenericFallback === 'function') ? _resolveGenericFallback(fontFamily) : 'sans-serif';
-        const fw = (typeof _resolveFontWeight === 'function') ? _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400) : 700;
+        const fw = (typeof _resolveFontWeight === 'function') ? _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold) : 700;
         
         const baseStyleConfig = {
             fontsize: s.fontsize || 74,
@@ -3111,7 +3111,7 @@ class ReelsCanvasRenderer {
 
         // 辅助：获取段落的完整 ctx.font
         const _getFontStr = (st) => {
-            const b = Math.max(100, Math.min(900, parseInt(st.font_weight || (st.bold ? 700 : 400), 10) || 400));
+            const b = _resolveFontWeight(st.font_weight, st.bold ? 700 : 400, st.bold);
             const sz = st.fontsize || baseStyleConfig.fontsize;
             return `${st.italic ? 'italic ' : ''}${b} ${sz}px "${fontFamily}", ${fallbackFamily}`;
         };
@@ -3644,7 +3644,7 @@ class ReelsCanvasRenderer {
         // 2. Set font properties
         const fontFamily = s.font_family || 'Arial';
         const fallbackFamily = _resolveGenericFallback(fontFamily);
-        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold);
         const fontSize = s.fontsize || 58;
         const italic = s.italic || false;
         const letterSpacing = textDirection === 'rtl' ? 0 : (s.letter_spacing || 0);
@@ -3669,7 +3669,7 @@ class ReelsCanvasRenderer {
                 if (s.fullpage_typewriter_first_line_bold !== undefined) {
                     fWeight = s.fullpage_typewriter_first_line_bold ? 900 : fontWeight;
                 } else if (firstSegStyle.bold !== undefined) {
-                    fWeight = _resolveFontWeight(firstSegStyle.font_weight, firstSegStyle.bold !== false ? 700 : 400);
+                    fWeight = _resolveFontWeight(firstSegStyle.font_weight, firstSegStyle.bold !== false ? 700 : 400, firstSegStyle.bold);
                 }
                 
                 if (firstSegStyle.font_family) {
@@ -4185,7 +4185,7 @@ class ReelsCanvasRenderer {
 
         const fontFamily = s.font_family || 'Arial';
         const fallbackFamily = _resolveGenericFallback(fontFamily);
-        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold);
         const italic = s.italic || false;
         const letterSpacing = textDirection === 'rtl' ? 0 : (s.letter_spacing || 0);
         const wordSpacing = s.word_spacing || 0;
@@ -4881,7 +4881,7 @@ class ReelsCanvasRenderer {
         const base = Math.max(12, Number(s.fontsize) || 74);
         const family = s.font_family || 'Arimo';
         const font = (size, isEmph = false) => {
-            const baseWeight = _resolveFontWeight(s.font_weight, s.bold === false ? 400 : 700);
+            const baseWeight = _resolveFontWeight(s.font_weight, s.bold === false ? 400 : 700, s.bold);
             const weight = isEmph && typeof baseWeight === 'number' ? Math.min(900, baseWeight + 100) : baseWeight;
             return `${s.italic ? 'italic ' : ''}${weight} ${size}px "${family}", ${_resolveGenericFallback(family)}`;
         };
@@ -5570,7 +5570,7 @@ class ReelsCanvasRenderer {
 
         const fontFamily = s.font_family || 'Playfair Display';
         const fallbackFamily = _resolveGenericFallback(fontFamily);
-        const fontWeight = _resolveFontWeight(s.font_weight, 800);
+        const fontWeight = _resolveFontWeight(s.font_weight, 800, s.bold);
         const italic = !!s.italic;
         const baseSize = Math.max(22, Number(s.fontsize) || 92);
         const minScale = Number(s.kinetic_scale_min ?? 0.62);
@@ -5668,7 +5668,7 @@ class ReelsCanvasRenderer {
 
         const fontFamily = s.font_family || 'Arial';
         const fallbackFamily = _resolveGenericFallback(fontFamily);
-        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold);
         const italic = s.italic || false;
         const textDirection = (typeof ReelsTextDirection !== 'undefined')
             ? ReelsTextDirection.resolve(s.text_direction, segment.edited_text || segment.text || wordStr)
@@ -5771,9 +5771,11 @@ class ReelsCanvasRenderer {
     }
 }
 
-function _resolveFontWeight(weight, fallback = 700) {
+function _resolveFontWeight(weight, fallback = 700, bold = undefined) {
     const n = parseInt(weight, 10);
-    const base = Number.isFinite(n) ? n : fallback;
+    let base = Number.isFinite(n) ? n : fallback;
+    if (bold === true && base < 600) base = 700;
+    else if (bold === false && base >= 600) base = 400;
     return Math.max(100, Math.min(900, base));
 }
 
@@ -5826,7 +5828,7 @@ function generateASS(segments, style) {
     const s = style || {};
     const fontFamily = s.font_family || 'Arial';
     const fontSize = s.fontsize || 74;
-    const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400);
+    const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 700 : 400, s.bold);
     const bold = fontWeight >= 600 ? -1 : 0;
     const italic = s.italic ? -1 : 0;
 

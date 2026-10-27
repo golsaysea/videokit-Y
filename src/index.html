@@ -739,11 +739,11 @@
               <div class="param-row" style="flex-wrap:wrap;gap:10px;">
                 <label>听译/识别模型:</label>
                 <select id="subtitle-align-model" class="select" style="min-width:320px;max-width:100%;background:rgba(168,85,247,0.12);border-color:rgba(168,85,247,0.4);color:#e9d5ff;font-weight:600;" onchange="localStorage.setItem('rbt_align_model', this.value); var r=document.getElementById('rbt-align-model'); if(r)r.value=this.value;">
-                  <option value="music_mv" selected>🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
+                  <option value="music_mv">🎸 音乐MV专享 (Groq+歌词引导+人声提纯 · 唱歌伴奏首选)</option>
                   <option value="groq">🎵 Groq · Whisper-V3-Turbo (抗伴奏强 · 极速 · 支持歌词引导)</option>
                   <option value="gladia">🎤 Gladia · Whisper增强版 (歌曲/多语种稳健 · 时间戳高精)</option>
                   <option value="deepgram">🎙️ Deepgram · Nova-3 (纯人声口播极速50并发 · 伴奏易吞词)</option>
-                  <option value="auto">⚙️ 跟随总设置默认平台</option>
+                  <option value="auto" selected>⚙️ 跟随总设置默认平台</option>
                 </select>
                 <button type="button" class="btn btn-secondary btn-small" onclick="window.showAlignModelGuideModal?.()" style="font-size:12px;padding:5px 10px;background:rgba(168,85,247,0.14);border-color:rgba(168,85,247,0.35);color:#d8b4fe;">💡 模型优点说明</button>
               </div>
@@ -4896,11 +4896,11 @@
                     <div class="reels-dropdown-item" onclick="reelsMergeShort()">🔗 合并短句</div>
                     <div class="reels-dropdown-item" onclick="reelsExportSRT()">💾 导出SRT</div>
                     <select id="reels-align-model" class="select" style="font-size:11px;width:calc(100% - 24px);margin:2px 12px;" onchange="localStorage.setItem('rbt_align_model', this.value); var r=document.getElementById('rbt-align-model'); if(r)r.value=this.value;">
-                      <option value="music_mv" selected>🎸 音乐MV专享 (Groq+歌词引导)</option>
+                      <option value="music_mv">🎸 音乐MV专享 (Groq+歌词引导)</option>
                       <option value="groq">🎵 Groq Whisper (抗伴奏·极速)</option>
                       <option value="gladia">🎤 Gladia Whisper (歌曲稳健)</option>
                       <option value="deepgram">🎙️ Deepgram Nova-3 (纯人声口播)</option>
-                      <option value="auto">⚙️ 跟随设置默认</option>
+                      <option value="auto" selected>⚙️ 跟随设置默认</option>
                     </select>
                     <select id="reels-align-lang" class="select" style="font-size:11px;width:calc(100% - 24px);margin:2px 12px;display:none;">
                       <option value="英语">英语</option>
@@ -7128,6 +7128,16 @@
                   onclick="reelsSelectOutputDir()">选择</button>
                 <button class="btn btn-secondary" style="font-size:11px;padding:3px 8px;"
                   onclick="reelsOpenOutputDir()">打开目录</button>
+                <label style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;" title="全部沿用任务勾选；自定义按任务列表序号指定导出">
+                  下载设定
+                  <select id="reels-download-mode" class="select" style="width:88px;font-size:11px;" onchange="reelsUpdateDownloadRangeUI()">
+                    <option value="all">全部</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                <input id="reels-download-range" type="text" class="input" style="display:none;width:220px;font-size:11px;" maxlength="2000"
+                  placeholder="例如：1-10 或 1、3、5" aria-label="自定义导出任务序号" title="按任务列表序号，支持 1-10、1、3、5 或 1-10、15、20-25">
+
                 <label title="勾选后，Reels 成片导出成功时会在该成片旁复制一份可二剪工程包；不勾选时不额外复制。"
                   style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;">
                   <input type="checkbox" id="reels-copy-project-to-output">
@@ -7205,19 +7215,19 @@
                   value="100" style="width:110px;">
                 <input type="number" id="reels-voice-volume" class="input input-small" min="0" max="1000" step="1"
                   value="100" style="width:52px;font-size:11px;">
-                <span style="font-size:11px;color:var(--text-secondary);">%</span>
+                
                 <label style="margin-left:6px;">背景层音量:</label>
                 <input type="range" id="reels-bg-volume-range-global" min="0" max="1000" step="1"
                   value="100" style="width:110px;">
                 <input type="number" id="reels-bg-volume" class="input input-small" min="0" max="1000" step="1"
                   value="100" style="width:52px;font-size:11px;">
-                <span style="font-size:11px;color:var(--text-secondary);">%</span>
+                
                 <label style="margin-left:6px;">配乐层音量:</label>
                 <input type="range" id="reels-bgm-volume-range" min="0" max="1000" step="1"
                   value="30" style="width:110px;">
                 <input type="number" id="reels-bgm-volume" class="input input-small" min="0" max="1000" step="1"
                   value="30" style="width:52px;font-size:11px;">
-                <span style="font-size:11px;color:var(--text-secondary);">%</span>
+                
                 <span style="width:1px;height:16px;background:var(--border-color);margin:0 4px;display:inline-block;"></span>
                 <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;" title="统一控制时间线插入素材的原音频">
                   <input type="checkbox" id="reels-export-insert-audio-override">插入素材音频:
@@ -7252,7 +7262,7 @@
                   <input type="range" id="reels-reverb-mix-range" min="0" max="100" step="5"
                     value="15" style="width:82px;">
                   <input type="number" id="reels-reverb-mix" class="input input-small" min="0" max="100" step="5"
-                    value="15" style="width:48px;font-size:11px;">%
+                    value="15" style="width:48px;font-size:11px;">
                 </label>
                 <span style="width:1px;height:16px;background:var(--border-color);display:inline-block;"></span>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;">
@@ -7260,7 +7270,7 @@
                   <input type="range" id="reels-stereo-width-range" min="0" max="200" step="10"
                     value="100" style="width:82px;">
                   <input type="number" id="reels-stereo-width" class="input input-small" min="0" max="200" step="10"
-                    value="100" style="width:48px;font-size:11px;">%
+                    value="100" style="width:48px;font-size:11px;">
                 </label>
                 <span style="width:1px;height:16px;background:var(--border-color);display:inline-block;"></span>
                 <label style="display:flex;align-items:center;gap:6px;font-size:11px;white-space:nowrap;">
@@ -7296,7 +7306,7 @@
                       命名:
                       <select id="reels-mp-naming" class="select select-small" style="width:160px;font-size:11px;padding:2px 4px;">
                         <option value="flat">任务名_模板名.mp4</option>
-                        <option value="folder">按模板分目录</option>
+
                       </select>
                     </label>
                   </div>

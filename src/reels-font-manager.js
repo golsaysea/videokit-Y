@@ -198,6 +198,7 @@ class ReelsFontManager {
         this._systemFonts = new Set();   // 系统扫描到的字体
         this._embeddedFonts = new Set(); // 内置 assets/fonts 字体
         this._registeredEmbeddedPaths = new Set();
+        this._embeddedFontFaces = new Map();
         this._fontCache = {};
         this._loadedGoogleFonts = new Set();
         this._loadingGoogleFontPromises = new Map();
@@ -205,6 +206,7 @@ class ReelsFontManager {
         this._fontVariants = new Map(); // family -> Set of "weight|style"
         this._catalogSignature = '';
         this._lastDirCheckAt = 0;
+        if(typeof document!=='undefined'&&document.fonts?.addEventListener)document.fonts.addEventListener('loadingdone',()=>{if(typeof window.reelsUpdatePreview==='function')window.reelsUpdatePreview();});
 
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('focus', () => {
@@ -474,14 +476,18 @@ class ReelsFontManager {
             if (fontInfo.weight) descriptors.weight = String(fontInfo.weight);
             if (fontInfo.style) descriptors.style = String(fontInfo.style);
             const fontFace = new FontFace(fontInfo.family, `url("${fontUrl}")`, descriptors);
-            await fontFace.load();
             document.fonts.add(fontFace);
+            if(!this._embeddedFontFaces.has(fontInfo.family))this._embeddedFontFaces.set(fontInfo.family,[]);
+            this._embeddedFontFaces.get(fontInfo.family).push(fontFace);
             this._registeredEmbeddedPaths.add(fontInfo.path);
 
             if (!this._allowedFonts.includes(fontInfo.family)) {
                 this._allowedFonts.push(fontInfo.family);
             }
-            this._recordVariant(fontInfo.family, descriptors.weight || '400', descriptors.style || 'normal');
+            const regStyle = descriptors.style || 'normal';
+            this._recordVariant(fontInfo.family, descriptors.weight || '400', regStyle);
+            this._recordVariant(fontInfo.family, '400', regStyle);
+            this._recordVariant(fontInfo.family, '700', regStyle);
         } catch (err) {
             console.warn(`[FontManager] Failed to load font: ${fontInfo.family}`, err);
         }
@@ -523,8 +529,12 @@ class ReelsFontManager {
                 try {
                     await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}:wght@100;200;300;400;500;600;700;800;900&display=swap`);
                 } catch (_) {
-                    // 降级：部分单字重字体（如 Anton, Bebas Neue）不支持 wght 范围，使用默认无参数请求
-                    await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}&display=swap`);
+                    try {
+                        await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css?family=${encoded}:100,200,300,400,500,600,700,800,900,400i,700i&display=swap`);
+                    } catch (_2) {
+                        // 降级：部分单字重字体（如 Anton, Bebas Neue）不支持 wght 范围，使用默认无参数请求
+                        await this._injectGoogleFontStylesheet(`https://fonts.googleapis.com/css2?family=${encoded}&display=swap`);
+                    }
                 }
 
                 if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.load === 'function') {
@@ -621,6 +631,9 @@ class ReelsFontManager {
                 if (wm && wm.font_family) fonts.add(wm.font_family);
             }
         }
+        const seen=new Set();
+        const collect=(value,depth=0)=>{if(!value||typeof value!=='object'||depth>16||seen.has(value))return;seen.add(value);for(const [key,child] of Object.entries(value)){if(key.startsWith('_'))continue;if(typeof child==='string'&&(key.toLowerCase().includes('font_family')||key==='fontFamily'))fonts.add(child);else if(child&&typeof child==='object')collect(child,depth+1);}};
+        collect({style,segments,overlays,watermarks,cover});
         return Array.from(fonts).filter(Boolean);
     }
 
@@ -639,6 +652,7 @@ class ReelsFontManager {
         for (const font of list) {
             if (!font) continue;
             try {
+                for(const family of String(font).split(',').map(x=>x.trim().replace(/^["']|["']$/g,''))){const faces=this._embeddedFontFaces.get(family)||[];await Promise.all(faces.map(face=>face.load()));}
                 await this.loadGoogleFont(font);
             } catch (e) {
                 console.warn(`[FontManager] Failed to preload font "${font}":`, e);
@@ -661,11 +675,19 @@ class ReelsFontManager {
 
         try {
             const buffer = await file.arrayBuffer();
+            if(window.electronAPI?.importLocalFont){
+                const saved=await window.electronAPI.importLocalFont(file.name,new Uint8Array(buffer));
+                await this._registerLocalFont(saved);this._embeddedFonts.add(saved.family);
+                if(!this._customFonts.includes(saved.family))this._customFonts.push(saved.family);
+                await Promise.all((this._embeddedFontFaces.get(saved.family)||[]).map(face=>face.load()));
+                this.refreshAllFontSelects();return saved.family;
+            }
+
             // 从文件名推断 family name
             const baseName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
             const familyName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
 
-            const fontFace = new FontFace(familyName, buffer, { weight: '100 900', style: 'normal' });
+            const fontFace = new FontFace(familyName, buffer, { style: 'normal' });
             await fontFace.load();
             document.fonts.add(fontFace);
 
@@ -763,6 +785,18 @@ class ReelsFontManager {
                 uniq.set(p.value, { value: p.value, label: this._weightLabel(p.value), style: p.style });
             }
         }
+        // Always ensure at least 400 (Regular) and 700 (Bold) are available so
+        // the Bold [B] checkbox and weight selector can always toggle on/off
+        // even for single-file system/embedded fonts (using synthetic bold).
+        for (const requiredWeight of ['400', '700']) {
+            if (!uniq.has(requiredWeight)) {
+                uniq.set(requiredWeight, {
+                    value: requiredWeight,
+                    label: this._weightLabel(requiredWeight),
+                    style: preferStyle || 'normal',
+                });
+            }
+        }
         const list = Array.from(uniq.values()).sort((a, b) => Number(a.value) - Number(b.value));
         return list.length > 0 ? list : fallback;
     }
@@ -858,6 +892,8 @@ class ReelsFontManager {
      */
     getUnifiedFontCatalog() {
         const fonts = this.getAllFonts();
+        const cacheKey = [fonts.join('|'),this._customFonts.join('|'),[...this._systemFonts].join('|'),[...this._embeddedFonts].join('|')].join('\n');
+        if (this._unifiedCatalogCache?.key === cacheKey) return this._unifiedCatalogCache.value;
         const displayNames = {
             'Microsoft YaHei': '微软雅黑', '微软雅黑': '微软雅黑',
             'SimHei': '黑体', '黑体': '黑体',
@@ -937,13 +973,15 @@ class ReelsFontManager {
             { key: 'custom',   label: '📤 用户上传', emoji: '📤' },
         ];
 
-        return {
+        const catalog = {
             fonts,
             groups,
             groupDefs,
             displayNames,
             signature: fonts.join('|'),
         };
+        this._unifiedCatalogCache = {key:cacheKey,value:catalog};
+        return catalog;
     }
 
     /**
@@ -984,6 +1022,14 @@ class ReelsFontManager {
 
         const { fonts, groups, groupDefs, displayNames: DISPLAY_NAMES } = this.getUnifiedFontCatalog();
         const oldValue = select.value;
+        const catalogKey = [fonts.join('|'),select.dataset.allowEmpty || '',select.dataset.emptyLabel || ''].join('\n');
+        const requested = currentValue != null ? currentValue : oldValue;
+        if (select._vkFontCatalogKey === catalogKey && select.options.length &&
+            Array.from(select.options).some(option => option.value === requested)) {
+            select.value = requested;
+            this._buildFontPicker(select,groups,groupDefs,DISPLAY_NAMES);
+            return;
+        }
 
         // ── 填充隐藏 <select>（保证 form 兼容 + .value 正常工作）──
         select.innerHTML = '';
@@ -1029,6 +1075,7 @@ class ReelsFontManager {
         // ── 搜索式下拉框 ──
         this._ensureFontPickerCSS();
         this._buildFontPicker(select, groups, groupDefs, DISPLAY_NAMES);
+        select._vkFontCatalogKey = catalogKey;
     }
 
     /**
@@ -1466,13 +1513,10 @@ class ReelsFontManager {
         
         const getMetadata = (fontName) => self._getFontMetadata(fontName);
         
-        const getFavorites = () => JSON.parse(localStorage.getItem('fp_favorites') || '[]');
+        const getFavorites = () => {try{const saved=window.electronAPI?.getFontFavorites?.();if(Array.isArray(saved))return saved;const local=JSON.parse(localStorage.getItem('fp_favorites')||'[]');return Array.isArray(local)?local:[];}catch(_){return [];}};
         const toggleFavorite = (font) => {
-            let favs = getFavorites();
-            if (favs.includes(font)) favs = favs.filter(f => f !== font);
-            else favs.push(font);
-            localStorage.setItem('fp_favorites', JSON.stringify(favs));
-            renderGrid();
+            try{if(window.electronAPI?.toggleFontFavorite)window.electronAPI.toggleFontFavorite(font);else{let favs=getFavorites();favs=favs.includes(font)?favs.filter(f=>f!==font):[...favs,font];localStorage.setItem('fp_favorites',JSON.stringify(favs));}renderGrid();}
+            catch(error){if(typeof showToast==='function')showToast(error.message,'error');}
         };
         
         const getRecents = () => JSON.parse(localStorage.getItem('fp_recents') || '[]');
@@ -1603,7 +1647,36 @@ class ReelsFontManager {
             renderCandidates();
         };
         
+        let previewObserver = null;
+        let previewQueue = [];
+        let previewLoads = 0;
+        const queuedPreviewFonts = new Set();
+        const drainPreviews = () => {
+            while (previewLoads < 4 && previewQueue.length && overlay.classList.contains('fp-open')) {
+                const font = previewQueue.shift();
+                previewLoads++;
+                self.ensureFontsLoaded([font]).catch(() => {}).finally(() => {
+                    previewLoads--;
+                    drainPreviews();
+                });
+            }
+        };
         const renderGrid = () => {
+            previewObserver?.disconnect();
+            previewQueue = [];
+            queuedPreviewFonts.clear();
+            previewObserver = new IntersectionObserver(entries => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    const font = entry.target.dataset.font;
+                    previewObserver.unobserve(entry.target);
+                    if (!queuedPreviewFonts.has(font)) {
+                        queuedPreviewFonts.add(font);
+                        previewQueue.push(font);
+                    }
+                }
+                drainPreviews();
+            }, { root: grid.closest('.fp-grid-wrap') || null, rootMargin: '160px' });
             grid.innerHTML = '';
             const query = searchInput.value.toLowerCase().trim();
             const previewText = previewInput.value || 'Make it unforgettable';
@@ -1739,12 +1812,13 @@ class ReelsFontManager {
                 card.addEventListener('click', () => selectFont(font));
                 
                 grid.appendChild(card);
+                previewObserver.observe(card);
             }
             
             if (filtered.length === 0) grid.innerHTML = '<div style="color:#888; padding:20px;">未找到匹配的字体。</div>';
         };
         
-        const closeModal = () => overlay.classList.remove('fp-open');
+        const closeModal = () => { overlay.classList.remove('fp-open'); previewObserver?.disconnect(); previewQueue = []; };
         closeBtn.addEventListener('click', closeModal);
         overlay.addEventListener('mousedown', e => { if (e.target === overlay) closeModal(); });
         
@@ -1821,7 +1895,7 @@ class ReelsFontManager {
                 selectedFont = currentFont;
                 candidateFonts = currentFont ? [currentFont] : [];
                 previewMode = 'candidate';
-                activeCategory = 'all';
+                activeCategory = getFavorites().length ? 'favorites' : 'all';
                 activeRegion = null;
                 activeSource = null;
                 activeUseCase = null;
@@ -1830,7 +1904,7 @@ class ReelsFontManager {
                 portableToggle.classList.remove('fp-active-filter');
                 portableToggle.textContent = '全部来源';
                 searchInput.value = '';
-                sideItems.forEach(i => i.classList.toggle('fp-active', i.dataset.cat === 'all'));
+                sideItems.forEach(i => i.classList.toggle('fp-active', i.dataset.cat === activeCategory));
                 recoTags.forEach(t => t.classList.remove('fp-active-filter'));
                 overlay.classList.add('fp-open');
                 renderInspector();

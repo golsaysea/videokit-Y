@@ -40,10 +40,36 @@ function readIndex() {
     const byId = new Map();
     for (const dir of [...getAllTemplateDirs()].reverse()) {
         const p = path.join(dir, 'index.json');
-        if (!fs.existsSync(p)) continue;
         try {
-            const arr = JSON.parse(fs.readFileSync(p, 'utf-8'));
-            if (!Array.isArray(arr)) continue;
+            let arr;
+            try {
+                arr = JSON.parse(fs.readFileSync(p, 'utf-8'));
+                if (!Array.isArray(arr)) throw new Error('Invalid template index');
+            } catch (_) {
+                // Recover summaries from authoritative project files only when the
+                // index is missing or damaged. Never replace project contents.
+                arr = [];
+                if (fs.existsSync(dir)) {
+                    for (const filename of fs.readdirSync(dir)) {
+                        if (!/^tpl_[a-zA-Z0-9._-]+\.json$/.test(filename)) continue;
+                        try {
+                            const data = JSON.parse(fs.readFileSync(path.join(dir, filename), 'utf8'));
+                            if (!data.id || `${safeTemplateId(data.id)}.json` !== filename || !data.projectData) continue;
+                            arr.push({id:data.id, name:data.name || '', description:data.description || '',
+                                thumbnail:data.thumbnail || '', tags:data.tags || [], createdAt:data.createdAt,
+                                updatedAt:data.updatedAt, taskCount:data.projectData.tasks?.length || 0});
+                        } catch (_) { /* A damaged file must not hide healthy templates. */ }
+                    }
+                    if (arr.length) {
+                        try {
+                            if (fs.existsSync(p)) fs.copyFileSync(p, `${p}.before-recovery-${Date.now()}`);
+                            const temp = `${p}.recovery-${process.pid}.tmp`;
+                            fs.writeFileSync(temp, JSON.stringify(arr, null, 2), 'utf8');
+                            fs.renameSync(temp, p);
+                        } catch (_) { /* Keep recovered summaries available even on a read-only directory. */ }
+                    }
+                }
+            }
             for (const item of arr) {
                 if (!item || !item.id) continue;
                 const existing = byId.get(item.id);
@@ -55,7 +81,15 @@ function readIndex() {
             }
         } catch { }
     }
-    return [...byId.values()].sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || '') || 0) - (Date.parse(a.updatedAt || a.createdAt || '') || 0));
+    const items = [...byId.values()].sort((a, b) => (Date.parse(b.updatedAt || b.createdAt || '') || 0) - (Date.parse(a.updatedAt || a.createdAt || '') || 0));
+    try {
+        const order = JSON.parse(fs.readFileSync(path.join(getTemplatesDir(), 'order.json'), 'utf8'));
+        if (Array.isArray(order)) {
+            const ranks = new Map(order.map((id,i) => [id,i]));
+            items.sort((a,b) => (ranks.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (ranks.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+        }
+    } catch (_) {}
+    return items;
 }
 
 function writeIndex(index) {
@@ -76,8 +110,35 @@ function writeIndex(index) {
 /**
  * 列出所有模板（返回索引信息，不含完整工程数据）
  */
+const templateMetadataCache = new Map();
 function listTemplates() {
-    return readIndex();
+    return readIndex().map(item => {
+        for (const dir of getAllTemplateDirs()) {
+            const file = path.join(dir, `${safeTemplateId(item.id)}.json`);
+            if (!fs.existsSync(file)) continue;
+            try {
+                const stat = fs.statSync(file);
+                const key = `${file}:${stat.size}:${stat.mtimeMs}`;
+                let metadata = templateMetadataCache.get(item.id);
+                if (!metadata || metadata.key !== key) {
+                    const data = JSON.parse(fs.readFileSync(file,'utf8'));
+                    const tasks = data.projectData?.tasks || [];
+                    const types = new Set();
+                    for (const task of tasks) {
+                        for (const overlay of task.overlays || []) {
+                            if (overlay.type === 'scroll') types.add('滚动字幕');
+                            if (overlay.type === 'textcard') types.add('文字卡片');
+                        }
+                        if (task.segments?.length) types.add('普通字幕');
+                    }
+                    metadata = {key, templateType:[...types].sort().join(' / ') || '视频', sizeBytes:stat.size};
+                    templateMetadataCache.set(item.id,metadata);
+                }
+                return {...item,templateType:metadata.templateType,sizeBytes:metadata.sizeBytes};
+            } catch (_) {}
+        }
+        return {...item,templateType:'未知',sizeBytes:0};
+    });
 }
 
 /**
@@ -104,10 +165,14 @@ function getTemplate(id) {
  * @param {object} params.projectData - 完整工程数据 (collectProjectData 的输出)
  * @param {string} [params.id] - 已有 ID（更新时传入）
  */
-function saveTemplate({ id, name, description, thumbnail, tags, projectData }) {
+function saveTemplate({ id, name, description, thumbnail, tags, projectData, folderId }) {
+    if (folderId !== undefined && folderId !== '' && !readTemplateFolders().folders.some(folder => folder.id === folderId)) {
+        throw new Error('保存目标文件夹不存在，请重新选择文件夹');
+    }
     const now = new Date().toISOString();
     const templateId = id ? safeTemplateId(id) : `tpl_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`;
 
+    if (id) backupTemplate(templateId);
     // 完整数据写入独立文件
     const fullData = {
         id: templateId,
@@ -171,6 +236,7 @@ function saveTemplate({ id, name, description, thumbnail, tags, projectData }) {
     }
 
     writeIndex(index);
+    if (folderId !== undefined) moveTemplatesToFolder([templateId], folderId || '');
     return { id: templateId, success: true };
 }
 
@@ -246,3 +312,94 @@ module.exports = {
     deleteTemplate,
     renameTemplate,
 };
+
+function backupTemplate(id) {
+    const file = path.join(getTemplatesDir(), `${safeTemplateId(id)}.json`);
+    if (!fs.existsSync(file)) return;
+    const backups = path.join(getTemplatesDir(), 'backups', safeTemplateId(id));
+    fs.mkdirSync(backups, { recursive: true });
+    fs.copyFileSync(file, path.join(backups, `${Date.now()}-${crypto.randomUUID().slice(0,8)}.json`));
+}
+function reorderTemplates(ids) {
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string') || new Set(ids).size !== ids.length) throw new Error('无效的模板顺序');
+    const existing = readIndex().map(item => item.id);
+    if (ids.length !== existing.length || ids.some(id => !existing.includes(id))) throw new Error('模板列表已变化，请重新打开模板库后排序');
+    const target = path.join(getTemplatesDir(), 'order.json');
+    const tmp = `${target}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(ids), 'utf8'); fs.renameSync(tmp, target);
+    return { success: true };
+}
+function updateTemplateThumbnail(id, thumbnail) {
+    if (typeof thumbnail !== 'string') throw new Error('无效的封面');
+    const template = getTemplate(id);
+    backupTemplate(id);
+    template.thumbnail = thumbnail;
+    const file = path.join(getTemplatesDir(), `${safeTemplateId(id)}.json`);
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(template,null,2), 'utf8'); fs.renameSync(tmp,file);
+    const index = readIndex();
+    const entry = index.find(item => item.id === id);
+    if (entry) entry.thumbnail = thumbnail;
+    writeIndex(index);
+    return { success:true };
+}
+module.exports.reorderTemplates = reorderTemplates;
+module.exports.updateTemplateThumbnail = updateTemplateThumbnail;
+
+function readTemplateFolders() {
+    const file = path.join(getTemplatesDir(),'folders.json');
+    if (!fs.existsSync(file)) return {folders:[],assignments:{}};
+    const data = JSON.parse(fs.readFileSync(file,'utf8'));
+    if (!Array.isArray(data.folders) || !data.assignments || typeof data.assignments !== 'object' || Array.isArray(data.assignments)) throw new Error('文件夹数据无效');
+    return data;
+}
+function writeTemplateFolders(data) {
+    const file = path.join(getTemplatesDir(),'folders.json');
+    if (fs.existsSync(file)) fs.copyFileSync(file,file+'.bak');
+    const tmp = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp,JSON.stringify(data,null,2),'utf8');fs.renameSync(tmp,file);
+}
+function createTemplateFolder(name) {
+    name=String(name || '').trim();if(!name || name.length>200)throw new Error('请输入有效的文件夹名称（最多200字）');
+    const data=readTemplateFolders();
+    if(data.folders.some(f=>f.name===name))throw new Error('已有同名文件夹');
+    const now=new Date().toISOString();const folder={id:'folder_'+crypto.randomUUID(),name,createdAt:now,updatedAt:now};
+    data.folders.push(folder);writeTemplateFolders(data);return {success:true,folder};
+}
+function renameTemplateFolder(id,name) {
+    name=String(name || '').trim();if(!name || name.length>200)throw new Error('请输入有效的文件夹名称（最多200字）');
+    const data=readTemplateFolders(),folder=data.folders.find(f=>f.id===id);if(!folder)throw new Error('文件夹不存在');
+    if(data.folders.some(f=>f.id!==id&&f.name===name))throw new Error('已有同名文件夹');
+    folder.name=name;folder.updatedAt=new Date().toISOString();writeTemplateFolders(data);return {success:true};
+}
+function moveTemplatesToFolder(ids,folderId) {
+    if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))throw new Error('请选择模板');
+    const data=readTemplateFolders();folderId=folderId || '';
+    if(folderId&&!data.folders.some(f=>f.id===folderId))throw new Error('文件夹不存在');
+    const available=new Set(readIndex().map(t=>t.id));if(ids.some(id=>!available.has(id)))throw new Error('模板不存在');
+    const affected=new Set([folderId]);
+    for(const id of ids){affected.add(data.assignments[id]);if(folderId)data.assignments[id]=folderId;else delete data.assignments[id];}
+    for(const f of data.folders)if(affected.has(f.id))f.updatedAt=new Date().toISOString();
+    writeTemplateFolders(data);return {success:true};
+}
+module.exports.readTemplateFolders=readTemplateFolders;
+module.exports.createTemplateFolder=createTemplateFolder;
+module.exports.renameTemplateFolder=renameTemplateFolder;
+module.exports.moveTemplatesToFolder=moveTemplatesToFolder;
+
+function deleteEmptyTemplateFolder(id) {
+    const data=readTemplateFolders();if(!data.folders.some(f=>f.id===id))throw new Error('文件夹不存在');
+    const available=new Set(readIndex().map(t=>t.id));
+    if(Object.entries(data.assignments).some(([key,value])=>value===id&&available.has(key)))throw new Error('请先移出文件夹内的模板');
+    data.folders=data.folders.filter(f=>f.id!==id);for(const key of Object.keys(data.assignments))if(data.assignments[key]===id)delete data.assignments[key];
+    writeTemplateFolders(data);return {success:true};
+}
+module.exports.deleteEmptyTemplateFolder=deleteEmptyTemplateFolder;
+
+function reorderTemplateLibrary(order){
+    if(!Array.isArray(order)||order.some(id=>typeof id!=='string')||new Set(order).size!==order.length)throw new Error('无效的排列顺序');
+    const data=readTemplateFolders(),expected=[...data.folders.map(f=>'f:'+f.id),...readIndex().filter(t=>!data.assignments[t.id]).map(t=>'t:'+t.id)];
+    const valid=new Set(expected);if(order.length!==expected.length||order.some(id=>!valid.has(id)))throw new Error('模板库已变化，请刷新后重试');
+    data.libraryOrder=order;writeTemplateFolders(data);return {success:true};
+}
+module.exports.reorderTemplateLibrary=reorderTemplateLibrary;
