@@ -506,6 +506,19 @@ class ReelsFontManager {
             return this._loadingGoogleFontPromises.get(fontFamily);
         }
 
+        // 如果属于内置/本地上传字体（通过 FontFace 注册），确保其所有字重 FontFace 已完成加载
+        if (this._embeddedFontFaces.has(fontFamily)) {
+            const faces = this._embeddedFontFaces.get(fontFamily) || [];
+            if (faces.length > 0) {
+                try {
+                    await Promise.all(faces.map(face => face.load().catch(() => {})));
+                    if (typeof window !== 'undefined' && window.ReelsCanvasRenderer?.invalidateSyntheticBoldCache) {
+                        window.ReelsCanvasRenderer.invalidateSyntheticBoldCache();
+                    }
+                } catch (_) { }
+            }
+        }
+
         // 允许加载硬编码列表或动态拉取的全量目录中的字体
         const isGoogleFont = GOOGLE_FONTS.includes(fontFamily) ||
             (this._googleFontsFull && this._googleFontsFull.has(fontFamily));
@@ -539,13 +552,16 @@ class ReelsFontManager {
 
                 if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.load === 'function') {
                     await Promise.race([
-                        Promise.all(['400', '700'].map((weight) =>
+                        Promise.all(['400', '700', '900'].map((weight) =>
                             document.fonts.load(`${weight} 16px "${fontFamily}"`).catch(() => {})
                         )),
                         new Promise(r => setTimeout(r, 1500)),
                     ]);
                 }
                 this._loadedGoogleFonts.add(fontFamily);
+                if (typeof window !== 'undefined' && window.ReelsCanvasRenderer?.invalidateSyntheticBoldCache) {
+                    window.ReelsCanvasRenderer.invalidateSyntheticBoldCache();
+                }
 
                 if (!this._allowedFonts.includes(fontFamily)) {
                     this._allowedFonts.push(fontFamily);

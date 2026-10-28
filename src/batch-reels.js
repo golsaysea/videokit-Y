@@ -317,8 +317,8 @@ const REELS_ANIMATION_PRESETS = {
         border_width: 7,
         color_outline: '#000000',
         italic: true,
-        text_transform: 'uppercase',
-        uppercase: true,
+        text_transform: 'none',
+        uppercase: false,
     },
 };
 
@@ -2428,7 +2428,8 @@ function reelsRefreshSubtitleWeightOptions(preferredWeight) {
     if (!familyEl || !weightEl) return;
 
     const boldChecked = document.getElementById('reels-bold')?.checked !== false;
-    const currentWeight = String(preferredWeight || weightEl.value || (boldChecked ? '700' : '400'));
+    const rawCurrent = preferredWeight || weightEl.value || (boldChecked ? '700' : '400');
+    const currentWeight = String((boldChecked && !preferredWeight && (parseInt(rawCurrent, 10) || 0) < 600) ? '700' : rawCurrent);
     const fallback = [
         { value: '100', label: 'Thin' },
         { value: '200', label: 'ExtraLight' },
@@ -2595,14 +2596,15 @@ async function reelsApplyFontPreset(silent = false) {
         fm.refreshFontSelect('reels-font-family', preset.font_family);
     }
 
+    const targetPresetWeight = String(preset.font_weight || (preset.bold ? 700 : 400));
     set('reels-font-family', preset.font_family);
-    set('reels-font-weight', preset.font_weight || (preset.bold ? 700 : 400));
     set('reels-fontsize', preset.fontsize);
     set('reels-fontsize-range', preset.fontsize);
     setChk('reels-bold', preset.bold);
     setChk('reels-italic', preset.italic);
     set('reels-letter-spacing', preset.letter_spacing);
-    reelsRefreshSubtitleWeightOptions();
+    reelsRefreshSubtitleWeightOptions(targetPresetWeight);
+    set('reels-font-weight', targetPresetWeight);
     reelsSyncWeightToBold();
 
     reelsUpdatePreview();
@@ -2797,6 +2799,7 @@ function _readStyleFromUI() {
         bold: uiFontWeight >= 600,
         italic: chk('reels-italic'),
         uppercase: chk('reels-uppercase'),
+        text_transform: chk('reels-uppercase') ? 'uppercase' : 'none',
         letter_spacing: num('reels-letter-spacing', 0),
         text_direction: val('reels-text-direction') || 'auto',
 
@@ -3312,7 +3315,10 @@ function _writeStyleToUI(style) {
     else if (style.bold === true && weight < 600) weight = 700;
     weight = Math.max(100, Math.min(900, weight));
     setChk('reels-italic', style.italic);
-    setChk('reels-uppercase', style.uppercase);
+    const isUppercase = typeof style.uppercase === 'boolean'
+        ? style.uppercase
+        : (String(style.text_transform || '').toLowerCase() === 'uppercase');
+    setChk('reels-uppercase', isUppercase);
     set('reels-letter-spacing', style.letter_spacing || 0);
     set('reels-text-direction', style.text_direction || 'auto');
     reelsRefreshSubtitleWeightOptions(String(weight));

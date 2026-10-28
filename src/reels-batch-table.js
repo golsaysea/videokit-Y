@@ -8169,7 +8169,8 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
         const fw = Math.max(100, Math.min(900, Number(m.font_weight) || (m.bold ? 700 : 400)));
         const fsStyle = m.italic ? 'font-style:italic;' : '';
         const ffStyle = m.font_family ? `font-family:${_escHtml(JSON.stringify(String(m.font_family)))},sans-serif;` : '';
-        const ttStyle = m.text_transform ? `text-transform:${m.text_transform};` : '';
+        const isUpperM = typeof m.uppercase === 'boolean' ? m.uppercase : (String(m.text_transform || '').toLowerCase() === 'uppercase');
+        const ttStyle = isUpperM ? 'text-transform:uppercase;' : '';
         const lsStyle = m.letter_spacing ? `letter-spacing:${m.letter_spacing}px;` : '';
 
         const textColors = String(tc).split(',').map(c => c.trim()).filter(c => c && CSS.supports('color', c));

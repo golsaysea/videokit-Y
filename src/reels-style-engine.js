@@ -429,6 +429,14 @@ function mergeStyle(overrides) {
     } else if ('font_weight' in overrides && !('bold' in overrides)) {
         base.bold = (parseInt(overrides.font_weight, 10) || 400) >= 600;
     }
+    if ('uppercase' in overrides && typeof overrides.uppercase === 'boolean') {
+        base.uppercase = overrides.uppercase;
+        base.text_transform = overrides.uppercase ? 'uppercase' : 'none';
+    } else if ('text_transform' in overrides && !('uppercase' in overrides)) {
+        const isUpper = String(overrides.text_transform || '').toLowerCase() === 'uppercase';
+        base.uppercase = isUpper;
+        base.text_transform = isUpper ? 'uppercase' : 'none';
+    }
     return base;
 }
 
@@ -946,7 +954,8 @@ const BUILTIN_PRESETS = {
         color_high: "#FFFFFF",
         highlight_enabled: false,
         karaoke_highlight: false,
-        text_transform: "uppercase",
+        text_transform: "none",
+        uppercase: false,
         fontsize: 76,
         bold: true,
         italic: false,
@@ -988,8 +997,8 @@ const BUILTIN_PRESETS = {
         karaoke_highlight: true,
         active_line_focus_enabled: true,
         inactive_line_scale: 0.62,
-        text_transform: "uppercase",
-        uppercase: true,
+        text_transform: "none",
+        uppercase: false,
         fontsize: 76,
         bold: true,
         italic: true,

@@ -2313,7 +2313,10 @@ class ReelsCanvasRenderer {
     _applyTextTransform(str, s) {
         const raw = String(str ?? '');
         if (!raw || !s) return raw;
-        if (s.uppercase === true || String(s.text_transform || '').toLowerCase() === 'uppercase') {
+        const isUpper = typeof s.uppercase === 'boolean'
+            ? s.uppercase
+            : (String(s.text_transform || '').toLowerCase() === 'uppercase');
+        if (isUpper) {
             return raw.toUpperCase();
         }
         return raw;
@@ -5968,6 +5971,225 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
 }
 
 // ═══════════════════════════════════════════════════════
+// Canvas 2D Synthetic Bold (Faux-Bold) Support
+// ═══════════════════════════════════════════════════════
+// Single-weight fonts (e.g. Anton, Bebas Neue, Pacifico, Lobster, Ma Shan Zheng,
+// ZCOOL fonts, Impact, or single-file local/uploaded TTF/OTF fonts registered via
+// FontFace) render identical glyph bitmaps at weight 400 and 700/900 in Chromium
+// 2D Canvas. When Bold [B] (weight >= 600) is active and the font does not
+// natively embolden at >=600 vs 400, synthesize faux-bold via micro-offset passes.
+const _parsedFontStrCache = new Map();
+const _syntheticBoldCache = new Map();
+let _syntheticBoldProbeCanvas = null;
+let _syntheticBoldProbeCtx = null;
+
+function invalidateSyntheticBoldCache() {
+    _syntheticBoldCache.clear();
+}
+
+function _parseCanvasFontForSyntheticBold(fontStr) {
+    if (!fontStr || typeof fontStr !== 'string') return null;
+    if (!/\b(bold|[6-9]00)\b/i.test(fontStr)) return null;
+    const cached = _parsedFontStrCache.get(fontStr);
+    if (cached !== undefined) return cached;
+
+    const m = fontStr.match(/^(?:(italic|oblique|normal)\s+)*?(bold|[6-9]00)\s+(?:(?:italic|oblique|normal)\s+)*?(\d+(?:\.\d+)?)px\s+(.+)$/i);
+    if (!m) {
+        _parsedFontStrCache.set(fontStr, null);
+        return null;
+    }
+    const prefix = fontStr.slice(0, fontStr.length - m[4].length);
+    const italic = /\b(italic|oblique)\b/i.test(prefix);
+    const rawWeight = m[2].toLowerCase();
+    const weight = rawWeight === 'bold' ? 700 : (parseInt(rawWeight, 10) || 700);
+    const fontSize = parseFloat(m[3]) || 0;
+    const familyList = m[4].trim();
+    const primaryFamily = familyList.split(',')[0].trim().replace(/^["']|["']$/g, '').trim();
+    const res = (fontSize >= 14 && primaryFamily)
+        ? { italic, weight, fontSize, familyList, primaryFamily }
+        : null;
+    if (_parsedFontStrCache.size > 600) _parsedFontStrCache.clear();
+    _parsedFontStrCache.set(fontStr, res);
+    return res;
+}
+
+function _needsCanvasSyntheticBold(parsed, origFillText) {
+    if (!parsed || !parsed.primaryFamily || parsed.fontSize < 14) return false;
+    const key = `${parsed.primaryFamily.toLowerCase()}|${parsed.italic ? 1 : 0}|${parsed.weight}`;
+    if (_syntheticBoldCache.has(key)) {
+        return _syntheticBoldCache.get(key);
+    }
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+        return false;
+    }
+    try {
+        if (!_syntheticBoldProbeCanvas) {
+            _syntheticBoldProbeCanvas = document.createElement('canvas');
+            _syntheticBoldProbeCanvas.width = 160;
+            _syntheticBoldProbeCanvas.height = 48;
+            _syntheticBoldProbeCtx = _syntheticBoldProbeCanvas.getContext('2d', { willReadFrequently: true });
+        }
+        const pctx = _syntheticBoldProbeCtx;
+        if (!pctx || typeof pctx.getImageData !== 'function') return false;
+
+        const stylePrefix = parsed.italic ? 'italic ' : 'normal ';
+        const sample = 'HMg国永8';
+        const w = _syntheticBoldProbeCanvas.width;
+        const h = _syntheticBoldProbeCanvas.height;
+
+        const measurePass = (weightVal) => {
+            pctx.clearRect(0, 0, w, h);
+            pctx.fillStyle = '#ffffff';
+            pctx.textBaseline = 'alphabetic';
+            pctx.font = `${stylePrefix}${weightVal} 28px ${parsed.familyList}`;
+            const width = typeof pctx.measureText === 'function' ? pctx.measureText(sample).width : 0;
+            origFillText.call(pctx, sample, 6, 34);
+            const data = pctx.getImageData(0, 0, w, h).data;
+            let alphaSum = 0;
+            for (let i = 3; i < data.length; i += 4) {
+                alphaSum += data[i];
+            }
+            return { width, alphaSum };
+        };
+
+        const normalMetrics = measurePass(400);
+        if (normalMetrics.alphaSum <= 0) {
+            return false;
+        }
+        const boldMetrics = measurePass(parsed.weight);
+        // If native bold increases ink coverage by >3.5% or changes glyph advance width,
+        // the font already has a working bold face in Canvas.
+        const hasNativeBold = (boldMetrics.alphaSum > normalMetrics.alphaSum * 1.035) ||
+            (Math.abs(boldMetrics.width - normalMetrics.width) > 0.35);
+        const needsSynthetic = !hasNativeBold;
+
+        const fontReady = !document.fonts || typeof document.fonts.check !== 'function' ||
+            document.fonts.check(`${stylePrefix}${parsed.weight} 28px "${parsed.primaryFamily}"`);
+        if (fontReady) {
+            if (_syntheticBoldCache.size > 400) _syntheticBoldCache.clear();
+            _syntheticBoldCache.set(key, needsSynthetic);
+        }
+        return needsSynthetic;
+    } catch (_) {
+        return false;
+    }
+}
+
+function installCanvasSyntheticBoldSupport(targetProto) {
+    const proto = targetProto || (typeof CanvasRenderingContext2D !== 'undefined' ? CanvasRenderingContext2D.prototype : null);
+    if (!proto || proto._vkSyntheticBoldInstalled) return;
+    const origFillText = proto.fillText;
+    const origStrokeText = proto.strokeText;
+    if (typeof origFillText !== 'function' || typeof origStrokeText !== 'function') return;
+
+    const callFill = (ctx, text, x, y, maxWidth) => {
+        if (maxWidth !== undefined) origFillText.call(ctx, text, x, y, maxWidth);
+        else origFillText.call(ctx, text, x, y);
+    };
+    const callStroke = (ctx, text, x, y, maxWidth) => {
+        if (maxWidth !== undefined) origStrokeText.call(ctx, text, x, y, maxWidth);
+        else origStrokeText.call(ctx, text, x, y);
+    };
+
+    proto.fillText = function vkSyntheticBoldFillText(text, x, y, maxWidth) {
+        if (!text || this._vkDisableSyntheticBold) {
+            return callFill(this, text, x, y, maxWidth);
+        }
+        const parsed = _parseCanvasFontForSyntheticBold(this.font);
+        if (!parsed || !_needsCanvasSyntheticBold(parsed, origFillText)) {
+            return callFill(this, text, x, y, maxWidth);
+        }
+        const factorX = parsed.weight >= 800 ? 0.036 : 0.026;
+        const factorY = parsed.weight >= 800 ? 0.016 : 0.012;
+        const dx = Math.max(0.8, Math.min(5.5, parsed.fontSize * factorX));
+        const dy = Math.max(0.4, Math.min(2.8, parsed.fontSize * factorY));
+
+        // 1. Center pass (draws shadow if enabled)
+        callFill(this, text, x, y, maxWidth);
+
+        // 2. Micro-offset embolden passes with shadow suppressed
+        const hasShadow = (this.shadowBlur > 0) || (this.shadowOffsetX !== 0) || (this.shadowOffsetY !== 0);
+        let prevShadowColor, prevShadowBlur, prevShadowOx, prevShadowOy;
+        if (hasShadow) {
+            prevShadowColor = this.shadowColor;
+            prevShadowBlur = this.shadowBlur;
+            prevShadowOx = this.shadowOffsetX;
+            prevShadowOy = this.shadowOffsetY;
+            this.shadowColor = 'rgba(0,0,0,0)';
+            this.shadowBlur = 0;
+            this.shadowOffsetX = 0;
+            this.shadowOffsetY = 0;
+        }
+        try {
+            callFill(this, text, x - dx * 0.5, y, maxWidth);
+            callFill(this, text, x + dx * 0.5, y, maxWidth);
+            if ((this.globalAlpha ?? 1) >= 0.95) {
+                callFill(this, text, x, y - dy * 0.5, maxWidth);
+                callFill(this, text, x, y + dy * 0.5, maxWidth);
+            }
+        } finally {
+            if (hasShadow) {
+                this.shadowColor = prevShadowColor;
+                this.shadowBlur = prevShadowBlur;
+                this.shadowOffsetX = prevShadowOx;
+                this.shadowOffsetY = prevShadowOy;
+            }
+        }
+    };
+
+    proto.strokeText = function vkSyntheticBoldStrokeText(text, x, y, maxWidth) {
+        if (!text || this._vkDisableSyntheticBold) {
+            return callStroke(this, text, x, y, maxWidth);
+        }
+        const parsed = _parseCanvasFontForSyntheticBold(this.font);
+        if (!parsed || !_needsCanvasSyntheticBold(parsed, origFillText)) {
+            return callStroke(this, text, x, y, maxWidth);
+        }
+        const factorX = parsed.weight >= 800 ? 0.036 : 0.026;
+        const factorY = parsed.weight >= 800 ? 0.016 : 0.012;
+        const dx = Math.max(0.8, Math.min(5.5, parsed.fontSize * factorX));
+        const dy = Math.max(0.4, Math.min(2.8, parsed.fontSize * factorY));
+
+        callStroke(this, text, x - dx * 0.5, y, maxWidth);
+        const hasShadow = (this.shadowBlur > 0) || (this.shadowOffsetX !== 0) || (this.shadowOffsetY !== 0);
+        let prevShadowColor, prevShadowBlur, prevShadowOx, prevShadowOy;
+        if (hasShadow) {
+            prevShadowColor = this.shadowColor;
+            prevShadowBlur = this.shadowBlur;
+            prevShadowOx = this.shadowOffsetX;
+            prevShadowOy = this.shadowOffsetY;
+            this.shadowColor = 'rgba(0,0,0,0)';
+            this.shadowBlur = 0;
+            this.shadowOffsetX = 0;
+            this.shadowOffsetY = 0;
+        }
+        try {
+            callStroke(this, text, x + dx * 0.5, y, maxWidth);
+            callStroke(this, text, x, y - dy * 0.5, maxWidth);
+            callStroke(this, text, x, y + dy * 0.5, maxWidth);
+        } finally {
+            if (hasShadow) {
+                this.shadowColor = prevShadowColor;
+                this.shadowBlur = prevShadowBlur;
+                this.shadowOffsetX = prevShadowOx;
+                this.shadowOffsetY = prevShadowOy;
+            }
+        }
+    };
+
+    proto._vkSyntheticBoldInstalled = true;
+}
+
+installCanvasSyntheticBoldSupport();
+if (typeof document !== 'undefined' && document.fonts && typeof document.fonts.addEventListener === 'function') {
+    document.fonts.addEventListener('loadingdone', () => invalidateSyntheticBoldCache());
+}
+
+ReelsCanvasRenderer.installCanvasSyntheticBoldSupport = installCanvasSyntheticBoldSupport;
+ReelsCanvasRenderer.invalidateSyntheticBoldCache = invalidateSyntheticBoldCache;
+ReelsCanvasRenderer._parseCanvasFontForSyntheticBold = _parseCanvasFontForSyntheticBold;
+
+// ═══════════════════════════════════════════════════════
 // Exports
 // ═══════════════════════════════════════════════════════
 
@@ -5976,6 +6198,8 @@ if (typeof window !== 'undefined') {
     window.parseSRT = parseSRT;
     window.formatSRTTime = formatSRTTime;
     window.generateASS = generateASS;
+    window.installCanvasSyntheticBoldSupport = installCanvasSyntheticBoldSupport;
+    window.invalidateSyntheticBoldCache = invalidateSyntheticBoldCache;
 }
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
@@ -5986,5 +6210,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSubtitleLayoutMaxScale,
         getTopBaselineGlyphBounds,
         getAmbientGlowCompositeOperation,
+        installCanvasSyntheticBoldSupport,
+        invalidateSyntheticBoldCache,
     };
 }

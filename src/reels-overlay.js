@@ -1582,7 +1582,7 @@ function _drawTextOverlay(ctx, ov, x, y, w, h, currentTime) {
 
     const fontSize = ov.fontsize || 40;
     const fontFamily = ov.font_family || 'Arial';
-    const fontWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400);
+    const fontWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400, ov.bold);
     const italic = ov.italic ? 'italic' : 'normal';
     const fallbackFamily = _resolveOverlayFallback(fontFamily);
     const fontStr = `${italic} ${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
@@ -1752,21 +1752,21 @@ function _drawTextCardOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTime
     // ── 原始字号 ──
     const titleText = ov.title_uppercase ? (ov.title_text || '').toUpperCase() : (ov.title_text || '');
     let titleFontSize = ov.title_fontsize ?? 60;
-    const titleWeight = _resolveOverlayFontWeight(ov.title_font_weight, ov.title_bold ? 900 : 400);
+    const titleWeight = _resolveOverlayFontWeight(ov.title_font_weight, ov.title_bold ? 900 : 400, ov.title_bold);
     const titleItalic = ov.title_italic ? 'italic' : 'normal';
     const titleFamily = ov.title_font_family || 'Crimson Pro';
     const titleFallback = _resolveOverlayFallback(titleFamily);
 
     const bodyText = ov.body_text || '';
     let bodyFontSize = ov.body_fontsize ?? 40;
-    const bodyWeight = _resolveOverlayFontWeight(ov.body_font_weight, ov.body_bold ? 700 : 400);
+    const bodyWeight = _resolveOverlayFontWeight(ov.body_font_weight, ov.body_bold ? 700 : 400, ov.body_bold);
     const bodyItalic = ov.body_italic ? 'italic' : 'normal';
     const bodyFamily = ov.body_font_family || 'Arial';
     const bodyFallback = _resolveOverlayFallback(bodyFamily);
 
     const footerText = ov.footer_text || '';
     let footerFontSize = ov.footer_fontsize ?? 32;
-    const footerWeight = _resolveOverlayFontWeight(ov.footer_font_weight, ov.footer_bold ? 700 : 400);
+    const footerWeight = _resolveOverlayFontWeight(ov.footer_font_weight, ov.footer_bold ? 700 : 400, ov.footer_bold);
     const footerItalic = ov.footer_italic ? 'italic' : 'normal';
     const footerFamily = ov.footer_font_family || 'Arial';
     const footerFallback = _resolveOverlayFallback(footerFamily);
@@ -2982,14 +2982,14 @@ function _drawTextCardSideBySideOverlay(ctx, ov, x, y, w, h, canvasW, canvasH) {
 
     // ── 标题与正文的字号与排版测量 ──
     const titleFontSize = ov.title_fontsize ?? 60;
-    const titleWeight = _resolveOverlayFontWeight(ov.title_font_weight, ov.title_bold ? 900 : 400);
+    const titleWeight = _resolveOverlayFontWeight(ov.title_font_weight, ov.title_bold ? 900 : 400, ov.title_bold);
     const titleItalic = ov.title_italic ? 'italic' : 'normal';
     const titleFamily = ov.title_font_family || 'Crimson Pro';
     const titleFallback = _resolveOverlayFallback(titleFamily);
     const titleFont = `${titleItalic} ${titleWeight} ${titleFontSize}px "${titleFamily}", ${titleFallback}`;
 
     const bodyFontSize = ov.body_fontsize ?? 40;
-    const bodyWeight = _resolveOverlayFontWeight(ov.body_font_weight, ov.body_bold ? 700 : 400);
+    const bodyWeight = _resolveOverlayFontWeight(ov.body_font_weight, ov.body_bold ? 700 : 400, ov.body_bold);
     const bodyItalic = ov.body_italic ? 'italic' : 'normal';
     const bodyFamily = ov.body_font_family || 'Arial';
     const bodyFallback = _resolveOverlayFallback(bodyFamily);
@@ -3546,7 +3546,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     // 字体设置 (可能被 auto_fit 缩小)
     let fontSize     = ov.fontsize || 40;
     const fontFamily  = ov.font_family || 'Arial';
-    const fontWeight  = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400);
+    const fontWeight  = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400, ov.bold);
     const italicStr   = ov.italic ? 'italic' : 'normal';
     const fallback    = _resolveOverlayFallback(fontFamily);
     const lineSpacing = parseFloat(ov.line_spacing ?? 6);
@@ -3563,7 +3563,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         let tSize = parseFloat(ov.scroll_title_fontsize ?? 56);
         const tMergedRanges = _getAutoColorMergedRanges(ov, 'scroll_title', scrollTitleText) || ov.scroll_title_styled_ranges || [];
         const tFamily = ov.scroll_title_font_family || fontFamily;
-        const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400);
+        const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400, ov.scroll_title_bold);
         const tFallback = _resolveOverlayFallback(tFamily);
         const tLineSpacing = parseFloat(ov.scroll_title_line_spacing ?? lineSpacing);
         const tGap = parseFloat(ov.scroll_title_gap ?? 20);
@@ -3840,7 +3840,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             // 计算标题尺寸
             let tSize = parseFloat(ov.scroll_title_fontsize ?? 56);
             const tFamily = ov.scroll_title_font_family || fontFamily;
-            const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400);
+            const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400, ov.scroll_title_bold);
             const tFallback = _resolveOverlayFallback(tFamily);
             const tColor = ov.scroll_title_color || ov.color || '#FFFFFF';
             const tAlign = ov.scroll_title_align || align;
@@ -4659,7 +4659,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
     const baseColor = ov.color || '#FFFFFF';
     const bodyFamily = ov.font_family || 'Arial';
     const bodyFallback = _resolveOverlayFallback(bodyFamily);
-    const bodyWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400);
+    const bodyWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400, ov.bold);
     const gradDir = ov.scroll_body_gradient_direction || ov.scroll_gradient_direction || 'horizontal';
 
     let rawContent = ov.content || '';
@@ -4838,7 +4838,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
     if (titleText && !ov._skipTitle) {
         let tSize = parseFloat(ov.scroll_title_fontsize ?? 56);
         const tFamily = ov.scroll_title_font_family || ov.font_family || 'Arial';
-        const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400);
+        const tWeight = _resolveOverlayFontWeight(ov.scroll_title_font_weight, ov.scroll_title_bold ? 700 : 400, ov.scroll_title_bold);
         const tItalic = ov.italic ? 'italic' : 'normal';
         const tFallback = _resolveOverlayFallback(tFamily);
         const tColor = ov.scroll_title_color || ov.color || '#FFFFFF';
@@ -4920,7 +4920,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
         }
         drawY += titleLines.length * tLineH + tGap;
         ctx.restore();
-        ctx.font = `${ov.italic ? 'italic' : 'normal'} ${_resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400)} ${fontSize}px "${ov.font_family || 'Arial'}", ${_resolveOverlayFallback(ov.font_family || 'Arial')}`;
+        ctx.font = `${ov.italic ? 'italic' : 'normal'} ${_resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400, ov.bold)} ${fontSize}px "${ov.font_family || 'Arial'}", ${_resolveOverlayFallback(ov.font_family || 'Arial')}`;
     }
 
     // ── 正文 ──
@@ -5011,7 +5011,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
     let yc = drawY + fontSize;
     const bodyFamily = ov.font_family || 'Arial';
     const bodyFallback = _resolveOverlayFallback(bodyFamily);
-    const bodyWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400);
+    const bodyWeight = _resolveOverlayFontWeight(ov.font_weight, ov.bold ? 700 : 400, ov.bold);
     
     let rawContent = ov.content || '';
     if (ov.scroll_uppercase !== false) rawContent = rawContent.toUpperCase();
@@ -5060,9 +5060,14 @@ function _roundRectIndividual(ctx, x, y, w, h, tl, tr, br, bl) {
     ctx.closePath();
 }
 
-function _resolveOverlayFontWeight(weight, fallback = 400) {
+function _resolveOverlayFontWeight(weight, fallback = 400, bold = undefined) {
     const n = parseInt(weight, 10);
-    const base = Number.isFinite(n) ? n : fallback;
+    let base = Number.isFinite(n) ? n : fallback;
+    if (bold === false && base >= 600) {
+        base = 400;
+    } else if (bold === true && base < 600) {
+        base = fallback >= 600 ? fallback : 700;
+    }
     return Math.max(100, Math.min(900, base));
 }
 

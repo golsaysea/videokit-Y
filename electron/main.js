@@ -2171,7 +2171,7 @@ app.whenReady().then(async () => {
                 if (!hasExplicit && /variablefont/.test(base)) {
                     weight = '100 900';
                 }
-                return { weight, style };
+                return { weight, style, hasExplicit };
             }
 
             function cleanFamilyNameFromFile(fileName) {
@@ -2232,25 +2232,40 @@ app.whenReady().then(async () => {
                                         try{if(fs.lstatSync(child).isDirectory())results.push(...scanDir(child,isSystemFont));}catch(_){}
                                         continue;
                                     }
-                                    const meta = {...inferWeightAndStyle(fontFile),...require('./services/fontMetadata').readFontMetadata(path.join(fullPath,fontFile)),...(importedMetadata[fontFile] || {})};
+                                    const inferred = inferWeightAndStyle(fontFile);
+                                    const parsedMeta = require('./services/fontMetadata').readFontMetadata(path.join(fullPath, fontFile)) || {};
+                                    const imported = importedMetadata[fontFile] || {};
+                                    const resolvedWeight = imported.weight
+                                        || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
+                                    const resolvedStyle = imported.style
+                                        || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
+                                    const rawFamily = imported.family || parsedMeta.family || familyName;
+                                    const normalizedFamily = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || familyName;
                                     results.push({
-                                        family: meta.family || familyName,
+                                        family: normalizedFamily,
                                         path: path.join(fullPath, fontFile),
-                                        weight: meta.weight,
-                                        style: meta.style,
+                                        weight: resolvedWeight,
+                                        style: resolvedStyle,
                                         system: isSystemFont,
                                     });
                                 }
                             } catch { /* skip unreadable dirs */ }
                         } else if (item.isFile() && fontExts.has(path.extname(item.name).toLowerCase())) {
-                            const details={...require('./services/fontMetadata').readFontMetadata(fullPath),...(directoryMetadata[item.name]||{})};
-                            const familyName = details.family || cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
-                            const meta = {...inferWeightAndStyle(item.name),...details};
+                            const inferred = inferWeightAndStyle(item.name);
+                            const parsedMeta = require('./services/fontMetadata').readFontMetadata(fullPath) || {};
+                            const imported = directoryMetadata[item.name] || {};
+                            const details = { ...parsedMeta, ...imported };
+                            const rawFamily = details.family || cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
+                            const familyName = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || rawFamily;
+                            const resolvedWeight = imported.weight
+                                || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
+                            const resolvedStyle = imported.style
+                                || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
                             results.push({
                                 family: familyName,
                                 path: fullPath,
-                                weight: meta.weight,
-                                style: meta.style,
+                                weight: resolvedWeight,
+                                style: resolvedStyle,
                                 system: isSystemFont,
                             });
                         }
