@@ -5043,7 +5043,11 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ? Math.max(40, bodyClipBotBase - bodyClipTopBase)
             : Math.max(40, clipH - _titleDeductedH);
         if (bodyClipH > 0) {
-            const ovProxy = Object.assign({}, ov, { _skipTitle: true });
+            const _drewBodyBlockBg = _drawScrollBodyBlockBgOutsideClip(
+                ctx, ov, lines, curX, curY, textW, lineHeight,
+                bodyClipY, bodyClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
+            );
+            const ovProxy = Object.assign({}, ov, { _skipTitle: true, _skipBodyBlockBg: _drewBodyBlockBg });
             const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff > 0 || featherBotOff > 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0;
             if (hasFeather) {
                 const cW = Math.ceil(clipW), cH = Math.ceil(bodyClipH);
@@ -5126,6 +5130,11 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         // ── 标题跟随滚动或无标题 ──
         const effClipY = ov.bg_body_only ? bodyClipTopBase : clipY;
         const effClipH = ov.bg_body_only ? Math.max(40, bodyClipBotBase - bodyClipTopBase) : clipH;
+        const _drewBodyBlockBg2 = _drawScrollBodyBlockBgOutsideClip(
+            ctx, ov, lines, curX, ov._scrollBodyFirstLineY ?? curY, textW, lineHeight,
+            effClipY, effClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
+        );
+        const ovForBlock = _drewBodyBlockBg2 ? Object.assign({}, ov, { _skipBodyBlockBg: true }) : ov;
         const _twSegments = Array.isArray(ov._taskSegments)
             ? ov._taskSegments
             : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
@@ -5138,7 +5147,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
             const offX = curX - clipX;
             const offY = curY - effClipY;
-            _drawScrollTextBlock(tc, ov, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
+            _drawScrollTextBlock(tc, ovForBlock, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
 
             tc.globalCompositeOperation = 'destination-in';
             const grad = tc.createLinearGradient(0, 0, 0, cH);
@@ -5204,7 +5213,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ctx.beginPath();
             ctx.rect(clipX, effClipY, clipW, effClipH);
             ctx.clip();
-            _drawScrollTextBlock(ctx, ov, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+            _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
             ctx.restore();
         }
     }
@@ -6123,6 +6132,79 @@ function _drawScrollTitleBackground(ctx, ov, titleLines, titleDrawX, titleDrawY,
 }
 
 /**
+ * 在滚动裁切与羽化遮罩之外绘制「整块」模式的正文独立背景，
+ * 确保当长文本超出裁切区或开启上下羽化时，整块背景依然完整保留四角圆角与上下内距。
+ */
+function _drawScrollBodyBlockBgOutsideClip(
+    ctx, ov, lines, curX, bodyStartY, textW, lineHeight,
+    activeClipY, activeClipH, featherTopOff, featherBotOff, bgScrollOffsetY
+) {
+    if (!ov.scroll_body_bg_enabled || !Array.isArray(lines) || lines.length === 0) return false;
+    const bbgStyle = ov.scroll_body_bg_style || 'solid';
+    const isBackingStyle = typeof ReelsBrushEngine !== 'undefined'
+        && ReelsBrushEngine.isTextBackingStyle
+        && ReelsBrushEngine.isTextBackingStyle(bbgStyle);
+    if (isBackingStyle || ov.scroll_body_bg_mode === 'inline' || ov.scroll_body_bg_mode === 'inline-joined') {
+        return false;
+    }
+    const isCardBoardStyle = Boolean(
+        typeof ReelsBrushEngine !== 'undefined'
+        && ReelsBrushEngine.CARD_BACKGROUND_STYLES
+        && ReelsBrushEngine.CARD_BACKGROUND_STYLES[bbgStyle]
+    );
+    const bbgAlpha = (ov.scroll_body_bg_opacity ?? 60) / 100;
+    const bbgPadH = parseFloat(ov.scroll_body_bg_pad_h ?? 16);
+    const bbgPadTop = parseFloat(ov.scroll_body_bg_pad_top ?? 10);
+    const bbgPadBot = parseFloat(ov.scroll_body_bg_pad_bottom ?? 10);
+    const bbgRad = Math.max(0, parseFloat(ov.scroll_body_bg_radius ?? 12));
+    const bodyBlockH = lines.length * lineHeight;
+    const rawBlockW = textW + bbgPadH * 2;
+    const rawBlockH = bodyBlockH + bbgPadTop + bbgPadBot;
+    const effBlockW = (Number(ov.bg_width) > 0) ? Math.max(60, Number(ov.bg_width)) : rawBlockW;
+    const effBlockH = (Number(ov.bg_height) > 0) ? Math.max(60, Number(ov.bg_height)) : rawBlockH;
+    const effBlockX = (curX - bbgPadH) + (rawBlockW - effBlockW) / 2 + (parseFloat(ov.bg_offset_x) || 0);
+    const effBlockY = (bodyStartY - bbgPadTop) + (parseFloat(ov.bg_offset_y) || 0);
+
+    const fTopInset = Math.max(0, parseFloat(ov.feather_top_offset ?? 0)) + Math.max(0, parseFloat(ov.feather_top ?? 0)) * 0.5;
+    const fBotInset = Math.max(0, parseFloat(ov.feather_bottom_offset ?? 0)) + Math.max(0, parseFloat(ov.feather_bottom ?? 0)) * 0.5;
+    const minVisY = activeClipY + fTopInset - bbgPadTop;
+    const maxVisBot = activeClipY + activeClipH - fBotInset + bbgPadBot;
+    const visBlockY = Math.max(minVisY, effBlockY);
+    const visBlockBot = Math.min(maxVisBot, effBlockY + effBlockH);
+    const visBlockH = visBlockBot - visBlockY;
+
+    if (visBlockH <= 2 || effBlockW <= 2) return true;
+
+    if (isCardBoardStyle) {
+        ReelsBrushEngine.drawThemedCardBackground(
+            ctx,
+            effBlockX,
+            visBlockY,
+            effBlockW,
+            visBlockH,
+            bbgRad,
+            {
+                style: bbgStyle,
+                color: ov.scroll_body_bg_color || '#F3EFE6',
+                opacity: bbgAlpha,
+                scrollOffsetY: bgScrollOffsetY || 0,
+            }
+        );
+    } else {
+        ctx.save();
+        ctx.globalAlpha = bbgAlpha * ctx.globalAlpha;
+        const rawBgColor = ov.scroll_body_bg_color || '#000000';
+        ctx.fillStyle = (typeof _resolveOverlayTextFill === 'function')
+            ? _resolveOverlayTextFill(ctx, rawBgColor, effBlockX, visBlockY, visBlockH, effBlockW, ov.scroll_body_bg_gradient_direction || 'horizontal')
+            : rawBgColor;
+        _roundRect(ctx, effBlockX, visBlockY, effBlockW, visBlockH, bbgRad);
+        ctx.fill();
+        ctx.restore();
+    }
+    return true;
+}
+
+/**
  * 绘制滚动字幕文本块 (内部)。
  */
 function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, fontSize, align, twContext = null) {
@@ -6253,7 +6335,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
         && !useBlockBoardForBodyBg
         && (isBackingStyle || ov.scroll_body_bg_mode === 'inline' || ov.scroll_body_bg_mode === 'inline-joined');
 
-    if (ov.scroll_body_bg_enabled && lines.length > 0 && !deferBodyBgToTw) {
+    if (ov.scroll_body_bg_enabled && lines.length > 0 && !deferBodyBgToTw && !ov._skipBodyBlockBg) {
         const bbgAlpha = (ov.scroll_body_bg_opacity ?? (isBackingStyle ? 98 : 60)) / 100;
         const bbgPadH = parseFloat(ov.scroll_body_bg_pad_h ?? (isBackingStyle ? 16 : 0));
         const bbgPadTop = parseFloat(ov.scroll_body_bg_pad_top ?? (isBackingStyle ? 10 : 0));
