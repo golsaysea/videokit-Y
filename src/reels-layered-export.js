@@ -699,7 +699,7 @@ async function reelsLayeredExport(params) {
             if (showSubtitle && segments && segments.length > 0) {
                 let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
                 // Scrolling/typewriter mode: find nearest segment during gaps
-                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter) && segments.length > 0) {
+                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segments.length > 0) {
                     let best = segments[0];
                     for (const seg of segments) {
                         if ((seg.start || 0) <= t) best = seg;

@@ -140,115 +140,12 @@ function buildBt709ConversionFilter(profile = {}, useSafeCompatibleFallback = fa
     ].join(',');
 }
 
-// SDR proxies are for the Reels preview only. Project/export paths stay original.
-function createPreviewService(runCommand, getCacheDir) {
-    const pending = new Map();
-    const checked = new Map();
-    let tail = Promise.resolve();
-    async function prepare(source) {
-        if (!VIDEO.test(source)) return source;
-        source = path.resolve(source);
-        const stat = await fs.promises.stat(source);
-        const key = crypto.createHash('sha256').update(`reels-hdr-preview-v3-widegamut|${source}|${stat.size}|${stat.mtimeMs}`).digest('hex');
-        const cached = checked.get(key);
-        if (cached && (cached === source || fs.existsSync(cached))) return cached;
-        if (pending.has(key)) return pending.get(key);
-        const job = (async () => {
-            let stream = null;
-            try {
-                const { stdout } = await runCommand('ffprobe', [
-                    '-v', 'error', '-select_streams', 'v:0',
-                    '-show_entries', 'stream=color_transfer,color_primaries,color_space,color_range,pix_fmt,bits_per_raw_sample:stream_side_data',
-                    '-of', 'json', source
-                ], { timeout: 30000 });
-                stream = JSON.parse(stdout || '{}').streams?.[0] || null;
-            } catch (_) {
-                stream = null;
-            }
-            const profile = classifyVideoColorProfile(stream);
-            if (!profile.needsConversion) {
-                checked.set(key, source);
-                return source;
-            }
-            const convert = async () => {
-                const dir = getCacheDir();
-                await fs.promises.mkdir(dir, { recursive: true });
-                const output = path.join(dir, key + '.mp4');
-                if (fs.existsSync(output) && fs.statSync(output).size > 0) { checked.set(key, output); return output; }
-                const temporary = path.join(dir, key + '.partial.mp4');
-                const runFfmpegWithFilter = async (filterStr) => {
-                    await runCommand('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', source,
-                        '-map', '0:v:0', '-map', '0:a:0?', '-vf', filterStr,
-                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-threads', '4',
-                        '-c:a', 'aac', '-b:a', '192k', '-map_metadata', '-1',
-                        '-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv',
-                        '-movflags', '+faststart', temporary], { timeout: 1800000 });
-                };
-                try {
-                    const primaryFilter = buildBt709ConversionFilter(profile, false);
-                    try {
-                        await runFfmpegWithFilter(primaryFilter);
-                    } catch (primaryErr) {
-                        // 元数据不完整或 libplacebo 处理失败时，自动降级到安全兼容 BT.709 转换管线
-                        const fallbackFilter = buildBt709ConversionFilter(profile, true);
-                        if (fallbackFilter !== primaryFilter) {
-                            await runFfmpegWithFilter(fallbackFilter);
-                        } else {
-                            throw primaryErr;
-                        }
-                    }
-                    await fs.promises.rename(temporary, output);
-                    checked.set(key, output);
-                    console.log(`[Reels HDR/WCG] BT.709 preview ready (${profile.reason}):`, source);
-                    return output;
-                } finally {
-                    await fs.promises.unlink(temporary).catch(() => {});
-                }
-            };
-            const conversion = tail.catch(() => {}).then(convert);
-            tail = conversion;
-            return conversion;
-        })();
-        pending.set(key, job);
-        try { return await job; } finally { pending.delete(key); }
-    }
-    prepare.clearCache = function clearCache(paths = [], clearAll = false) {
-        let removed = 0;
-        try {
-            checked.clear();
-            const dir = getCacheDir();
-            if (!dir || !fs.existsSync(dir)) return 0;
-            if (clearAll || !Array.isArray(paths) || paths.length === 0) {
-                for (const file of fs.readdirSync(dir)) {
-                    if (/\.mp4$/i.test(file)) {
-                        try { fs.unlinkSync(path.join(dir, file)); removed++; } catch (_) {}
-                    }
-                }
-                return removed;
-            }
-            for (const rawPath of paths) {
-                if (!rawPath) continue;
-                try {
-                    const source = path.resolve(String(rawPath));
-                    if (!fs.existsSync(source)) continue;
-                    const stat = fs.statSync(source);
-                    const key = crypto.createHash('sha256').update(`reels-hdr-preview-v3-widegamut|${source}|${stat.size}|${stat.mtimeMs}`).digest('hex');
-                    const output = path.join(dir, key + '.mp4');
-                    if (fs.existsSync(output)) {
-                        fs.unlinkSync(output);
-                        removed++;
-                    }
-                } catch (_) {}
-            }
-        } catch (_) {}
-        return removed;
-    };
+// Backwards-compatible no-transcode preview API. Export retains color classification above.
+function createPreviewService() {
+    const prepare = async source => source;
+    prepare.clearCache = async () => 0;
     return prepare;
 }
-const prepareReelsPreview = createPreviewService(
-    (...args) => require('./ffmpeg').runCommand(...args),
-    () => require('./settings').getSecureTmpDir('reels-hdr-preview')
-);
+const prepareReelsPreview = createPreviewService();
 const clearReelsPreviewCache = (...args) => prepareReelsPreview.clearCache(...args);
 module.exports = { prepareReelsPreview, clearReelsPreviewCache, createPreviewService, classifyVideoColorProfile, buildBt709ConversionFilter };
-

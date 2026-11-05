@@ -28,27 +28,8 @@ function toFileUrl(value) {
     } catch (_) { return value; }
 }
 
-const framePipelines = new Map();
-const framePipelineRequests = new Map();
-ipcRenderer.on('reels-frame-pipeline-ready', (event, data = {}) => {
-    const pending = framePipelineRequests.get(data.requestId);
-    if (!pending) return;
-    framePipelineRequests.delete(data.requestId);
-    clearTimeout(pending.timer);
-    const port = event.ports && event.ports[0];
-    if (!data.ok || !port) { pending.reject(new Error(data.error || '无法建立帧流水线')); return; }
-    const pipeline = { port, pending: new Map() };
-    port.onmessage = portEvent => {
-        const ack = portEvent.data || {};
-        const waiter = pipeline.pending.get(ack.seq);
-        if (!waiter) return;
-        pipeline.pending.delete(ack.seq);
-        if (ack.ok) waiter.resolve(ack); else waiter.reject(new Error(ack.error || '帧写入失败'));
-    };
-    port.start && port.start();
-    framePipelines.set(data.requestId, pipeline);
-    pending.resolve(data.requestId);
-});
+const _reelsFrameBridge = require('./services/reels-frame-bridge').createReelsFrameBridge(ipcRenderer, { prefix: 'isolated' });
+window.addEventListener('beforeunload', () => _reelsFrameBridge.dispose());
 
 window.electronAPI = {
     toFileUrl,
@@ -66,25 +47,9 @@ window.electronAPI = {
     searchFilesRecursive: (dir, names, depth) => ipcRenderer.invoke('search-files-recursive', localMediaUrlToPath(dir), names, depth),
     scanFonts: () => ipcRenderer.invoke('scan-fonts'),
     fetchGoogleFonts: () => ipcRenderer.invoke('fetch-google-fonts'),
-    createReelsFramePipeline: sessionId => new Promise((resolve, reject) => {
-        const requestId = `isolated-pipe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => { framePipelineRequests.delete(requestId); reject(new Error('建立帧流水线超时')); }, 8000);
-        framePipelineRequests.set(requestId, { resolve, reject, timer });
-        ipcRenderer.send('reels-frame-pipeline-open', { sessionId, requestId });
-    }),
-    sendReelsFramePipeline: (pipelineId, seq, raw) => new Promise((resolve, reject) => {
-        const pipeline = framePipelines.get(pipelineId);
-        if (!pipeline) { reject(new Error('帧流水线不存在')); return; }
-        pipeline.pending.set(seq, { resolve, reject });
-        try { pipeline.port.postMessage({ type: 'frame', seq, raw }, [raw]); }
-        catch (error) { pipeline.pending.delete(seq); reject(error); }
-    }),
-    closeReelsFramePipeline: pipelineId => {
-        const pipeline = framePipelines.get(pipelineId);
-        if (!pipeline) return;
-        framePipelines.delete(pipelineId);
-        try { pipeline.port.close(); } catch (_) { }
-    },
+    createReelsFramePipeline: (...args) => _reelsFrameBridge.api.createReelsFramePipeline(...args),
+    sendReelsFramePipeline: (...args) => _reelsFrameBridge.api.sendReelsFramePipeline(...args),
+    closeReelsFramePipeline: (...args) => _reelsFrameBridge.api.closeReelsFramePipeline(...args),
 };
 
 function loadScript(filePath) {

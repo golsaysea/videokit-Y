@@ -970,6 +970,7 @@ class ReelsOverlayPanel {
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rose" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🌹 玫瑰花朗诵写出</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="image" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.12);color:#bae6fd;cursor:pointer;">🖼 上传图片朗诵写出</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="readfollow" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#bbf7d0;cursor:pointer;">📖 原文不透明跟读高亮</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rainbow_karaoke" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(168,85,247,0.55);background:linear-gradient(90deg,rgba(255,56,36,0.22),rgba(255,214,0,0.22),rgba(42,214,72,0.22),rgba(36,107,255,0.22),rgba(155,77,255,0.28));color:#fff;cursor:pointer;">🌈 彩虹渐变逐词跟读 (已读保留彩虹·未读纯白)</button>
                         </div>
 
                         <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
@@ -1007,6 +1008,11 @@ class ReelsOverlayPanel {
                         <div style="display:flex;align-items:center;gap:6px;">
                             <input type="checkbox" id="rop-scroll-tw-active-highlight" checked title="读到该字/词时变色高亮">
                             <input type="color" id="rop-scroll-tw-active-color" class="rop-color" value="#FFD700" style="flex:1;">
+                        </div>
+                        <label title="开启后已经读过的字/词继续保持高亮色或彩虹渐变色，未读的词保持正文原色（如白色）">已读保留高亮色</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-keep-read-color" title="读过的词继续保留高亮色/渐变色（卡拉OK跟读累积变色）">
+                            <span style="font-size:11px;color:var(--text-muted);">已读词保持高亮/彩虹色 (跟读累积)</span>
                         </div>
                         <label title="开启后读到当前字/词时自动放大，增强视觉冲击力">当前词放大</label>
                         <div style="display:flex;align-items:center;gap:6px;">
@@ -1119,7 +1125,7 @@ class ReelsOverlayPanel {
                         <label title="整体水平位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体X</label><input type="number" id="rop-scroll-offset-x" class="rop-input" step="10" value="0">
                         <label title="整体垂直位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体Y</label><input type="number" id="rop-scroll-offset-y" class="rop-input" step="10" value="0">
                         <label>开始(s)</label><input type="number" id="rop-scroll-start-time" class="rop-input" step="0.1" min="0">
-                        <label>结束(s)</label><input type="number" id="rop-scroll-end-time" class="rop-input" step="0.1" min="0">
+                        <label>结束(s)</label><div style="display:flex;gap:5px;align-items:center;"><input type="number" id="rop-scroll-end-time" class="rop-input" step="0.1" min="0" style="min-width:0;flex:1"><button type="button" id="rop-scroll-end-reset" class="btn btn-secondary" title="仅当前项目：跟随本项目主体时长" style="white-space:nowrap;font-size:11px;padding:3px 6px;">恢复默认时间</button></div>
                         <label title="文字开始向上滚动时的初始Y坐标">起始Y</label><input type="number" id="rop-scroll-from-y" class="rop-input" step="10" value="960">
                         <label title="文字向上滚动最终消失或停留的结束Y坐标">结束Y</label><input type="number" id="rop-scroll-to-y" class="rop-input" step="10" value="-200">
                         <label>结束Y自动适配</label><label style="display:flex;gap:5px;align-items:center;font-size:11px;"><input type="checkbox" id="rop-scroll-end-y-auto" checked>底部羽化上方留 0.4 行</label>
@@ -1778,6 +1784,7 @@ class ReelsOverlayPanel {
             'rop-footer-color',
             'rop-scroll-title-color',
             'rop-scroll-color',
+            'rop-scroll-tw-active-color',
             'rop-color',
             // 背景与笔刷底色渐变
             'rop-title-bg-color',
@@ -2319,7 +2326,7 @@ class ReelsOverlayPanel {
             // 滚动字幕出字效果
             'rop-scroll-tw-enabled', 'rop-scroll-tw-start', 'rop-scroll-tw-end', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
             'rop-scroll-tw-hide-unread', 'rop-scroll-tw-unrevealed-opacity',
-            'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color',
+            'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color', 'rop-scroll-tw-keep-read-color',
             'rop-scroll-tw-active-scale-enabled', 'rop-scroll-tw-active-scale',
             'rop-scroll-tw-cursor-enabled', 'rop-scroll-tw-cursor-kind', 'rop-scroll-tw-cursor-image',
             'rop-scroll-tw-cursor-anchor-x', 'rop-scroll-tw-cursor-anchor-y',
@@ -2357,6 +2364,29 @@ class ReelsOverlayPanel {
             el.addEventListener('input', syncField);
             el.addEventListener('change', syncField);
         }
+
+        // Reset is a single-task undoable operation, regardless of shared style scope.
+        this.container.querySelector('#rop-scroll-end-reset')?.addEventListener('click', () => {
+            const ov = this._selectedOv;
+            if (!ov || ov.type !== 'scroll') return;
+            const task = this.videoCanvas?.scopedTask ||
+                (typeof _getSelectedTask === 'function' ? _getSelectedTask() : null);
+            if (!task) return;
+            const duration = window.ReelsScrollTiming?.duration(task, {
+                mediaDurations: window._reelsState?._mediaDurations || {},
+            }) || 0;
+            if (duration > 0 && Number(ov.start) > duration) {
+                if (typeof showToast === 'function') showToast('开始时间超过本项目时长，请先调整开始时间', 'warning');
+                return;
+            }
+            window.ReelsScrollTiming?.reset(ov);
+            const label = duration || 9999;
+            this._val('rop-end', label);
+            this._val('rop-scroll-end-time', label);
+            this.videoCanvas?.onOverlayChange?.(ov);
+            if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+            this._requestRender();
+        });
 
         // 滚动字幕出字效果：快捷按钮、16款小图标点选与图片上传
         const scrollTwCursorKindEl = this.container.querySelector('#rop-scroll-tw-cursor-kind');
@@ -2905,8 +2935,27 @@ class ReelsOverlayPanel {
                     this._val('rop-scroll-tw-hide-unread', false);
                     this._val('rop-scroll-tw-active-highlight', true);
                     this._val('rop-scroll-tw-active-color', '#FFD700');
+                    this._val('rop-scroll-tw-keep-read-color', false);
                     this._val('rop-scroll-tw-active-scale-enabled', true);
                     this._val('rop-scroll-tw-active-scale', 120);
+                } else if (preset === 'rainbow_karaoke') {
+                    this._val('rop-scroll-color', '#FFFFFF');
+                    this._val('rop-scroll-stroke-color', '#0D0B18');
+                    this._val('rop-scroll-stroke-width', 5);
+                    this._val('rop-scroll-shadow', true);
+                    this._val('rop-scroll-shadow-color', '#000000');
+                    this._val('rop-scroll-shadow-blur', 8);
+                    this._val('rop-scroll-shadow-x', 0);
+                    this._val('rop-scroll-shadow-y', 4);
+                    this._val('rop-scroll-uppercase', false);
+                    this._val('rop-scroll-tw-reveal-type', 'word');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-hide-unread', false);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#FF3824,#FF8800,#FFD600,#2AD648,#00C2D1,#246BFF,#9B4DFF');
+                    this._val('rop-scroll-tw-keep-read-color', true);
+                    this._val('rop-scroll-tw-active-scale-enabled', false);
+                    this._val('rop-scroll-tw-cursor-enabled', false);
                 }
                 this._syncScrollTypewriterCursorImageUI();
                 this._syncToOverlay();
@@ -3799,7 +3848,7 @@ class ReelsOverlayPanel {
                 'shadow_enabled', 'shadow_color', 'shadow_blur', 'shadow_opacity',
                 'shadow_offset_x', 'shadow_offset_y',
                 'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
-                'scroll_speed', 'scroll_end_y_auto', 'scroll_end_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+                'scroll_speed', 'scroll_end_y_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
                 'scroll_title_fontsize', 'scroll_title_font_family', 'scroll_title_font_weight',
                 'scroll_title_bold', 'scroll_title_color', 'scroll_title_gradient_direction', 'scroll_title_align', 'scroll_title_gap', 'scroll_title_fixed',
                 'scroll_title_independent', 'scroll_title_x', 'scroll_title_y',
@@ -4802,29 +4851,12 @@ class ReelsOverlayPanel {
         // 清理源数据浮点精度 + 显示
         ov.start = _ropRound(ov.start || 0);
         this._val('rop-start', ov.start);
-        // 9999 = 全程，面板显示实际时长但不修改数据
-        if (ov.type === 'scroll' && ov.scroll_end_auto !== false && !ov.display_ranges?.length) {
-            const task = this.videoCanvas?.scopedTask || (typeof _getSelectedTask === 'function' ? _getSelectedTask() : null);
-            const duration = Number(window._reelsState?._mediaDurations?.[task?.audioPath]);
-            if (duration > 0 && Number.isFinite(duration)) { ov.end = _ropRound(duration); ov.scroll_end_auto = true; }
-        }
-        let displayEnd = ov.end || 0;
-        if (displayEnd >= 9999) {
-            const v2Duration = this.videoCanvas?.getDuration ? this.videoCanvas.getDuration() : window.ReelsPreviewV2?.isOpen?.()
-                ? window.ReelsPreviewV2.getDuration?.()
-                : 0;
-            const mediaEl = document.getElementById('reels-preview-video') || document.querySelector('#reels-preview video');
-            if (v2Duration && isFinite(v2Duration)) {
-                displayEnd = _ropRound(v2Duration);
-            } else if (mediaEl && mediaEl.duration && isFinite(mediaEl.duration)) {
-                displayEnd = _ropRound(mediaEl.duration);
-            } else {
-                displayEnd = 9999; // 保持原值
-            }
-        } else {
-            ov.end = _ropRound(displayEnd);
-            displayEnd = ov.end;
-        }
+        // The UI displays task-local resolved duration; persisted auto state stays intact.
+        const scoped = this.videoCanvas?.scopedTask || (typeof _getSelectedTask === 'function' ? _getSelectedTask() : null);
+        const cache = window._reelsState?._mediaDurations || {};
+        const effectiveDuration = window.ReelsScrollTiming?.duration(scoped, { mediaDurations: cache }) || 0;
+        let displayEnd = (ov.type === 'scroll' && ov.scroll_end_auto !== false && !ov.display_ranges?.length)
+            ? (effectiveDuration || 9999) : (Number(ov.end) || 0);
         this._val('rop-end', displayEnd);
         // 卡片的变换区默认隐藏，使用其专属字段显示同一套起止时间。
         this._val('rop-card-start', ov.start);
@@ -5351,6 +5383,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-unrevealed-opacity', scrollHideUnread ? scrollUnreadOp : 100);
             this._val('rop-scroll-tw-active-highlight', ov.scroll_tw_active_highlight !== false);
             this._val('rop-scroll-tw-active-color', ov.scroll_tw_active_color || '#FFD700');
+            this._val('rop-scroll-tw-keep-read-color', ov.scroll_tw_keep_read_color === true);
             const scrollActiveScaleVal = Number(ov.scroll_tw_active_scale ?? 125);
             const scrollActiveScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
                 ? Boolean(ov.scroll_tw_active_scale_enabled)
@@ -5494,9 +5527,11 @@ class ReelsOverlayPanel {
         ov.rotation = this._get('rop-rotation');
         ov.opacity = Math.round(this._get('rop-opacity') / 100 * 255);
         ov.start = _ropRound(this._get('rop-start'));
-        // 保留 9999（全程）：如果面板显示的值等于视频时长，说明用户没改，保持 9999
+        // Never turn an automatic displayed duration into a new manual end when editing styling.
         const panelEnd = _ropRound(this._get('rop-end'));
-        if (ov.end >= 9999) {
+        if (ov.type === 'scroll' && ov.scroll_end_auto !== false) {
+            ov.end = 9999;
+        } else if (ov.end >= 9999) {
             // 检查用户是否手动修改了结束时间
             const v2Duration = this.videoCanvas?.getDuration ? this.videoCanvas.getDuration() : window.ReelsPreviewV2?.isOpen?.()
                 ? window.ReelsPreviewV2.getDuration?.()
@@ -5966,6 +6001,7 @@ class ReelsOverlayPanel {
             ov.scroll_tw_reveal_type = this._get('rop-scroll-tw-reveal-type') || 'char';
             ov.scroll_tw_active_highlight = !!this._get('rop-scroll-tw-active-highlight');
             ov.scroll_tw_active_color = this._get('rop-scroll-tw-active-color') || '#FFD700';
+            ov.scroll_tw_keep_read_color = !!this._get('rop-scroll-tw-keep-read-color');
             ov.scroll_tw_active_scale_enabled = !!this._get('rop-scroll-tw-active-scale-enabled');
             ov.scroll_tw_active_scale = ov.scroll_tw_active_scale_enabled
                 ? Number(this._get('rop-scroll-tw-active-scale') || 125)
@@ -6363,13 +6399,16 @@ class ReelsOverlayPanel {
         
         try {
             const styleObj = this._extractScrollStyle(ov);
+            // End time and auto/manual mode belong to each task, never to shared style.
+            delete styleObj.end;
+            delete styleObj.scroll_end_auto;
 
             scopedTasks.forEach(task => {
                 const targetOv = this._findMatchingOverlayInTask(task, ov);
-                if (targetOv) {
+                if (targetOv && targetOv !== ov) {
                     const styleCopy = JSON.parse(JSON.stringify(styleObj));
                     Object.assign(targetOv, styleCopy);
-                    if (typeof _syncScrollAudioTiming === 'function') _syncScrollAudioTiming(task);
+                    // Styling must not reset a target task's own manual scroll timing.
                 }
             });
         } finally {
@@ -7749,6 +7788,7 @@ class ReelsOverlayPanel {
                     && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                     clone.end = 9999;
                 }
+                if (clone.type === 'scroll') { clone.scroll_end_auto = true; if (!clone.display_ranges?.length) clone.end = 9999; }
 
                 mgr.overlays.push(clone);
                 newlyAdded.push(clone);
@@ -7849,6 +7889,9 @@ class ReelsOverlayPanel {
             return `${idx + 1}.${typeLabel}`;
         };
         const missingTextLayers = [];
+        const cleanSerialize = (arr) => JSON.parse(JSON.stringify(arr || [], (key, val) => key === '_allOverlays' ? undefined : val));
+        const oldScrolls = oldTextByIndex.filter(o => o?.type === 'scroll');
+        let replacedScrollCount = 0;
 
         // Clear existing
         mgr.overlays = [];
@@ -7871,6 +7914,18 @@ class ReelsOverlayPanel {
             if (clone.type === 'scroll' && clone.scroll_auto_stop === true
                 && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                 clone.end = 9999;
+            }
+            if (clone.type === 'scroll') {
+                const target = oldScrolls[replacedScrollCount++];
+                if (target) {
+                    clone.end = target.end;
+                    clone.scroll_end_auto = target.scroll_end_auto;
+                    if (Array.isArray(target.display_ranges)) clone.display_ranges = cleanSerialize(target.display_ranges);
+                    else delete clone.display_ranges;
+                } else {
+                    clone.scroll_end_auto = true;
+                    if (!clone.display_ranges?.length) clone.end = 9999;
+                }
             }
             // For non-fixed layers, preserve text from corresponding old overlay.
             // Prefer same index, then same type, then any remaining text layer.
@@ -7914,6 +7969,8 @@ class ReelsOverlayPanel {
         const cleanSerialize = (arr) => JSON.parse(JSON.stringify(arr || [], (key, val) => key === '_allOverlays' ? undefined : val));
         const oldOverlays = cleanSerialize(existingOverlays);
         const layers = Array.isArray(presetLayers) ? presetLayers : [];
+        const oldScrolls = oldOverlays.filter(o => o?.type === 'scroll');
+        let replacedScrollCount = 0;
         if (loadMode === 'merge') {
             const newlyAdded = [];
             const idMap = {};

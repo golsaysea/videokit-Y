@@ -131,6 +131,9 @@ const ANIM_TYPE_LABELS = [
     ['底条进度擦除', 'box_wipe'],
     ['远景打字推进', 'zoom_typewriter'],
     ['双行焦点放大', 'line_focus'],
+    ['底线扫描显字', 'underline_sweep'],
+    ['三词叠排(中词放大)', 'three_word_focus_stack'],
+    ['四行滚词(彩虹跟读)', 'rolling_rainbow_karaoke'],
     ['闪光高亮', 'flash_highlight'],
     ['黄绿辉光逐词叠排', 'kinetic_glow_stack'],
 ];
@@ -790,6 +793,172 @@ function computeActiveLineFocusScales(lineWordRanges, activeWordIdx, activeScale
     };
 }
 
+/**
+ * Compute horizontal underline-sweep scan state ("底线扫描显字" / underline_sweep).
+ *
+ * A glowing white horizontal cursor bar sweeps from left to right underneath the
+ * baseline of the text over `sweepDuration` (~0.46s). While sweeping:
+ * - Characters to the right of the scan bar are pre-visible as a soft semi-transparent
+ *   ghost silhouette (fill alpha ~0.26, stroke alpha 0).
+ * - Characters at the scan bar smoothly crystallize into 100% crisp fill + full stroke.
+ * - Characters to the left of the scan bar stand at 100% crisp fill + full stroke.
+ * - Once the bar reaches the right end of the text, the bar shrinks and fades out
+ *   cleanly while the solidified phrase remains on screen.
+ *
+ * @param {number|null} currentTime
+ * @param {number} segStart
+ * @param {number} segEnd
+ * @param {number[]} lineWidths
+ * @param {object} [opts]
+ * @returns {{
+ *   active: boolean,
+ *   sweepProgress: number,
+ *   sweptDist: number,
+ *   totalWidth: number,
+ *   activeLineIdx: number,
+ *   barX: number,
+ *   barW: number,
+ *   barAlpha: number,
+ *   ghostAlpha: number,
+ *   transitionWindow: number,
+ *   fontSize: number
+ * }}
+ */
+function computeUnderlineSweepState(currentTime, segStart, segEnd, lineWidths, opts = {}) {
+    const widths = Array.isArray(lineWidths) ? lineWidths.map(w => Math.max(0, Number(w) || 0)) : [];
+    const totalWidth = widths.reduce((sum, w) => sum + w, 0);
+    const fontSize = Math.max(16, Number(opts.fontSize) || 54);
+    const ghostAlpha = Number.isFinite(Number(opts.ghostAlpha))
+        ? Math.max(0.08, Math.min(0.65, Number(opts.ghostAlpha)))
+        : 0.26;
+    const transitionWindow = Math.max(22, fontSize * 1.08);
+
+    if (currentTime == null || !Number.isFinite(Number(currentTime)) || totalWidth <= 0) {
+        return {
+            active: false,
+            sweepProgress: 1.0,
+            sweptDist: totalWidth,
+            totalWidth,
+            activeLineIdx: -1,
+            barX: 0,
+            barW: 0,
+            barAlpha: 0,
+            ghostAlpha,
+            transitionWindow,
+            fontSize,
+        };
+    }
+
+    const segDur = Math.max(0.001, (Number(segEnd) || 0) - (Number(segStart) || 0));
+    const elapsed = Math.max(0.0, Number(currentTime) - (Number(segStart) || 0));
+    const reqDur = Number(opts.sweepDuration);
+    const baseSweepDur = (Number.isFinite(reqDur) && reqDur > 0.08) ? reqDur : 0.46;
+    const sweepDur = Math.min(segDur * 0.78, Math.max(0.18, baseSweepDur));
+    const fadeOutTailDur = Math.min(0.14, sweepDur * 0.30);
+
+    if (elapsed >= sweepDur + fadeOutTailDur) {
+        return {
+            active: false,
+            sweepProgress: 1.0,
+            sweptDist: totalWidth,
+            totalWidth,
+            activeLineIdx: widths.length - 1,
+            barX: widths[widths.length - 1] || 0,
+            barW: 0,
+            barAlpha: 0,
+            ghostAlpha,
+            transitionWindow,
+            fontSize,
+        };
+    }
+
+    const rawT = Math.max(0.0, Math.min(1.0, elapsed / sweepDur));
+    // Smooth steady left-to-right glide with gentle ease-out at the right edge
+    const sweepProgress = 0.38 * rawT + 0.62 * easeOutCubic(rawT);
+    const sweptDist = sweepProgress * totalWidth;
+
+    let activeLineIdx = widths.length - 1;
+    let accumBefore = 0;
+    for (let i = 0; i < widths.length; i++) {
+        const w = widths[i];
+        if (sweptDist <= accumBefore + w || i === widths.length - 1) {
+            activeLineIdx = i;
+            break;
+        }
+        accumBefore += w;
+    }
+
+    const lineW = Math.max(1, widths[activeLineIdx] || 1);
+    const localSwept = Math.max(0, Math.min(lineW, sweptDist - accumBefore));
+    const maxBarW = Math.max(fontSize * 1.15, Math.min(lineW * 0.44, fontSize * 2.35));
+
+    let barX = 0;
+    let barW = 0;
+    let barAlpha = 0;
+
+    if (elapsed <= sweepDur) {
+        const headX = localSwept;
+        const tailCatchup = rawT > 0.75 ? ((rawT - 0.75) / 0.25) * 0.28 : 0;
+        const curTargetW = maxBarW * (1.0 - tailCatchup);
+        const tailX = Math.max(0, headX - curTargetW);
+        barX = tailX;
+        barW = Math.max(fontSize * 0.35, Math.min(lineW - barX, headX - tailX));
+        barAlpha = rawT < 0.06 ? Math.max(0.25, rawT / 0.06) : 1.0;
+    } else {
+        const outT = Math.max(0.0, Math.min(1.0, (elapsed - sweepDur) / Math.max(0.001, fadeOutTailDur)));
+        const easedOut = easeOutQuad(outT);
+        barW = Math.max(4, maxBarW * 0.72 * (1.0 - easedOut * 0.78));
+        barX = Math.max(0, lineW - barW);
+        barAlpha = Math.max(0.0, 1.0 - easedOut);
+    }
+
+    return {
+        active: true,
+        sweepProgress,
+        sweptDist,
+        totalWidth,
+        activeLineIdx,
+        barX,
+        barW,
+        barAlpha,
+        ghostAlpha,
+        transitionWindow,
+        fontSize,
+    };
+}
+
+/**
+ * Compute per-character reveal factors { fillAlpha, strokeAlpha, shadowAlpha, dy }
+ * given a character's horizontal center distance along the total line width and
+ * the current `underlineSweepState`.
+ *
+ * @param {number} charCenterDist
+ * @param {object} sweepState
+ * @returns {{ revealProgress: number, fillAlpha: number, strokeAlpha: number, shadowAlpha: number, dy: number }}
+ */
+function computeUnderlineSweepCharReveal(charCenterDist, sweepState) {
+    if (!sweepState || !sweepState.active || sweepState.sweepProgress >= 0.999) {
+        return { revealProgress: 1.0, fillAlpha: 1.0, strokeAlpha: 1.0, shadowAlpha: 1.0, dy: 0 };
+    }
+    const ghostAlpha = Number.isFinite(sweepState.ghostAlpha) ? sweepState.ghostAlpha : 0.26;
+    const win = Math.max(16, Number(sweepState.transitionWindow) || 48);
+    const swept = Number(sweepState.sweptDist) || 0;
+    const fontSize = Math.max(16, Number(sweepState.fontSize) || 54);
+
+    // Characters begin solidifying slightly as the leading edge of the bar reaches them
+    const raw = (swept - (charCenterDist - win * 0.58)) / win;
+    const clamped = Math.max(0.0, Math.min(1.0, raw));
+    const revealProgress = easeOutCubic(clamped);
+
+    return {
+        revealProgress,
+        fillAlpha: ghostAlpha + (1.0 - ghostAlpha) * revealProgress,
+        strokeAlpha: Math.pow(revealProgress, 1.25),
+        shadowAlpha: 0.12 + 0.88 * revealProgress,
+        dy: (1.0 - revealProgress) * (fontSize * 0.032),
+    };
+}
+
 // Spectrum shape types
 const SPECTRUM_SHAPES = [
     ['频谱条', 'bars'],
@@ -840,6 +1009,8 @@ const ReelsAnimEngine = {
     computeBoxWipeLineWidths,
     computeZoomTypewriterState,
     computeActiveLineFocusScales,
+    computeUnderlineSweepState,
+    computeUnderlineSweepCharReveal,
 };
 
 // Browser global

@@ -29,11 +29,16 @@ ipcMain.on('profile:runtime-paths', (event) => {
 
 ipcMain.on('workspace:read-startup', (event) => { try { assertTrustedRenderer(event); event.returnValue = sharedProfile.readUnifiedBatchWorkspace(); } catch (_) { event.returnValue = ''; } });
 let mainWindow;
+let reelsExportService = null;
 let appIsReady = false;
 let powerSaveId = null;
 let isQuitting = false;
 const templateWindows = new Map(); // templateId → BrowserWindow
 const isolatedReelsRenderers = new Map(); // requestId → BrowserWindow
+const { ReelsExportScheduler } = require('./services/reels-export-scheduler');
+const reelsExportScheduler = new ReelsExportScheduler();
+const isolatedReelsJobs = new Map();
+
 let idleCacheMaintenance = null;
 let manualCacheCleaning = false;
 function startIdleCacheMaintenance() {
@@ -1144,10 +1149,7 @@ app.whenReady().then(async () => {
                 return new Response('Not Found', { status: 404 });
             }
 
-            if (request.url.includes('?reelsPreview=sdr-v2') && request.method !== 'OPTIONS') {
-                resolved = await require('./services/reels-hdr-preview').prepareReelsPreview(resolved);
-                ext = path.extname(resolved).toLowerCase();
-            }
+            // Direct preview: legacy reelsPreview query is ignored; serve original bytes and Range.
 
             const stat = fs.statSync(resolved);
             const size = stat.size;
@@ -1581,35 +1583,44 @@ app.whenReady().then(async () => {
     });
 
     // IPC: WYSIWYG 逐帧渲染导出（与 Canvas 预览 100% 一致）
-    const { handleWysiwygIPC, attachFramePipeline, parallelExport } = require('./services/ffmpeg-rawvideo');
-    handleTrusted('reels-compose-wysiwyg', async (event, action, data) => {
-        const result = await handleWysiwygIPC(action, data);
-        // 隐藏 renderer 若被系统终止，确保它启动的 FFmpeg 会话也被回收。
-        if (action === 'start' && typeof result === 'string') {
-            const sessionId = result;
-            event.sender.once('destroyed', () => {
-                handleWysiwygIPC('abort', { sessionId }).catch(() => {});
-            });
-        }
-        return result;
+    const { renderChromiumAudioWav, parallelExport } = require('./services/ffmpeg-rawvideo');
+    const { ReelsExportService } = require('./services/reels-export-service');
+    const exportSettings = require('./services/settings');
+    reelsExportService = new ReelsExportService({
+        config: {
+            userData: app.getPath('userData'),
+            tempDir: exportSettings.getSecureTmpDir(),
+            systemDirs: ['downloads', 'desktop', 'documents'].map(name => app.getPath(name)),
+            ffmpegPath: ffmpegService.resolveCommand('ffmpeg'),
+            ffprobePath: ffmpegService.resolveCommand('ffprobe'),
+        },
+        renderAudio: renderChromiumAudioWav,
+        trace: message => log('[ExportWorker] ' + message),
     });
+    handleTrusted('reels-compose-wysiwyg', (event, action, data) => reelsExportService.handle(event.sender, action, data));
     // Reels 插入素材：只分析本地音轨停顿，不调用外部 AI 服务。
     handleTrusted('reels-detect-silence', async (event, data = {}) => {
         if (!data.filePath) throw new Error('缺少待检测的音视频文件');
         return ffmpegService.detectSilence(data.filePath, Number(data.noiseDb ?? -35), Number(data.minDuration ?? .35));
     });
-    ipcMain.on('reels-frame-pipeline-open', (event, data = {}) => {
-        try { assertTrustedRenderer(event); } catch { return; }
+    ipcMain.on('reels-frame-pipeline-open', async (event, data = {}) => {
+        try { assertTrustedRenderer(event); } catch (_) { return; }
+        const sender = event.sender;
         const { port1, port2 } = new MessageChannelMain();
-        const result = attachFramePipeline(data.sessionId, port1);
+        const fail = error => {
+            if (!sender.isDestroyed()) sender.send('reels-frame-pipeline-failed', {
+                requestId: data.requestId, error: error?.message || String(error),
+            });
+        };
         try {
-            event.sender.postMessage('reels-frame-pipeline-ready', {
-                requestId: data.requestId,
-                ...result,
-            }, [port2]);
-        } catch (err) {
+            const result = await reelsExportService.attach(sender, data.sessionId, port1, fail);
+            if (!result?.ok) throw new Error(result?.error || '无法建立帧通道');
+            if (sender.isDestroyed()) throw new Error('渲染窗口已关闭');
+            sender.postMessage('reels-frame-pipeline-ready', { requestId: data.requestId, ...result }, [port2]);
+        } catch (error) {
             try { port1.close(); port2.close(); } catch (_) { }
-            console.warn('[WYSIWYG] 无法建立帧流水线:', err.message);
+            fail(error);
+            reelsExportService.handle(sender, 'abort', { sessionId: data.sessionId }).catch(() => {});
         }
     });
 
@@ -1618,6 +1629,17 @@ app.whenReady().then(async () => {
         return parallelExport(opts, mainWindow);
     });
     handleTrusted('get-latest-crash-diagnostic', () => getLatestRendererCrashReport());
+    handleTrusted('show-reels-export-error', async (event, payload = {}) => {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const options = {
+            type: 'error', title: '视频导出失败', message: '视频未能完成导出',
+            detail: String(payload.detail || '未知错误，请查看导出日志。').slice(0, 16000),
+            buttons: ['关闭'], defaultId: 0, cancelId: 0, noLink: true,
+        };
+        return owner && !owner.isDestroyed()
+            ? dialog.showMessageBox(owner, options)
+            : dialog.showMessageBox(options);
+    });
 
     // 每个队列任务使用一次性隐藏 renderer。任务完成后销毁窗口，Chromium 会把
     // 该任务的 Canvas、图片与媒体解码缓存整体归还，不再累积到主界面进程。
@@ -1625,6 +1647,22 @@ app.whenReady().then(async () => {
         const requestId = String(opts.requestId || `isolated-${Date.now()}`);
         if (isolatedReelsRenderers.has(requestId)) throw new Error('后台渲染任务 ID 重复');
         const owner = event.sender;
+        const controller = new AbortController();
+        isolatedReelsJobs.set(requestId, controller);
+        const ownerGone = () => controller.abort(new Error('__CANCELLED__'));
+        owner.once('destroyed', ownerGone);
+        let release;
+        try {
+            release = await reelsExportScheduler.acquire(opts.params || {}, {
+                signal: controller.signal,
+                onQueue: queue => {
+                    if (!owner.isDestroyed()) owner.send('isolated-wysiwyg-progress', {
+                        requestId, pct: 0, stage: 'queued',
+                        message: `等待导出资源：正在运行 ${queue.active}，排队 ${queue.waiting}`,
+                    });
+                },
+            });
+            if (controller.signal.aborted) throw new Error('__CANCELLED__');
         const htmlPath = path.join(__dirname, 'isolated-wysiwyg-renderer.html');
         const scriptBase = app.isPackaged
             ? path.join(__dirname, '..', 'dist')
@@ -1633,14 +1671,16 @@ app.whenReady().then(async () => {
             'reels-text-direction.js',
             'reels-anim-engine.js',
             'reels-rich-text.js',
+            'reels-scroll-timing.js',
             'reels-overlay.js',
             'reels-canvas-renderer.js',
             'fonts-metadata.js',
             'reels-font-manager.js',
+            'reels-frame-pipeline.js',
             'reels-wysiwyg-export.js',
         ].map(name => path.join(scriptBase, name));
 
-        return new Promise((resolve, reject) => {
+        return await new Promise((resolve, reject) => {
             const win = new BrowserWindow({
                 show: false,
                 width: 160,
@@ -1652,6 +1692,7 @@ app.whenReady().then(async () => {
                     webSecurity: false,
                 },
             });
+            const renderer = win.webContents;
             isolatedReelsRenderers.set(requestId, win);
             let settled = false;
             const timeout = setTimeout(() => finish(new Error('后台渲染任务超时（60 分钟）')), 60 * 60 * 1000);
@@ -1668,16 +1709,17 @@ app.whenReady().then(async () => {
                 settled = true;
                 clearTimeout(timeout);
                 clearTimeout(readyTimeout);
+                controller.signal.removeEventListener('abort', onCancel);
                 removeListeners();
                 isolatedReelsRenderers.delete(requestId);
+                reelsExportService.cancelOwner(renderer.id);
                 if (!win.isDestroyed()) win.destroy();
                 if (error) reject(error);
                 else resolve(result);
             };
-            if (owner && typeof owner.once === 'function') {
-                owner.once('destroyed', () => finish(new Error('主窗口已关闭')));
-            }
-            const fromThisWindow = ipcEvent => ipcEvent.sender === win.webContents;
+            const onCancel = () => finish(null, { cancelled: true });
+            controller.signal.addEventListener('abort', onCancel, { once: true });
+            const fromThisWindow = ipcEvent => ipcEvent.sender === renderer;
             const onReady = async ipcEvent => {
                 if (!fromThisWindow(ipcEvent)) return;
                 clearTimeout(readyTimeout);
@@ -1723,10 +1765,20 @@ app.whenReady().then(async () => {
             });
             win.loadFile(htmlPath).catch(error => finish(error));
         });
+        } catch (error) {
+            if (controller.signal.aborted) return { cancelled: true };
+            throw error;
+        } finally {
+            release?.();
+            isolatedReelsJobs.delete(requestId);
+            owner.removeListener('destroyed', ownerGone);
+        }
     });
     ipcMain.on('cancel-isolated-wysiwyg-export', (_event, requestId) => {
         try { assertTrustedRenderer(_event); } catch { return; }
-        const win = isolatedReelsRenderers.get(String(requestId || ''));
+        const id = String(requestId || '');
+        isolatedReelsJobs.get(id)?.abort(new Error('__CANCELLED__'));
+        const win = isolatedReelsRenderers.get(id);
         if (win && !win.isDestroyed()) win.webContents.send('isolated-wysiwyg-cancel');
     });
 
@@ -2741,6 +2793,7 @@ app.on('activate', () => {
 app.on('before-quit', () => {
     isQuitting = true;
     idleCacheMaintenance?.stop();
+    reelsExportService?.close().catch(error => console.warn('[ExportWorker] close', error.message));
     app.isQuitting = true;
     try {
         if (typeof app.releaseSingleInstanceLock === 'function') {

@@ -6021,6 +6021,9 @@
                             <option value="typewriter">打字机</option>
                             <option value="zoom_typewriter">远景打字推进</option>
                             <option value="line_focus">双行焦点放大</option>
+                            <option value="underline_sweep">底线扫描显字</option>
+                            <option value="three_word_focus_stack">三词叠排(中词放大)</option>
+                            <option value="rolling_rainbow_karaoke">🌈 四行滚词(彩虹跟读)</option>
                             <option value="char_bounce">逐字弹跳</option>
                             <option value="letter_jump">逐字放大</option>
                             <option value="char_float_up">逐字上浮</option>
@@ -8028,7 +8031,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.1</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.2</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"
@@ -8656,6 +8659,8 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-presets-init.js"></script>
   <script src="reels-canvas-renderer.js"></script>
   <script src="reels-subtitle-processor.js"></script>
+  <script src="reels-scroll-timing.js"></script>
+  <script src="reels-frame-pipeline.js"></script>
   <script src="reels-wysiwyg-export.js"></script>
   <script src="reels-layered-export.js"></script>
   <script src="reels-fcpxml-export.js"></script>

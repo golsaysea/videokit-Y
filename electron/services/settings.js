@@ -8,10 +8,19 @@ const crypto = require('crypto');
 const { exec } = require('child_process');
 const archiver = require('archiver');
 
+// Explicitly inject main-process paths before utility imports the encoder.
+let exportPaths = null;
+function configureExportPaths(paths) {
+    if (!paths || !path.isAbsolute(paths.userData) || !path.isAbsolute(paths.tempDir)) throw new Error('无效的后台导出目录');
+    exportPaths = { userData: paths.userData, tempDir: paths.tempDir, systemDirs: paths.systemDirs || [], resolveTempDir: paths.resolveTempDir };
+}
+function getExportSystemDirs() { return exportPaths?.systemDirs || []; }
+function getSharedSecureTmpDir() { return exportPaths?.tempDir || getSecureTmpDir(); }
+
 // ==================== JSON Settings ====================
 
 function getBackendDir() {
-    let dir = null;
+    let dir = exportPaths ? path.join(exportPaths.userData, 'backend') : null;
     try {
         const { app } = require('electron');
         if (app && typeof app.getPath === 'function') {
@@ -58,6 +67,7 @@ function getSecureTmpDir(subDir) {
     } catch {
         baseDir = path.join(os.homedir(), '.videokit_tmp');
     }
+    if (exportPaths) baseDir = exportPaths.resolveTempDir?.() || exportPaths.tempDir;
     const dir = subDir ? path.join(baseDir, subDir) : baseDir;
     fs.mkdirSync(dir, { recursive: true });
     return dir;
@@ -607,6 +617,9 @@ function getLanguages() {
 }
 
 module.exports = {
+    configureExportPaths,
+    getExportSystemDirs,
+    getSharedSecureTmpDir,
     getBackendDir,
     getSecureTmpDir,
     secureTmpFile,

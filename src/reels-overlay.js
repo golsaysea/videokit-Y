@@ -5089,6 +5089,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
         : 1.0;
     const activeHighlight = ov.scroll_tw_active_highlight !== false;
     const activeColor = ov.scroll_tw_active_color || '#FFD700';
+    const keepReadColor = Boolean(ov.scroll_tw_keep_read_color);
     const activeScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
         ? Boolean(ov.scroll_tw_active_scale_enabled)
         : (Number(ov.scroll_tw_active_scale || 100) !== 100);
@@ -5174,6 +5175,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 if (currentTime >= tok.end) {
                     state = 'read';
                     opacity = 1.0;
+                    if (keepReadColor && activeHighlight) color = activeColor;
                 } else if (currentTime >= tok.start && currentTime < tok.end) {
                     state = 'active';
                     opacity = 1.0;
@@ -5200,6 +5202,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 } else if (isBeforeActiveWord || currentTime >= tok.end) {
                     state = 'read';
                     opacity = 1.0;
+                    if (keepReadColor && activeHighlight && !/^\s+$/.test(tok.text)) color = activeColor;
                 } else if (currentTime >= tok.start && currentTime < tok.end) {
                     state = 'active';
                     opacity = 1.0;
@@ -5341,7 +5344,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 ctx.shadowBlur = parseFloat(ov.shadow_blur || 4);
                 ctx.shadowOffsetX = parseFloat(ov.scroll_shadow_x ?? ov.shadow_offset_x ?? 2);
                 ctx.shadowOffsetY = parseFloat(ov.scroll_shadow_y ?? ov.shadow_offset_y ?? 2);
-                ctx.fillStyle = run.color;
+                ctx.fillStyle = String(run.color || '#000000').split(',')[0].trim() || '#000000';
                 if (typeof _fillTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
                     _fillTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
                 } else {
@@ -5366,12 +5369,10 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             }
 
             // 3) Fill
-            if (run.state !== 'active' && _scrollBodyRanges && _scrollBodyRanges.length > 0 && typeof ReelsRichText !== 'undefined') {
+            if (run.state !== 'active' && !(keepReadColor && run.state === 'read') && _scrollBodyRanges && _scrollBodyRanges.length > 0 && typeof ReelsRichText !== 'undefined') {
                 _drawRichLine(ctx, run.text, rawContent, _scrollBodyRanges, runX, yc, run.color, fontSize, bodyFamily, bodyFallback, bodyWeight, bLetterSpacing, undefined, undefined, undefined, gradDir);
             } else {
-                ctx.fillStyle = run.state === 'active'
-                    ? run.color
-                    : _resolveOverlayTextFill(ctx, run.color, lx, yc, fontSize, lineW, gradDir);
+                ctx.fillStyle = _resolveOverlayTextFill(ctx, run.color, lx, yc, fontSize, lineW, gradDir);
                 if (typeof _fillTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
                     _fillTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
                 } else {

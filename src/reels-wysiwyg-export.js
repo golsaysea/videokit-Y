@@ -22,25 +22,9 @@ function _canvasToRawRGBA(canvas, transferable = false) {
     return imageData.data.buffer;
 }
 
-function _createFramePipeline(sessionId, batchSize = 3) {
-    let frames = [];
-    const flush = async () => {
-        if (!frames.length) return;
-        const batch = frames;
-        frames = [];
-        const result = await window.electronAPI.reelsComposeWysiwyg('frames', { sessionId, frames: batch });
-        const ok = result === true || (result && result.ok);
-        if (!ok) throw new Error((result && result.error) || '批量写入视频帧失败');
-    };
-    return {
-        async send(raw) {
-            frames.push(raw);
-            if (frames.length >= batchSize) await flush();
-        },
-        async drain() {
-            await flush();
-        },
-    };
+function _createFramePipeline(sessionId, batchSize = 3, options = {}) {
+    if (!window.ReelsFramePipeline?.create) throw new Error('ACK 帧流水线模块未加载');
+    return window.ReelsFramePipeline.create(sessionId, batchSize, options);
 }
 
 /**
@@ -687,6 +671,10 @@ async function reelsWysiwygExport(params) {
     }
     const totalFrames = Math.max(1, Math.round(duration * fps));
     const outputDuration = totalFrames / fps;
+    // Every exported scroll overlay uses this task's actual encoded body duration.
+    if (Array.isArray(taskOverlays) && window.ReelsScrollTiming?.renderingOverlay) {
+        taskOverlays = taskOverlays.map(ov => window.ReelsScrollTiming.renderingOverlay(ov, null, { bodyDuration: outputDuration }));
+    }
     log(`时长: ${duration.toFixed(2)}s, 帧数: ${totalFrames}, FPS: ${fps}`);
     if (bgScale !== 100) log(`背景缩放: ${bgScale}%`);
     if (bgX !== 0 || bgY !== 0) log(`背景偏移: X=${bgX}%, Y=${bgY}%`);
@@ -961,15 +949,12 @@ async function reelsWysiwygExport(params) {
     });
     if (!sessionId) throw new Error('FFmpeg 启动失败');
 
-    // 所有模式都启用三帧批量通道以消除逐帧同步 IPC 往返开销；硬件编码器由主进程探测并自动回退。
-    let framePipeline = null;
+    // All modes use the persistent ACK pipe; precise mode allows exactly one in-flight frame.
     const normalizedEngine = exportEngine === 'experimental' ? 'hardware' : exportEngine;
-    const wantsPipeline = normalizedEngine === 'canvas' || normalizedEngine === 'pipeline' || normalizedEngine === 'hardware';
-    if (normalizedEngine === 'hardware') log('极速硬件模式：正在自动探测系统 H.264 硬件编码器，不可用时回退 CPU。');
-    if (wantsPipeline) {
-        framePipeline = _createFramePipeline(sessionId, Math.max(1, Math.min(3, Math.floor(24 * 1024 * 1024 / (targetWidth * targetHeight * 4)))));
-        log('阶段2.1: 已启用三帧批量流水线（同画布、同 FFmpeg 编码）。');
-    }
+    const maxInFlight = (normalizedEngine === 'pipeline' || normalizedEngine === 'canvas' || normalizedEngine === 'hardware') ? 3 : 1;
+    const framePipeline = _createFramePipeline(sessionId, maxInFlight, { isCancelled });
+    if (normalizedEngine === 'hardware') log('极速硬件模式：后台异步检测 H.264 硬件编码器。');
+    log(`阶段2.1: ACK 帧流水线已启用，在途上限 ${maxInFlight}（同画布、同 FFmpeg 编码）。`);
 
     // 全局蒙版
     const hasMask = !!style.global_mask_enabled;
@@ -1219,7 +1204,7 @@ async function reelsWysiwygExport(params) {
                 }
                 let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
                 // Scrolling/typewriter mode: find nearest segment during gaps (same as preview logic)
-                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter) && segments.length > 0) {
+                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segments.length > 0) {
                     let best = segments[0];
                     for (const seg of segments) {
                         if ((seg.start || 0) <= t) best = seg;
@@ -1343,6 +1328,7 @@ async function reelsWysiwygExport(params) {
         return { output_path: result.output_path || outputPath };
 
     } catch (e) {
+        try { framePipeline?.abort(e); } catch (_) { }
         clearBgFrameCache();
         if (currentBgImg) currentBgImg.src = '';
         if (currentCvImg) currentCvImg.src = '';

@@ -56,6 +56,10 @@ function createBudgetManager(options={}){
  async function assign(pid){
   if(process.platform!=='win32')return{ok:true};
   if(!Number.isInteger(pid)||pid<=0)throw Error('Invalid export process id');
+  if(!fs.existsSync(python)){
+   const error=Error('导出组件不完整：缺少内置 Python。请完整解压修复后的免安装包，无需安装系统 Python。缺少文件：'+python);
+   error.code='EXPORT_RUNTIME_MISSING';throw error;
+  }
   const record=await start();
   if(current!==record||record.child.exitCode!==null||record.child.killed)throw Error('CPU budget helper is not running');
   return new Promise((resolve,reject)=>{

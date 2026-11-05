@@ -675,6 +675,16 @@ class ReelsCanvasRenderer {
             return;
         }
 
+        if (!_isSubCall && s.anim_in_type === 'three_word_focus_stack') {
+            this._renderThreeWordFocusStack(s, segment, currentTime, videoW, videoH);
+            return;
+        }
+
+        if (!_isSubCall && s.anim_in_type === 'rolling_rainbow_karaoke') {
+            this._renderRollingRainbowKaraoke(s, segment, currentTime, videoW, videoH);
+            return;
+        }
+
         const text = segmentText;
         if (!text.trim()) return;
 
@@ -1499,6 +1509,7 @@ class ReelsCanvasRenderer {
         // ── Character bounce & Extended Per-Char Animations ──
         const isCharBounce = animInType === 'char_bounce';
         const isExtendedCharAnim = !!(anim && anim.isCharAnimType && anim.isCharAnimType(animInType));
+        const isUnderlineSweep = animInType === 'underline_sweep';
         const cbHeight = s.char_bounce_height || 20;
         const cbStagger = s.char_bounce_stagger || 0.05;
 
@@ -2019,7 +2030,7 @@ class ReelsCanvasRenderer {
         const needsPerWordStrokeExpand = s.only_show_active_word || Boolean(s.hide_until_spoken) ||
             Boolean(s.highlight_scale_enabled) || isTypewriter || isMetronome ||
             isWordPopRandom || isWordPopRandomPulse || isBullet || isExtendedCharAnim ||
-            isLineFocus || lineScales.some(sc => Math.abs(sc - 1.0) > 0.001);
+            isUnderlineSweep || isLineFocus || lineScales.some(sc => Math.abs(sc - 1.0) > 0.001);
         if (s.stroke_expand_enabled && !needsPerWordStrokeExpand) {
             this._renderStrokeExpand(ctx, s, visibleLines, lineWidths, cx, advEnabled, advAlign, advX, advW,
                 cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX);
@@ -2067,9 +2078,27 @@ class ReelsCanvasRenderer {
             ? visibleLines.reduce((sum, ln) => sum + ln.split(/\s+/).filter(Boolean).reduce((c, w) => c + Array.from(w).length, 0), 0)
             : 0;
         const activeHighlightIdx = highlightEnabled ? activeSpokenIdx : -1;
+        const sweepLineWidths = isUnderlineSweep
+            ? visibleLines.map((_, li) => {
+                const lw = lineWidths[li] || 0;
+                const ls = lineScales[li] || 1.0;
+                return Math.max(lw * ls, actualLineWidths[li] ?? 0, finalLineWidths[li] ?? 0);
+            })
+            : null;
+        const underlineSweepState = (isUnderlineSweep && anim && typeof anim.computeUnderlineSweepState === 'function')
+            ? anim.computeUnderlineSweepState(currentTime, segStart, segEnd, sweepLineWidths, {
+                sweepDuration: s.anim_in_duration,
+                fontSize,
+            })
+            : null;
+        const isUnderlineSweepScanning = Boolean(
+            underlineSweepState && underlineSweepState.active && underlineSweepState.sweepProgress < 0.999
+        );
+        const underlineSweepLineGeoms = [];
+        let lineSweepAccumBefore = 0;
         const useUnifiedStrokeFillPasses = Boolean(
             useStroke && !s.stroke_expand_enabled && !s.dynamic_box && !s.ambient_glow_enabled
-            && borderW >= 3 && !isTypewriter && !isExtendedCharAnim
+            && borderW >= 3 && !isTypewriter && !isExtendedCharAnim && !isUnderlineSweepScanning
         );
         const deferredFillPasses = [];
 
@@ -2095,6 +2124,20 @@ class ReelsCanvasRenderer {
             const xStart = computeAlignedLineX(i, lineAlignMode === 'right' ? effectiveLineW : anchorLineW);
 
             const y = startY + (lineTextTopOffsets[i] || 0);
+            const currentSweepLineW = (sweepLineWidths && sweepLineWidths[i] != null)
+                ? sweepLineWidths[i]
+                : Math.max(1, effectiveLineW || anchorLineW || lineW);
+            const currentLineSweepStartDist = lineSweepAccumBefore;
+            lineSweepAccumBefore += currentSweepLineW;
+            if (isUnderlineSweep) {
+                underlineSweepLineGeoms.push({
+                    xStart,
+                    y,
+                    lineW: currentSweepLineW,
+                    lineScale,
+                    glyphBottom: y + (lineGlyphBounds[i]?.bottom ?? fontSize * 0.88) * lineScale,
+                });
+            }
             const lineGradBounds = {
                 x: xStart,
                 y,
@@ -2381,32 +2424,40 @@ class ReelsCanvasRenderer {
 
                     // ── Local multi-layer stroke expand ──
                     if (s.stroke_expand_enabled && needsPerWordStrokeExpand) {
-                        ctx.save();
-                        ctx.globalAlpha = globalAlpha * wordOpacity;
-                        if (wordScale !== 1.0) {
-                            ctx.translate(wordCenterX, wordCenterY);
-                            ctx.scale(wordScale, wordScale);
-                            ctx.translate(-wordCenterX, -wordCenterY);
+                        let seAlphaFactor = 1.0;
+                        if (isUnderlineSweepScanning && anim && typeof anim.computeUnderlineSweepCharReveal === 'function') {
+                            const wordMidLocal = Math.max(0, (textDrawX - xStart) * lineScale + (wordW * lineScale) * 0.5);
+                            const wordRev = anim.computeUnderlineSweepCharReveal(currentLineSweepStartDist + wordMidLocal, underlineSweepState);
+                            seAlphaFactor = wordRev.strokeAlpha;
                         }
-                        if (lineScale !== 1.0) {
-                            ctx.translate(wordCenterX, wordCenterY);
-                            ctx.scale(lineScale, lineScale);
-                            ctx.translate(-wordCenterX, -wordCenterY);
-                        }
-                        if (typewriterPartial) {
-                            this._renderWordStrokeExpand(ctx, s, typewriterPartial.revealed, textDrawX, textDrawY, fontStr, letterSpacing);
-                            const revealedW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing);
-                            // The unread half needs its own opacity.  In
-                            // particular, opacity 0 must hide both text and
-                            // expanded outline.
-                            if (twUnreadOpacity > 0.01) {
-                                ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity;
-                                this._renderWordStrokeExpand(ctx, s, typewriterPartial.unrevealed, textDrawX + revealedW, textDrawY, fontStr, letterSpacing);
+                        if (seAlphaFactor > 0.01) {
+                            ctx.save();
+                            ctx.globalAlpha = globalAlpha * wordOpacity * seAlphaFactor;
+                            if (wordScale !== 1.0) {
+                                ctx.translate(wordCenterX, wordCenterY);
+                                ctx.scale(wordScale, wordScale);
+                                ctx.translate(-wordCenterX, -wordCenterY);
                             }
-                        } else {
-                            this._renderWordStrokeExpand(ctx, s, wordStr, textDrawX, textDrawY, fontStr, letterSpacing);
+                            if (lineScale !== 1.0) {
+                                ctx.translate(wordCenterX, wordCenterY);
+                                ctx.scale(lineScale, lineScale);
+                                ctx.translate(-wordCenterX, -wordCenterY);
+                            }
+                            if (typewriterPartial) {
+                                this._renderWordStrokeExpand(ctx, s, typewriterPartial.revealed, textDrawX, textDrawY, fontStr, letterSpacing);
+                                const revealedW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing);
+                                // The unread half needs its own opacity.  In
+                                // particular, opacity 0 must hide both text and
+                                // expanded outline.
+                                if (twUnreadOpacity > 0.01) {
+                                    ctx.globalAlpha = globalAlpha * wordOpacity * twUnreadOpacity * seAlphaFactor;
+                                    this._renderWordStrokeExpand(ctx, s, typewriterPartial.unrevealed, textDrawX + revealedW, textDrawY, fontStr, letterSpacing);
+                                }
+                            } else {
+                                this._renderWordStrokeExpand(ctx, s, wordStr, textDrawX, textDrawY, fontStr, letterSpacing);
+                            }
+                            ctx.restore();
                         }
-                        ctx.restore();
                     }
 
                     ctx.save();
@@ -2569,6 +2620,33 @@ class ReelsCanvasRenderer {
                             }
                             charX += chW + letterSpacing;
                         }
+                    } else if (isUnderlineSweepScanning && anim && typeof anim.computeUnderlineSweepCharReveal === 'function') {
+                        const chars = Array.from(wordStr);
+                        let charX = textDrawX;
+                        for (let ci = 0; ci < chars.length; ci++) {
+                            const ch = chars[ci];
+                            const chW = ctx.measureText(ch).width;
+                            const charLocalDist = textDirection === 'rtl'
+                                ? Math.max(0, (xStart + currentSweepLineW) - (charX * lineScale + (chW * lineScale) * 0.5))
+                                : Math.max(0, (charX - xStart) * lineScale + (chW * lineScale) * 0.5);
+                            const rev = anim.computeUnderlineSweepCharReveal(
+                                currentLineSweepStartDist + charLocalDist,
+                                underlineSweepState
+                            );
+                            if (rev.fillAlpha > 0.005) {
+                                ctx.save();
+                                ctx.globalAlpha = globalAlpha * wordOpacity * rev.fillAlpha;
+                                const drawCharStroke = Boolean(useStroke && !s.stroke_expand_enabled && rev.strokeAlpha > 0.01);
+                                this._drawWord(
+                                    ctx, ch, charX, textDrawY + rev.dy, wordColor,
+                                    drawCharStroke, wordStrokeColor, borderW, outlineAlpha * rev.strokeAlpha,
+                                    currentShadowBlur * rev.shadowAlpha, shadowOffX, shadowOffY, currentShadowColor, shadowAlpha * rev.shadowAlpha,
+                                    0, s, activeGradBounds
+                                );
+                                ctx.restore();
+                            }
+                            charX += chW + letterSpacing;
+                        }
                     } else if (useUnifiedStrokeFillPasses) {
                         this._drawWordShadowAndStroke(
                             ctx, wordStr, textDrawX, textDrawY,
@@ -2674,6 +2752,15 @@ class ReelsCanvasRenderer {
             }
         }
 
+        // ── Underline Sweep ("底线扫描显字") glowing horizontal scan bar ──
+        if (isUnderlineSweep && underlineSweepState && underlineSweepState.active &&
+            underlineSweepState.barAlpha > 0.005 && !style?._ambient_text_final_pass) {
+            const geom = underlineSweepLineGeoms[underlineSweepState.activeLineIdx] || underlineSweepLineGeoms[0];
+            if (geom) {
+                this._drawUnderlineSweepBar(ctx, geom, underlineSweepState, s, globalAlpha, textDirection);
+            }
+        }
+
         // ── Blur → Sharp post-process ──
         if (blurRadius > 0) {
             ctx.filter = 'none';
@@ -2703,6 +2790,70 @@ class ReelsCanvasRenderer {
             return raw.toUpperCase();
         }
         return raw;
+    }
+
+    // ─── Underline Sweep ("底线扫描显字") glowing horizontal scan bar ───
+    _drawUnderlineSweepBar(ctx, geom, sweepState, s, globalAlpha = 1.0, textDirection = 'ltr') {
+        if (!geom || !sweepState || !(sweepState.barW > 0.5) || !(sweepState.barAlpha > 0.005)) return;
+        const lineScale = Number(geom.lineScale) || 1.0;
+        const fontSize = Math.max(16, Number(sweepState.fontSize) || Number(s?.fontsize) || 54);
+        const barW = Math.max(2, sweepState.barW);
+        const barH = Math.max(3.5, fontSize * 0.092 * lineScale);
+        const barX = textDirection === 'rtl'
+            ? (geom.xStart + geom.lineW - sweepState.barX - barW)
+            : (geom.xStart + sweepState.barX);
+        const barY = geom.glyphBottom + Math.max(4, fontSize * 0.085 * lineScale);
+        const rad = barH / 2;
+
+        const barColorHex = (s && s.use_underline && s.color_underline) ? s.color_underline : '#FFFFFF';
+        const rgb = typeof this._parseColor === 'function' ? this._parseColor(barColorHex) : [255, 255, 255];
+        const r = rgb[0] ?? 255;
+        const g = rgb[1] ?? 255;
+        const b = rgb[2] ?? 255;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, globalAlpha * sweepState.barAlpha));
+
+        // 1. Subtle dark contrast backing rim so the white bar pops over bright skies/clouds
+        if (typeof ctx.createLinearGradient === 'function') {
+            const x0 = textDirection === 'rtl' ? (barX + barW) : barX;
+            const x1 = textDirection === 'rtl' ? barX : (barX + barW);
+            const rimGrad = ctx.createLinearGradient(x0, barY, x1, barY);
+            rimGrad.addColorStop(0.0, 'rgba(0, 0, 0, 0.10)');
+            rimGrad.addColorStop(0.35, 'rgba(0, 0, 0, 0.52)');
+            rimGrad.addColorStop(1.0, 'rgba(0, 0, 0, 0.68)');
+            ctx.fillStyle = rimGrad;
+        } else {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        }
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+        ctx.shadowBlur = Math.max(4, fontSize * 0.10);
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 1.5;
+        this._roundRect(ctx, barX - 1.5, barY - 1.2, barW + 3.0, barH + 2.4, rad + 1.2);
+        ctx.fill();
+
+        // 2. Crisp glowing white/tinted horizontal scan bar with tapered comet tail
+        if (typeof ctx.createLinearGradient === 'function') {
+            const x0 = textDirection === 'rtl' ? (barX + barW) : barX;
+            const x1 = textDirection === 'rtl' ? barX : (barX + barW);
+            const coreGrad = ctx.createLinearGradient(x0, barY, x1, barY);
+            coreGrad.addColorStop(0.0, `rgba(${r}, ${g}, ${b}, 0.22)`);
+            coreGrad.addColorStop(0.32, `rgba(${r}, ${g}, ${b}, 0.88)`);
+            coreGrad.addColorStop(0.82, `rgba(${r}, ${g}, ${b}, 1.0)`);
+            coreGrad.addColorStop(1.0, 'rgba(255, 255, 255, 1.0)');
+            ctx.fillStyle = coreGrad;
+        } else {
+            ctx.fillStyle = barColorHex;
+        }
+        ctx.shadowColor = barColorHex;
+        ctx.shadowBlur = Math.max(6, fontSize * 0.16);
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        this._roundRect(ctx, barX, barY, barW, barH, rad);
+        ctx.fill();
+
+        ctx.restore();
     }
 
     // ─── Connected adaptive multi-line background contour with concave fillets & width snapping ───
@@ -6368,6 +6519,512 @@ class ReelsCanvasRenderer {
             ctx.restore();
             y += item.advance;
         }
+        ctx.restore();
+    }
+
+    _renderThreeWordFocusStack(s, segment, currentTime, videoW, videoH) {
+        const segStart = Number(segment.start) || 0;
+        const segEnd = Number(segment.end) || segStart;
+        if (currentTime < segStart || currentTime > segEnd) return;
+
+        // Collect timed words: when _contextSegments is present and matches segment,
+        // group across contiguous segments (unless separated by >1.0s pause) so even
+        // 1-word, 2-word, or 4-word segments form seamless 3-word vertical stacks.
+        let allWords = [];
+        const ctxSegs = Array.isArray(this._contextSegments) && this._contextSegments.length > 0
+            ? this._contextSegments
+            : null;
+        const matchesContext = Boolean(ctxSegs && ctxSegs.some(cs =>
+            cs === segment || (Math.abs((cs.start || 0) - segStart) < 1e-3 && Math.abs((cs.end || 0) - segEnd) < 1e-3)
+        ));
+
+        if (matchesContext && ctxSegs.length > 1) {
+            for (const cs of ctxSegs) {
+                const segWords = this._getTimedWords(cs).map(w => ({
+                    ...w,
+                    word: this._applyTextTransform(w.word || '', s),
+                })).filter(w => w.word && w.word.trim());
+                allWords.push(...segWords);
+            }
+        } else {
+            allWords = this._getTimedWords(segment).map(w => ({
+                ...w,
+                word: this._applyTextTransform(w.word || '', s),
+            })).filter(w => w.word && w.word.trim());
+        }
+        if (!allWords.length) return;
+
+        const firstSegStart = (matchesContext && ctxSegs.length > 1)
+            ? (Number(ctxSegs[0].start) || 0)
+            : segStart;
+        const lastSegEnd = (matchesContext && ctxSegs.length > 1)
+            ? (Number(ctxSegs[ctxSegs.length - 1].end) || segEnd)
+            : segEnd;
+
+        // Partition into 3-word groups (Slot 0: Top Small, Slot 1: Middle Hero ~1.92x, Slot 2: Bottom Small)
+        const groups = [];
+        let currGroup = [];
+        for (let i = 0; i < allWords.length; i++) {
+            const w = allWords[i];
+            if (currGroup.length > 0) {
+                const prev = currGroup[currGroup.length - 1];
+                const silenceGap = (Number(w.start) || 0) - (Number(prev.end) || 0);
+                if (currGroup.length >= 3 || silenceGap > 1.0) {
+                    groups.push(currGroup);
+                    currGroup = [];
+                }
+            }
+            currGroup.push(w);
+        }
+        if (currGroup.length > 0) groups.push(currGroup);
+        if (!groups.length) return;
+
+        // Find active 3-word group for currentTime
+        let activeGroupIdx = -1;
+        for (let gi = 0; gi < groups.length; gi++) {
+            const g = groups[gi];
+            const gStart = gi === 0 ? Math.min(firstSegStart, g[0].start) : g[0].start;
+            const nextG = groups[gi + 1];
+            const gLastEnd = g[g.length - 1].end;
+            const gEnd = (nextG && (nextG[0].start - gLastEnd) <= 0.85)
+                ? nextG[0].start
+                : Math.max(gLastEnd, gi === groups.length - 1 ? lastSegEnd : gLastEnd);
+            if (currentTime >= gStart - 1e-4 && (gi === groups.length - 1 ? currentTime <= gEnd + 1e-4 : currentTime < gEnd)) {
+                activeGroupIdx = gi;
+                break;
+            }
+        }
+        if (activeGroupIdx < 0) {
+            for (let gi = groups.length - 1; gi >= 0; gi--) {
+                if (currentTime >= groups[gi][0].start - 1e-4) {
+                    activeGroupIdx = gi;
+                    break;
+                }
+            }
+            if (activeGroupIdx < 0) activeGroupIdx = 0;
+        }
+
+        const group = groups[activeGroupIdx];
+        if (!group || !group.length) return;
+
+        const ctx = this.ctx;
+        const clamp01 = (v) => Math.max(0, Math.min(1, v));
+        const cx = (typeof s.pos_x === 'number' && s.pos_x <= 1)
+            ? s.pos_x * videoW : (Number(s.pos_x) || videoW * 0.5);
+        const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1)
+            ? s.pos_y * videoH : (Number(s.pos_y) || videoH * 0.68);
+
+        const fontFamily = s.font_family || 'Impact';
+        const fallbackFamily = _resolveGenericFallback(fontFamily);
+        const fontWeight = _resolveFontWeight(s.font_weight, 900, s.bold !== false);
+        const italic = s.italic !== false;
+        const baseSize = Math.max(20, Number(s.fontsize) || 46);
+        const heroScale = Math.max(1.25, Number(s.three_word_hero_scale) || 1.92);
+        const smallScale = 1.0;
+        const maxTextWidth = Math.max(120, videoW * (Number(s.wrap_width_percent ?? 84) / 100));
+        const letterSpacing = Number(s.letter_spacing) || 0;
+        const popDur = Math.max(0.04, Math.min(0.22, Number(s.anim_in_duration) || 0.09));
+
+        // Pre-compute the fixed 3-slot vertical geometry so Slot 0 (top), Slot 1 (middle hero),
+        // and Slot 2 (bottom) never shift or jump as words accumulate one by one.
+        const slotScales = [smallScale, heroScale, smallScale];
+        const slotBaseSizes = slotScales.map(sc => baseSize * sc);
+        const gap01 = baseSize * 0.22;
+        const gap12 = baseSize * 0.28;
+        const slot0H = slotBaseSizes[0] * 1.04;
+        const slot1H = slotBaseSizes[1] * 1.02;
+        const slot2H = slotBaseSizes[2] * 1.04;
+        const totalStackH = slot0H + gap01 + slot1H + gap12 + slot2H;
+        const slotY = [
+            cy - totalStackH / 2,
+            cy - totalStackH / 2 + slot0H + gap01,
+            cy - totalStackH / 2 + slot0H + gap01 + slot1H + gap12,
+        ];
+        const slotHeights = [slot0H, slot1H, slot2H];
+
+        const useHighlight = Boolean(
+            s.highlight_enabled !== false &&
+            s.karaoke_highlight !== false &&
+            s.color_high
+        );
+        const baseTextColor = s.color_text || '#FFFFFF';
+        const activeHighColor = s.color_high || '#1CEBFF';
+        const useStroke = s.use_stroke !== false;
+        const outlineColor = s.color_outline || '#000000';
+        const outlineAlpha = (Number(s.opacity_outline ?? 255)) / 255;
+        const baseBorderW = Number(s.border_width ?? 4.5);
+        const shadowBlur = Number(s.shadow_blur ?? 6);
+        const shadowOffX = Number(s.shadow_offset_x ?? 0);
+        const shadowOffY = Number(s.shadow_offset_y ?? 4);
+        const shadowColor = s.color_shadow || '#000000';
+        const shadowAlpha = (Number(s.opacity_shadow ?? 230)) / 255;
+        const globalAlpha = Number(s.opacity_text_global ?? 1);
+
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        for (let slotIdx = 0; slotIdx < group.length && slotIdx < 3; slotIdx++) {
+            const wObj = group[slotIdx];
+            const triggerStart = (activeGroupIdx === 0 && slotIdx === 0)
+                ? Math.min(firstSegStart, wObj.start)
+                : wObj.start;
+
+            // Unread words in the 3-word group remain hidden until spoken
+            if (currentTime < triggerStart - 1e-4) {
+                continue;
+            }
+
+            // Determine whether this word is currently being spoken (Electric Cyan)
+            // or has already finished speaking (settles to Pure White while staying on screen).
+            const nextWord = group[slotIdx + 1];
+            const rawWordDur = Math.max(0.05, (Number(wObj.end) || triggerStart) - triggerStart);
+            const hasTrailingPausePunct = /[,.;:!?—–，。；：！？]["'”’)]*$/u.test(wObj.word || '');
+            const effectiveActiveDur = (hasTrailingPausePunct && rawWordDur > 0.44)
+                ? Math.max(0.32, rawWordDur * 0.72)
+                : rawWordDur;
+            const activeEnd = Math.min(
+                Number(wObj.end) || triggerStart + rawWordDur,
+                triggerStart + effectiveActiveDur,
+                nextWord ? Number(nextWord.start) : Infinity
+            );
+            const isCurrentlySpoken = currentTime >= triggerStart - 1e-4 && currentTime <= activeEnd + 1e-4 &&
+                (!nextWord || currentTime < nextWord.start - 1e-4);
+
+            const wordColor = (useHighlight && isCurrentlySpoken) ? activeHighColor : baseTextColor;
+
+            // Measure and fit word within maxTextWidth
+            let fontSize = slotBaseSizes[slotIdx];
+            const slotScaleRatio = slotScales[slotIdx];
+            let fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+            ctx.font = fontStr;
+            let wordW = this._measureTextWithSpacing(ctx, wObj.word, letterSpacing * slotScaleRatio);
+            if (wordW > maxTextWidth) {
+                const fit = maxTextWidth / Math.max(1, wordW);
+                fontSize *= fit;
+                fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+                ctx.font = fontStr;
+                wordW = this._measureTextWithSpacing(ctx, wObj.word, letterSpacing * slotScaleRatio * fit);
+            }
+
+            // Crisp pop-in animation when the word first appears in its fixed slot
+            const elapsed = Math.max(0, currentTime - triggerStart);
+            let popScale = 1.0;
+            let wordAlpha = 1.0;
+            if (elapsed < popDur) {
+                const t = clamp01(elapsed / popDur);
+                const c1 = 1.70158;
+                const c3 = c1 + 1;
+                const easeBack = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+                popScale = 0.84 + 0.16 * easeBack;
+                wordAlpha = clamp01(0.55 + 0.45 * (t * 2.2));
+            }
+
+            const drawX = cx - wordW / 2;
+            const drawY = slotY[slotIdx] + (slotHeights[slotIdx] - fontSize * 1.02) * 0.5;
+            const slotCenterX = cx;
+            const slotCenterY = slotY[slotIdx] + slotHeights[slotIdx] * 0.5;
+            const borderW = baseBorderW * (slotIdx === 1 ? 1.22 : 1.0);
+
+            ctx.save();
+            ctx.globalAlpha = globalAlpha * wordAlpha;
+            if (Math.abs(popScale - 1.0) > 0.001) {
+                ctx.translate(slotCenterX, slotCenterY);
+                ctx.scale(popScale, popScale);
+                ctx.translate(-slotCenterX, -slotCenterY);
+            }
+            ctx.font = fontStr;
+            if (s.stroke_expand_enabled) {
+                this._renderWordStrokeExpand(ctx, s, wObj.word, drawX, drawY, fontStr, letterSpacing * slotScaleRatio);
+            }
+            this._drawWord(
+                ctx, wObj.word, drawX, drawY, wordColor,
+                useStroke && !s.stroke_expand_enabled, outlineColor, borderW, outlineAlpha,
+                shadowBlur, shadowOffX, shadowOffY, shadowColor, shadowAlpha,
+                letterSpacing * slotScaleRatio, s
+            );
+            ctx.restore();
+        }
+
+        ctx.restore();
+    }
+
+    /**
+     * 🌈 4-Line Rolling Rainbow Karaoke ("四行滚词(彩虹跟读)" — 成品_01 同款)
+     * - Wraps all words across `_contextSegments` (or single `segment`) into centered lines.
+     * - Displays a 4-line rolling lyrics window in the lower-middle of the screen.
+     * - Unspoken words render in crisp pure white (`color_text`, default `#FFFFFF`) with a thick rounded dark outline.
+     * - Spoken & active words light up word-by-word with a continuous full-line horizontal 7-color rainbow gradient
+     *   spanning `[lineLeft, lineRight]`, and remain rainbow-colored after being spoken.
+     * - As each line is read, the oldest top line smoothly fades out, the next upcoming line fades in below,
+     *   and the 4-line block steps upward line-by-line.
+     */
+    _renderRollingRainbowKaraoke(s, segment, currentTime, videoW, videoH) {
+        const ctx = this.ctx;
+        const clamp01 = (v) => Math.max(0.0, Math.min(1.0, v));
+        const smoothstep = (edge0, edge1, x) => {
+            const t = clamp01((x - edge0) / Math.max(1e-4, edge1 - edge0));
+            return t * t * (3 - 2 * t);
+        };
+
+        const ctxSegs = Array.isArray(this._contextSegments) && this._contextSegments.length > 0
+            ? this._contextSegments
+            : (segment ? [segment] : []);
+        if (ctxSegs.length === 0) return;
+
+        const extractSegWords = (seg) => {
+            if (!seg) return [];
+            const sStart = Number(seg.start) || 0;
+            const sEnd = Math.max(sStart + 0.05, Number(seg.end) || (sStart + 1.5));
+            const sDur = Math.max(0.05, sEnd - sStart);
+            if (Array.isArray(seg.words) && seg.words.length > 0) {
+                const valid = seg.words
+                    .map(w => ({
+                        word: String(w.word ?? w.text ?? '').trim(),
+                        start: Number(w.start),
+                        end: Number(w.end),
+                    }))
+                    .filter(w => w.word.length > 0);
+                if (valid.length > 0) {
+                    return valid.map((w, idx) => {
+                        const fallbackS = sStart + (idx / valid.length) * sDur;
+                        const fallbackE = sStart + ((idx + 1) / valid.length) * sDur;
+                        const ws = Number.isFinite(w.start) ? w.start : fallbackS;
+                        const we = Number.isFinite(w.end) && w.end > ws ? w.end : Math.max(ws + 0.04, fallbackE);
+                        return { word: w.word, start: ws, end: we };
+                    });
+                }
+            }
+            const rawText = String(seg.edited_text || seg.text || '').trim();
+            if (!rawText) return [];
+            const parts = rawText.split(/\s+/).filter(Boolean);
+            if (parts.length === 0) return [];
+            const totalChars = parts.reduce((acc, p) => acc + Math.max(1, p.length), 0);
+            let cursor = sStart;
+            return parts.map((p, idx) => {
+                const weight = Math.max(1, p.length) / totalChars;
+                const ws = cursor;
+                const we = (idx === parts.length - 1) ? sEnd : (cursor + sDur * weight);
+                cursor = we;
+                return { word: p, start: ws, end: Math.max(ws + 0.04, we) };
+            });
+        };
+
+        const allWords = [];
+        for (const seg of ctxSegs) {
+            const words = extractSegWords(seg);
+            for (const w of words) {
+                let text = w.word;
+                if (s.uppercase) text = text.toUpperCase();
+                allWords.push({ text, start: w.start, end: w.end });
+            }
+        }
+        if (allWords.length === 0) return;
+
+        const fontFamily = s.font_family || 'Poppins';
+        const fallbackFamily = _resolveGenericFallback(fontFamily);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 800 : 400, s.bold);
+        const fontSize = Math.max(16, Number(s.fontsize) || 54);
+        const italic = Boolean(s.italic);
+        const letterSpacing = Number(s.letter_spacing) || 0;
+        const wordSpacing = Number(s.word_spacing) || 0;
+        const fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+
+        ctx.save();
+        ctx.font = fontStr;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        const spaceW = ctx.measureText(' ').width + wordSpacing;
+        const wrapPercent = Math.max(35, Math.min(96, Number(s.wrap_width_percent) || 82));
+        const maxLineW = videoW * (wrapPercent / 100);
+        const maxWordsPerLine = Math.max(0, parseInt(s.max_words_per_line, 10) || 0);
+
+        // Wrap words into visual lines
+        const lines = [];
+        let curWords = [];
+        let curW = 0;
+
+        for (const wObj of allWords) {
+            const wWidth = this._measureTextWithSpacing(ctx, wObj.text, letterSpacing);
+            const nextW = curWords.length === 0 ? wWidth : (curW + spaceW + wWidth);
+            const hitWordCap = maxWordsPerLine > 0 && curWords.length >= maxWordsPerLine;
+            if (curWords.length > 0 && (nextW > maxLineW || hitWordCap)) {
+                lines.push({
+                    words: curWords,
+                    totalWidth: curW,
+                    lineStart: curWords[0].start,
+                    lineEnd: curWords[curWords.length - 1].end,
+                });
+                curWords = [{ ...wObj, width: wWidth, xOffset: 0 }];
+                curW = wWidth;
+            } else {
+                const xOffset = curWords.length === 0 ? 0 : (curW + spaceW);
+                curWords.push({ ...wObj, width: wWidth, xOffset });
+                curW = nextW;
+            }
+        }
+        if (curWords.length > 0) {
+            lines.push({
+                words: curWords,
+                totalWidth: curW,
+                lineStart: curWords[0].start,
+                lineEnd: curWords[curWords.length - 1].end,
+            });
+        }
+        if (lines.length === 0) {
+            ctx.restore();
+            return;
+        }
+
+        // Determine active line index at currentTime
+        let activeLineIdx = 0;
+        if (currentTime <= lines[0].lineStart) {
+            activeLineIdx = 0;
+        } else if (currentTime >= lines[lines.length - 1].lineEnd) {
+            activeLineIdx = lines.length - 1;
+        } else {
+            for (let li = 0; li < lines.length; li++) {
+                if (currentTime >= lines[li].lineStart && currentTime <= lines[li].lineEnd) {
+                    activeLineIdx = li;
+                    break;
+                }
+                if (li < lines.length - 1 && currentTime > lines[li].lineEnd && currentTime < lines[li + 1].lineStart) {
+                    activeLineIdx = li + 1;
+                    break;
+                }
+            }
+        }
+
+        const lineSpacing = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : Math.round(fontSize * 0.42);
+        const lineStep = fontSize * 1.12 + lineSpacing;
+        const visibleCount = Math.max(2, parseInt(s.scrolling_visible_lines, 10) || 4);
+
+        const cx = (typeof s.pos_x === 'number' && s.pos_x <= 1) ? s.pos_x * videoW : (s.pos_x || videoW / 2);
+        const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1) ? s.pos_y * videoH : (s.pos_y || videoH * 0.58);
+        const blockHeight = visibleCount * fontSize * 1.12 + (visibleCount - 1) * lineSpacing;
+        const topSlotY = cy - blockHeight / 2;
+
+        // Compute base line index and smooth step-up offset
+        // Active line sits at slot 0 (line 0), slot 1 (line 1), and slot 2 (lines >= 2) of the 4-line window
+        const activeTargetSlot = Math.min(2, visibleCount - 2);
+        const baseLineIdx = Math.max(0, activeLineIdx - activeTargetSlot);
+        const curLine = lines[activeLineIdx];
+        const curLineDur = Math.max(0.15, curLine.lineEnd - curLine.lineStart);
+        const curLineProgress = clamp01((currentTime - curLine.lineStart) / curLineDur);
+
+        // Smooth step-scroll when advancing to a new baseLineIdx (activeLineIdx >= activeTargetSlot + 1)
+        let stepScrollOffset = 0;
+        if (activeLineIdx > activeTargetSlot) {
+            const stepTransDur = Math.min(0.20, curLineDur * 0.35);
+            const elapsedInLine = Math.max(0, currentTime - curLine.lineStart);
+            if (elapsedInLine < stepTransDur) {
+                const p = clamp01(elapsedInLine / Math.max(0.04, stepTransDur));
+                const easeOut = 1 - Math.pow(1 - p, 3);
+                stepScrollOffset = (1 - easeOut) * lineStep;
+            }
+        }
+
+        // Determine whether a scroll transition will occur at the end of activeLineIdx
+        const willStepNext = (activeLineIdx >= activeTargetSlot) && (baseLineIdx + visibleCount < lines.length);
+
+        const unspokenColor = s.color_text || '#FFFFFF';
+        const rainbowColors = (s.rolling_rainbow_colors && String(s.rolling_rainbow_colors).includes(','))
+            ? String(s.rolling_rainbow_colors)
+            : ((s.high_gradient_enabled && s.high_gradient_colors && String(s.high_gradient_colors).includes(','))
+                ? String(s.high_gradient_colors)
+                : '#FF3824,#FF8800,#FFD600,#2AD648,#00C2D1,#246BFF,#9B4DFF');
+
+        const useStroke = s.use_stroke !== false;
+        const outlineColor = s.color_outline || '#0D0B18';
+        const outlineAlpha = (Number(s.opacity_outline ?? 255)) / 255;
+        const borderW = Number(s.border_width ?? 4.8);
+        const shadowBlur = Number(s.shadow_blur ?? 6);
+        const shadowOffX = Number(s.shadow_offset_x ?? 0);
+        const shadowOffY = Number(s.shadow_offset_y ?? 3);
+        const shadowColor = s.color_shadow || '#000000';
+        const shadowAlpha = (Number(s.opacity_shadow ?? 220)) / 255;
+        const globalAlpha = Number(s.opacity_text_global ?? 1);
+
+        // Render lines in [baseLineIdx .. baseLineIdx + visibleCount]
+        const maxSlot = willStepNext ? visibleCount : (visibleCount - 1);
+        for (let slot = 0; slot <= maxSlot; slot++) {
+            const li = baseLineIdx + slot;
+            if (li < 0 || li >= lines.length) continue;
+
+            // At the very beginning (activeLineIdx === 0 or 1), progressive bottom lines fade in as narration advances
+            let lineAlpha = 1.0;
+            if (activeLineIdx === 0) {
+                if (slot === 2) {
+                    lineAlpha = smoothstep(0.35, 0.90, curLineProgress);
+                } else if (slot > 2) {
+                    continue;
+                }
+            } else if (activeLineIdx === 1) {
+                if (slot === 3) {
+                    lineAlpha = smoothstep(0.35, 0.90, curLineProgress);
+                } else if (slot > 3) {
+                    continue;
+                }
+            } else if (willStepNext) {
+                if (slot === 0) {
+                    // Oldest top line fades out during the second half of activeLineIdx
+                    lineAlpha = 1.0 - smoothstep(0.32, 0.92, curLineProgress);
+                } else if (slot === visibleCount) {
+                    // Incoming bottom line fades in during the second half of activeLineIdx
+                    lineAlpha = smoothstep(0.32, 0.92, curLineProgress);
+                }
+            }
+
+            if (lineAlpha <= 0.01) continue;
+
+            const lineObj = lines[li];
+            const lineLeft = cx - lineObj.totalWidth / 2;
+            const drawY = topSlotY + slot * lineStep + stepScrollOffset;
+            const gradBounds = {
+                x: lineLeft,
+                y: drawY,
+                w: Math.max(1, lineObj.totalWidth),
+                h: fontSize,
+            };
+
+            ctx.save();
+            ctx.globalAlpha = globalAlpha * lineAlpha;
+            ctx.font = fontStr;
+
+            // Pass 1: Unified shadow & thick rounded black stroke for all words on the line
+            if (useStroke || shadowBlur > 0 || shadowOffX !== 0 || shadowOffY !== 0) {
+                for (const w of lineObj.words) {
+                    const wx = lineLeft + w.xOffset;
+                    if (s.stroke_expand_enabled) {
+                        this._renderWordStrokeExpand(ctx, s, w.text, wx, drawY, fontStr, letterSpacing);
+                    } else {
+                        this._drawWordShadowAndStroke(
+                            ctx, w.text, wx, drawY,
+                            outlineColor, useStroke ? borderW : 0, outlineAlpha,
+                            shadowBlur, shadowOffX, shadowOffY, shadowColor, shadowAlpha,
+                            letterSpacing, s
+                        );
+                    }
+                }
+            }
+
+            // Pass 2: Crisp word fills (full-line horizontal rainbow gradient for spoken words, pure white for unspoken words)
+            for (const w of lineObj.words) {
+                const wx = lineLeft + w.xOffset;
+                const isSpoken = (li < activeLineIdx) || (li === activeLineIdx && currentTime >= w.start - 1e-4);
+                const fillSpec = isSpoken ? rainbowColors : unspokenColor;
+                this._drawWord(
+                    ctx, w.text, wx, drawY, fillSpec,
+                    false, outlineColor, 0, 0,
+                    0, 0, 0, shadowColor, 0,
+                    letterSpacing, s, isSpoken ? gradBounds : null
+                );
+            }
+
+            ctx.restore();
+        }
+
         ctx.restore();
     }
 

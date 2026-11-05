@@ -2431,6 +2431,189 @@ test('scroll card quick opacity slider, repeat maker modal, and ai-cn-date smart
     assert.ok(indexHtmlSrc.includes('<option value="ai-cn-date">'));
     assert.ok(batchTableSrc.includes('<option value="ai-cn-date"'));
     assert.ok(batchReelsSrc.includes('async function _ensureReelsAiChineseExportNames('));
+
+    // 4. Underline sweep ("底线扫描显字" / "✨ 极简底线扫描显字 (I AM BLESSED同款)")
+    assert.ok(indexHtmlSrc.includes('<option value="underline_sweep">底线扫描显字</option>'));
+    const sandbox = loadBrowserScript('src/reels-style-engine.js', { window: { addEventListener() {} } });
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+    loadBrowserScript('src/reels-anim-engine.js', sandbox);
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+
+    const ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    const ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    const ReelsCanvasRenderer = sandbox.window.ReelsCanvasRenderer;
+
+    const blessedPreset = ReelsStyleEngine.applySubtitlePreset('✨ 极简底线扫描显字 (I AM BLESSED同款)');
+    assert.equal(blessedPreset.anim_in_type, 'underline_sweep');
+    assert.equal(blessedPreset.uppercase, true);
+    assert.equal(blessedPreset.max_words_per_segment, 4);
+
+    const sweepEarly = ReelsAnimEngine.computeUnderlineSweepState(0.12, 0.0, 2.0, [300], { sweepDuration: 0.46, fontSize: 52 });
+    assert.equal(sweepEarly.active, true);
+    assert.ok(sweepEarly.barW > 10 && sweepEarly.barAlpha > 0.5, 'Scan bar should be visible mid-sweep');
+    const leftCharRev = ReelsAnimEngine.computeUnderlineSweepCharReveal(10, sweepEarly);
+    const rightCharRev = ReelsAnimEngine.computeUnderlineSweepCharReveal(280, sweepEarly);
+    assert.ok(leftCharRev.fillAlpha > 0.9 && leftCharRev.strokeAlpha > 0.8, 'Left character already swept should be crisp');
+    assert.ok(Math.abs(rightCharRev.fillAlpha - 0.26) < 0.05 && rightCharRev.strokeAlpha < 0.05, 'Right character not yet swept should be soft ghost silhouette without dark stroke');
+
+    const sweepDone = ReelsAnimEngine.computeUnderlineSweepState(0.85, 0.0, 2.0, [300], { sweepDuration: 0.46, fontSize: 52 });
+    assert.equal(sweepDone.active, false);
+    assert.equal(sweepDone.barAlpha, 0);
+
+    const mockGrad = { addColorStop() {} };
+    let barDraws = 0;
+    const charAlphas = [];
+    const alphaStack = [];
+    const ctx = {
+        font: '800 52px Montserrat',
+        globalAlpha: 1,
+        save() { alphaStack.push(this.globalAlpha); },
+        restore() { if (alphaStack.length) this.globalAlpha = alphaStack.pop(); },
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        arcTo() {},
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        createLinearGradient() { return mockGrad; },
+        createRadialGradient() { return mockGrad; },
+        measureText(txt) { return { width: String(txt || '').length * 28, actualBoundingBoxAscent: 38, actualBoundingBoxDescent: 10 }; },
+        fillText(txt) { charAlphas.push({ text: String(txt), alpha: Number(this.globalAlpha.toFixed(2)) }); },
+        strokeText() {},
+    };
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const origDrawBar = renderer._drawUnderlineSweepBar.bind(renderer);
+    renderer._drawUnderlineSweepBar = function (...args) {
+        barDraws++;
+        return origDrawBar(...args);
+    };
+    const seg = {
+        start: 0,
+        end: 2.0,
+        text: 'I am blessed',
+        words: [
+            { word: 'I', start: 0, end: 0.4 },
+            { word: 'am', start: 0.4, end: 0.9 },
+            { word: 'blessed', start: 0.9, end: 2.0 },
+        ],
+    };
+    renderer.renderSubtitle(blessedPreset, seg, 0.18, 1080, 1920);
+    assert.equal(barDraws, 1, 'Should draw glowing underline scan bar during sweep');
+    assert.ok(charAlphas.some(c => c.alpha > 0.9) && charAlphas.some(c => c.alpha < 0.4), 'During sweep, left chars are opaque and right chars are ghosted');
+
+    // 5. Three-word hero focus stack ("三词叠排(中词放大)" / "💎 三词叠排_中词放大_电光青 (IF JESUS同款)")
+    assert.ok(indexHtmlSrc.includes('<option value="three_word_focus_stack">三词叠排(中词放大)</option>'));
+    const jesusPreset = ReelsStyleEngine.applySubtitlePreset('💎 三词叠排_中词放大_电光青 (IF JESUS同款)');
+    assert.equal(jesusPreset.anim_in_type, 'three_word_focus_stack');
+    assert.equal(jesusPreset.three_word_hero_scale, 1.92);
+    assert.equal(jesusPreset.color_high, '#1CEBFF');
+    assert.equal(jesusPreset.color_text, '#FFFFFF');
+    assert.equal(jesusPreset.uppercase, true);
+    assert.equal(jesusPreset.italic, true);
+
+    const stackDraws = [];
+    const origDrawWord = renderer._drawWord.bind(renderer);
+    renderer._drawWord = function (c, wordText, wx, wy, wColor, ...rest) {
+        stackDraws.push({ text: wordText, x: wx, y: wy, color: wColor, font: c.font });
+        return origDrawWord(c, wordText, wx, wy, wColor, ...rest);
+    };
+
+    const sixWordSeg = {
+        start: 0.0,
+        end: 3.6,
+        text: 'If Jesus means nothing to you,',
+        words: [
+            { word: 'If', start: 0.0, end: 0.5 },
+            { word: 'Jesus', start: 0.5, end: 1.1 },
+            { word: 'means', start: 1.1, end: 1.8 },
+            { word: 'nothing', start: 1.8, end: 2.3 },
+            { word: 'to', start: 2.3, end: 2.7 },
+            { word: 'you,', start: 2.7, end: 3.1 },
+        ],
+    };
+
+    // Word 1 ("IF") active: only 1 word on screen, in electric cyan (#1CEBFF)
+    stackDraws.length = 0;
+    renderer.renderSubtitle(jesusPreset, sixWordSeg, 0.25, 1080, 1920);
+    assert.equal(stackDraws.length, 1);
+    assert.equal(stackDraws[0].text, 'IF');
+    assert.equal(stackDraws[0].color, '#1CEBFF');
+    const slot0FixedY = stackDraws[0].y;
+
+    // Word 2 ("JESUS") active: "IF" stays at exact same Y in white (#FFFFFF), "JESUS" appears below in cyan (#1CEBFF) at ~1.92x size
+    stackDraws.length = 0;
+    renderer.renderSubtitle(jesusPreset, sixWordSeg, 0.75, 1080, 1920);
+    assert.equal(stackDraws.length, 2);
+    assert.equal(stackDraws[0].text, 'IF');
+    assert.equal(stackDraws[0].color, '#FFFFFF');
+    assert.ok(Math.abs(stackDraws[0].y - slot0FixedY) < 1e-3, 'Slot 0 Y must stay fixed without jumping when Slot 1 appears');
+    assert.equal(stackDraws[1].text, 'JESUS');
+    assert.equal(stackDraws[1].color, '#1CEBFF');
+    assert.ok(stackDraws[1].font.includes(`${46 * 1.92}px`), 'Middle hero word must render at 1.92x hero font size');
+
+    // Word 3 ("MEANS") active: "IF" and "JESUS" are white, "MEANS" is cyan at bottom slot
+    stackDraws.length = 0;
+    renderer.renderSubtitle(jesusPreset, sixWordSeg, 1.35, 1080, 1920);
+    assert.equal(stackDraws.length, 3);
+    assert.deepEqual(stackDraws.map(d => d.text), ['IF', 'JESUS', 'MEANS']);
+    assert.deepEqual(stackDraws.map(d => d.color), ['#FFFFFF', '#FFFFFF', '#1CEBFF']);
+
+    // Group 2 ("NOTHING" / "TO" / "YOU,") comma pause at t=3.35s: all 3 words remain visible and "YOU," settles to white during pause
+    stackDraws.length = 0;
+    renderer.renderSubtitle(jesusPreset, sixWordSeg, 3.35, 1080, 1920);
+    assert.equal(stackDraws.length, 3);
+    assert.deepEqual(stackDraws.map(d => d.text), ['NOTHING', 'TO', 'YOU,']);
+    assert.deepEqual(stackDraws.map(d => d.color), ['#FFFFFF', '#FFFFFF', '#FFFFFF']);
+
+    // 6. One-click clean empty batch tabs ("🧹 一键清理空标签")
+    assert.ok(batchTableSrc.includes('id="rbt-clean-empty-tabs-btn"'));
+    assert.ok(batchTableSrc.includes('id="rbt-clean-empty-tabs-bar-btn"'));
+    assert.ok(batchTableSrc.includes('function _cleanEmptyTabs'));
+    assert.ok(batchTableSrc.includes('window.reelsCleanEmptyBatchTabs = _cleanEmptyTabs'));
+
+    // 7. 4-line rolling rainbow karaoke ("🌈 四行滚词_彩虹渐变跟读 (成品01同款)" / rolling_rainbow_karaoke)
+    assert.ok(indexHtmlSrc.includes('<option value="rolling_rainbow_karaoke">🌈 四行滚词(彩虹跟读)</option>'));
+    const rainbowPreset = ReelsStyleEngine.applySubtitlePreset('🌈 四行滚词_彩虹渐变跟读 (成品01同款)');
+    assert.equal(rainbowPreset.anim_in_type, 'rolling_rainbow_karaoke');
+    assert.equal(rainbowPreset.color_text, '#FFFFFF');
+    assert.ok(rainbowPreset.rolling_rainbow_colors.includes('#FF3824') && rainbowPreset.rolling_rainbow_colors.includes('#9B4DFF'));
+
+    const rollingSeg = {
+        start: 0.0,
+        end: 6.0,
+        text: 'Jesus says, do not skip this message. Stop scrolling right now.',
+        words: [
+            { word: 'Jesus', start: 0.0, end: 0.5 },
+            { word: 'says,', start: 0.5, end: 1.0 },
+            { word: 'do', start: 1.0, end: 1.4 },
+            { word: 'not', start: 1.4, end: 1.8 },
+            { word: 'skip', start: 1.8, end: 2.3 },
+            { word: 'this', start: 2.3, end: 2.7 },
+            { word: 'message.', start: 2.7, end: 3.4 },
+            { word: 'Stop', start: 3.5, end: 4.1 },
+            { word: 'scrolling', start: 4.1, end: 4.8 },
+            { word: 'right', start: 4.8, end: 5.3 },
+            { word: 'now.', start: 5.3, end: 5.9 },
+        ],
+    };
+
+    stackDraws.length = 0;
+    renderer.renderSubtitle(rainbowPreset, rollingSeg, 1.2, 1080, 1920);
+    // At t=1.2s, "Jesus", "says,", "do" are spoken (rainbow gradient); "not", "skip", etc. are unspoken (#FFFFFF)
+    const jesusDraw = stackDraws.find(d => d.text === 'Jesus');
+    const saysDraw = stackDraws.find(d => d.text === 'says,');
+    const doDraw = stackDraws.find(d => d.text === 'do');
+    const notDraw = stackDraws.find(d => d.text === 'not');
+    assert.ok(jesusDraw && jesusDraw.color.includes('#FF3824'), 'Spoken word "Jesus" should remain rainbow gradient');
+    assert.ok(saysDraw && saysDraw.color.includes('#FF3824'), 'Spoken word "says," should remain rainbow gradient');
+    assert.ok(doDraw && doDraw.color.includes('#FF3824'), 'Active word "do" should render in rainbow gradient');
+    assert.equal(notDraw?.color, '#FFFFFF', 'Unspoken word "not" on the same line should render in pure white');
 });
 
 

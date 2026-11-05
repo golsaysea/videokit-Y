@@ -216,31 +216,7 @@ const _getDefaultProjectDir = () => {
     return dir;
 };
 
-const _reelsFramePipelineRequests = new Map();
-const _reelsFramePipelines = new Map();
-ipcRenderer.on('reels-frame-pipeline-ready', (event, data = {}) => {
-    const pending = _reelsFramePipelineRequests.get(data.requestId);
-    if (!pending) return;
-    _reelsFramePipelineRequests.delete(data.requestId);
-    clearTimeout(pending.timer);
-    const port = event.ports && event.ports[0];
-    if (data.ok && port) {
-        const pipelineId = data.requestId;
-        const pipeline = { port, pending: new Map() };
-        port.onmessage = (portEvent) => {
-            const ack = portEvent.data || {};
-            if (ack.type !== 'ack') return;
-            const waiter = pipeline.pending.get(ack.seq);
-            if (!waiter) return;
-            pipeline.pending.delete(ack.seq);
-            if (ack.ok) waiter.resolve(ack);
-            else waiter.reject(new Error(ack.error || '帧流水线写入失败'));
-        };
-        port.start && port.start();
-        _reelsFramePipelines.set(pipelineId, pipeline);
-        pending.resolve(pipelineId);
-    } else pending.reject(new Error(data.error || '无法建立帧流水线'));
-});
+const _reelsFrameBridge = require('./services/reels-frame-bridge').createReelsFrameBridge(ipcRenderer);
 
 const safeOpenPath = async (targetPath) => {
     try {
@@ -546,28 +522,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     reelsDetectSilence: (data) => ipcRenderer.invoke('reels-detect-silence', data),
     collectReelsProjectAssets: (data) => ipcRenderer.invoke('collect-reels-project-assets', data),
     copyReelsProjectPackage: (data) => ipcRenderer.invoke('copy-reels-project-package', data),
-    createReelsFramePipeline: (sessionId) => new Promise((resolve, reject) => {
-        const requestId = `reels-pipe-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const timer = setTimeout(() => {
-            _reelsFramePipelineRequests.delete(requestId);
-            reject(new Error('建立帧流水线超时'));
-        }, 8000);
-        _reelsFramePipelineRequests.set(requestId, { resolve, reject, timer });
-        ipcRenderer.send('reels-frame-pipeline-open', { sessionId, requestId });
-    }),
-    sendReelsFramePipeline: (pipelineId, seq, raw) => new Promise((resolve, reject) => {
-        const pipeline = _reelsFramePipelines.get(pipelineId);
-        if (!pipeline) { reject(new Error('帧流水线不存在或已关闭')); return; }
-        pipeline.pending.set(seq, { resolve, reject });
-        try { pipeline.port.postMessage({ type: 'frame', seq, raw }, [raw]); }
-        catch (err) { pipeline.pending.delete(seq); reject(err); }
-    }),
-    closeReelsFramePipeline: (pipelineId) => {
-        const pipeline = _reelsFramePipelines.get(pipelineId);
-        if (!pipeline) return;
-        _reelsFramePipelines.delete(pipelineId);
-        try { pipeline.port.close(); } catch (_) { }
-    },
+    createReelsFramePipeline: (...args) => _reelsFrameBridge.api.createReelsFramePipeline(...args),
+    sendReelsFramePipeline: (...args) => _reelsFrameBridge.api.sendReelsFramePipeline(...args),
+    closeReelsFramePipeline: (...args) => _reelsFrameBridge.api.closeReelsFramePipeline(...args),
     getMediaDuration: (filePath) => {
         if (!filePath || typeof filePath !== 'string') return 0;
         const cleanPath = localMediaUrlToPath(filePath);
@@ -594,6 +551,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return () => ipcRenderer.removeListener('parallel-export-progress', handler);
     },
     isolatedWysiwygExport: (opts) => ipcRenderer.invoke('isolated-wysiwyg-export', opts),
+    showReelsExportError: (payload) => ipcRenderer.invoke('show-reels-export-error', payload),
     cancelIsolatedWysiwygExport: (requestId) => ipcRenderer.send('cancel-isolated-wysiwyg-export', requestId),
     getLatestCrashDiagnostic: () => ipcRenderer.invoke('get-latest-crash-diagnostic'),
     onReelsCrashDiagnostic: (callback) => {

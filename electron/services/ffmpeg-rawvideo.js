@@ -12,6 +12,8 @@
 const { spawn: nativeSpawn, spawnSync, execFileSync } = require('child_process');
 const { formatMediaError, formatProcessStartError } = require('./media-error');
 const { classifyVideoColorProfile } = require('./reels-hdr-preview');
+const { createReelsFrameReceiver } = require('./reels-frame-receiver');
+const { writeEncoderFrame } = require('./encoder-frame-write');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -27,7 +29,7 @@ function _resolveCpuBudgetModulePath() {
 
 function spawn(command, args, options) {
     const proc = nativeSpawn(command, args, { ...options, windowsHide: true });
-    if (process.platform === 'win32' && proc.pid) {
+    if (process.type !== 'utility' && process.platform === 'win32' && proc.pid) {
         proc._cpuBudget = require(_resolveCpuBudgetModulePath()).assign(proc.pid);
         proc._cpuBudget.catch(error => { console.error('[Export CPU budget]', error.message); try { proc.kill(); } catch (_) {} });
     }
@@ -35,6 +37,8 @@ function spawn(command, args, options) {
 }
 
 const sessions = new Map();
+let exportRuntime = {};
+function configureExportRuntime(runtime) { exportRuntime = runtime || {}; }
 const _cachedColorProfiles = new Map();
 const _cachedLibplaceboAvailable = new Map();
 
@@ -1448,55 +1452,13 @@ async function prepareOverlay(opts) {
 // 阶段 2: FFmpeg 编码器会话管理
 // ═══════════════════════════════════════════════════════
 
-let _cachedGPUProbeResults = {};
-
-/**
- * 探测 GPU 编码器是否可用：试编码 3 帧纯色测试帧
- * 如果 GPU 编码器初始化失败（驱动/硬件不支持），快速返回 false
- */
-function _probeGPUEncoder(ffmpegPath, vcodec, encoderArgs, width, height, fps) {
-    // 同一个编码器可能支持基础参数，却不支持某种码率控制模式。
-    // 缓存必须包含完整参数，避免 UI 的轻量探测掩盖正式导出参数不兼容。
-    const probeKey = `${vcodec}\u0000${encoderArgs.join('\u0000')}`;
-    if (_cachedGPUProbeResults[probeKey] !== undefined) {
-        return _cachedGPUProbeResults[probeKey];
-    }
+// Async, cached hardware probe: does not freeze renderer or utility event loop.
+async function _probeGPUEncoder(ffmpegPath, codec, encoderArgs, width, height, fps, options = {}) {
     try {
-        const settings = require('./settings');
-        const testOut = settings.secureTmpFile('gpu_probe', '.mp4');
-        const testArgs = [
-            '-y',
-            '-f', 'rawvideo', '-pix_fmt', 'rgba',
-            '-s', `${width}x${height}`,
-            '-framerate', String(fps),
-            '-i', 'pipe:0',
-            '-an',
-            ...encoderArgs,
-            '-pix_fmt', 'yuv420p',
-            '-frames:v', '3',
-            testOut,
-        ];
-        console.log(`[WYSIWYG] 探测 GPU 编码器 (${vcodec})...`);
-        const testProc = require('child_process').spawnSync(ffmpegPath, testArgs, {
-            input: Buffer.alloc(width * height * 4 * 3), // 3 帧纯黑 RGBA
-            timeout: 15000,
-            stdio: ['pipe', 'ignore', 'pipe'],
-        });
-        // 清理测试文件
-        try { fs.unlinkSync(testOut); } catch (_) { }
-
-        if (testProc.status === 0) {
-            console.log(`[WYSIWYG] GPU 编码器 ${vcodec} 可用 ✓`);
-            _cachedGPUProbeResults[probeKey] = true;
-            return true;
-        } else {
-            const stderr = (testProc.stderr || '').toString().slice(-500);
-            console.warn(`[WYSIWYG] GPU 编码器 ${vcodec} 不可用 (code=${testProc.status}): ${stderr}`);
-            _cachedGPUProbeResults[probeKey] = false;
-            return false;
-        }
-    } catch (e) {
-        console.warn(`[WYSIWYG] GPU 编码器探测异常: ${e.message}`);
+        return await require('./gpu-encoder-probe').probeGPUEncoder(ffmpegPath, codec, encoderArgs, width, height, fps, options);
+    } catch (error) {
+        if (options.signal?.aborted) throw new Error('__CANCELLED__');
+        console.warn('[WYSIWYG] GPU 编码器探测失败:', error.message);
         return false;
     }
 }
@@ -1586,7 +1548,7 @@ async function startSession(opts) {
             maxBitrateMbps
         );
         for (const candidate of gpuCandidates) {
-            if (_probeGPUEncoder(ffmpeg, candidate.codec, candidate.args, width, height, fps)) {
+            if (await _probeGPUEncoder(ffmpeg, candidate.codec, candidate.args, width, height, fps, { signal: opts.signal })) {
                 encoderArgs = candidate.args;
                 const bitrate = h264RateControlArgs(crf, targetBitrateMbps, maxBitrateMbps)[1];
                 console.log(`[WYSIWYG] 使用 GPU 编码 (${candidate.label}, 目标码率 ${bitrate})`);
@@ -1851,7 +1813,9 @@ async function writeFrame(sessionId, rawData) {
         let buf;
         if (Buffer.isBuffer(rawData)) {
             buf = rawData;
-        } else if (rawData instanceof ArrayBuffer || ArrayBuffer.isView(rawData)) {
+        } else if (ArrayBuffer.isView(rawData)) {
+            buf = Buffer.from(rawData.buffer, rawData.byteOffset, rawData.byteLength);
+        } else if (rawData instanceof ArrayBuffer || Object.prototype.toString.call(rawData) === '[object ArrayBuffer]') {
             buf = Buffer.from(rawData);
         } else if (rawData && rawData.type === 'Buffer' && Array.isArray(rawData.data)) {
             buf = Buffer.from(rawData.data);
@@ -1888,15 +1852,10 @@ async function writeFrame(sessionId, rawData) {
             };
         }
 
-        const written = session.proc.stdin.write(buf);
+        // ACK only after the encoder's write callback AND any required drain.
+        await writeEncoderFrame(session, buf);
         session.frameCount++;
         session.bytesWritten += buf.length;
-        if (!written) {
-            await new Promise((r) => {
-                session.proc.stdin.once('drain', r);
-                setTimeout(r, 5000);
-            });
-        }
 
         // 写入后检查 FFmpeg 是否还活着（尤其是前几帧，编码器可能延迟初始化失败）
         if (session.frameCount <= 5) {
@@ -1931,46 +1890,29 @@ async function writeFrame(sessionId, rawData) {
 
 // 持久帧通道：避免每一帧都走一次 ipcRenderer.invoke 的往返等待。
 // Canvas 像素仍由同一个 FFmpeg/rawvideo 编码器处理，因而不会改变画面效果。
-function attachFramePipeline(sessionId, port) {
+function attachFramePipeline(sessionId, port, options = {}) {
     const session = sessions.get(sessionId);
-    if (!session || session.closed || !port) {
-        return { ok: false, error: '编码会话无效，无法建立帧流水线' };
-    }
-    if (session.framePipeline) {
-        try { session.framePipeline.port.close(); } catch (_) { }
-    }
-    const pipeline = { port, pending: Promise.resolve(), failed: null, closed: false, expectedSeq: 0 };
-    session.framePipeline = pipeline;
-    port.on('message', (event) => {
-        const data = event && event.data ? event.data : event;
-        if (!data || data.type !== 'frame' || pipeline.closed) return;
-        pipeline.pending = pipeline.pending.then(async () => {
-            if (!pipeline.failed && (!Number.isInteger(data.seq) || data.seq !== pipeline.expectedSeq)) {
-                pipeline.failed = `帧序号不连续：收到 ${data.seq}，期望 ${pipeline.expectedSeq}`;
-            }
-            if (!pipeline.failed) {
-                pipeline.expectedSeq++;
-                const result = await writeFrame(sessionId, data.raw);
-                if (!result || !result.ok) pipeline.failed = (result && result.error) || '帧流水线写入失败';
-            }
-            try {
-                port.postMessage({ type: 'ack', seq: data.seq, ok: !pipeline.failed, error: pipeline.failed || '' });
-            } catch (_) { }
-        }).catch((err) => {
-            pipeline.failed = err.message || '帧流水线异常';
-            try { port.postMessage({ type: 'ack', seq: data.seq, ok: false, error: pipeline.failed }); } catch (_) { }
-        });
+    if (!session || session.closed || !port) return { ok: false, error: '编码会话无效，无法建立帧流水线' };
+    if (session.framePipeline) return { ok: false, error: '编码会话已有帧流水线' };
+    const pipeline = createReelsFrameReceiver({
+        port, sessionId, frameBytes: session.width * session.height * 4,
+        writeFrame: raw => options.executeFrame ? options.executeFrame(() => writeFrame(sessionId, raw)) : writeFrame(sessionId, raw),
+        trace: message => console.log('[ReelsFrame] ' + message),
+        onFailure: error => {
+            try { options.onFailure?.(error); }
+            finally { abortSession(sessionId); }
+        },
     });
-    try { port.start(); } catch (_) { }
+    if (pipeline.failed) return { ok: false, error: pipeline.failed };
+    session.framePipeline = pipeline;
     return { ok: true };
 }
 
 async function flushFramePipeline(session) {
-    if (!session || !session.framePipeline) return;
-    await session.framePipeline.pending;
+    if (!session?.framePipeline) return;
     const pipeline = session.framePipeline;
-    pipeline.closed = true;
-    try { pipeline.port.close(); } catch (_) { }
+    await pipeline.pending;
+    pipeline.dispose();
     session.framePipeline = null;
     if (pipeline.failed) throw new Error(pipeline.failed);
 }
@@ -2240,7 +2182,7 @@ async function mixAudio(session) {
 
     if (targetPathToRender) {
         try {
-            const wavResult = await renderChromiumAudioWav({
+            const wavResult = await (exportRuntime.renderAudio || renderChromiumAudioWav)({
                 filePath: targetPathToRender,
                 reverbEnabled: session.reverbEnabled,
                 reverbPreset: session.reverbPreset,
@@ -2586,8 +2528,7 @@ function abortSession(sessionId) {
     if (!session) return;
     session.closed = true;
     if (session.framePipeline) {
-        session.framePipeline.closed = true;
-        try { session.framePipeline.port.close(); } catch (_) { }
+        session.framePipeline.dispose?.();
         session.framePipeline = null;
     }
     try { session.proc.stdin.destroy(); } catch (_) { }
@@ -2986,7 +2927,7 @@ async function handleWysiwygIPC(action, data) {
             const ffmpeg = findFFmpeg();
             const platform = process.platform;
             if (platform === 'darwin') {
-                const ok = _probeGPUEncoder(ffmpeg, 'h264_videotoolbox', ['-c:v', 'h264_videotoolbox', '-b:v', '1M'], 256, 256, 30);
+                const ok = await _probeGPUEncoder(ffmpeg, 'h264_videotoolbox', ['-c:v', 'h264_videotoolbox', '-b:v', '1M'], 256, 256, 30);
                 let chipName = 'Apple VT';
                 try {
                     const cpuModel = require('os').cpus()[0].model;
@@ -2996,9 +2937,9 @@ async function handleWysiwygIPC(action, data) {
                 } catch(e) {}
                 return { available: ok, name: ok ? chipName : 'CPU' };
             } else if (platform === 'win32') {
-                if (_probeGPUEncoder(ffmpeg, 'h264_nvenc', ['-c:v', 'h264_nvenc', '-b:v', '1M'], 256, 256, 30)) return { available: true, name: 'Nvidia NVENC' };
-                if (_probeGPUEncoder(ffmpeg, 'h264_amf', ['-c:v', 'h264_amf'], 256, 256, 30)) return { available: true, name: 'AMD AMF' };
-                if (_probeGPUEncoder(ffmpeg, 'h264_qsv', ['-c:v', 'h264_qsv'], 256, 256, 30)) return { available: true, name: 'Intel QSV' };
+                if (await _probeGPUEncoder(ffmpeg, 'h264_nvenc', ['-c:v', 'h264_nvenc', '-b:v', '1M'], 256, 256, 30)) return { available: true, name: 'Nvidia NVENC' };
+                if (await _probeGPUEncoder(ffmpeg, 'h264_amf', ['-c:v', 'h264_amf'], 256, 256, 30)) return { available: true, name: 'AMD AMF' };
+                if (await _probeGPUEncoder(ffmpeg, 'h264_qsv', ['-c:v', 'h264_qsv'], 256, 256, 30)) return { available: true, name: 'Intel QSV' };
                 return { available: false, name: 'CPU' };
             }
             return { available: false, name: 'CPU' };
@@ -3128,11 +3069,13 @@ async function renderChromiumAudioWav(opts) {
 }
 
 module.exports = {
+    configureExportRuntime,
     handleWysiwygIPC,
     attachFramePipeline,
     renderChromiumAudioWav,
     parallelExport,
     _test: {
+        activeSessionCount: () => sessions.size,
         stableJpegEncoderArgs,
         h264RateControlArgs,
         cpuH264EncoderArgs,

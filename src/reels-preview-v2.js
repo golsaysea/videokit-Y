@@ -1846,7 +1846,10 @@
                 delete ov._scrollBodyFirstLineY;
                 delete ov._scrollBodyCurX;
                 if (ov.disabled || time < numberOr(ov.start, 0)) continue;
-                const measured = { ...ov, _exporting: false };
+                const measured = { ...(window.ReelsScrollTiming?.renderingOverlay(ov, task, {
+                    bodyDuration: Math.max(0, computeDuration() - getTimelineOffset(task)),
+                    mediaDurations: window._reelsState?._mediaDurations || {},
+                }) || ov), _exporting: false };
                 try {
                     window.ReelsOverlay.drawOverlay(measureCtx, measured, time, w, h);
                     ov._scrollBodyFirstLineY = measured._scrollBodyFirstLineY;
@@ -1865,7 +1868,11 @@
                 try {
                     // Preview must never inherit a stale/concurrent export marker,
                     // otherwise ReelsOverlay intentionally suppresses guide boxes.
-                    const previewOv = { ...ov, _allOverlays: allEnabled, _taskSegments: task.segments, _exporting: false };
+                    const effective = window.ReelsScrollTiming?.renderingOverlay(ov, task, {
+                        bodyDuration: Math.max(0, computeDuration() - getTimelineOffset(task)),
+                        mediaDurations: window._reelsState?._mediaDurations || {},
+                    }) || ov;
+                    const previewOv = { ...effective, _allOverlays: allEnabled, _taskSegments: task.segments, _exporting: false };
                     window.ReelsOverlay.drawOverlay(ctx, previewOv, time, w, h);
                     // Keep computed bounds available to hit-testing/property UI.
                     for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX']) {
@@ -2169,7 +2176,7 @@
         if (segs.length === 0) return null;
         const active = segs.find(seg => time >= numberOr(seg.start, 0) && time <= numberOr(seg.end, 0));
         if (active) return active;
-        if (!(style && (style.scrolling_mode || style.fullpage_typewriter))) return null;
+        if (!(style && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke'))) return null;
 
         // 滚动/打字机模式在句间空隙保留最近一个已开始的片段。
         let nearest = segs[0];

@@ -19,6 +19,30 @@ function _tplEscapeHtml(value) {
     }[ch]));
 }
 
+let _tplSearchTerm = '';
+let _tplSearchTimer = null;
+function _templateMatchesSearch(template, query) {
+    const tokens = String(query || '').trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    if (!tokens.length) return true;
+    const searchable = [template?.name, template?.templateType, template?.id].map(value => String(value ?? '').toLocaleLowerCase()).join(' ');
+    return tokens.every(token => searchable.includes(token));
+}
+function _templateSearchChanged(value) {
+    _tplSearchTerm = String(value || '');
+    const clear = document.getElementById('tpl-search-clear');
+    if (clear) clear.style.display = _tplSearchTerm ? '' : 'none';
+    clearTimeout(_tplSearchTimer);
+    _tplSearchTimer = setTimeout(() => _refreshTemplateList(), 180);
+}
+function _clearTemplateSearch() {
+    _tplSearchTerm = '';
+    clearTimeout(_tplSearchTimer);
+    const input = document.getElementById('tpl-search-input');
+    if (input) { input.value = ''; input.focus(); }
+    const clear = document.getElementById('tpl-search-clear');
+    if (clear) clear.style.display = 'none';
+    _refreshTemplateList();
+}
 let _tplFolderId = '';
 let _tplFolderData = {folders:[],assignments:{}};
 
@@ -119,6 +143,14 @@ function openTemplateLibrary(onSelectCallback = null, opts = {}) {
                     <button id="tpl-library-close" aria-label="关闭模板库" onclick="document.getElementById('template-library-modal').style.display='none'" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px 8px;position:absolute;right:12px;top:12px;">✕</button>
                 </div>
             </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.06);">
+                <div style="position:relative;flex:1 1 260px;max-width:530px;min-width:180px;">
+                    <span aria-hidden="true" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:15px;">⌕</span>
+                    <input id="tpl-search-input" type="search" autocomplete="off" aria-label="搜索视频模板" placeholder="搜索模板名称或关键词（支持跨文件夹）" oninput="_templateSearchChanged(this.value)" onkeydown="if(event.key==='Escape'){event.stopPropagation();_clearTemplateSearch();}" style="box-sizing:border-box;width:100%;padding:9px 37px 9px 36px;background:#111827;color:#f8fafc;border:1px solid #475569;border-radius:9px;outline:none;font-size:13px;" />
+                    <button id="tpl-search-clear" onclick="_clearTemplateSearch()" title="清空搜索" aria-label="清空模板搜索" style="display:none;position:absolute;right:9px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:18px;">×</button>
+                </div>
+                <span id="tpl-search-result" aria-live="polite" style="font-size:12px;color:#94a3b8;white-space:nowrap;"></span>
+            </div>
             <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:#bbb;">
                 <button id="tpl-folder-home" onclick="_openTemplateFolder('')" title="点击返回主模板库，或将模板拖到这里移出文件夹" style="background:#ffffff08;border:1px dashed #ffffff35;border-radius:7px;padding:6px 10px;color:#cbd5e1;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">${_templateHomeIcon()}<span>主模板库</span></button>
                 <span id="tpl-folder-path" style="margin-right:auto;color:#ddd;"></span>
@@ -163,8 +195,12 @@ async function _refreshTemplateList() {
         const allTemplates = _sortTemplateSummaries(parsed.data || parsed || []);
         _tplFolderData = await _templateFolderRequest('list');
         if (_tplFolderId && !_tplFolderData.folders.some(f=>f.id===_tplFolderId)) _tplFolderId='';
-        const templates = allTemplates.filter(t=>(_tplFolderData.assignments[t.id] || '')===_tplFolderId);
-        const folders = _tplFolderId ? [] : _sortTemplateSummaries(_tplFolderData.folders.map(folder=>({...folder,templateType:'文件夹',sizeBytes:allTemplates.filter(t=>_tplFolderData.assignments[t.id]===folder.id).reduce((n,t)=>n+(t.sizeBytes||0),0)})));
+        const query = _tplSearchTerm.trim();
+        const searching = !!query;
+        const templates = searching
+            ? allTemplates.filter(t => _templateMatchesSearch(t, query))
+            : allTemplates.filter(t => (_tplFolderData.assignments[t.id] || '') === _tplFolderId);
+        const folders = searching || _tplFolderId ? [] : _sortTemplateSummaries(_tplFolderData.folders.map(folder=>({...folder,templateType:'文件夹',sizeBytes:allTemplates.filter(t=>_tplFolderData.assignments[t.id]===folder.id).reduce((n,t)=>n+(t.sizeBytes||0),0)})));
         const currentFolder=_tplFolderData.folders.find(f=>f.id===_tplFolderId);
         document.getElementById('tpl-folder-path').textContent=currentFolder ? ' / '+currentFolder.name : '';
         document.getElementById('tpl-move-to-root').style.display=currentFolder?'':'none';
@@ -176,13 +212,21 @@ async function _refreshTemplateList() {
         const availableIds = new Set(allTemplates.map(tpl => String(tpl.id)));
         [...modal._selectedTemplateIds].forEach(id => { if (!availableIds.has(String(id))) modal._selectedTemplateIds.delete(id); });
 
-        badge.textContent = `${_tplFolderId ? templates.length : allTemplates.length} 个模板`;
+        badge.textContent = searching
+            ? `找到 ${templates.length} / ${allTemplates.length} 个模板`
+            : `${_tplFolderId ? templates.length : allTemplates.length} 个模板`;
+        const searchStatus = document.getElementById('tpl-search-result');
+        if (searchStatus) searchStatus.textContent = searching ? `全库搜索 · ${templates.length} 个结果` : '';
+        const searchInput = document.getElementById('tpl-search-input');
+        if (searchInput && searchInput.value !== _tplSearchTerm) searchInput.value = _tplSearchTerm;
+        const searchClear = document.getElementById('tpl-search-clear');
+        if (searchClear) searchClear.style.display = searching ? '' : 'none';
 
         // Also update title in case mode changed via display='flex'
         const titleEl = document.getElementById('tpl-lib-title');
         if (titleEl) titleEl.textContent = isPicker ? '选择视频模板' : '视频模板库';
 
-        if (templates.length === 0 && folders.length === 0 && !_tplFolderId) {
+        if (!searching && templates.length === 0 && folders.length === 0 && !_tplFolderId) {
             container.innerHTML = `
                 <div style="text-align:center;padding:80px 0;color:#555;">
                     <div style="font-size:48px;margin-bottom:16px;opacity:0.4;">📂</div>
@@ -190,6 +234,12 @@ async function _refreshTemplateList() {
                     ${isPicker ? '' : '<p style="font-size:12px;color:#444;margin-top:6px;">点击上方「保存当前工程为模板」开始</p>'}
                 </div>
             `;
+            return;
+        }
+
+        if (searching && templates.length === 0) {
+            container.innerHTML = `<div style="padding:65px 20px;text-align:center;color:#94a3b8;"><div style="font-size:30px;margin-bottom:12px;">⌕</div><div>没有找到匹配的模板</div><div style="font-size:12px;margin-top:10px;">尝试缩短关键词，或清空搜索查看全部模板</div><button onclick="_clearTemplateSearch()" style="margin-top:18px;padding:8px 16px;background:#334155;color:#fff;border:0;border-radius:8px;cursor:pointer;">清空搜索</button></div>`;
+            _updateTemplatePresetSelectionUI();
             return;
         }
 
@@ -237,9 +287,9 @@ async function _refreshTemplateList() {
             `;
         }
         html += '</div>';
-        const savedScroll=container._tplRenderedFolder===_tplFolderId?container.scrollTop:0;
+        const savedScroll=container._tplRenderedFolder===_tplFolderId && container._tplRenderedSearch===query ? container.scrollTop : 0;
         container.innerHTML = html;
-        if(!_tplFolderId&&(localStorage.getItem('videokit_template_sort')||'manual')==='manual'&&Array.isArray(_tplFolderData.libraryOrder)){
+        if(!searching && !_tplFolderId&&(localStorage.getItem('videokit_template_sort')||'manual')==='manual'&&Array.isArray(_tplFolderData.libraryOrder)){
             const grid=container.querySelector('#tpl-card-grid'),rank=new Map(_tplFolderData.libraryOrder.map((id,i)=>[id,i]));
             if(grid)Array.from(grid.children).sort((a,b)=>(rank.get(_templateLibraryItemKey(a))??-1)-(rank.get(_templateLibraryItemKey(b))??-1)).forEach(card=>grid.appendChild(card));
         }
@@ -315,12 +365,13 @@ async function _refreshTemplateList() {
             });
         });
 
-        _initTemplateReordering(container);
+        if (!searching) _initTemplateReordering(container);
         _initTemplateMarquee(container);
         _bindTemplateMixedGridLayout(container);
         _paintTemplateSelection();
         _updateTemplatePresetSelectionUI();
         container._tplRenderedFolder=_tplFolderId;
+        container._tplRenderedSearch=query;
         container.scrollTop=savedScroll;
 
     } catch (e) {
@@ -338,7 +389,10 @@ function _updateTemplatePresetSelectionUI() {
     const allButton = document.getElementById('tpl-select-all-btn');
     const saveButton = document.getElementById('tpl-save-selected-presets-btn');
     if (label) label.textContent = count ? `已选 ${count} / ${total}` : '未选择';
-    if (allButton) allButton.textContent = total && count === total ? '☐ 取消全选' : '☑ 全选模板';
+    if (allButton) {
+        const visibleIds = (modal._templateSummaries || []).map(tpl => String(tpl.id));
+        allButton.textContent = visibleIds.length && visibleIds.every(id => selected.has(id)) ? '☐ 取消全选' : '☑ 全选模板';
+    }
     if (saveButton) {
         saveButton.disabled = count === 0;
         saveButton.style.opacity = count ? '1' : '.48';
@@ -351,9 +405,10 @@ function tplSelectAllTemplates() {
     if (!modal || modal._onSelectCallback) return;
     const templates = modal._templateSummaries || [];
     const selected = modal._selectedTemplateIds || (modal._selectedTemplateIds = new Set());
-    const selectAll = selected.size !== templates.length;
-    selected.clear();
-    if (selectAll) templates.forEach(tpl => selected.add(String(tpl.id)));
+    const visibleIds = new Set(templates.map(tpl => String(tpl.id)));
+    const allVisibleSelected = visibleIds.size > 0 && [...visibleIds].every(id => selected.has(id));
+    if (allVisibleSelected) visibleIds.forEach(id => selected.delete(id));
+    else visibleIds.forEach(id => selected.add(id));
     _paintTemplateSelection();
     _updateTemplatePresetSelectionUI();
 }

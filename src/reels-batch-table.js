@@ -631,6 +631,111 @@ function _removeTab(tabId) {
     _batchAutoSave({ skipSync: true });
 }
 
+function _isBatchTaskCompletelyEmpty(t) {
+    if (!t || typeof t !== 'object') return true;
+    const hasBg = !!(
+        t.bgPath ||
+        t.bgFile ||
+        (Array.isArray(t.bgSegments) && t.bgSegments.some(s => s && (s.path || s.file))) ||
+        (Array.isArray(t.bgRandomPool) && t.bgRandomPool.some(s => s && (typeof s === 'string' ? s : (s.path || s.file)))) ||
+        t.hookVideoPath ||
+        t.hookVideoFile
+    );
+    if (hasBg) return false;
+    const hasAudio = !!(t.audioPath || t.audioFile);
+    if (hasAudio) return false;
+    const hasSrt = !!(t.srtPath || t.srtFile || (Array.isArray(t.segments) && t.segments.length > 0));
+    if (hasSrt) return false;
+    const hasText = !!(
+        String(t.txtContent || '').trim() ||
+        String(t.ttsText || '').trim() ||
+        String(t.aiOrigScript || '').trim()
+    );
+    if (hasText) return false;
+    const hasOverlayText = Array.isArray(t.overlays) && t.overlays.some(ov =>
+        ov && (
+            String(ov.title_text || '').trim() ||
+            String(ov.body_text || '').trim() ||
+            String(ov.footer_text || '').trim() ||
+            String(ov.text || '').trim()
+        )
+    );
+    if (hasOverlayText) return false;
+    return true;
+}
+
+function _isBatchTabEmpty(tab) {
+    if (!tab || !Array.isArray(tab.tasks) || tab.tasks.length === 0) return true;
+    return tab.tasks.every(_isBatchTaskCompletelyEmpty);
+}
+
+function _cleanEmptyTabs(opts = {}) {
+    if (!_isRenderingBatchTable) {
+        try { _applyBatchTableChanges(); } catch (e) { console.warn('[CleanEmptyTabs] apply changes failed:', e); }
+    }
+    _syncTasksToActiveTab();
+
+    const tabs = _batchTableState.tabs || [];
+    if (tabs.length <= 1) {
+        if (typeof showToast === 'function') showToast('至少保留一个标签页，无需清理', 'info');
+        else alert('至少保留一个标签页，无需清理');
+        return 0;
+    }
+
+    const emptyTabs = tabs.filter(t => _isBatchTabEmpty(t));
+    if (emptyTabs.length === 0) {
+        if (typeof showToast === 'function') showToast('✨ 当前没有空标签页需要清理', 'info');
+        else alert('当前没有空标签页需要清理');
+        return 0;
+    }
+
+    // 如果所有标签页都是空的，至少保留第一个标签页
+    const toRemove = emptyTabs.length >= tabs.length ? emptyTabs.slice(1) : emptyTabs;
+    if (toRemove.length === 0) {
+        if (typeof showToast === 'function') showToast('至少保留一个标签页，无需清理', 'info');
+        return 0;
+    }
+
+    const previewNames = toRemove.slice(0, 8).map(t => `「${t.name}」`).join('、') + (toRemove.length > 8 ? ` 等 ${toRemove.length} 个` : '');
+    if (!opts.skipConfirm) {
+        if (!confirm(`检测到 ${toRemove.length} 个空标签页：${previewNames}\n\n确定一键清理这 ${toRemove.length} 个空标签页吗？`)) {
+            return 0;
+        }
+    }
+
+    const removeSet = new Set(toRemove.map(t => t.id));
+    _batchTableState.tabs = _batchTableState.tabs.filter(t => !removeSet.has(t.id));
+
+    if (Array.isArray(_batchTableState.appliedTabIds)) {
+        _batchTableState.appliedTabIds = _batchTableState.appliedTabIds.filter(id => !removeSet.has(id));
+    }
+    if (_batchTableState.editSessionSnapshot) {
+        const snap = _batchTableState.editSessionSnapshot;
+        if (Array.isArray(snap.tabs)) snap.tabs = snap.tabs.filter(t => !removeSet.has(t.id));
+        if (Array.isArray(snap.appliedTabIds)) snap.appliedTabIds = snap.appliedTabIds.filter(id => !removeSet.has(id));
+        if (Array.isArray(snap.tasks)) snap.tasks = snap.tasks.filter(t => !removeSet.has(t?._batchTabId));
+        if (removeSet.has(snap.activeTabId)) snap.activeTabId = _batchTableState.tabs[0]?.id || '';
+    }
+    if (_batchTableState.openedGroupedProjection) {
+        const opened = _batchTableState.openedGroupedProjection;
+        if (Array.isArray(opened.appliedTabIds)) opened.appliedTabIds = opened.appliedTabIds.filter(id => !removeSet.has(id));
+        if (Array.isArray(opened.knownTabIds)) opened.knownTabIds = opened.knownTabIds.filter(id => !removeSet.has(id));
+        if (Array.isArray(opened.tasks)) opened.tasks = opened.tasks.filter(t => !removeSet.has(t?._batchTabId));
+    }
+    if (removeSet.has(_batchTableState.activeTabId) || !_batchTableState.tabs.some(t => t.id === _batchTableState.activeTabId)) {
+        _batchTableState.activeTabId = _batchTableState.tabs[0]?.id || '';
+        _loadTabTasks(_getActiveTab());
+    }
+    _skipNextApply = true;
+    _renderBatchTable();
+    _batchAutoSave({ skipSync: true });
+    if (typeof showToast === 'function') {
+        showToast(`🧹 已一键清理 ${toRemove.length} 个空标签页`, 'success');
+    }
+    return toRemove.length;
+}
+window.reelsCleanEmptyBatchTabs = _cleanEmptyTabs;
+
 async function _renameTab(tabId) {
     const tab = _batchTableState.tabs.find(t => t.id === tabId);
     if (!tab) return;
@@ -666,9 +771,10 @@ function _showMergeTabsModal() {
                 <button id="mt-close" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>
             </div>
             <p style="font-size:12px;color:#888;margin:0 0 12px;">选择要合并的标签页，它们的任务会被合并到当前激活标签中用于渲染输出。</p>
-            <div style="margin-bottom:12px;display:flex;gap:8px;">
+            <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
                 <button id="mt-select-all" style="padding:4px 12px;font-size:11px;background:rgba(123,139,239,0.15);border:1px solid rgba(123,139,239,0.3);color:#7b8bef;border-radius:4px;cursor:pointer;">全选</button>
                 <button id="mt-deselect-all" style="padding:4px 12px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;border-radius:4px;cursor:pointer;">全不选</button>
+                <button id="mt-clean-empty" style="padding:4px 12px;font-size:11px;background:rgba(245,158,11,0.18);border:1px solid rgba(251,191,36,0.45);color:#fcd34d;border-radius:4px;cursor:pointer;font-weight:600;" title="一键清理所有没有任务的空标签页">🧹 一键清理空标签</button>
                 <span style="flex:1;"></span>
                 <span style="font-size:11px;color:#666;">共 ${tabs.length} 个标签 / ${totalTasks} 条任务</span>
             </div>
@@ -706,6 +812,15 @@ function _showMergeTabsModal() {
     };
     ov.querySelector('#mt-deselect-all').onclick = () => {
         ov.querySelectorAll('.mt-tab-cb').forEach(cb => cb.checked = false);
+    };
+    ov.querySelector('#mt-clean-empty').onclick = () => {
+        const cleaned = _cleanEmptyTabs();
+        if (cleaned > 0) {
+            close();
+            if ((_batchTableState.tabs?.length || 0) > 1) {
+                _showMergeTabsModal();
+            }
+        }
     };
 
     ov.querySelector('#mt-apply').onclick = () => {
@@ -1345,6 +1460,7 @@ function _renderBatchTable() {
                 <div class="rbt-tabs-scroll">
                     ${tabsHtml}
                     <div class="rbt-tab rbt-tab-add" title="新建标签页">＋</div>
+                    <div class="rbt-tab rbt-tab-clean-empty" id="rbt-clean-empty-tabs-btn" title="一键清理所有没有任务的空标签页（至少保留一个标签页）" style="color:#fcd34d;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(251,191,36,0.4);background:rgba(245,158,11,0.16);font-weight:600;">🧹 一键清理空标签</div>
                     <div class="rbt-tab rbt-tab-clear-all" title="清空删除所有标签页" style="color:#f66;font-size:11px;margin-left:4px;">🗑 清空</div>
                     <div class="rbt-tab rbt-tab-merge" id="rbt-merge-tabs-btn" title="将多个标签页的任务合并到当前渲染队列" style="color:#7b8bef;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(123,139,239,0.3);background:rgba(123,139,239,0.1);">📋 应用标签页</div>
                 </div>
@@ -1443,6 +1559,7 @@ function _renderBatchTable() {
                         <span class="rbt-batch-subgroup">工程管理</span>
                         <button class="rbt-btn" id="rbt-add-row-btn" style="padding:2px 8px;font-size:11px;background:rgba(40,80,40,0.6);border:1px solid rgba(80,180,80,0.3);color:#a0e0b0;">添加行</button>
                         <button class="rbt-btn" id="rbt-clean-empty-btn" style="padding:2px 8px;font-size:11px;background:rgba(245,158,11,0.18);border:1px solid rgba(251,191,36,0.45);color:#fcd34d;font-weight:600;" title="一键清理没有视频/图片素材(BG)的空行">🧹 一键清理空行</button>
+                        <button class="rbt-btn" id="rbt-clean-empty-tabs-bar-btn" style="padding:2px 8px;font-size:11px;background:rgba(245,158,11,0.18);border:1px solid rgba(251,191,36,0.45);color:#fcd34d;font-weight:600;" title="一键清理所有没有任务的空标签页（至少保留一个标签页）">🧹 一键清理空标签</button>
                         <button class="rbt-btn" id="rbt-clear-btn" style="padding:2px 8px;font-size:11px;background:rgba(120,40,40,0.6);border:1px solid rgba(220,80,80,0.3);color:#f48484;" title="清空全部">清空</button>
                         <span style="color:rgba(255,255,255,0.2);margin:0 2px;">|</span>
                         <button class="rbt-btn rbt-btn-primary" id="rbt-save-queue-btn">保存队列</button>
@@ -3240,6 +3357,11 @@ function _bindBatchTableEvents() {
                 _renderBatchTable();
                 return;
             }
+            // ★ 一键清理空标签页
+            if (e.target.closest('.rbt-tab-clean-empty')) {
+                _cleanEmptyTabs();
+                return;
+            }
             // ★ 应用标签页 → 合并到当前任务列表
             if (e.target.closest('.rbt-tab-merge')) {
                 _showMergeTabsModal();
@@ -3767,6 +3889,7 @@ function _bindBatchTableEvents() {
     });
     container.querySelector('#rbt-clean-empty-btn')?.addEventListener('click', () => _rbtCleanIncompleteRows());
     container.querySelector('#rbt-clean-empty-bar-btn')?.addEventListener('click', () => _rbtCleanIncompleteRows());
+    container.querySelector('#rbt-clean-empty-tabs-bar-btn')?.addEventListener('click', () => _cleanEmptyTabs());
 
     // ══ Batch template apply ══
     container.querySelector('#rbt-apply-batch-sub')?.addEventListener('click', () => {

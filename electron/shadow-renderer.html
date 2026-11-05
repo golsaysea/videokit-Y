@@ -17,11 +17,19 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL, fileURLToPath } = require('url');
 
+const _shadowBridge = require('./services/reels-frame-bridge').createReelsFrameBridge(ipcRenderer, { prefix: 'shadow' });
+window.addEventListener('beforeunload', () => _shadowBridge.dispose());
 window.electronAPI = {
     toFileUrl,
     scanFonts: () => ipcRenderer.invoke('scan-fonts'),
     fetchGoogleFonts: () => ipcRenderer.invoke('fetch-google-fonts'),
+    reelsComposeWysiwyg: (action, data) => ipcRenderer.invoke('reels-compose-wysiwyg', action, data),
+    ..._shadowBridge.api,
 };
+// Electron shadow windows load from electron/, with sibling src/ in dev and dist/ in ASAR.
+const _frameProducerPath = ['dist', 'src'].map(dir => path.join(__dirname, '..', dir, 'reels-frame-pipeline.js')).find(file => fs.existsSync(file));
+if (!_frameProducerPath) throw new Error('找不到 Reels ACK 帧发送模块');
+require(_frameProducerPath);
 
 // ═══ 基础工具函数 ═══
 
@@ -283,6 +291,7 @@ ipcRenderer.on('render-chunk', async (event, config) => {
         const sessionId = await ipcRenderer.invoke('reels-compose-wysiwyg', 'start', sessionParams);
         if (!sessionId) throw new Error('FFmpeg 启动失败');
         log(`FFmpeg 会话: ${sessionId}`);
+        const framePipeline = window.ReelsFramePipeline.create(sessionId, 3);
 
         // 背景绘制辅助
         const _drawBgSrc = (src, tw, th, scale, offsetX = 0, offsetY = 0, rotation = 0) => {
@@ -425,15 +434,7 @@ ipcRenderer.on('render-chunk', async (event, config) => {
 
             // ── Canvas → RGBA → FFmpeg ──
             const rawBuf = _canvasToRawRGBA(canvas);
-            const frameResult = await ipcRenderer.invoke('reels-compose-wysiwyg', 'frame', {
-                sessionId,
-                raw: rawBuf,
-            });
-            const frameOk = frameResult === true || (frameResult && frameResult.ok);
-            if (!frameOk) {
-                const errMsg = (frameResult && frameResult.error) || '未知编码错误';
-                throw new Error(`FFmpeg 写入帧失败 (frame ${frameIdx}): ${errMsg}`);
-            }
+            await framePipeline.send(rawBuf);
 
             // ── 进度报告 ──
             const localIdx = frameIdx - startFrame;
@@ -444,6 +445,8 @@ ipcRenderer.on('render-chunk', async (event, config) => {
                 ipcRenderer.send('chunk-progress', { chunkId, pct, fpsActual });
             }
         }
+
+        await framePipeline.drain();
 
         // 8. 完成编码（纯视频，不混合音频）
         log('完成编码...');

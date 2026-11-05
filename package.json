@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.5.1",
+  "version": "4.5.2",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -46,6 +46,7 @@
   "build": {
     "appId": "com.timcode.videokit",
     "productName": "VideoKit",
+    "afterPack": "scripts/verify-packaged-runtime.cjs",
     "npmRebuild": true,
     "publish": [
       {

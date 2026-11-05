@@ -320,6 +320,26 @@ const REELS_ANIMATION_PRESETS = {
         text_transform: 'none',
         uppercase: false,
     },
+    underline_sweep: {
+        label: 'Underline Sweep · 底线扫描显字',
+        anim_in_type: 'underline_sweep',
+        anim_in_duration: 0.46,
+        anim_out_type: 'fade',
+        anim_out_duration: 0.14,
+    },
+    three_word_focus_stack: {
+        label: 'Three-Word Hero Stack · 三词叠排(中词放大)',
+        anim_in_type: 'three_word_focus_stack',
+        anim_in_duration: 0.09,
+        anim_out_type: 'none',
+        anim_out_duration: 0,
+        three_word_hero_scale: 1.92,
+        karaoke_highlight: true,
+        highlight_enabled: true,
+        hide_until_spoken: true,
+        color_text: '#FFFFFF',
+        color_high: '#1CEBFF',
+    },
 };
 
 let _reelsHotkeyBound = false;
@@ -4268,7 +4288,7 @@ function _reelsUpdatePreviewInternal() {
         const s = segs.find(s => audioCycleTime >= s.start && audioCycleTime <= s.end);
         if (s) {
             activeSegment = s;
-        } else if ((style.scrolling_mode || style.fullpage_typewriter) && segs.length > 0) {
+        } else if ((style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segs.length > 0) {
             // Scrolling/typewriter mode: find nearest segment so lines stay visible between gaps
             let best = segs[0];
             for (let i = 1; i < segs.length; i++) {
@@ -4345,7 +4365,13 @@ function _reelsUpdatePreviewInternal() {
                     });
                 }
 
-                ReelsOverlay.drawOverlay(ctx, ov, ovTime, w, h);
+                const offset = (_reelsState.hookDuration || 0) + (_selectedTask?.cover?.enabled ? (Number(_selectedTask.cover.duration) || .01) : 0);
+                const bodyDuration = Math.max(0, _getPreviewDuration() - offset);
+                const renderOv = window.ReelsScrollTiming?.renderingOverlay(ov, _selectedTask, {
+                    bodyDuration, mediaDurations: _reelsState._mediaDurations,
+                }) || ov;
+                if (_reelsState._scrollPreviewEnd && ov.type === 'scroll') ovTime = Number(renderOv.end) || ovTime;
+                ReelsOverlay.drawOverlay(ctx, renderOv, ovTime, w, h);
             }
         }
         // ── 选中框 + 拖拽手柄 ──
@@ -5855,9 +5881,11 @@ function _toPlayablePath(filePath, srcUrl = null) {
         if (!filePath || !_reelsFileExists(filePath)) return '';
         url = window.electronAPI?.toFileUrl?.(filePath) || _normalizeWatermarkPath(filePath);
     }
-    // Only Reels playback requests use SDR proxies. Export keeps the source path.
-    if (url.startsWith('local-media://') && /\.(mp4|mov|m4v|mkv|webm|avi|ts|mts|m2ts|3gp)(?:[?#]|$)/i.test(url)) {
-        url = url.split('?')[0].split('#')[0] + '?reelsPreview=sdr-v2';
+    // Historical preview query must not trigger proxy conversion; preserve other URL parts.
+    if (url.startsWith('local-media://') && url.includes('reelsPreview=')) {
+        const parsed = new URL(url);
+        parsed.searchParams.delete('reelsPreview');
+        url = parsed.toString();
     }
     return url;
 }
@@ -6719,13 +6747,14 @@ function _resolveTaskHookPath(task, globalIntroPath) {
 }
 
 function _syncScrollAudioTiming(task) {
-    if (!task?.audioPath) return;
-    const duration = Number(_reelsState._mediaDurations?.[task.audioPath]);
-    if (!(duration > 0 && Number.isFinite(duration))) return;
+    // Audio-only timing was wrong for slowed audio, trimmed video and non-audio tasks.
+    // Keep persistent auto markers untouched; resolve on render/export per task.
+    if (!task || !window.ReelsScrollTiming) return;
     for (const ov of task.overlays || []) {
-        if (ov?.type !== 'scroll' || ov.scroll_end_auto === false || ov.display_ranges?.length) continue;
-        ov.scroll_end_auto = true;
-        ov.end = Math.round(duration * 1000) / 1000;
+        if (ov?.type === 'scroll' && ov.scroll_end_auto !== false && !ov.display_ranges?.length) {
+            ov.scroll_end_auto = true;
+            ov.end = 9999;
+        }
     }
 }
 
@@ -11527,13 +11556,21 @@ function reelsOpenSubtitlePresetLibrary() {
         // 半透明中间帧。悬浮时才使用原始动画配置与真实 SRT 时间轴。
         const isBoxWipeCard = Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
         const isLineFocusCard = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
+        const isUnderlineSweepCard = style.anim_in_type === 'underline_sweep';
+        const isThreeWordFocusStackCard = style.anim_in_type === 'three_word_focus_stack';
         const finalStyle = {
             ...style,
-            anim_in_type: isBoxWipeCard ? 'box_wipe' : (isLineFocusCard ? 'line_focus' : 'none'),
+            anim_in_type: isBoxWipeCard
+                ? 'box_wipe'
+                : (isLineFocusCard
+                    ? 'line_focus'
+                    : (isUnderlineSweepCard
+                        ? 'underline_sweep'
+                        : (isThreeWordFocusStackCard ? 'three_word_focus_stack' : 'none'))),
             anim_out_type: 'none',
             dynamic_box: false,
-            karaoke_highlight: isLineFocusCard ? Boolean(style.karaoke_highlight ?? true) : false,
-            highlight_enabled: isLineFocusCard ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
+            karaoke_highlight: (isLineFocusCard || isThreeWordFocusStackCard) ? Boolean(style.karaoke_highlight ?? true) : false,
+            highlight_enabled: (isLineFocusCard || isThreeWordFocusStackCard) ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
             word_pop: false,
             fullpage_typewriter: false,
         };
@@ -11541,7 +11578,11 @@ function reelsOpenSubtitlePresetLibrary() {
             ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.65)
             : (isLineFocusCard
                 ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.35)
-                : staticPreviewTime);
+                : (isUnderlineSweepCard
+                    ? (previewSegment.start + 0.24)
+                    : (isThreeWordFocusStackCard
+                        ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.52)
+                        : staticPreviewTime)));
         const draw = (time, animated = false) => {
             if (!renderer) { renderer = new window.ReelsCanvasRenderer(canvas); renderer.setContextSegments(previewSegments); ctx = canvas.getContext('2d'); }
             const activeSegment = animated
@@ -13253,7 +13294,42 @@ function _selectReelsDownloadTasks(tasks, settings) {
     return tasks.filter((task, index) => selected.has(index));
 }
 
+async function _reelsShowExportError(detail) {
+    const message = String(detail || '未知导出错误');
+    _reelsUpdateLastErrorUI(message);
+    if (window.electronAPI?.showReelsExportError) {
+        try { await window.electronAPI.showReelsExportError({ detail: message }); return; }
+        catch (error) { console.warn('[Reels] 原生错误提示失败，使用页面提示:', error); }
+    }
+    alert(message);
+}
+
+let _reelsExportInvocationActive = false;
 async function reelsStartExport(options = {}) {
+    if (_reelsExportInvocationActive || _reelsState.isExporting) return;
+    _reelsExportInvocationActive = true;
+    try {
+        return await _reelsStartExportImpl(options);
+    } catch (error) {
+        const message = String(error?.message || error || '未知错误')
+            .replace(/^(?:Error invoking remote method '[^']+':\s*(?:Error:\s*)*)+/i, '');
+        console.error('[Reels] 导出启动或任务准备失败:', error);
+        _reelsAppendExportLogUI('导出失败：' + message, 'error');
+        const status = document.getElementById('reels-export-status');
+        if (status) status.textContent = '❌ 导出失败：' + message;
+        _reelsFinishExportTiming();
+        try { localStorage.removeItem(REELS_EXPORT_RESUME_KEY); } catch (_) { }
+        await _reelsShowExportError(message);
+        return { error: message };
+    } finally {
+        _reelsExportInvocationActive = false;
+        _reelsState.isExporting = false;
+        const button = document.getElementById('reels-export-btn');
+        if (button) { button.disabled = false; button.innerHTML = '🚀 开始导出'; }
+    }
+}
+
+async function _reelsStartExportImpl(options = {}) {
     // Freeze the task-list numbering before selection, validation or matrix
     // expansion; the selected-job index is not the row the user sees.
     const taskListRows = new Map();
@@ -14736,7 +14812,7 @@ async function reelsStartExport(options = {}) {
     }
     if (!canceled && failCount > 0) {
         const shortErr = failDetails.slice(0, 5).join('\n');
-        alert(`导出失败 ${failCount} 个\n输出目录: ${outputDirTrimmed}\n\n失败原因:\n${shortErr}`);
+        await _reelsShowExportError(`导出失败 ${failCount} 个\n输出目录: ${outputDirTrimmed}\n\n失败原因:\n${shortErr}`);
     } else if (!canceled && okCount > 0) {
         _reelsUpdateLastErrorUI('');
         const latest = _reelsState.lastExportOutputPath || `${outputDirTrimmed}${outputJoinSep}`;
