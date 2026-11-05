@@ -1849,11 +1849,12 @@
                 const measured = { ...(window.ReelsScrollTiming?.renderingOverlay(ov, task, {
                     bodyDuration: Math.max(0, computeDuration() - getTimelineOffset(task)),
                     mediaDurations: window._reelsState?._mediaDurations || {},
-                }) || ov), _exporting: false };
+                }) || ov), _taskSegments: task.segments, _exporting: false };
                 try {
                     window.ReelsOverlay.drawOverlay(measureCtx, measured, time, w, h);
                     ov._scrollBodyFirstLineY = measured._scrollBodyFirstLineY;
                     ov._scrollBodyCurX = measured._scrollBodyCurX;
+                    if (Number.isFinite(Number(measured.end))) ov.end = measured.end;
                 } catch (err) { console.warn('[PreviewV2] scroll anchor failed', err); }
             }
         }

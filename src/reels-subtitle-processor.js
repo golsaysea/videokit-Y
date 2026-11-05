@@ -67,10 +67,41 @@ let _measureCtx = null;
 
 function _ensureMeasureCtx() {
     if (!_measureCtx) {
-        _measureCanvas = document.createElement('canvas');
-        _measureCanvas.width = 1;
-        _measureCanvas.height = 1;
-        _measureCtx = _measureCanvas.getContext('2d');
+        if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+            _measureCanvas = document.createElement('canvas');
+            _measureCanvas.width = 1;
+            _measureCanvas.height = 1;
+            _measureCtx = _measureCanvas.getContext('2d');
+        } else {
+            _measureCtx = {
+                font: '700 74px "Arial", sans-serif',
+                measureText(str) {
+                    const text = String(str || '');
+                    const sizeMatch = String(this.font || '').match(/(\d+(?:\.\d+)?)px/i);
+                    const fontSize = sizeMatch ? parseFloat(sizeMatch[1]) : 74;
+                    const isBold = /\b([6-9]00|bold)\b/i.test(String(this.font || ''));
+                    const boldScale = isBold ? 1.06 : 1.0;
+                    let width = 0;
+                    for (const ch of text) {
+                        const code = ch.codePointAt(0) || 0;
+                        if (code > 0x2E80) {
+                            width += fontSize * 1.0;
+                        } else if ('iIlj1!|.,:;\'"`'.includes(ch)) {
+                            width += fontSize * 0.32 * boldScale;
+                        } else if ('mMwW@%'.includes(ch)) {
+                            width += fontSize * 0.85 * boldScale;
+                        } else if (ch === ' ') {
+                            width += fontSize * 0.28;
+                        } else if (ch >= 'A' && ch <= 'Z') {
+                            width += fontSize * 0.65 * boldScale;
+                        } else {
+                            width += fontSize * 0.56 * boldScale;
+                        }
+                    }
+                    return { width };
+                },
+            };
+        }
     }
     return _measureCtx;
 }
@@ -681,7 +712,12 @@ function generateEnhancedASS(segments, style, opts = {}) {
     const s = style || {};
     const videoW = opts.videoW || 1080;
     const videoH = opts.videoH || 1920;
-    const karaokeHL = opts.karaokeHighlight !== false;
+    const explicitKaraoke = opts.karaokeHighlight !== undefined
+        ? opts.karaokeHighlight !== false
+        : (s.karaoke_highlight !== undefined
+            ? Boolean(s.karaoke_highlight)
+            : (s.highlight ? s.highlight === 'word-by-word' : true));
+    const karaokeHL = explicitKaraoke;
 
     const fontFamily = s.font_family || 'Arial';
     const fontSize = s.fontsize || 74;
@@ -701,9 +737,13 @@ function generateEnhancedASS(segments, style, opts = {}) {
         return `&H${a}${b}${g}${r}`;
     }
 
-    const primaryColor = toASSColor(s.color_text || '#FFFFFF');
-    const secondaryColor = toASSColor(s.color_high || '#FFD700');
-    const outlineColor = toASSColor(s.color_outline || '#3E2723');
+    const colorTextHex = s.color_text || s.primary_color || '#FFFFFF';
+    const colorHighHex = s.color_high || s.keyword_color || (s.highlight === 'word-by-word' ? '#FFD700' : '');
+    const colorOutlineHex = s.color_outline || s.outline_color || '#3E2723';
+
+    const primaryColor = toASSColor(colorTextHex);
+    const secondaryColor = toASSColor(colorHighHex || '#FFD700');
+    const outlineColor = toASSColor(colorOutlineHex);
     const shadowAlpha = Math.round(255 - (s.opacity_shadow || 150));
     const shadowColor = toASSColor(s.color_shadow || '#000000', shadowAlpha);
 
@@ -910,6 +950,18 @@ function generateEnhancedASS(segments, style, opts = {}) {
         }
     }
 
+    const creditText = typeof s.credit === 'string' ? s.credit.trim() : '';
+    let creditStyleLine = '';
+    if (creditText) {
+        const creditPos = String(s.credit_position || 'top-right').toLowerCase();
+        const creditAlign = creditPos === 'top-left' ? 7
+            : (creditPos === 'bottom-right' ? 3
+                : (creditPos === 'bottom-left' ? 1 : 9));
+        const creditFontSize = Math.max(16, Math.round(28 * (videoW / 1080)));
+        const creditMargin = Math.max(14, Math.round(28 * (videoW / 1080)));
+        creditStyleLine = `\nStyle: Credit,${fontFamily},${creditFontSize},${toASSColor('#FFFFFF', 35)},${toASSColor('#FFFFFF', 35)},${toASSColor('#000000', 80)},${toASSColor('#000000', 160)},0,0,0,0,100,100,0,0,1,2,1,${creditAlign},${creditMargin},${creditMargin},${creditMargin},1`;
+    }
+
     const header = `[Script Info]
 Title: Batch Reels Enhanced Subtitle
 ScriptType: v4.00+
@@ -919,7 +971,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,${fontFamily},${fontSize},${primaryColor},${secondaryColor},${outlineColor},${backColor},${bold},${italic},${useUnderline},0,100,100,${spacing},0,${borderStyle},${borderW},${shadowDist},5,0,0,0,1${seStyles}
+Style: Default,${fontFamily},${fontSize},${primaryColor},${secondaryColor},${outlineColor},${backColor},${bold},${italic},${useUnderline},0,100,100,${spacing},0,${borderStyle},${borderW},${shadowDist},5,0,0,0,1${seStyles}${creditStyleLine}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`;
@@ -987,7 +1039,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
         else if (animInType === 'typewriter' && seg.words && seg.words.length > 0) {
             // 用 \kf 逐字显示，灰色→白色过渡
             const unrevealedColor = toASSColor(s.tw_unrevealed_color || '#808080');
-            const revealedColor = toASSColor(s.color_text || '#FFFFFF');
+            const revealedColor = toASSColor(colorTextHex || '#FFFFFF');
             const parts = [];
             for (const w of seg.words) {
                 const wDur = ((w.end || 0) - (w.start || 0));
@@ -1000,16 +1052,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
             events.push(`Dialogue: 0,${toASSTime(seg.start)},${toASSTime(seg.end)},Default,,0,0,0,,${twOverride}${text}`);
         }
         // ── 卡拉OK 逐词高亮 ──
-        else if (karaokeHL && seg.words && seg.words.length > 0 && s.color_high) {
-            const highColor = toASSColor(s.color_high);
-            const parts = [];
-            for (const w of seg.words) {
-                const wDur = ((w.end || 0) - (w.start || 0));
-                const kDur = Math.max(1, Math.round(wDur * 100));
-                parts.push(`{\\kf${kDur}\\1c${highColor}}${w.word}`);
+        else if (karaokeHL && colorHighHex) {
+            const segWords = (seg.words && seg.words.length > 0)
+                ? seg.words
+                : (srtToSegmentsWithWords([{ start: seg.start, end: seg.end, text: rawText, _timeUnit: 'sec' }])[0]?.words || []);
+            if (segWords.length > 0) {
+                const highColor = toASSColor(colorHighHex);
+                const parts = [];
+                for (const w of segWords) {
+                    const wDur = ((w.end || 0) - (w.start || 0));
+                    const kDur = Math.max(1, Math.round(wDur * 100));
+                    parts.push(`{\\kf${kDur}\\1c${highColor}}${w.word}`);
+                }
+                text = directionMark + parts.join(' ');
+                events.push(`Dialogue: 0,${toASSTime(seg.start)},${toASSTime(seg.end)},Default,,0,0,0,,${overrideOpen}${text}`);
+            } else {
+                events.push(`Dialogue: 0,${toASSTime(seg.start)},${toASSTime(seg.end)},Default,,0,0,0,,${overrideOpen}${text}`);
             }
-            text = directionMark + parts.join(' ');
-            events.push(`Dialogue: 0,${toASSTime(seg.start)},${toASSTime(seg.end)},Default,,0,0,0,,${overrideOpen}${text}`);
         }
         // ── 普通文本 ──
         else {
@@ -1028,6 +1087,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
                 events.push(`Dialogue: ${layerNum},${toASSTime(seg.start)},${toASSTime(seg.end)},SE_Layer${li},,0,0,0,,{${sePosTag}${seAnimTag}${directionTags}}${seText}`);
             }
         }
+    }
+
+    // ── 水印 Credit ──
+    if (creditText) {
+        const maxSegEnd = segments.reduce((m, seg) => Math.max(m, Number(seg.end) || 0), 0);
+        const totalEndSec = Number(opts.duration) > 0 ? Number(opts.duration) : (maxSegEnd > 0 ? maxSegEnd : 3600);
+        const safeCredit = creditText.replace(/\r?\n/g, '\\N');
+        events.push(`Dialogue: 10,0:00:00.00,${toASSTime(totalEndSec)},Credit,,0,0,0,,${safeCredit}`);
     }
 
     // ── 全局蒙版 ──

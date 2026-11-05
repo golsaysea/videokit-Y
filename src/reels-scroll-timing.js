@@ -42,12 +42,24 @@
     function renderingOverlay(overlay, task, context = {}) {
         if (!overlay || overlay.type !== 'scroll' || overlay.scroll_end_auto === false || overlay.display_ranges?.length) return overlay;
         const resolved = duration(task, context);
-        return resolved ? { ...overlay, end: resolved } : overlay;
+        if (!resolved) return overlay;
+        const clone = { ...overlay, end: resolved };
+        const segs = overlay._taskSegments || (task && Array.isArray(task.segments) ? task.segments : null);
+        if (segs) {
+            Object.defineProperty(clone, '_taskSegments', {
+                value: segs,
+                writable: true,
+                configurable: true,
+                enumerable: false,
+            });
+        }
+        return clone;
     }
     function reset(overlay) {
         if (!overlay || overlay.type !== 'scroll') return false;
         overlay.scroll_end_auto = true;
         overlay.end = 9999;
+        delete overlay.display_ranges;
         return true;
     }
     global.ReelsScrollTiming = { duration, end, renderingOverlay, reset };

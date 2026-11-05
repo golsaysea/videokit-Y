@@ -2041,7 +2041,9 @@ class ReelsCanvasRenderer {
             ctx.filter = `blur(${blurRadius}px)`;
         }
         const textColor = s.color_text || '#FFFFFF';
-        const highColor = s.color_high || '#FFD700';
+        const highColor = (s.high_gradient_enabled && s.high_gradient_colors && String(s.high_gradient_colors).includes(','))
+            ? String(s.high_gradient_colors)
+            : (s.color_high || '#FFD700');
         const outlineColor = s.color_outline || '#3E2723';
         const outlineAlpha = (s.opacity_outline || 255) / 255;
         const configuredDrawBorderWidth = Number(s.border_width);
@@ -2535,7 +2537,9 @@ class ReelsCanvasRenderer {
                         w: Math.max(1, wordW),
                         h: Math.max(1, fontSize * 0.95),
                     };
-                    const activeGradBounds = (s.text_gradient_scope === 'word') ? wordGradBounds : lineGradBounds;
+                    const activeGradBounds = (s.text_gradient_scope === 'word' || (isHighlight && typeof highColor === 'string' && highColor.includes(',') && !String(textColor).includes(',')))
+                        ? wordGradBounds
+                        : lineGradBounds;
 
                     if (zoomTwActivePop) {
                         const revealedColor = s.tw_revealed_color || textColor;
@@ -3286,7 +3290,7 @@ class ReelsCanvasRenderer {
                 const fontSize = match ? parseFloat(match[1]) : 80;
                 let dir = 'horizontal';
                 if (s) {
-                    if (fillColor === s.color_high) {
+                    if (fillColor === s.color_high || fillColor === s.high_gradient_colors) {
                         dir = s.high_gradient_direction || s.text_gradient_direction || 'horizontal';
                     } else {
                         dir = s.text_gradient_direction || 'horizontal';

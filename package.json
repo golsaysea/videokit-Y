@@ -7,6 +7,9 @@
     "email": "videokit@example.com"
   },
   "main": "electron/main.js",
+  "bin": {
+    "videokit-cli": "bin/videokit-cli.cjs"
+  },
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/pre-build-check.js",
@@ -61,7 +64,9 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "bin/**/*",
+      "src/reels-subtitle-processor.js"
     ],
     "mac": {
       "target": [
@@ -220,6 +225,20 @@
       {
         "from": "electron/services/edge_tts_bridge.py",
         "to": "edge-tts/edge_tts_bridge.py"
+      },
+      {
+        "from": "resources/fonts",
+        "to": "fonts",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }

@@ -1389,8 +1389,14 @@ function _renderBatchTable() {
 
     // ── 自动校验与初始化当前活跃的覆层图层 ──
     const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-    const textcards = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && (o.type === 'textcard' || !o.type || o.type === '')) : [];
-    const scrolls = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && o.type === 'scroll') : [];
+    const cardTemplateTask = (templateTask && (templateTask.overlays || []).some(o => _isBatchWritableOverlay(o) && (o.type === 'textcard' || !o.type || o.type === '')))
+        ? templateTask
+        : (state.tasks.find(t => (t?.overlays || []).some(o => _isBatchWritableOverlay(o) && (o.type === 'textcard' || !o.type || o.type === ''))) || templateTask);
+    const scrollTemplateTask = (templateTask && (templateTask.overlays || []).some(o => _isBatchWritableOverlay(o) && o.type === 'scroll'))
+        ? templateTask
+        : (state.tasks.find(t => (t?.overlays || []).some(o => _isBatchWritableOverlay(o) && o.type === 'scroll')) || templateTask);
+    const textcards = cardTemplateTask ? (cardTemplateTask.overlays || []).filter(o => _isBatchWritableOverlay(o) && (o.type === 'textcard' || !o.type || o.type === '')) : [];
+    const scrolls = scrollTemplateTask ? (scrollTemplateTask.overlays || []).filter(o => _isBatchWritableOverlay(o) && o.type === 'scroll') : [];
 
     const activeTextcards = textcards.length > 0 ? textcards : [{ id: 'default', name: '卡片1' }];
     const activeScrolls = scrolls.length > 0 ? scrolls : [{ id: 'default', name: '滚动1' }];
@@ -2310,7 +2316,36 @@ function _hydrateBatchVideoThumbnails(container) {
 }
 
 function _isBatchWritableOverlay(ov) {
-    return !!(ov && !ov.fixed_text);
+    return !!(ov && !ov.fixed_text && !ov.is_phone_cta && ov.name !== '📞 邀约电话');
+}
+
+function _getTemplateOverlaysForType(state, type) {
+    if (!state) return [];
+    const matchType = (o) => _isBatchWritableOverlay(o) && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === ''));
+    const primaryTask = state.tasks?.[state.selectedIdx] || state.tasks?.[0];
+    const primaryList = primaryTask ? (primaryTask.overlays || []).filter(matchType) : [];
+    if (primaryList.length > 0) return primaryList;
+    for (const t of (state.tasks || [])) {
+        const list = (t?.overlays || []).filter(matchType);
+        if (list.length > 0) return list;
+    }
+    const canvasList = (state.overlayProxy?.overlayMgr?.overlays || []).filter(matchType);
+    if (canvasList.length > 0) return canvasList;
+    return [];
+}
+
+function _resolveTemplateOverlay(templateList, targetId = null, targetIdx = null) {
+    if (!Array.isArray(templateList) || templateList.length === 0) return null;
+    const effectiveId = (targetId && targetId !== 'default' && targetId !== 'null' && targetId !== 'undefined') ? targetId : null;
+    if (effectiveId) {
+        const byId = templateList.find(o => o.id === effectiveId || o._templateOverlayId === effectiveId);
+        if (byId) return byId;
+    }
+    const parsedIdx = targetIdx != null ? parseInt(targetIdx, 10) : -1;
+    if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < templateList.length) {
+        return templateList[parsedIdx];
+    }
+    return templateList[0];
 }
 
 function _findBatchTextCardOverlay(task) {
@@ -2324,7 +2359,7 @@ function _findBatchScrollOverlay(task) {
 }
 
 function _findBatchOverlayByIdOrIdx(task, id, name, idx, type) {
-    const list = (task.overlays || []).filter(o => o && !o.fixed_text && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === '')));
+    const list = (task.overlays || []).filter(o => o && !o.fixed_text && !o.is_phone_cta && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === '')));
     if (list.length === 0) return null;
     if (id && id !== 'default') {
         // 派生任务的实例 ID 必须唯一；_templateOverlayId 用来保持批量表格
@@ -2371,8 +2406,8 @@ function _createTaskFromTemplate(state, taskName) {
         if (newTask.overlays) {
             newTask.overlays = newTask.overlays.filter(ov => {
                 if (!ov) return false;
-                // Keep fixed stickers/logos, and media overlays (images, videos)
-                if (ov.fixed_text) return true;
+                // Keep fixed stickers/logos, phone CTA masks, and media overlays (images, videos)
+                if (ov.fixed_text || ov.is_phone_cta || ov.name === '📞 邀约电话') return true;
                 if (ov.type === 'image' || ov.type === 'video' || ov.type === 'pip') return true;
                 return false; // Remove template-cloned empty textcard/scroll
             });
@@ -2458,9 +2493,8 @@ function _applyOverlayField(task, fieldCategory, str) {
         if (!ov) {
             // Find template overlay to clone
             const state = window._reelsState;
-            const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-            const templateList = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && o.type === 'scroll') : [];
-            const templateOv = targetId ? templateList.find(o => o.id === targetId) : templateList[0];
+            const templateList = _getTemplateOverlaysForType(state, 'scroll');
+            const templateOv = _resolveTemplateOverlay(templateList, targetId, null);
             if (templateOv) {
                 ov = _cloneDerivedOverlay(templateOv);
                 ov.scroll_title = '';
@@ -2483,9 +2517,8 @@ function _applyOverlayField(task, fieldCategory, str) {
         if (!ov) {
             // Find template overlay to clone
             const state = window._reelsState;
-            const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-            const templateList = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && (o.type === 'textcard' || !o.type || o.type === '')) : [];
-            const templateOv = targetId ? templateList.find(o => o.id === targetId) : templateList[0];
+            const templateList = _getTemplateOverlaysForType(state, 'textcard');
+            const templateOv = _resolveTemplateOverlay(templateList, targetId, null);
             if (templateOv) {
                 ov = _cloneDerivedOverlay(templateOv);
                 ov.title_text = '';
@@ -2546,12 +2579,11 @@ function _applyOverlayFieldWithTarget(task, fieldCategory, str, id, idx, type) {
     let ov = _findBatchOverlayByIdOrIdx(task, id, null, idx, type);
     if (!ov) {
         const state = window._reelsState;
-        const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-        const templateList = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === ''))) : [];
-        const templateOv = id ? templateList.find(o => o.id === id) : (idx != null ? templateList[idx] : templateList[0]);
+        const templateList = _getTemplateOverlaysForType(state, type);
+        const templateOv = _resolveTemplateOverlay(templateList, id, idx);
         
         if (templateOv) {
-            ov = JSON.parse(JSON.stringify(templateOv));
+            ov = _cloneDerivedOverlay(templateOv);
             if (type === 'scroll') {
                 ov.scroll_title = '';
                 ov.content = '';
@@ -2562,6 +2594,7 @@ function _applyOverlayFieldWithTarget(task, fieldCategory, str, id, idx, type) {
             }
             ov.fixed_text = false;
             task.overlays.push(ov);
+            window.ReelsTaskDerivation?.resolveOverlayBindings?.(task);
         } else {
             if (type === 'scroll') {
                 ov = window.ReelsOverlay ? window.ReelsOverlay.createScrollOverlay({ start: 0, end: 9999 }) : { scroll_title: '', content: '', type: 'scroll' };
@@ -5122,11 +5155,9 @@ function _bindBatchTableEvents() {
         const target = e.target;
         if (!target.matches('textarea, input.rbt-input, input.rbt-tts-voice-input')) return;
 
-        const pastedData = (e.clipboardData || window.clipboardData).getData('text');
-        if (!pastedData) return;
-
-        // 使用 TSV 引号解析器，正确处理 Google Sheets 单元格内的换行
-        const tsvRows = _parseBatchTSV(pastedData, true);
+        // 优先解析剪贴板 HTML 表格（Google Sheets / Excel），严格保留每个单元格边界与内部换行
+        const tsvRows = _extractClipboardRowsFromPasteEvent(e, true);
+        if (!tsvRows || !tsvRows.length) return;
 
         const startIdx = parseInt(target.dataset.idx, 10);
         if (isNaN(startIdx)) return;
@@ -5176,9 +5207,14 @@ function _bindBatchTableEvents() {
         // A quoted spreadsheet cell may contain line breaks and remains one cell.
         if (tsvRows.length === 1) {
             e.preventDefault();
-            target.value = tsvRows[0][0] || '';
-            target.dispatchEvent(new Event('input', { bubbles: true }));
-            target.dispatchEvent(new Event('change', { bubbles: true }));
+            const cellVal = tsvRows[0][0] || '';
+            target.value = cellVal;
+            if (fieldCategory) {
+                _pasteBatchTextRows([[cellVal]], startIdx, fieldCategory, target.dataset);
+            } else {
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+                target.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
     });
 
@@ -5959,14 +5995,12 @@ function _bindBatchTableEvents() {
         const fieldCategory = btn.dataset.pasteCol;
         if (!fieldCategory) return;
 
-        let raw = '';
-        try { raw = await navigator.clipboard.readText(); } catch (ex) {
-            showToast('无法读取剪贴板，请使用 Ctrl+V 在输入框中粘贴', 'error');
+        const tsvRows = await _readClipboardSpreadsheetRows('📋 粘贴到此列');
+        if (!tsvRows || !tsvRows.length) {
+            showToast('未检测到有效剪贴板数据', 'error');
             return;
         }
-        if (!raw || !raw.trim()) { showToast('剪贴板为空', 'error'); return; }
 
-        const tsvRows = _parseBatchTSV(raw);
         let maxCols = Math.max(...tsvRows.map(r => r.length));
         while (maxCols > 1) {
             let hasData = false;
@@ -6058,6 +6092,8 @@ function _bindBatchTableEvents() {
             }
         }
 
+        _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
+
         const scrollWrap = container.querySelector('.rbt-table-wrap');
         const scrollTop = scrollWrap ? scrollWrap.scrollTop : 0;
         const scrollLeft = scrollWrap ? scrollWrap.scrollLeft : 0;
@@ -6071,6 +6107,7 @@ function _bindBatchTableEvents() {
             newScrollWrap.scrollLeft = scrollLeft;
         }
 
+        if (typeof _renderTaskList === 'function') _renderTaskList();
         showToast(`✅ 粘贴到列完成：覆盖 ${filled} 行，新建 ${created} 行`, 'success');
     });
 
@@ -6474,6 +6511,36 @@ function _bindBatchTableEvents() {
                 const idx = parseInt(e.target.dataset.idx);
                 const task = window._reelsState && window._reelsState.tasks[idx];
                 if (task) task.ttsVoiceId = e.target.value;
+            }
+            if (
+                e.target.classList.contains('rbt-scroll-title-input') ||
+                e.target.classList.contains('rbt-scroll-body-input') ||
+                e.target.classList.contains('rbt-title-input') ||
+                e.target.classList.contains('rbt-body-input') ||
+                e.target.classList.contains('rbt-footer-input')
+            ) {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const state = window._reelsState;
+                const task = state && state.tasks[idx];
+                if (task) {
+                    const isScroll = e.target.classList.contains('rbt-scroll-title-input') || e.target.classList.contains('rbt-scroll-body-input');
+                    const fieldCat = e.target.classList.contains('rbt-scroll-title-input') ? 'scroll_title'
+                        : e.target.classList.contains('rbt-scroll-body-input') ? 'scroll_body'
+                        : e.target.classList.contains('rbt-title-input') ? 'overlay_title'
+                        : e.target.classList.contains('rbt-body-input') ? 'overlay_body'
+                        : 'overlay_footer';
+                    _applyOverlayFieldWithTarget(
+                        task,
+                        fieldCat,
+                        e.target.value,
+                        isScroll ? e.target.dataset.scrollId : e.target.dataset.cardId,
+                        isScroll ? e.target.dataset.scrollIdx : e.target.dataset.cardIdx,
+                        isScroll ? 'scroll' : 'textcard'
+                    );
+                    if (state.selectedIdx === idx) {
+                        _syncSelectedTaskOverlayMgrIfNeeded(idx);
+                    }
+                }
             }
             if (e.target.classList.contains('rbt-ai-script-input') || e.target.classList.contains('rbt-txtcontent-input') || e.target.classList.contains('rbt-tts-text-input')) {
                 const idx = parseInt(e.target.dataset.idx);
@@ -7123,17 +7190,8 @@ function _execMultiColumnPaste(tsvRows, startIdx, colMappings, maxCols) {
         } else {
             for (let i = 0; i < overflown; i++) {
                 const taskName = _generateUniqueCardName(state.tasks, 'card');
-                const newTask = {
-                    baseName: taskName,
-                    fileName: `${taskName}.mp4`,
-                    bgPath: null, bgSrcUrl: null,
-                    audioPath: null, srtPath: null,
-                    segments: [],
-                    videoPath: null, srcUrl: null,
-                    overlays: [],
-                    aligned: false,
-                    bgScale: 100, bgDurScale: 100, audioDurScale: 100
-                };
+                const newTask = _createTaskFromTemplate(state, taskName);
+                _finalizeDerivedTaskInstances(newTask);
                 state.tasks.push(newTask);
             }
         }
@@ -7184,6 +7242,7 @@ function _execMultiColumnPaste(tsvRows, startIdx, colMappings, maxCols) {
         if (rowModified) filled++;
     }
 
+    _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
 
     const scrollWrap = container.querySelector('.rbt-table-wrap');
     const scrollTop = scrollWrap ? scrollWrap.scrollTop : 0;
@@ -7418,9 +7477,14 @@ function _showTextEditorModal(textareaEl) {
 
     saveBtn.onclick = () => {
         textareaEl.value = modalTa.value;
-        // manually dispatch events so batch system picks it up immediately
-        textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
-        textareaEl.dispatchEvent(new Event('change', { bubbles: true }));
+        const field = _batchTextField(textareaEl);
+        const idx = parseInt(textareaEl.dataset.idx, 10);
+        if (field && !isNaN(idx)) {
+            _pasteBatchTextRows([[modalTa.value]], idx, field, textareaEl.dataset);
+        } else {
+            textareaEl.dispatchEvent(new Event('input', { bubbles: true }));
+            textareaEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         editorWrap.style.display = 'none';
     };
 }
@@ -7952,35 +8016,38 @@ function _applyBatchTableChanges(stateOverride = null, options = {}) {
 // 7. Paste from Google Sheets
 // ═══════════════════════════════════════════════════════
 
+function _isDefaultOrEmptyScrollText(val) {
+    const t = String(val || '').trim().replace(/\r\n/g, '\n');
+    if (!t) return true;
+    return t === '滚动文字内容'
+        || t === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字'
+        || t === '滚动字幕示例\n第二行\n第三行\n第四行\n第五行';
+}
+
 async function _batchPasteFromSheet(targetId = null, targetIdx = null) {
     // ── 第一步：让用户选模式 ──
     const mode = await _showPasteModeDialog();
     if (!mode) return;
 
-    // ── 第二步：获取文本 ──
-    let raw = '';
-    try {
-        raw = await navigator.clipboard.readText();
-    } catch (e) {
-        raw = await _showPasteDialog();
-    }
-    if (!raw || !raw.trim()) return;
-
-    const rows = _parseBatchTSV(raw);
-    if (!rows.length) {
+    // ── 第二步：获取表格单元格数据（优先解析 Google Sheets HTML 表格，确保每个单元格独立识别） ──
+    const rows = await _readClipboardSpreadsheetRows('📋 粘贴覆层卡片文案');
+    if (!rows || !rows.length) {
         alert('未检测到有效数据');
         return;
     }
 
-    const isSingleColumn = rows.every(r => r.length === 1);
+    const isSingleColumn = rows.every(r => r.length <= 1);
     let splitMode = 0;
     if (isSingleColumn) {
-        const modeStr = await _showSplitPromptDialog('检测到您粘贴的内容只有一列。\\n如果这列内容内部自带多行文本，你可以选用以下格式快速智能拆分：', true);
-        if (modeStr === '1') splitMode = 1;
-        else if (modeStr === '2') splitMode = 2;
-        else if (modeStr === '3') splitMode = 3;
-        else if (modeStr === '4') splitMode = 4;
-        else if (modeStr === '5') splitMode = 5;
+        const hasMultiLineCell = rows.some(r => String(r[0] || '').trim().includes('\n'));
+        if (hasMultiLineCell) {
+            const modeStr = await _showSplitPromptDialog('检测到您粘贴的内容为单列（每个单元格一条）。\\n单元格内部包含多行文本，请选择填入方式：', true);
+            if (modeStr === '1') splitMode = 1;
+            else if (modeStr === '2') splitMode = 2;
+            else if (modeStr === '3') splitMode = 3;
+            else if (modeStr === '4') splitMode = 4;
+            else if (modeStr === '5') splitMode = 5;
+        }
     }
 
     const state = window._reelsState;
@@ -8112,9 +8179,12 @@ async function _batchPasteFromSheet(targetId = null, targetIdx = null) {
         }
     }
 
+    _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
     _skipNextApply = true;
     _renderBatchTable();
     if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+    if (typeof _batchAutoSave === 'function') _batchAutoSave();
 
     const parts = [];
     if (filled) parts.push(`填充 ${filled} 行`);
@@ -8126,35 +8196,41 @@ async function _batchPasteScrollFromSheet(targetId = null, targetIdx = null) {
     const mode = await _showPasteModeDialog();
     if (!mode) return;
 
-    let raw = '';
-    try {
-        raw = await navigator.clipboard.readText();
-    } catch (e) {
-        raw = await _showPasteDialog();
-    }
-    if (!raw || !raw.trim()) return;
-
-    const rows = _parseBatchTSV(raw);
-    if (!rows.length) {
+    let rows = await _readClipboardSpreadsheetRows('📋 粘贴滚动字幕文案');
+    if (!rows || !rows.length) {
         alert('未检测到有效数据');
         return;
     }
 
-    const isSingleColumn = rows.every(r => r.length === 1);
+    // 如果用户在 Google 表格中横向复制了一行多格文案（1行×多列），自动转置为每格一条滚动字幕
+    if (rows.length === 1 && (rows[0].length > 2 || (rows[0].length === 2 && (String(rows[0][0] || '').includes('\n') || String(rows[0][0] || '').length > 50)))) {
+        rows = rows[0].map(cell => [String(cell || '').trim()]).filter(r => r[0].length > 0);
+    }
+
+    const isSingleColumn = rows.every(r => r.length <= 1);
     let splitMode = 0;
     if (isSingleColumn) {
-        const modeStr = await _showSplitPromptDialog('检测到您粘贴的内容只有一列且支持滚动。\\n如果单列内容有多行文本，你可以套用智能格式提取：', false);
-        if (modeStr === '1') splitMode = 1;
-        else if (modeStr === '2') splitMode = 2;
-        else if (modeStr === '3') splitMode = 3;
-        else if (modeStr === '4') splitMode = 4;
+        const hasMultiLineCell = rows.some(r => String(r[0] || '').trim().includes('\n'));
+        if (!hasMultiLineCell) {
+            // 单列且单元格内无多行时，直接每个单元格作为一条滚动字幕正文
+            splitMode = 4;
+        } else {
+            const modeStr = await _showSplitPromptDialog(
+                `已识别 ${rows.length} 个独立单元格（每个单元格默认对应 1 条视频任务）。\\n检测到部分单元格内含多行文本，请选择导入方式：`,
+                false
+            );
+            if (modeStr === '1') splitMode = 1;
+            else if (modeStr === '2') splitMode = 2;
+            else if (modeStr === '3') splitMode = 3;
+            else splitMode = 4; // 默认/取消提取均将整个单元格完整填入滚动正文
+        }
     }
 
     const state = window._reelsState;
     const ReelsOverlay = window.ReelsOverlay;
     if (!state || !ReelsOverlay) return;
 
-    if (splitMode > 0) {
+    if (splitMode === 2 || splitMode === 3) {
         let hasErrors = true;
         while (hasErrors) {
             let badRows = [];
@@ -8205,13 +8281,24 @@ async function _batchPasteScrollFromSheet(targetId = null, targetIdx = null) {
             }
         } else {
             if (row.length >= 3) {
-                title = row[1] || '';
-                body = row[2] || '';
+                title = (row[1] || '').trim();
+                body = (row[2] || '').trim();
+                if (!title && !body && (row[0] || '').trim()) {
+                    body = (row[0] || '').trim();
+                }
             } else if (row.length === 2) {
-                title = row[0] || '';
-                body = row[1] || '';
+                const c0 = (row[0] || '').trim();
+                const c1 = (row[1] || '').trim();
+                if (c0 && !c1) {
+                    body = c0;
+                } else if (!c0 && c1) {
+                    body = c1;
+                } else {
+                    title = c0;
+                    body = c1;
+                }
             } else {
-                body = row[0] || ''; // 单列时不提取title，默认全做body
+                body = (row[0] || '').trim(); // 单列时不提取title，默认全做body
             }
         }
         if (!title && !body) continue;
@@ -8230,7 +8317,7 @@ async function _batchPasteScrollFromSheet(targetId = null, targetIdx = null) {
         for (let i = 0; i < state.tasks.length && entryIdx < entries.length; i++) {
             const task = state.tasks[i];
             const scrollOv = _findBatchOverlayByIdOrIdx(task, targetId, null, targetIdx, 'scroll');
-            const isEmpty = !scrollOv || (!(scrollOv.scroll_title || '').trim() && !(scrollOv.content || '').trim());
+            const isEmpty = !scrollOv || (_isDefaultOrEmptyScrollText(scrollOv.scroll_title) && _isDefaultOrEmptyScrollText(scrollOv.content));
             if (isEmpty) {
                 _setTaskScrollText(task, entries[entryIdx].title, entries[entryIdx].body, ReelsOverlay, targetId, targetIdx);
                 entryIdx++;
@@ -8259,9 +8346,12 @@ async function _batchPasteScrollFromSheet(targetId = null, targetIdx = null) {
         }
     }
 
+    _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
     _skipNextApply = true;
     _renderBatchTable();
     if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+    if (typeof _batchAutoSave === 'function') _batchAutoSave();
 
     const parts = [];
     if (filled) parts.push(`填充 ${filled} 行`);
@@ -10979,16 +11069,8 @@ async function _batchPasteTxtContent() {
     const mode = await _showPasteModeDialog();
     if (!mode) return;
 
-    let raw = '';
-    try {
-        raw = await navigator.clipboard.readText();
-    } catch (e) {
-        raw = await _showPasteDialog();
-    }
-    if (!raw || !raw.trim()) return;
-
-    const tsvRows = _parseBatchTSV(raw);
-    if (tsvRows.length === 0) return showToast('未能解析到文本', 'error');
+    const tsvRows = await _readClipboardSpreadsheetRows('📋 粘贴人声-断行文案');
+    if (!tsvRows || tsvRows.length === 0) return showToast('未能解析到文本', 'error');
 
     const maxCols = Math.max(...tsvRows.map(r => r.length));
     if (maxCols > 1) {
@@ -11032,24 +11114,19 @@ async function _batchPasteTxtContent() {
 
     for (; dataIdx < lines.length; dataIdx++) {
         const taskName = _generateUniqueCardName(state.tasks, 'card');
-        state.tasks.push({
-            baseName: taskName,
-            fileName: `${taskName}.mp4`,
-            bgPath: null, bgSrcUrl: null,
-            audioPath: null, srtPath: null,
-            segments: [],
-            videoPath: null, srcUrl: null,
-            overlays: [],
-            txtContent: lines[dataIdx],
-            aligned: false,
-            bgScale: 100, bgDurScale: 100, audioDurScale: 100
-        });
+        const newTask = _createTaskFromTemplate(state, taskName);
+        newTask.txtContent = lines[dataIdx];
+        newTask.aligned = false;
+        _finalizeDerivedTaskInstances(newTask);
+        state.tasks.push(newTask);
         created++;
     }
 
     _skipNextApply = true;
     _renderBatchTable();
     if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+    if (typeof _batchAutoSave === 'function') _batchAutoSave();
 
     const parts = [];
     if (filled) parts.push(`填充 ${filled} 行`);
@@ -11064,16 +11141,8 @@ async function _batchPasteAiScript() {
     const mode = await _showPasteModeDialog();
     if (!mode) return;
 
-    let raw = '';
-    try {
-        raw = await navigator.clipboard.readText();
-    } catch (e) {
-        raw = await _showPasteDialog();
-    }
-    if (!raw || !raw.trim()) return;
-
-    // 使用 TSV 引号解析器，正确处理 Google Sheets 单元格内的换行
-    const tsvRows = _parseBatchTSV(raw);
+    const tsvRows = await _readClipboardSpreadsheetRows('📋 粘贴人声-原文案');
+    if (!tsvRows || !tsvRows.length) return;
     const lines = tsvRows.map(row => (row[0] || '').trim()).filter(s => s.length > 0);
 
     if (!lines.length) {
@@ -11106,27 +11175,23 @@ async function _batchPasteAiScript() {
     }
 
     const newRows = lines.slice(dataIdx);
-    if (newRows.length > 0 && confirm(`还有 ${newRows.length} 条数据尚未匹配到任务行。是否自动创建 ${newRows.length} 行新任务并填充？`)) {
+    if (newRows.length > 0 && (mode === 'new' || confirm(`还有 ${newRows.length} 条数据尚未匹配到任务行。是否自动创建 ${newRows.length} 行新任务并填充？`))) {
         for (const str of newRows) {
             const taskName = _generateUniqueCardName(state.tasks, 'card');
-            state.tasks.push({
-                baseName: taskName,
-                fileName: `${taskName}.mp4`,
-                bgPath: null, bgSrcUrl: null,
-                audioPath: null, srtPath: null,
-                segments: [],
-                videoPath: null, srcUrl: null,
-                overlays: [],
-                aiScript: str,
-                aligned: false,
-                bgScale: 100, bgDurScale: 100, audioDurScale: 100
-            });
+            const newTask = _createTaskFromTemplate(state, taskName);
+            newTask.aiScript = str;
+            newTask.aligned = false;
+            _finalizeDerivedTaskInstances(newTask);
+            state.tasks.push(newTask);
             created++;
         }
     }
 
     _skipNextApply = true;
     _renderBatchTable();
+    if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
+    if (typeof _batchAutoSave === 'function') _batchAutoSave();
     showToast(`✅ 粘贴人声-原文案成功：覆盖/填充 ${filled} 行，新建 ${created} 行`, 'success');
 }
 
@@ -11137,9 +11202,8 @@ function _setTaskText(task, title, body, ReelsOverlay, footer, targetId = null, 
     if (!ov) {
         // Clone from template overlay with targetId if it exists to preserve styling
         const state = window._reelsState;
-        const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-        const templateList = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && (o.type === 'textcard' || !o.type || o.type === '')) : [];
-        const templateOv = targetId ? templateList.find(o => o.id === targetId) : (targetIdx != null && targetIdx >= 0 && targetIdx < templateList.length ? templateList[targetIdx] : templateList[0]);
+        const templateList = _getTemplateOverlaysForType(state, 'textcard');
+        const templateOv = _resolveTemplateOverlay(templateList, targetId, targetIdx);
         if (templateOv) {
             ov = _cloneDerivedOverlay(templateOv);
             ov.title_text = '';
@@ -11180,9 +11244,8 @@ function _setTaskScrollText(task, title, body, ReelsOverlay, targetId = null, ta
     if (!scrollOv) {
         // Clone template scroll overlay if available
         const state = window._reelsState;
-        const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
-        const templateList = templateTask ? (templateTask.overlays || []).filter(o => o && !o.fixed_text && o.type === 'scroll') : [];
-        const templateOv = targetId ? templateList.find(o => o.id === targetId) : (targetIdx != null && targetIdx >= 0 && targetIdx < templateList.length ? templateList[targetIdx] : templateList[0]);
+        const templateList = _getTemplateOverlaysForType(state, 'scroll');
+        const templateOv = _resolveTemplateOverlay(templateList, targetId, targetIdx);
         if (templateOv) {
             scrollOv = _cloneDerivedOverlay(templateOv);
             scrollOv.scroll_title = '';
@@ -11260,14 +11323,15 @@ function _showPasteModeDialog() {
     });
 }
 
-function _showPasteDialog(titleStr = '📋 粘贴表格数据') {
+function _showPasteDialog(titleStr = '📋 粘贴表格数据', returnRows = false) {
     return new Promise(resolve => {
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);z-index:10001;display:flex;align-items:center;justify-content:center;';
         overlay.innerHTML = `
-            <div style="background:#1e1e1e;border-radius:12px;padding:24px;width:500px;">
-                <h3 style="margin:0 0 12px;color:var(--accent);">${titleStr}</h3>
-                <textarea id="rbt-paste-area" style="width:100%;height:200px;background:#141414;border:1px solid var(--border-color);border-radius:8px;color:#ddd;font-size:13px;padding:12px;" placeholder="从 Google 表格粘贴..."></textarea>
+            <div style="background:#1e1e1e;border-radius:12px;padding:24px;width:520px;border:1px solid #333;">
+                <h3 style="margin:0 0 10px;color:var(--accent);">${titleStr}</h3>
+                <div id="rbt-paste-cell-hint" style="font-size:12px;color:#94a3b8;margin-bottom:8px;">请按 Ctrl+V 粘贴从 Google 表格或 Excel 复制的单元格：</div>
+                <textarea id="rbt-paste-area" style="width:100%;height:200px;background:#141414;border:1px solid var(--border-color);border-radius:8px;color:#ddd;font-size:13px;padding:12px;box-sizing:border-box;" placeholder="从 Google 表格粘贴..."></textarea>
                 <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
                     <button id="rbt-paste-cancel" style="padding:8px 16px;background:#333;border:1px solid #555;border-radius:6px;color:#ccc;cursor:pointer;">取消</button>
                     <button id="rbt-paste-ok" style="padding:8px 16px;background:var(--accent);border:none;border-radius:6px;color:#000;font-weight:bold;cursor:pointer;">导入</button>
@@ -11275,11 +11339,45 @@ function _showPasteDialog(titleStr = '📋 粘贴表格数据') {
             </div>
         `;
         document.body.appendChild(overlay);
-        const close = v => { document.body.removeChild(overlay); resolve(v); };
+        let capturedHtmlRows = null;
+        const pasteArea = overlay.querySelector('#rbt-paste-area');
+        const hintEl = overlay.querySelector('#rbt-paste-cell-hint');
+        pasteArea?.addEventListener('paste', (e) => {
+            const html = (e.clipboardData || window.clipboardData)?.getData?.('text/html') || '';
+            if (html && /<t[dh][\s>]/i.test(html)) {
+                const parsed = _parseSpreadsheetCellsFromHTML(html, false);
+                if (parsed.length > 0) {
+                    capturedHtmlRows = parsed;
+                    if (hintEl) {
+                        hintEl.innerHTML = `<span style="color:#4ade80;font-weight:700;">✅ 已识别表格结构：共 ${parsed.length} 行单元格（保留格内多行文本）</span>`;
+                    }
+                }
+            } else {
+                capturedHtmlRows = null;
+            }
+        });
+        pasteArea?.addEventListener('input', () => {
+            // 如果用户手动清空了输入框，清除已捕获的 HTML 表格缓存
+            if (!pasteArea.value.trim()) capturedHtmlRows = null;
+        });
+        const close = v => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); resolve(v); };
         overlay.querySelector('#rbt-paste-cancel').onclick = () => close(null);
-        overlay.querySelector('#rbt-paste-ok').onclick = () => close(overlay.querySelector('#rbt-paste-area').value);
+        overlay.querySelector('#rbt-paste-ok').onclick = () => {
+            const rawVal = pasteArea ? pasteArea.value : '';
+            if (returnRows) {
+                if (capturedHtmlRows && capturedHtmlRows.length > 0) {
+                    close(capturedHtmlRows);
+                } else if (rawVal && rawVal.trim()) {
+                    close(_normalizeSpreadsheetRows(_parseBatchTSV(rawVal, false), false));
+                } else {
+                    close([]);
+                }
+            } else {
+                close(rawVal);
+            }
+        };
         overlay.addEventListener('click', e => { if (e.target === overlay) close(null); });
-        setTimeout(() => overlay.querySelector('#rbt-paste-area')?.focus(), 100);
+        setTimeout(() => pasteArea?.focus(), 100);
     });
 }
 
@@ -11291,48 +11389,49 @@ function _showSplitPromptDialog(messageText, hasFooter = false) {
         const htmlMessage = messageText.replace(/\\n/g, '<br>');
 
         overlay.innerHTML = `
-            <div style="background:#1e1e1e;border-radius:12px;padding:24px;width:400px;color:#ddd;box-shadow:0 10px 30px rgba(0,0,0,0.5);border:1px solid #333;">
-                <h3 style="margin:0 0 16px;color:#a78bfa;font-size:16px;">🪄 智能分段提取</h3>
+            <div style="background:#1e1e1e;border-radius:12px;padding:24px;width:430px;color:#ddd;box-shadow:0 10px 30px rgba(0,0,0,0.5);border:1px solid #333;">
+                <h3 style="margin:0 0 16px;color:#a78bfa;font-size:16px;">🪄 单元格多行文案导入方式</h3>
                 <div style="font-size:13px;line-height:1.6;margin-bottom:20px;color:#ccc;">${htmlMessage}</div>
                 
                 <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">
+                    <button class="rbt-split-btn" data-val="4" style="padding:12px;background:#1e3a2f;border:1px solid #34d399;border-radius:8px;color:#ecfdf5;cursor:pointer;text-align:left;transition:all 0.2s;">
+                        <div style="font-weight:bold;margin-bottom:4px;color:#6ee7b7;font-size:14px;">[ ✅ 不拆分：每个单元格作为完整正文 (推荐) ]</div>
+                        <div style="font-size:12px;color:#a7f3d0;">每个单元格对应 1 条视频任务，格内多行原样保留为正文</div>
+                    </button>
+                    <button class="rbt-split-btn" data-val="2" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
+                        <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 拆为两段：首行标题 + 其余正文 ]</div>
+                        <div style="font-size:12px;color:#aaa;">单元格第 1 行提取为标题，其余行合并为正文</div>
+                    </button>
                     <button class="rbt-split-btn" data-val="1" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
                         <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 全部内容用于标题 ]</div>
-                        <div style="font-size:12px;color:#aaa;">全文内容作为标题，正文和结尾留空</div>
-                    </button>
-                    <button class="rbt-split-btn" data-val="4" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
-                        <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 全部内容用于正文 ]</div>
-                        <div style="font-size:12px;color:#aaa;">全文内容作为正文，标题 and 结尾留空</div>
+                        <div style="font-size:12px;color:#aaa;">单元格全文作为标题，正文留空</div>
                     </button>
                     ${hasFooter ? `
+                    <button class="rbt-split-btn" data-val="3" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
+                        <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 拆为三段：标题 + 正文 + 结尾 ]</div>
+                        <div style="font-size:12px;color:#aaa;">首行标题，末行做结尾标签，中间所有行为正文</div>
+                    </button>
                     <button class="rbt-split-btn" data-val="5" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
                         <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 全部内容用于结尾 ]</div>
-                        <div style="font-size:12px;color:#aaa;">全文内容作为结尾，标题和正文留空</div>
+                        <div style="font-size:12px;color:#aaa;">单元格全文作为结尾，标题和正文留空</div>
                     </button>
                     ` : ''}
-                    <button class="rbt-split-btn" data-val="2" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
-                        <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 拆为两段 ]</div>
-                        <div style="font-size:12px;color:#aaa;">首行提取为标题，其余内容合并为正文</div>
-                    </button>
-                    <button class="rbt-split-btn" data-val="3" style="padding:12px;background:#2a2a3a;border:1px solid #4a4a6a;border-radius:8px;color:#cce;cursor:pointer;text-align:left;transition:all 0.2s;">
-                        <div style="font-weight:bold;margin-bottom:4px;color:#a78bfa;font-size:14px;">[ 拆为三段 ]</div>
-                        <div style="font-size:12px;color:#aaa;">首行标题，末行做结尾标签，中间所有为正文</div>
-                    </button>
                 </div>
                 
                 <div style="display:flex;justify-content:flex-end;">
-                    <button id="rbt-split-cancel" style="padding:8px 16px;background:#333;border:1px solid #555;border-radius:6px;color:#aaa;cursor:pointer;">保留全文原文，不提取</button>
+                    <button id="rbt-split-cancel" style="padding:8px 16px;background:#333;border:1px solid #555;border-radius:6px;color:#aaa;cursor:pointer;">保留全文作为正文，不拆分</button>
                 </div>
             </div>
         `;
         document.body.appendChild(overlay);
-        const close = v => { document.body.removeChild(overlay); resolve(v); };
+        const close = v => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); resolve(v); };
 
         overlay.querySelector('#rbt-split-cancel').onclick = () => close(null);
 
         overlay.querySelectorAll('.rbt-split-btn').forEach(btn => {
-            btn.onmouseenter = () => btn.style.background = '#32324a';
-            btn.onmouseleave = () => btn.style.background = '#2a2a3a';
+            const origBg = btn.style.background;
+            btn.onmouseenter = () => btn.style.filter = 'brightness(1.15)';
+            btn.onmouseleave = () => { btn.style.filter = ''; btn.style.background = origBg; };
             btn.onclick = () => close(btn.dataset.val);
         });
 
@@ -11466,7 +11565,12 @@ function _pasteBatchTextRows(rows, startIndex, field, target = {}) {
     let count = rows.length;
     if (needed > 0) {
         if (confirm(`需要增加 ${needed} 行文案任务，是否继续？`)) {
-            for (let i = 0; i < needed; i++) state.tasks.push(_createEmptyTask());
+            for (let i = 0; i < needed; i++) {
+                const taskName = _generateUniqueCardName(state.tasks, field.startsWith('scroll_') ? 'scroll' : 'card');
+                const newTask = _createTaskFromTemplate(state, taskName);
+                _finalizeDerivedTaskInstances(newTask);
+                state.tasks.push(newTask);
+            }
         } else count = Math.max(0, state.tasks.length - startIndex);
     }
     for (let i = 0; i < count; i++) {
@@ -11486,13 +11590,12 @@ function _pasteBatchTextRows(rows, startIndex, field, target = {}) {
         }
     }
     const selected = state.selectedIdx;
-    if (selected >= startIndex && selected < startIndex + count && state.overlayProxy?.overlayMgr && !state._coverEditMode) {
-        state.overlayProxy.overlayMgr.overlays = state.tasks[selected].overlays || [];
-    }
+    _syncSelectedTaskOverlayMgrIfNeeded(selected);
     _skipNextApply = true;
     _renderBatchTable();
     if (selected >= startIndex && selected < startIndex + count && typeof reelsSelectTask === 'function') reelsSelectTask(selected);
     else if (typeof _renderTaskList === 'function') _renderTaskList();
+    if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
     if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
 }
 
@@ -11524,7 +11627,151 @@ function _prepareBatchTextEditing(container) {
     });
 }
 
+function _findClosingTsvQuote(raw, quoteStartIdx) {
+    const len = raw.length;
+    let j = quoteStartIdx + 1;
+    while (j < len) {
+        if (raw[j] === '"') {
+            if (j + 1 < len && raw[j + 1] === '"') {
+                j += 2;
+                continue;
+            }
+            const nextCh = j + 1 < len ? raw[j + 1] : '';
+            if (!nextCh || nextCh === '\t' || nextCh === '\n' || nextCh === '\r') {
+                return j;
+            }
+            return -1;
+        }
+        j++;
+    }
+    return -1;
+}
+
+function _normalizeSpreadsheetRows(rows, preserveEmptyRows = false) {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const cleaned = [];
+    for (const rawRow of rows) {
+        if (!Array.isArray(rawRow)) continue;
+        const cells = rawRow.map(c => String(c ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
+        while (cells.length > 1 && !cells[cells.length - 1].trim()) {
+            cells.pop();
+        }
+        if (cells.length > 0 && (preserveEmptyRows || cells.some(c => c.trim()))) {
+            cleaned.push(cells);
+        }
+    }
+    if (cleaned.length === 0) return [];
+    // 若所有非空行的前置列均为空（例如合并列或复制时带上了左侧空列），自动剥离前置全空列
+    while (cleaned.some(r => r.length > 1) && cleaned.every(r => !String(r[0] || '').trim())) {
+        for (const r of cleaned) {
+            if (r.length > 1) r.shift();
+        }
+    }
+    return cleaned;
+}
+
+function _parseSpreadsheetCellsFromHTML(html, preserveEmptyRows = false) {
+    if (!html || typeof html !== 'string' || !/<t[dh][\s>]/i.test(html)) return [];
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const trList = doc.querySelectorAll('table tr, tr');
+        if (!trList || trList.length === 0) return [];
+
+        const extractCellText = (td) => {
+            if (!td) return '';
+            const sheetsVal = td.getAttribute && td.getAttribute('data-sheets-value');
+            if (sheetsVal) {
+                try {
+                    const parsed = JSON.parse(sheetsVal);
+                    if (parsed && typeof parsed['2'] === 'string') {
+                        return parsed['2'].replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+                    }
+                } catch (_) { }
+            }
+            const clone = td.cloneNode(true);
+            clone.querySelectorAll('style, script').forEach(el => el.remove());
+            clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+            clone.querySelectorAll('p, div, li').forEach((el, idx) => {
+                if (idx > 0 || el.previousSibling) {
+                    el.insertAdjacentText('beforebegin', '\n');
+                }
+            });
+            return (clone.textContent || '')
+                .replace(/\u00a0/g, ' ')
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+        };
+
+        const rows = [];
+        trList.forEach(tr => {
+            const cells = Array.from(tr.querySelectorAll('td, th')).map(extractCellText);
+            if (cells.length > 0) {
+                rows.push(cells);
+            }
+        });
+        return _normalizeSpreadsheetRows(rows, preserveEmptyRows);
+    } catch (_) {
+        return [];
+    }
+}
+
+function _extractClipboardRowsFromPasteEvent(e, preserveEmptyRows = false) {
+    const clip = e?.clipboardData || window.clipboardData;
+    if (!clip) return [];
+    const html = clip.getData ? clip.getData('text/html') : '';
+    if (html && /<t[dh][\s>]/i.test(html)) {
+        const htmlRows = _parseSpreadsheetCellsFromHTML(html, preserveEmptyRows);
+        if (htmlRows.length > 0) return htmlRows;
+    }
+    const text = clip.getData ? (clip.getData('text/plain') || clip.getData('text')) : '';
+    if (!text) return [];
+    return _normalizeSpreadsheetRows(_parseBatchTSV(text, preserveEmptyRows), preserveEmptyRows);
+}
+
+async function _readClipboardSpreadsheetRows(dialogTitle = '📋 粘贴表格数据', preserveEmptyRows = false) {
+    if (navigator.clipboard && typeof navigator.clipboard.read === 'function') {
+        try {
+            const items = await navigator.clipboard.read();
+            for (const item of items) {
+                if (item.types && item.types.includes('text/html')) {
+                    const blob = await item.getType('text/html');
+                    const html = await blob.text();
+                    const htmlRows = _parseSpreadsheetCellsFromHTML(html, preserveEmptyRows);
+                    if (htmlRows.length > 0) return htmlRows;
+                }
+                if (item.types && item.types.includes('text/plain')) {
+                    const blob = await item.getType('text/plain');
+                    const raw = await blob.text();
+                    if (raw && raw.trim()) {
+                        const rows = _normalizeSpreadsheetRows(_parseBatchTSV(raw, preserveEmptyRows), preserveEmptyRows);
+                        if (rows.length > 0) return rows;
+                    }
+                }
+            }
+        } catch (_) {
+            // Fall through to readText / dialog fallback
+        }
+    }
+    try {
+        const raw = await navigator.clipboard.readText();
+        if (raw && raw.trim()) {
+            return _normalizeSpreadsheetRows(_parseBatchTSV(raw, preserveEmptyRows), preserveEmptyRows);
+        }
+    } catch (_) {
+        const dialogRows = await _showPasteDialog(dialogTitle, true);
+        if (Array.isArray(dialogRows)) return dialogRows;
+        if (typeof dialogRows === 'string' && dialogRows.trim()) {
+            return _normalizeSpreadsheetRows(_parseBatchTSV(dialogRows, preserveEmptyRows), preserveEmptyRows);
+        }
+    }
+    return [];
+}
+
 function _parseBatchTSV(raw, preserveEmptyRows = false) {
+    if (!raw || typeof raw !== 'string') return [];
     const rows = [];
     let i = 0;
     const len = raw.length;
@@ -11532,18 +11779,24 @@ function _parseBatchTSV(raw, preserveEmptyRows = false) {
         const cells = [];
         while (i < len) {
             let cell = '';
-            if (raw[i] === '"') {
+            const closeQuoteIdx = raw[i] === '"' ? _findClosingTsvQuote(raw, i) : -1;
+            if (closeQuoteIdx !== -1) {
                 i++;
-                while (i < len) {
-                    if (raw[i] === '"') {
-                        if (i + 1 < len && raw[i + 1] === '"') { cell += '"'; i += 2; }
-                        else { i++; break; }
-                    } else { cell += raw[i++]; }
+                while (i < closeQuoteIdx) {
+                    if (raw[i] === '"' && i + 1 < closeQuoteIdx && raw[i + 1] === '"') {
+                        cell += '"';
+                        i += 2;
+                    } else {
+                        cell += raw[i++];
+                    }
                 }
+                i = closeQuoteIdx + 1;
             } else {
-                while (i < len && raw[i] !== '\t' && raw[i] !== '\n' && raw[i] !== '\r') { cell += raw[i++]; }
+                while (i < len && raw[i] !== '\t' && raw[i] !== '\n' && raw[i] !== '\r') {
+                    cell += raw[i++];
+                }
             }
-            cells.push(cell);
+            cells.push(cell.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
             if (i < len && raw[i] === '\t') { i++; continue; }
             if (i < len && (raw[i] === '\n' || raw[i] === '\r')) {
                 if (raw[i] === '\r' && i + 1 < len && raw[i + 1] === '\n') i++;
@@ -11551,12 +11804,18 @@ function _parseBatchTSV(raw, preserveEmptyRows = false) {
                 break;
             }
         }
+        while (cells.length > 1 && !cells[cells.length - 1].trim()) {
+            cells.pop();
+        }
         if (cells.length > 0 && (preserveEmptyRows || cells.some(c => c.trim()))) {
             rows.push(cells);
         }
     }
     return rows;
 }
+window._parseBatchTSV = _parseBatchTSV;
+window._parseSpreadsheetCellsFromHTML = _parseSpreadsheetCellsFromHTML;
+window._normalizeSpreadsheetRows = _normalizeSpreadsheetRows;
 
 // ═══════════════════════════════════════════════════════
 // 9. Template helpers
@@ -13741,18 +14000,19 @@ function _scanRepeatMakerSubdirs(rootDir, kind = 'bg') {
     }
 }
 
-function _parseRepeatMakerScripts(rawText) {
+function _parseRepeatMakerScripts(rawText, capturedCells = null) {
+    if (Array.isArray(capturedCells) && capturedCells.length > 0) {
+        return capturedCells.map(s => String(s || '').trim()).filter(Boolean);
+    }
     const raw = String(rawText || '');
     if (!raw.trim()) return [];
-    if (raw.includes('\t') || raw.includes('"')) {
-        try {
-            const rows = _parseBatchTSV(raw, true);
-            const extracted = rows
-                .map(r => (Array.isArray(r) ? r.map(c => String(c || '').trim()).filter(Boolean).join('\n') : String(r || '').trim()))
-                .filter(Boolean);
-            if (extracted.length > 0) return extracted;
-        } catch (_) { }
-    }
+    try {
+        const rows = _normalizeSpreadsheetRows(_parseBatchTSV(raw, false), false);
+        const extracted = rows
+            .map(r => (Array.isArray(r) ? r.map(c => String(c || '').trim()).filter(Boolean).join('\n') : String(r || '').trim()))
+            .filter(Boolean);
+        if (extracted.length > 0) return extracted;
+    } catch (_) { }
     return raw
         .split(/\r?\n/)
         .map(line => line.trim())
@@ -13978,7 +14238,7 @@ function _showRepeatMakerModal() {
         }
 
         // Render Scripts summary
-        const parsedScripts = _parseRepeatMakerScripts(scriptsInput.value);
+        const parsedScripts = _parseRepeatMakerScripts(scriptsInput.value, scriptsInput._capturedClipboardCells);
         if (parsedScripts.length === 0) {
             scriptsSummaryEl.innerHTML = `<span style="color:#64748b;">已输入 0 条文案（留空则不修改文案列）</span>`;
         } else {
@@ -14041,7 +14301,24 @@ function _showRepeatMakerModal() {
         localStorage.setItem('rbt_repeat_total_rows', String(manualTotalRows));
         refreshModalSummary();
     });
-    scriptsInput.addEventListener('input', refreshModalSummary);
+    scriptsInput.addEventListener('paste', (e) => {
+        const rows = _extractClipboardRowsFromPasteEvent(e, false);
+        if (rows && rows.length > 0) {
+            e.preventDefault();
+            const cells = rows
+                .map(r => (Array.isArray(r) ? r.map(c => String(c || '').trim()).filter(Boolean).join('\n') : String(r || '').trim()))
+                .filter(Boolean);
+            scriptsInput._capturedClipboardCells = cells;
+            scriptsInput.value = cells.map(c => c.includes('\n') ? `"${c.replace(/"/g, '""')}"` : c).join('\n');
+            refreshModalSummary();
+        } else {
+            scriptsInput._capturedClipboardCells = null;
+        }
+    });
+    scriptsInput.addEventListener('input', () => {
+        scriptsInput._capturedClipboardCells = null;
+        refreshModalSummary();
+    });
 
     bgListEl.addEventListener('click', (e) => {
         const upBtn = e.target.closest('[data-move-up]');
@@ -14199,9 +14476,13 @@ function _showRepeatMakerModal() {
     // Scripts clipboard paste & clear
     modal.querySelector('#rbt-rm-paste-clipboard-btn')?.addEventListener('click', async () => {
         try {
-            const clipText = await navigator.clipboard.readText();
-            if (clipText) {
-                scriptsInput.value = clipText;
+            const rows = await _readClipboardSpreadsheetRows('📋 粘贴循环文案');
+            if (rows && rows.length > 0) {
+                const cells = rows
+                    .map(r => (Array.isArray(r) ? r.map(c => String(c || '').trim()).filter(Boolean).join('\n') : String(r || '').trim()))
+                    .filter(Boolean);
+                scriptsInput._capturedClipboardCells = cells;
+                scriptsInput.value = cells.map(c => c.includes('\n') ? `"${c.replace(/"/g, '""')}"` : c).join('\n');
                 refreshModalSummary();
             } else {
                 alert('剪贴板为空，请先复制文案');
@@ -14213,6 +14494,7 @@ function _showRepeatMakerModal() {
         }
     });
     modal.querySelector('#rbt-rm-clear-scripts-btn')?.addEventListener('click', () => {
+        scriptsInput._capturedClipboardCells = null;
         scriptsInput.value = '';
         refreshModalSummary();
     });
@@ -14226,7 +14508,7 @@ function _showRepeatMakerModal() {
     modal.querySelector('#rbt-rm-apply-btn')?.addEventListener('click', () => {
         const perFolder = getPerFolderCount();
         const totalRows = getTotalTargetRows();
-        const parsedScripts = _parseRepeatMakerScripts(scriptsInput.value);
+        const parsedScripts = _parseRepeatMakerScripts(scriptsInput.value, scriptsInput._capturedClipboardCells);
         if (bgFolders.length === 0 && audioFiles.length === 0 && parsedScripts.length === 0) {
             alert('请至少添加一项（背景文件夹、人声文件 或 批量文案）后再点击执行！');
             return;
@@ -14348,20 +14630,25 @@ function _showRepeatMakerModal() {
                     task.ttsText = scriptText;
                 }
                 if (fillScroll) {
-                    if (!Array.isArray(task.overlays)) task.overlays = cloneTemplateOverlays();
-                    const scrollOv = _findBatchScrollOverlay(task);
-                    if (scrollOv) {
-                        scrollOv.content = scriptText;
+                    if (!Array.isArray(task.overlays) || task.overlays.length === 0) task.overlays = cloneTemplateOverlays();
+                    const existingScrollOv = _findBatchScrollOverlay(task);
+                    if (existingScrollOv) {
+                        existingScrollOv.content = scriptText;
+                    } else if (window.ReelsOverlay) {
+                        _setTaskScrollText(task, '', scriptText, window.ReelsOverlay, _batchTableState._activeScrollId, _batchTableState._activeScrollIdx);
                     }
                 }
                 if (fillCard) {
-                    if (!Array.isArray(task.overlays)) task.overlays = cloneTemplateOverlays();
-                    const cardOv = _findBatchTextCardOverlay(task);
-                    if (cardOv) {
-                        cardOv.body_text = scriptText;
-                        cardOv.content = [cardOv.title_text, cardOv.body_text, cardOv.footer_text].filter(Boolean).join('\n');
+                    if (!Array.isArray(task.overlays) || task.overlays.length === 0) task.overlays = cloneTemplateOverlays();
+                    const existingCardOv = _findBatchTextCardOverlay(task);
+                    if (existingCardOv) {
+                        existingCardOv.body_text = scriptText;
+                        existingCardOv.content = [existingCardOv.title_text, existingCardOv.body_text, existingCardOv.footer_text].filter(Boolean).join('\n');
+                    } else if (window.ReelsOverlay) {
+                        _setTaskText(task, '', scriptText, window.ReelsOverlay, '', _batchTableState._activeTextcardId, _batchTableState._activeTextcardIdx);
                     }
                 }
+                _finalizeDerivedTaskInstances(task);
             }
         }
 
@@ -14391,6 +14678,7 @@ function _showRepeatMakerModal() {
         }
 
         _resolveDuplicateTaskNames(state.tasks);
+        _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
         _skipNextApply = true;
         _renderBatchTable();
         if (typeof _renderTaskList === 'function') _renderTaskList();

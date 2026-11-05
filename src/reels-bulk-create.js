@@ -6335,12 +6335,32 @@ function _showBulkCreateModal() {
     // Google Sheets wraps cells containing \n in double quotes: "line1\nline2"
     // Internal quotes are doubled: "He said ""hello"""
     function _bcParseTSV(text) {
+        if (typeof window._parseBatchTSV === 'function') {
+            const rows = window._parseBatchTSV(text, false);
+            return typeof window._normalizeSpreadsheetRows === 'function'
+                ? window._normalizeSpreadsheetRows(rows, false)
+                : rows;
+        }
         const rows = [];
         let row = [];
         let cell = '';
         let inQuote = false;
         let i = 0;
         const src = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+        const hasClosingQuote = (startIdx) => {
+            let j = startIdx + 1;
+            while (j < src.length) {
+                if (src[j] === '"') {
+                    if (j + 1 < src.length && src[j + 1] === '"') { j += 2; continue; }
+                    const nextCh = j + 1 < src.length ? src[j + 1] : '';
+                    if (!nextCh || nextCh === '\t' || nextCh === '\n') return true;
+                    return false;
+                }
+                j++;
+            }
+            return false;
+        };
 
         while (i < src.length) {
             const ch = src[i];
@@ -6362,8 +6382,8 @@ function _showBulkCreateModal() {
                     i++;
                 }
             } else {
-                if (ch === '"' && cell === '') {
-                    // Start of quoted field (only at beginning of cell)
+                if (ch === '"' && cell === '' && hasClosingQuote(i)) {
+                    // Start of quoted field (only when a valid RFC-4180 closing quote exists)
                     inQuote = true;
                     i++;
                 } else if (ch === '\t') {
@@ -6390,9 +6410,14 @@ function _showBulkCreateModal() {
     }
 
     // ── Smart paste: handles both TSV button and direct Ctrl+V ──
-    function _bcHandlePaste(text, anchorRi, anchorCi) {
-        if (!text || !text.trim()) return;
-        const lines = _bcParseTSV(text);
+    function _bcHandlePaste(textOrRows, anchorRi, anchorCi) {
+        let lines = [];
+        if (Array.isArray(textOrRows)) {
+            lines = textOrRows;
+        } else {
+            if (!textOrRows || !textOrRows.trim()) return;
+            lines = _bcParseTSV(textOrRows);
+        }
         if (lines.length === 0) return;
 
         // If pasting into a specific cell (not full-table mode)
@@ -6479,18 +6504,26 @@ function _showBulkCreateModal() {
         if (active && active !== tableBody && /^(INPUT|TEXTAREA|SELECT)$/i.test(active.tagName)) return false;
         if (active && active.isContentEditable) return false;
 
-        const text = (e.clipboardData || window.clipboardData).getData('text');
-        if (!text) return false;
+        const clip = e.clipboardData || window.clipboardData;
+        const html = clip?.getData?.('text/html') || '';
+        let parsedRows = null;
+        if (html && /<t[dh][\s>]/i.test(html) && typeof window._parseSpreadsheetCellsFromHTML === 'function') {
+            const htmlRows = window._parseSpreadsheetCellsFromHTML(html, false);
+            if (htmlRows.length > 0) parsedRows = htmlRows;
+        }
+        const text = clip?.getData?.('text') || '';
+        if (!parsedRows && !text) return false;
 
         e.preventDefault();
         e.stopPropagation();
+        const payload = parsedRows || text;
         const cell = e.target.closest?.('.bc-cell, .bc-grid-td');
         if (_bcSelection || cell) {
             const startRi = _bcSelection ? Math.min(_bcSelection.r1, _bcSelection.r2) : parseInt(cell.dataset.ri);
             const startCi = _bcSelection ? Math.min(_bcSelection.c1, _bcSelection.c2) : parseInt(cell.dataset.ci);
-            _bcHandlePaste(text, startRi, startCi);
+            _bcHandlePaste(payload, startRi, startCi);
         } else {
-            _bcHandlePaste(text, -1, -1);
+            _bcHandlePaste(payload, -1, -1);
         }
         return true;
     }

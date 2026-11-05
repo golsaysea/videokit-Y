@@ -2616,6 +2616,63 @@ test('scroll card quick opacity slider, repeat maker modal, and ai-cn-date smart
     assert.equal(notDraw?.color, '#FFFFFF', 'Unspoken word "not" on the same line should render in pure white');
 });
 
+test('Google Sheets scroll subtitle paste accurately recognizes each cell (HTML table, multi-line TSV, unquoted leading quotes, and merged columns)', () => {
+    const sandbox = loadBrowserScript('src/reels-task-derivation.js', {
+        window: { addEventListener() {} },
+        localStorage: { getItem: () => null, setItem() {} },
+        document: {
+            addEventListener() {},
+            getElementById: () => null,
+            createElement: () => ({
+                style: {},
+                appendChild() {},
+                querySelector: () => null,
+                querySelectorAll: () => [],
+            }),
+            body: { appendChild() {} },
+        },
+    });
+    loadBrowserScript('src/reels-batch-table.js', sandbox);
+
+    const parseTSV = sandbox.window._parseBatchTSV;
+    const normalizeRows = sandbox.window._normalizeSpreadsheetRows;
+    assert.equal(typeof parseTSV, 'function', '_parseBatchTSV must be exposed');
+    assert.equal(typeof normalizeRows, 'function', '_normalizeSpreadsheetRows must be exposed');
+
+    // 1. Multi-line cells wrapped in RFC-4180 quotes by Google Sheets
+    const multiLineClip = '"First cell line 1\nFirst cell line 2"\r\n"Second cell line 1\nSecond cell line 2\nSecond cell line 3"\r\nSingle line third cell';
+    const parsedMulti = JSON.parse(JSON.stringify(normalizeRows(parseTSV(multiLineClip))));
+    assert.equal(parsedMulti.length, 3, 'Should recognize 3 separate Google Sheets cells');
+    assert.deepEqual(parsedMulti[0], ['First cell line 1\nFirst cell line 2']);
+    assert.deepEqual(parsedMulti[1], ['Second cell line 1\nSecond cell line 2\nSecond cell line 3']);
+    assert.deepEqual(parsedMulti[2], ['Single line third cell']);
+
+    // 2. Single-line Google Sheets cells starting with literal double-quote (unwrapped in text/plain)
+    const leadingQuoteClip = [
+        '"Fear not," says the Lord to you today.',
+        '"Lord Jesus, I pray for my family',
+        'Amen and amen.',
+    ].join('\r\n');
+    const parsedQuotes = JSON.parse(JSON.stringify(normalizeRows(parseTSV(leadingQuoteClip))));
+    assert.equal(parsedQuotes.length, 3, 'Cells starting with literal quote must not merge subsequent rows or split mid-sentence');
+    assert.deepEqual(parsedQuotes[0], ['"Fear not," says the Lord to you today.']);
+    assert.deepEqual(parsedQuotes[1], ['"Lord Jesus, I pray for my family']);
+    assert.deepEqual(parsedQuotes[2], ['Amen and amen.']);
+
+    // 3. Merged columns in Google Sheets (trailing or leading empty tab columns)
+    const mergedColsClip = '"Scroll script 1\nLine 2"\t\t\r\n"Scroll script 2\nLine 2"\t\t';
+    const parsedMerged = JSON.parse(JSON.stringify(normalizeRows(parseTSV(mergedColsClip))));
+    assert.equal(parsedMerged.length, 2);
+    assert.equal(parsedMerged[0].length, 1, 'Trailing empty columns from merged cells must be stripped so row is treated as single-column body');
+    assert.equal(parsedMerged[0][0], 'Scroll script 1\nLine 2');
+    assert.equal(parsedMerged[1][0], 'Scroll script 2\nLine 2');
+
+    const leadingEmptyColClip = '\tCell A\r\n\tCell B';
+    const parsedLeadingEmpty = JSON.parse(JSON.stringify(normalizeRows(parseTSV(leadingEmptyColClip))));
+    assert.deepEqual(parsedLeadingEmpty, [['Cell A'], ['Cell B']], 'Leading empty column across all rows must be stripped');
+});
+
+
 
 
 

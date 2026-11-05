@@ -2350,8 +2350,8 @@ def seamless_srt():
         srt_info = SrtParse(src_path, '')
         
         # 使每条字幕的结束时间等于下一条的开始时间
-        for i in range(len(srt_info.srt_data) - 1):
-            srt_info.srt_data[i]['end'] = srt_info.srt_data[i + 1]['start']
+        for i in range(len(srt_info.srtInfos) - 1):
+            srt_info.srtInfos[i]['endTime'] = srt_info.srtInfos[i + 1]['startTime']
         
         new_path = src_path.replace('.srt', '_seamless.srt')
         srt_info.write(new_path)
@@ -2382,11 +2382,11 @@ def compute_char_time():
         total_time = 0
         total_chars = 0
         
-        for item in srt_info.srt_data:
-            duration = item['end'] - item['start'] - interval_time * 1000
+        for item in srt_info.srtInfos:
+            duration = item['endTime'] - item['startTime'] - interval_time * 1000
             if duration > 0:
                 total_time += duration
-                total_chars += item.get('char_count', len(item.get('text', '')))
+                total_chars += item.get('charCount', len(item.get('data', '')))
         
         char_time = (total_time / total_chars / 1000) if total_chars > 0 else 0.1
         
@@ -2662,6 +2662,8 @@ def media_convert():
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             ext = os.path.splitext(file_path)[1].lower()
             out_dir = output_dir if output_dir else os.path.dirname(file_path)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
             
             # Logo 添加模式(预设)
             if mode in ['hailuo', 'vidu', 'veo', 'heygen', 'dream', 'ai_generated']:
@@ -4505,22 +4507,19 @@ if __name__ == '__main__':
     try:
         from waitress import serve
         print(f"Starting Python backend with Waitress on port {port}...")
-        print(f"  Threads: 6 | Channel timeout: 120s | Recv timeout: 30s")
+        print(f"  Threads: 6 | Channel timeout: 120s")
         serve(
             app,
             host='127.0.0.1',
             port=port,
             threads=6,                    # 6 个 worker 线程（比 Flask 单线程可靠得多）
             channel_timeout=120,          # 单个连接最长存活 120 秒
-            recv_timeout=30,              # 接收请求数据超时 30 秒
-            send_timeout=60,              # 发送响应数据超时 60 秒
             connection_limit=100,         # 最大并发连接数
             cleanup_interval=30,          # 每 30 秒清理空闲连接
             map_size=100000,              # asyncore map 大小
             url_scheme='http',
             expose_tracebacks=False,      # 禁用对外返回堆栈信息，避免敏感路径泄露
         )
-    except ImportError:
-        print(f"[警告] Waitress 未安装，使用 Flask 开发服务器 (稳定性较差)")
-        print(f"  建议运行: pip install waitress")
+    except Exception as waitress_err:
+        print(f"[警告] Waitress 不可用或启动失败 ({waitress_err})，回退到 Flask 开发服务器")
         app.run(host='127.0.0.1', port=port, debug=False, threaded=True)

@@ -615,10 +615,8 @@
             if (ov) {
                 const newStart = Math.max(0, finite(editorClip.start));
                 const newEnd = Math.max(newStart + 0.1, finite(editorClip.end));
-                if (editorClip._overlayRangeIndex != null || Array.isArray(ov.display_ranges)) {
-                    const ranges = Array.isArray(ov.display_ranges) && ov.display_ranges.length
-                        ? ov.display_ranges.map(range => ({ ...range }))
-                        : [{ start: finite(ov.start, 0), end: finite(ov.end, 5) }];
+                if (Array.isArray(ov.display_ranges) && ov.display_ranges.length > 0) {
+                    const ranges = ov.display_ranges.map(range => ({ ...range }));
                     const rangeIndex = Math.max(0, Math.min(ranges.length - 1, Number(editorClip._overlayRangeIndex) || 0));
                     ranges[rangeIndex] = { start: newStart, end: newEnd };
                     ranges.sort((a, b) => a.start - b.start);
@@ -628,6 +626,9 @@
                 } else {
                     ov.start = newStart;
                     ov.end = newEnd;
+                }
+                if (ov.type === 'scroll') {
+                    ov.scroll_end_auto = false;
                 }
                 if (isCurrentTask && typeof window !== 'undefined' && window._reelsState?.overlayProxy?.overlayMgr) {
                     if (typeof window._reelsState.overlayProxy.overlayMgr._notify === 'function') {

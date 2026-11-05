@@ -788,16 +788,38 @@ function _initReelsModule() {
                     // 用户拖动过字幕时间后，后续自动剪辑成片同步不得再静默用
                     // 新 SRT 覆盖当前字幕。
                     task._manualSubtitleEdits = true;
+                    const oldStart = Number.isFinite(Number(editOptions?.origStart)) ? Number(editOptions.origStart) : Number(seg.start) || 0;
+                    const oldEnd = Number.isFinite(Number(editOptions?.origEnd)) ? Number(editOptions.origEnd) : Number(seg.end) || oldStart;
+                    const oldDur = Math.max(0.001, oldEnd - oldStart);
                     // 更新段落时间
                     seg.start = clip.start;
                     seg.end = clip.end;
                     
-                    // 比例缩放内部每个字的时间，确保逐字高亮动画能对齐
+                    // 比例缩放内部每个字的时间，保留原有单词相对占比，确保逐字高亮动画能对齐
                     if (seg.words && seg.words.length > 0) {
                         const dur = Math.max(0.001, seg.end - seg.start);
                         seg.words.forEach((w, i) => {
-                            w.start = seg.start + dur * (i / seg.words.length);
-                            w.end = seg.start + dur * ((i + 1) / seg.words.length);
+                            const wStart = Number(w._origDragStart ?? w.start);
+                            const wEnd = Number(w._origDragEnd ?? w.end);
+                            if (editOptions && !editOptions.isEnd && w._origDragStart == null && Number.isFinite(wStart) && Number.isFinite(wEnd)) {
+                                w._origDragStart = wStart;
+                                w._origDragEnd = wEnd;
+                            }
+                            const baseStart = Number.isFinite(w._origDragStart) ? w._origDragStart : wStart;
+                            const baseEnd = Number.isFinite(w._origDragEnd) ? w._origDragEnd : wEnd;
+                            if (Number.isFinite(baseStart) && Number.isFinite(baseEnd) && baseEnd >= baseStart && oldDur > 0.001) {
+                                const relS = Math.max(0, Math.min(1, (baseStart - oldStart) / oldDur));
+                                const relE = Math.max(relS, Math.min(1, (baseEnd - oldStart) / oldDur));
+                                w.start = seg.start + dur * relS;
+                                w.end = seg.start + dur * relE;
+                            } else {
+                                w.start = seg.start + dur * (i / seg.words.length);
+                                w.end = seg.start + dur * ((i + 1) / seg.words.length);
+                            }
+                            if (!editOptions || editOptions.isEnd) {
+                                delete w._origDragStart;
+                                delete w._origDragEnd;
+                            }
                         });
                     }
                     
@@ -4370,8 +4392,18 @@ function _reelsUpdatePreviewInternal() {
                 const renderOv = window.ReelsScrollTiming?.renderingOverlay(ov, _selectedTask, {
                     bodyDuration, mediaDurations: _reelsState._mediaDurations,
                 }) || ov;
+                if (ov.type === 'scroll' && Number.isFinite(Number(renderOv.end))) {
+                    ov.end = renderOv.end;
+                }
                 if (_reelsState._scrollPreviewEnd && ov.type === 'scroll') ovTime = Number(renderOv.end) || ovTime;
                 ReelsOverlay.drawOverlay(ctx, renderOv, ovTime, w, h);
+                const srcOv = ovMgr?.overlays?.find?.(item => item && item.id === ov.id) || null;
+                for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX', '_scrollBodyLineHeight', '_scrollResolvedEndY', '_scrollBodyLastBottomY', '_scrollResolvedEndTime']) {
+                    if (renderOv[key] !== undefined) {
+                        ov[key] = renderOv[key];
+                        if (srcOv) srcOv[key] = renderOv[key];
+                    }
+                }
             }
         }
         // ── 选中框 + 拖拽手柄 ──
@@ -6766,6 +6798,9 @@ function _getAudioDuration(task) {
     if (task === _getSelectedTask()) {
         const audio = document.getElementById('reels-preview-audio');
         if (audio && isFinite(audio.duration) && audio.duration > 0) {
+            if (_reelsState._mediaDurations && task.audioPath) {
+                _reelsState._mediaDurations[task.audioPath] = audio.duration;
+            }
             return audio.duration;
         }
     }
@@ -6786,6 +6821,9 @@ function _getVideoDuration(task) {
     if (task === _getSelectedTask()) {
         const video = document.getElementById('reels-preview-video');
         if (video && isFinite(video.duration) && video.duration > 0) {
+            if (_reelsState._mediaDurations && bgPath) {
+                _reelsState._mediaDurations[bgPath] = video.duration;
+            }
             return video.duration;
         }
     }

@@ -1575,6 +1575,7 @@ class ReelsTimelineEditor {
                             item.clip.end = Math.max(item.clip.start + 0.05, item.origEnd - dtTrim);
                         }
                     }
+                    this._render();
                     return;
                 } else {
                     // 独立片段（尤其是字幕）需要能把入点向前延长到 0 秒。
@@ -1590,6 +1591,15 @@ class ReelsTimelineEditor {
                             item.clip.end = this._drag.origEnd;
                         }
                     }
+                    if (this._tracks[this._drag.trackIdx]?.type === 'subs' && this.onClipChange) {
+                        this.onClipChange(this._drag.trackIdx, this._drag.clipIdx, clip, {
+                            editMode: 'trim_start',
+                            origStart: this._drag.origStart,
+                            origEnd: this._drag.origEnd,
+                            isEnd: false,
+                        });
+                    }
+                    this._render();
                     return;
                 }
             } else if (this._drag.type === 'trim_end') {
@@ -1607,6 +1617,15 @@ class ReelsTimelineEditor {
                         item.clip.end = Math.max(item.clip.start + 0.05, item.origEnd + delta);
                     }
                 }
+                if (this._tracks[this._drag.trackIdx]?.type === 'subs' && this.onClipChange) {
+                    this.onClipChange(this._drag.trackIdx, this._drag.clipIdx, clip, {
+                        editMode: 'trim_end',
+                        origStart: this._drag.origStart,
+                        origEnd: this._drag.origEnd,
+                        isEnd: false,
+                    });
+                }
+                this._render();
                 return;
             } else if (this._drag.type === 'move') {
                 const group = this._drag.group || [];
@@ -1623,7 +1642,16 @@ class ReelsTimelineEditor {
                 for (const item of group) {
                     item.clip.start = item.origStart + safeDt;
                     item.clip.end = item.origEnd + safeDt;
+                    if (this._tracks[item.trackIdx]?.type === 'subs' && this.onClipChange) {
+                        this.onClipChange(item.trackIdx, item.clipIdx, item.clip, {
+                            editMode: 'move',
+                            origStart: item.origStart,
+                            origEnd: item.origEnd,
+                            isEnd: false,
+                        });
+                    }
                 }
+                this._render();
                 return;
             }
             return;
@@ -1695,22 +1723,36 @@ class ReelsTimelineEditor {
                 origOutT: this._drag.origOutT,
                 inT: this._tracks[this._drag.trackIdx]?.clips[this._drag.clipIdx]?.inT,
                 outT: this._tracks[this._drag.trackIdx]?.clips[this._drag.clipIdx]?.outT,
+                group: Array.isArray(this._drag.group) ? this._drag.group.slice() : null,
                 isEnd: true,
             }
             : null;
         this._drag = null;
         if (edit && edit.clip && this.onClipChange) {
-            this.onClipChange(edit.trackIdx, edit.clipIdx, edit.clip, {
-                editMode: edit.type,
-                trimOffset: edit.trimOffset,
-                origStart: edit.origStart,
-                origEnd: edit.origEnd,
-                origInT: edit.origInT,
-                origOutT: edit.origOutT,
-                inT: edit.inT,
-                outT: edit.outT,
-                isEnd: true,
-            });
+            if (edit.type === 'move' && Array.isArray(edit.group) && edit.group.length > 1) {
+                for (const item of edit.group) {
+                    if (!item || !item.clip) continue;
+                    this.onClipChange(item.trackIdx, item.clipIdx, item.clip, {
+                        editMode: edit.type,
+                        trimOffset: edit.trimOffset,
+                        origStart: item.origStart,
+                        origEnd: item.origEnd,
+                        isEnd: true,
+                    });
+                }
+            } else {
+                this.onClipChange(edit.trackIdx, edit.clipIdx, edit.clip, {
+                    editMode: edit.type,
+                    trimOffset: edit.trimOffset,
+                    origStart: edit.origStart,
+                    origEnd: edit.origEnd,
+                    origInT: edit.origInT,
+                    origOutT: edit.origOutT,
+                    inT: edit.inT,
+                    outT: edit.outT,
+                    isEnd: true,
+                });
+            }
         }
         if (edit && edit.clip && this.onEditEnd) this.onEditEnd(edit);
         // mousedown/mousemove 已经把最终位置同步到预览；这里不要再发一个完全

@@ -134,6 +134,7 @@ class ReelsOverlayPanel {
                     <div class="rop-header-actions">
                         <button class="btn btn-secondary rop-btn" id="rop-add-text" title="添加文本覆层">+ 文本</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-textcard" title="添加文字卡片" style="background:#FFD700;color:#000;">+ 文字卡片</button>
+                        <button class="btn btn-secondary rop-btn" id="rop-add-phone-cta" title="添加30秒后出现的邀约电话覆层（可自由调整位置、几秒后出现、出场动画与电话号码）" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-weight:700;border:1px solid #6ee7b7;">+ 📞 邀约电话</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-solidmask" title="添加纯色蒙版" style="background:#4CAF50;color:#fff;">+ 纯色蒙版</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-image" title="添加图片/视频/动图覆层">+ 媒体</button>
                         <button class="btn btn-secondary rop-btn" id="rop-media-library" title="打开固定覆层素材库" style="padding:2px 6px;">📂 素材</button>
@@ -156,6 +157,152 @@ class ReelsOverlayPanel {
                     <div style="display:flex;align-items:center;gap:8px;">
                         <input type="checkbox" id="rop-fixed-text" style="width:16px;height:16px;cursor:pointer;">
                         <label for="rop-fixed-text" style="font-size:12px;color:var(--text-secondary);cursor:pointer;">固定文案 / 纯蒙版 🔒 <span style="color:var(--text-muted);font-size:11px;">— 勾选后此卡片将拒绝接收表格中的批量文案</span></label>
+                    </div>
+                </div>
+
+                <!-- 📞 邀约电话专属快捷设置面板 -->
+                <div id="rop-phone-cta-props" class="rop-group" style="display:none; background:linear-gradient(180deg, rgba(16,185,129,0.12), rgba(15,23,42,0.55)); border:1px solid rgba(16,185,129,0.45); border-radius:8px; padding:10px; margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-size:13px;font-weight:700;color:#6ee7b7;display:flex;align-items:center;gap:6px;">
+                            <span>📞 邀约电话快捷设置</span>
+                            <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(16,185,129,0.22);color:#a7f3d0;border:1px solid rgba(16,185,129,0.4);">已锁定防覆盖 🔒</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary rop-btn" id="rop-phone-cta-preview-anim" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-weight:600;border:1px solid #6ee7b7;" title="在画布上立即演示邀约电话的出场动画与呼吸动态">▶ 预览出场动画</button>
+                    </div>
+
+                    <div class="rop-grid" style="gap:6px;">
+                        <label style="color:#a7f3d0;font-weight:600;">样式模板</label>
+                        <select id="rop-phone-cta-style" class="rop-select">
+                            <option value="whatsapp_lime_inline">🟢 荧光黄逐行紧贴蒙版 (WhatsApp同款)</option>
+                            <option value="white_red_inline">⬜ 白底红号逐行紧贴蒙版 (高对比)</option>
+                            <option value="black_gold_inline">🖤 黑底金号逐行紧贴蒙版 (沉稳醒目)</option>
+                            <option value="gold_dark_banner">📞 黑金祈祷热线横幅 (经典整块卡)</option>
+                            <option value="green_call_pill">🟢 翠绿来电胶囊条 (醒目按钮)</option>
+                            <option value="yellow_black_alert">🟡 黄底黑字热线牌 (强视觉冲击)</option>
+                            <option value="red_white_urgent">🔴 红白紧急呼召卡 (高转化)</option>
+                            <option value="frosted_glass_gold">✨ 磨砂玻璃金字条 (高级感)</option>
+                            <option value="pure_text_stroked">💬 纯文字粗描边 (无底框)</option>
+                        </select>
+
+                        <label style="color:#fde68a;font-weight:600;">邀约电话文案<br><span style="font-size:10px;color:var(--text-muted);font-weight:400;">(支持多行换行)</span></label>
+                        <textarea id="rop-phone-cta-number" class="rop-textarea" rows="4" style="font-weight:700;color:#fde68a;line-height:1.35;" placeholder="Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible&#10;study."></textarea>
+
+                        <label>顶部副标(可选)</label>
+                        <input type="text" id="rop-phone-cta-title" class="rop-input" placeholder="可留空，或填: 📞 CALL FOR PRAYER 24/7">
+
+                        <div style="grid-column:span 2;font-size:11px;font-weight:700;color:#d9f99d;margin-top:2px;padding:3px 6px;border-radius:4px;background:rgba(163,230,53,0.14);border:1px solid rgba(163,230,53,0.35);">
+                            🎨 电话蒙版与颜色控制 (可自由调节蒙版形态/颜色/圆角/内距)
+                        </div>
+
+                        <label style="color:#d9f99d;font-weight:600;">蒙版模式</label>
+                        <select id="rop-phone-cta-mask-mode" class="rop-select">
+                            <option value="inline-joined">🟩 逐行紧贴连通蒙版 (WhatsApp同款阶梯)</option>
+                            <option value="inline">💊 逐行独立胶囊蒙版</option>
+                            <option value="block-fit">📦 整块自适应包裹框</option>
+                            <option value="card">🪪 整块横幅卡片底框</option>
+                            <option value="none">🚫 无底框 (纯文字)</option>
+                        </select>
+
+                        <label>蒙版底色/透明</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="color" id="rop-phone-cta-mask-color" class="rop-color" value="#E0FF14" title="电话蒙版背景色">
+                            <span style="font-size:11px;color:var(--text-muted);">透明%:</span>
+                            <input type="number" id="rop-phone-cta-mask-opacity" class="rop-input" min="0" max="100" step="2" value="100" style="width:64px;" title="蒙版不透明度 (0-100%)">
+                        </div>
+
+                        <label>蒙版圆角/内距</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="rop-phone-cta-mask-radius" class="rop-input" min="0" max="80" step="1" value="14" style="width:60px;" title="蒙版圆角半径(px)">
+                            <span style="font-size:11px;color:var(--text-muted);">左右距:</span>
+                            <input type="number" id="rop-phone-cta-pad-h" class="rop-input" min="0" max="80" step="2" value="22" style="width:60px;" title="每行蒙版左右内边距(px)">
+                        </div>
+
+                        <label>文字/电话色</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="color" id="rop-phone-cta-text-color" class="rop-color" value="#000000" title="普通文案主文字颜色">
+                            <span style="font-size:11px;color:#fda4af;font-weight:600;">号码色:</span>
+                            <input type="color" id="rop-phone-cta-phone-color" class="rop-color" value="#E60039" title="电话号码自动高亮颜色 (自动识别号码与 at +1...)">
+                        </div>
+
+                        <label style="color:#6ee7b7;font-weight:600;">几秒后出现</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="rop-phone-cta-start" class="rop-input" step="0.5" min="0" value="30" style="width:76px;font-weight:700;color:#6ee7b7;">
+                            <span style="font-size:11px;color:var(--text-muted);">秒 → 结束:</span>
+                            <input type="number" id="rop-phone-cta-end" class="rop-input" step="0.5" min="0" value="9999" style="width:76px;" title="9999 表示一直显示到视频结束">
+                            <button type="button" class="btn btn-secondary rop-btn" id="rop-phone-cta-end-full" style="padding:2px 6px;font-size:10px;" title="设为 9999 (一直显示到视频结尾)">全程</button>
+                        </div>
+
+                        <div style="grid-column:span 2;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                            <span style="font-size:10px;color:var(--text-muted);">快捷秒数:</span>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="0" style="padding:1px 6px;font-size:10px;">0s立即</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="10" style="padding:1px 6px;font-size:10px;">10s</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="15" style="padding:1px 6px;font-size:10px;">15s</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="20" style="padding:1px 6px;font-size:10px;">20s</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="25" style="padding:1px 6px;font-size:10px;">25s</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="30" style="padding:1px 6px;font-size:10px;border-color:#10b981;color:#6ee7b7;font-weight:700;">30s(默认)</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="45" style="padding:1px 6px;font-size:10px;">45s</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-time-chip" data-sec="60" style="padding:1px 6px;font-size:10px;">60s</button>
+                        </div>
+
+                        <label style="color:#93c5fd;font-weight:600;">出场动画</label>
+                        <select id="rop-phone-cta-anim-in" class="rop-select">
+                            <option value="ring_shake">🔔 来电震动弹出 (爆款推荐)</option>
+                            <option value="pop">✨ 弹跳放大出现</option>
+                            <option value="elastic_pop">🎾 Q弹果冻弹出</option>
+                            <option value="slide_up">⬆️ 从底部上滑出现</option>
+                            <option value="slide_down">⬇️ 从顶部下滑出现</option>
+                            <option value="slide_left">⬅️ 从右侧滑入</option>
+                            <option value="slide_right">➡️ 从左侧滑入</option>
+                            <option value="zoom_bounce">💥 放大落地回弹</option>
+                            <option value="fade">🌫️ 柔和渐显淡入</option>
+                            <option value="none">⏹ 无动画 (直接出现)</option>
+                        </select>
+
+                        <label>动画时长(s)</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="rop-phone-cta-anim-dur" class="rop-input" min="0.1" max="3" step="0.05" value="0.55" style="width:72px;">
+                            <span style="font-size:11px;color:var(--text-muted);">退场:</span>
+                            <select id="rop-phone-cta-anim-out" class="rop-select" style="flex:1;">
+                                <option value="fade">🌫️ 渐隐淡出</option>
+                                <option value="pop">✨ 缩小收回</option>
+                                <option value="slide_down">⬇️ 下滑退场</option>
+                                <option value="slide_up">⬆️ 上滑退场</option>
+                                <option value="none">⏹ 无</option>
+                            </select>
+                        </div>
+
+                        <label>出现后动态</label>
+                        <select id="rop-phone-cta-loop-anim" class="rop-select">
+                            <option value="pulse">💓 持续呼吸放大脉冲 (吸睛推荐)</option>
+                            <option value="ring">📳 间歇来电震动轻晃 (每2.2秒)</option>
+                            <option value="float">☁️ 持续上下柔和轻浮</option>
+                            <option value="none">⏹ 保持静止</option>
+                        </select>
+
+                        <div style="grid-column:span 2;display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:2px;">
+                            <span style="font-size:10px;color:var(--text-muted);">快速位置:</span>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-pos-btn" data-pos="top" style="padding:2px 7px;font-size:10px;">⬆️ 顶部横幅</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-pos-btn" data-pos="center" style="padding:2px 7px;font-size:10px;">🎯 画面正中</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-pos-btn" data-pos="lower" style="padding:2px 7px;font-size:10px;border-color:#10b981;color:#6ee7b7;">⬇️ 中下黄金位(推荐)</button>
+                            <button type="button" class="btn btn-secondary rop-btn rop-phone-cta-pos-btn" data-pos="bottom" style="padding:2px 7px;font-size:10px;">⬇️ 底部贴边</button>
+                        </div>
+
+                        <label>位置X / Y</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="rop-phone-cta-x" class="rop-input" step="5" title="水平中心偏移 X (0为居中)" style="width:76px;">
+                            <input type="number" id="rop-phone-cta-y" class="rop-input" step="5" title="垂直中心偏移 Y" style="width:76px;">
+                            <span style="font-size:10px;color:var(--text-muted);">或直接拖拽画布</span>
+                        </div>
+
+                        <label>电话字号/宽</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="number" id="rop-phone-cta-fontsize" class="rop-input" min="20" max="150" step="2" value="56" title="电话号码字号" style="width:72px;">
+                            <span style="font-size:11px;color:var(--text-muted);">宽:</span>
+                            <input type="number" id="rop-phone-cta-width" class="rop-input" min="200" max="1080" step="10" value="920" title="横幅宽度(px)" style="width:80px;">
+                        </div>
+                    </div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:6px;line-height:1.4;">
+                        💡 提示：暂停时选中此图层会直接在画布显示，方便鼠标拖拽调整位置；点击播放或导出时会在设定的秒数（如 30s）自动触发出场动画。
                     </div>
                 </div>
 
@@ -971,6 +1118,7 @@ class ReelsOverlayPanel {
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="image" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.12);color:#bae6fd;cursor:pointer;">🖼 上传图片朗诵写出</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="readfollow" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#bbf7d0;cursor:pointer;">📖 原文不透明跟读高亮</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rainbow_karaoke" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(168,85,247,0.55);background:linear-gradient(90deg,rgba(255,56,36,0.22),rgba(255,214,0,0.22),rgba(42,214,72,0.22),rgba(36,107,255,0.22),rgba(155,77,255,0.28));color:#fff;cursor:pointer;">🌈 彩虹渐变逐词跟读 (已读保留彩虹·未读纯白)</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="word_pink_cyan_grad" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(0,229,255,0.55);background:linear-gradient(90deg,rgba(255,0,128,0.28),rgba(138,43,226,0.28),rgba(0,229,255,0.28));color:#fff;cursor:pointer;">✨ 单词粉紫青渐变跟读 (Lord Jesus同款·仅当前词渐变)</button>
                         </div>
 
                         <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
@@ -1594,21 +1742,38 @@ class ReelsOverlayPanel {
                 <div class="rop-group" id="rop-animation-props">
                     <div class="rop-group-title">动画</div>
                     <div class="rop-grid">
-                        <label>入场</label>
+                        <label>入场/出现</label>
                         <select id="rop-anim-in" class="rop-select">
-                            <option value="none">无</option><option value="fade">淡入</option>
-                            <option value="pop">弹出</option><option value="slide_up">上滑</option>
-                            <option value="slide_down">下滑</option><option value="slide_left">左滑</option>
-                            <option value="slide_right">右滑</option>
+                            <option value="none">无</option>
+                            <option value="fade">淡入</option>
+                            <option value="pop">弹跳放大 (Pop)</option>
+                            <option value="ring_shake">🔔 来电震动弹出</option>
+                            <option value="elastic_pop">🎾 Q弹果冻弹出</option>
+                            <option value="zoom_bounce">💥 放大落地回弹</option>
+                            <option value="slide_up">⬆️ 上滑出现</option>
+                            <option value="slide_down">⬇️ 下滑出现</option>
+                            <option value="slide_left">⬅️ 右侧滑入</option>
+                            <option value="slide_right">➡️ 左侧滑入</option>
                         </select>
-                        <label>出场</label>
+                        <label>退场/消失</label>
                         <select id="rop-anim-out" class="rop-select">
-                            <option value="none">无</option><option value="fade">淡出</option>
-                            <option value="pop">弹出</option><option value="slide_up">上滑</option>
-                            <option value="slide_down">下滑</option>
+                            <option value="none">无</option>
+                            <option value="fade">淡出</option>
+                            <option value="pop">缩小弹出</option>
+                            <option value="slide_up">上滑退场</option>
+                            <option value="slide_down">下滑退场</option>
+                            <option value="slide_left">左滑退场</option>
+                            <option value="slide_right">右滑退场</option>
                         </select>
                         <label>入场时长</label><input type="number" id="rop-anim-in-dur" class="rop-input" min="0" max="5" step="0.05" value="0.3">
-                        <label>出场时长</label><input type="number" id="rop-anim-out-dur" class="rop-input" min="0" max="5" step="0.05" value="0.3">
+                        <label>退场时长</label><input type="number" id="rop-anim-out-dur" class="rop-input" min="0" max="5" step="0.05" value="0.3">
+                        <label>出现后动态</label>
+                        <select id="rop-anim-loop" class="rop-select">
+                            <option value="none">保持静止</option>
+                            <option value="pulse">💓 持续呼吸放大</option>
+                            <option value="ring">📳 间歇来电轻晃</option>
+                            <option value="float">☁️ 持续上下轻浮</option>
+                        </select>
                     </div>
                 </div>
 
@@ -2032,6 +2197,7 @@ class ReelsOverlayPanel {
         // 添加覆层
         this.container.querySelector('#rop-add-text').addEventListener('click', () => this._addTextOverlay());
         this.container.querySelector('#rop-add-textcard').addEventListener('click', () => this._addTextCardOverlay());
+        this.container.querySelector('#rop-add-phone-cta')?.addEventListener('click', () => this._addPhoneCtaOverlay());
         this.container.querySelector('#rop-add-solidmask')?.addEventListener('click', () => this._addSolidMaskOverlay());
         this.container.querySelector('#rop-add-image').addEventListener('click', () => this._addImageOverlay());
         this.container.querySelector('#rop-media-library').addEventListener('click', () => this._openMediaLibrary());
@@ -2039,6 +2205,9 @@ class ReelsOverlayPanel {
         this.container.querySelector('#rop-add-decor')?.addEventListener('click', () => this._addDecorOverlay());
         this.container.querySelector('#rop-duplicate').addEventListener('click', () => this._duplicateOverlay());
         this.container.querySelector('#rop-delete').addEventListener('click', () => this._deleteOverlay());
+
+        // 📞 邀约电话快捷面板事件绑定
+        this._bindPhoneCtaEvents();
 
         // "显示终点" toggle
         const showEndBtn = this.container.querySelector('#rop-scroll-show-end');
@@ -2233,7 +2402,7 @@ class ReelsOverlayPanel {
             'rop-start', 'rop-end', 'rop-content', 'rop-font', 'rop-fontsize',
             'rop-color', 'rop-use-stroke', 'rop-stroke-color', 'rop-stroke-width',
             'rop-shadow-enabled', 'rop-shadow-color', 'rop-shadow-blur', 'rop-shadow-offset-x', 'rop-shadow-offset-y', 'rop-shadow-opacity', 'rop-scale', 'rop-flip-h', 'rop-video-offset', 'rop-keep-aspect',
-            'rop-flip-v', 'rop-blend', 'rop-anim-in', 'rop-anim-out',
+            'rop-flip-v', 'rop-blend', 'rop-anim-in', 'rop-anim-out', 'rop-anim-loop',
             'rop-bind-scroll-target', 'rop-bind-scroll-offset-y', 'rop-bind-scroll-offset-x',
             'rop-bind-scroll-clamp-min-y', 'rop-bind-scroll-clamp-max-y', 'rop-bind-scroll-follow-x',
             'rop-anim-in-dur', 'rop-anim-out-dur',
@@ -2956,6 +3125,27 @@ class ReelsOverlayPanel {
                     this._val('rop-scroll-tw-keep-read-color', true);
                     this._val('rop-scroll-tw-active-scale-enabled', false);
                     this._val('rop-scroll-tw-cursor-enabled', false);
+                } else if (preset === 'word_pink_cyan_grad') {
+                    this._val('rop-scroll-font', 'Comic Sans MS');
+                    this._val('rop-scroll-bold', true);
+                    this._val('rop-scroll-italic', true);
+                    this._val('rop-scroll-color', '#FFFFFF');
+                    this._val('rop-scroll-stroke-color', '#000000');
+                    this._val('rop-scroll-stroke-width', 5);
+                    this._val('rop-scroll-shadow', true);
+                    this._val('rop-scroll-shadow-color', '#000000');
+                    this._val('rop-scroll-shadow-blur', 4);
+                    this._val('rop-scroll-shadow-x', 0);
+                    this._val('rop-scroll-shadow-y', 3);
+                    this._val('rop-scroll-uppercase', false);
+                    this._val('rop-scroll-tw-reveal-type', 'word');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-hide-unread', false);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#FF0080,#8A2BE2,#00E5FF');
+                    this._val('rop-scroll-tw-keep-read-color', false);
+                    this._val('rop-scroll-tw-active-scale-enabled', false);
+                    this._val('rop-scroll-tw-cursor-enabled', false);
                 }
                 this._syncScrollTypewriterCursorImageUI();
                 this._syncToOverlay();
@@ -3545,6 +3735,205 @@ class ReelsOverlayPanel {
     // 覆层 CRUD
     // ═══════════════════════════════════════════════
 
+    _bindPhoneCtaEvents() {
+        const q = (sel) => this.container.querySelector(sel);
+
+        q('#rop-phone-cta-style')?.addEventListener('change', (e) => {
+            const ov = this._selectedOv;
+            if (!ov) return;
+            window.ReelsOverlay?.applyPhoneCtaStylePreset?.(ov, e.target.value);
+            this._syncFromOverlay(ov);
+            this._syncOverlayStyleToScopeTasks(ov);
+            this._requestRender();
+        });
+
+        const bindMirroredInput = (ctaId, targetIds, onAfter) => {
+            const el = q('#' + ctaId);
+            if (!el) return;
+            const handler = () => {
+                const ov = this._selectedOv;
+                if (!ov) return;
+                const val = el.value;
+                for (const tid of targetIds) {
+                    this._val(tid, val);
+                }
+                if (typeof onAfter === 'function') onAfter(ov, val);
+                this._syncToOverlay();
+            };
+            el.addEventListener('input', handler);
+            el.addEventListener('change', handler);
+        };
+
+        bindMirroredInput('rop-phone-cta-title', ['rop-title-text']);
+        bindMirroredInput('rop-phone-cta-number', ['rop-body-text']);
+        bindMirroredInput('rop-phone-cta-start', ['rop-start', 'rop-card-start'], (ov, val) => {
+            const num = Math.max(0, parseFloat(val) || 0);
+            ov.start = num;
+            ov.mask_start = num;
+            this._highlightPhoneCtaTimeChip(num);
+            this._refreshList();
+        });
+        bindMirroredInput('rop-phone-cta-end', ['rop-end', 'rop-card-end'], (ov, val) => {
+            const num = Math.max(0, parseFloat(val) || 9999);
+            ov.end = num;
+            ov.mask_end = num;
+            this._refreshList();
+        });
+        bindMirroredInput('rop-phone-cta-anim-dur', ['rop-anim-in-dur']);
+        bindMirroredInput('rop-phone-cta-anim-out', ['rop-anim-out']);
+        bindMirroredInput('rop-phone-cta-x', ['rop-card-x', 'rop-x']);
+        bindMirroredInput('rop-phone-cta-y', ['rop-card-y', 'rop-y']);
+        bindMirroredInput('rop-phone-cta-fontsize', ['rop-body-fontsize']);
+        bindMirroredInput('rop-phone-cta-width', ['rop-card-width']);
+
+        const syncPhoneMaskChange = () => {
+            const ov = this._selectedOv;
+            if (!ov) return;
+            ov.cta_mask_mode = this._get('rop-phone-cta-mask-mode') || 'inline-joined';
+            ov.cta_mask_color = this._get('rop-phone-cta-mask-color') || '#E0FF14';
+            ov.cta_mask_opacity = Math.max(0, Math.min(100, Number(this._get('rop-phone-cta-mask-opacity') ?? 100)));
+            ov.cta_mask_radius = Math.max(0, Number(this._get('rop-phone-cta-mask-radius') ?? 14));
+            ov.cta_mask_pad_h = Math.max(0, Number(this._get('rop-phone-cta-pad-h') ?? 22));
+            const mainTextColor = this._get('rop-phone-cta-text-color') || '#000000';
+            ov.body_color = mainTextColor;
+            this._val('rop-body-color', mainTextColor);
+            ov.cta_phone_color = this._get('rop-phone-cta-phone-color') || '#E60039';
+            window.ReelsOverlay?.syncPhoneCtaMaskAndColors?.(ov);
+            this._syncFromOverlay(ov);
+            this._syncOverlayStyleToScopeTasks(ov);
+            this._requestRender();
+        };
+
+        ['rop-phone-cta-mask-mode', 'rop-phone-cta-mask-color', 'rop-phone-cta-mask-opacity',
+         'rop-phone-cta-mask-radius', 'rop-phone-cta-pad-h', 'rop-phone-cta-text-color', 'rop-phone-cta-phone-color'].forEach(id => {
+            const el = q('#' + id);
+            if (!el) return;
+            el.addEventListener('input', syncPhoneMaskChange);
+            el.addEventListener('change', syncPhoneMaskChange);
+        });
+
+        q('#rop-phone-cta-end-full')?.addEventListener('click', () => {
+            const ov = this._selectedOv;
+            if (!ov) return;
+            ov.end = 9999;
+            ov.mask_end = 9999;
+            this._val('rop-phone-cta-end', 9999);
+            this._val('rop-end', 9999);
+            this._val('rop-card-end', 9999);
+            this._syncToOverlay();
+            this._refreshList();
+        });
+
+        this.container.querySelectorAll('.rop-phone-cta-time-chip').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ov = this._selectedOv;
+                if (!ov) return;
+                const sec = Math.max(0, parseFloat(btn.dataset.sec) || 0);
+                ov.start = sec;
+                ov.mask_start = sec;
+                this._val('rop-phone-cta-start', sec);
+                this._val('rop-start', sec);
+                this._val('rop-card-start', sec);
+                this._highlightPhoneCtaTimeChip(sec);
+                this._syncToOverlay();
+                this._refreshList();
+                if (typeof showToast === 'function') {
+                    showToast(`📞 邀约电话已设为 ${sec === 0 ? '0秒立即' : sec + '秒后'} 出现`, 'info');
+                }
+            });
+        });
+
+        q('#rop-phone-cta-anim-in')?.addEventListener('change', (e) => {
+            const ov = this._selectedOv;
+            if (!ov) return;
+            this._val('rop-anim-in', e.target.value);
+            this._syncToOverlay();
+            this._previewPhoneCtaAnim(ov);
+        });
+
+        q('#rop-phone-cta-loop-anim')?.addEventListener('change', (e) => {
+            const ov = this._selectedOv;
+            if (!ov) return;
+            this._val('rop-anim-loop', e.target.value);
+            this._syncToOverlay();
+            this._previewPhoneCtaAnim(ov);
+        });
+
+        q('#rop-phone-cta-preview-anim')?.addEventListener('click', () => {
+            if (this._selectedOv) this._previewPhoneCtaAnim(this._selectedOv);
+        });
+
+        this.container.querySelectorAll('.rop-phone-cta-pos-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ov = this._selectedOv;
+                if (!ov) return;
+                const posKey = btn.dataset.pos || 'lower';
+                const posMap = {
+                    top: -715,
+                    center: 0,
+                    lower: 565,
+                    bottom: 785,
+                };
+                const targetCenterX = 0;
+                const targetCenterY = posMap[posKey] ?? 565;
+                this._val('rop-phone-cta-x', targetCenterX);
+                this._val('rop-phone-cta-y', targetCenterY);
+                this._val('rop-card-x', targetCenterX);
+                this._val('rop-card-y', targetCenterY);
+                this._val('rop-x', targetCenterX);
+                this._val('rop-y', targetCenterY);
+                this._syncToOverlay();
+            });
+        });
+    }
+
+    _highlightPhoneCtaTimeChip(sec) {
+        this.container.querySelectorAll('.rop-phone-cta-time-chip').forEach(btn => {
+            const chipSec = parseFloat(btn.dataset.sec);
+            const active = Math.abs(chipSec - Number(sec)) < 0.01;
+            btn.style.borderColor = active ? '#10b981' : '';
+            btn.style.color = active ? '#6ee7b7' : '';
+            btn.style.fontWeight = active ? '700' : '';
+            btn.style.background = active ? 'rgba(16,185,129,0.18)' : '';
+        });
+    }
+
+    _previewPhoneCtaAnim(ov) {
+        if (!ov) return;
+        ov._ctaAnimPreviewStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (this._ctaPreviewRaf) cancelAnimationFrame(this._ctaPreviewRaf);
+        const startWall = ov._ctaAnimPreviewStart;
+        const step = () => {
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            if (!ov._ctaAnimPreviewStart || (now - startWall) > 2450) {
+                delete ov._ctaAnimPreviewStart;
+                this._ctaPreviewRaf = null;
+                this._requestRender();
+                return;
+            }
+            this._requestRender();
+            this._ctaPreviewRaf = requestAnimationFrame(step);
+        };
+        this._ctaPreviewRaf = requestAnimationFrame(step);
+    }
+
+    _addPhoneCtaOverlay() {
+        const ReelsOverlay = window.ReelsOverlay;
+        if (!ReelsOverlay || typeof ReelsOverlay.createPhoneCtaOverlay !== 'function') return;
+        const ov = ReelsOverlay.createPhoneCtaOverlay({
+            start: 30,
+            end: 9999,
+        });
+        if (this.videoCanvas) this.videoCanvas.addOverlay(ov);
+        this._syncOverlayStyleToScopeTasks(ov);
+        this._refreshList();
+        this.selectOverlay(ov);
+        this._previewPhoneCtaAnim(ov);
+        if (typeof showToast === 'function') {
+            showToast('📞 已添加邀约电话覆层（默认 30 秒后出现，支持直接拖拽位置与修改出场动画）', 'success');
+        }
+    }
+
     _addTextCardOverlay() {
         const ReelsOverlay = window.ReelsOverlay;
         if (!ReelsOverlay) return;
@@ -3758,42 +4147,58 @@ class ReelsOverlayPanel {
     }
 
     /**
-     * 解析 TSV 数据 (支持引号内换行的 Google Sheets 格式)
+     * 解析 TSV 数据 (支持引号内换行的 Google Sheets 格式与 HTML 表格解析)
      * 返回 [[title, body], ...]
      */
     _parseTSV(raw) {
+        if (typeof window._parseBatchTSV === 'function') {
+            const rows = window._parseBatchTSV(raw, false);
+            return typeof window._normalizeSpreadsheetRows === 'function'
+                ? window._normalizeSpreadsheetRows(rows, false)
+                : rows;
+        }
         const rows = [];
         let i = 0;
         const len = raw.length;
+
+        const findCloseQuote = (startIdx) => {
+            let j = startIdx + 1;
+            while (j < len) {
+                if (raw[j] === '"') {
+                    if (j + 1 < len && raw[j + 1] === '"') { j += 2; continue; }
+                    const nextCh = j + 1 < len ? raw[j + 1] : '';
+                    if (!nextCh || nextCh === '\t' || nextCh === '\n' || nextCh === '\r') return j;
+                    return -1;
+                }
+                j++;
+            }
+            return -1;
+        };
 
         while (i < len) {
             const cells = [];
             // 解析一行的所有单元格
             while (i < len) {
                 let cell = '';
-                if (raw[i] === '"') {
-                    // 引号字段 — 可能包含换行和tab
+                const closeQuoteIdx = raw[i] === '"' ? findCloseQuote(i) : -1;
+                if (closeQuoteIdx !== -1) {
                     i++; // 跳过开头引号
-                    while (i < len) {
-                        if (raw[i] === '"') {
-                            if (i + 1 < len && raw[i + 1] === '"') {
-                                cell += '"'; // 转义引号
-                                i += 2;
-                            } else {
-                                i++; // 跳过结尾引号
-                                break;
-                            }
+                    while (i < closeQuoteIdx) {
+                        if (raw[i] === '"' && i + 1 < closeQuoteIdx && raw[i + 1] === '"') {
+                            cell += '"'; // 转义引号
+                            i += 2;
                         } else {
                             cell += raw[i++];
                         }
                     }
+                    i = closeQuoteIdx + 1;
                 } else {
                     // 非引号字段
                     while (i < len && raw[i] !== '\t' && raw[i] !== '\n' && raw[i] !== '\r') {
                         cell += raw[i++];
                     }
                 }
-                cells.push(cell);
+                cells.push(cell.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
                 // Tab = 下一列
                 if (i < len && raw[i] === '\t') { i++; continue; }
                 // 换行 = 下一行
@@ -3802,6 +4207,9 @@ class ReelsOverlayPanel {
                     i++;
                     break;
                 }
+            }
+            while (cells.length > 1 && !cells[cells.length - 1].trim()) {
+                cells.pop();
             }
             if (cells.length > 0 && cells.some(c => c.trim())) {
                 rows.push(cells); // 返回所有列，以支持 3 列解析
@@ -3939,38 +4347,57 @@ class ReelsOverlayPanel {
             const mapTitle = overlay.querySelector('#rop-map-title');
             const mapBody = overlay.querySelector('#rop-map-body');
             const mapRef = overlay.querySelector('#rop-map-ref');
+            let capturedHtmlRows = null;
             const updateMappers = () => {
                 const text = textareaEl.value;
-                if (!text.trim()) { mapperEl.style.display = 'none'; return; }
-                const rows = this._parseTSV(text);
-                const cols = rows.length > 0 ? rows[0].length : 0;
+                if (!text.trim() && (!capturedHtmlRows || !capturedHtmlRows.length)) { mapperEl.style.display = 'none'; return; }
+                const rows = (capturedHtmlRows && capturedHtmlRows.length > 0) ? capturedHtmlRows : this._parseTSV(text);
+                const cols = rows.length > 0 ? Math.max(...rows.map(r => r.length)) : 0;
                 if (cols > 0) {
                     mapperEl.style.display = 'block';
                     overlay.querySelector('#rop-batch-col-count').innerText = cols;
                     let opts = `<option value="-1">-- 无 --</option>`;
                     for (let i = 0; i < cols; i++) opts += `<option value="${i}">第 ${i + 1} 列</option>`;
-                    const refreshOptions = (selectEl, targetValue) => {
+                    const refreshOptions = (selectEl, targetValue, forceReset = false) => {
                         const cur = selectEl.value;
                         selectEl.innerHTML = opts;
-                        if (targetValue !== undefined && parseInt(cur) === -1) selectEl.value = targetValue;
-                        else if (cur && cur !== '-1') selectEl.value = cur;
+                        if (forceReset) selectEl.value = String(targetValue !== undefined ? targetValue : -1);
+                        else if (targetValue !== undefined && parseInt(cur) === -1) selectEl.value = targetValue;
+                        else if (cur && cur !== '-1' && parseInt(cur) < cols) selectEl.value = cur;
                         else selectEl.value = targetValue !== undefined ? targetValue : "-1";
                     };
                     
-                    // Defaults: (Name: Col 0), (Title: Col 1), (Body: Col 2), (Ref: None)
+                    const isScroll = typeSelect.value === 'scroll';
+                    // 单列粘贴滚动字幕时，默认整格映射为「正文列」，标题列留空 (-- 无 --)
                     const nDefault = cols >= 3 ? 0 : -1;
-                    const tDefault = cols >= 3 ? 1 : 0;
-                    const bDefault = cols >= 3 ? 2 : (cols >= 2 ? 1 : 0);
-                    refreshOptions(mapName, nDefault);
-                    refreshOptions(mapTitle, tDefault);
-                    refreshOptions(mapBody, bDefault);
-                    refreshOptions(mapRef, -1);
+                    const tDefault = cols >= 3 ? 1 : (cols === 2 ? 0 : (isScroll ? -1 : 0));
+                    const bDefault = cols >= 3 ? 2 : (cols === 2 ? 1 : (isScroll ? 0 : -1));
+                    refreshOptions(mapName, nDefault, true);
+                    refreshOptions(mapTitle, tDefault, true);
+                    refreshOptions(mapBody, bDefault, true);
+                    refreshOptions(mapRef, -1, true);
                 } else {
                     mapperEl.style.display = 'none';
                 }
             };
 
-            textareaEl.addEventListener('input', updateMappers);
+            textareaEl.addEventListener('paste', (e) => {
+                const html = (e.clipboardData || window.clipboardData)?.getData?.('text/html') || '';
+                if (html && /<t[dh][\s>]/i.test(html) && typeof window._parseSpreadsheetCellsFromHTML === 'function') {
+                    const parsed = window._parseSpreadsheetCellsFromHTML(html, false);
+                    if (parsed.length > 0) {
+                        capturedHtmlRows = parsed;
+                        setTimeout(updateMappers, 0);
+                        return;
+                    }
+                }
+                capturedHtmlRows = null;
+            });
+            textareaEl.addEventListener('input', () => {
+                if (!textareaEl.value.trim()) capturedHtmlRows = null;
+                updateMappers();
+            });
+            typeSelect.addEventListener('change', updateMappers);
 
             const close = (val) => {
                 document.body.removeChild(overlay);
@@ -3978,7 +4405,17 @@ class ReelsOverlayPanel {
             };
             overlay.querySelector('#rop-batch-cancel').onclick = () => close(null);
             overlay.querySelector('#rop-batch-ok').onclick = () => {
-                const data = textareaEl.value;
+                let data = textareaEl.value;
+                if (capturedHtmlRows && capturedHtmlRows.length > 0) {
+                    data = capturedHtmlRows
+                        .map(row => row.map(c => {
+                            const s = String(c ?? '');
+                            return (s.includes('\n') || s.includes('\t') || s.includes('"'))
+                                ? `"${s.replace(/"/g, '""')}"`
+                                : s;
+                        }).join('\t'))
+                        .join('\n');
+                }
                 const type = typeSelect.value;
                 const mapping = {
                     name: parseInt(mapName.value),
@@ -4252,10 +4689,24 @@ class ReelsOverlayPanel {
         this.selectOverlay(clone);
     }
 
+    _removePhoneCtaFromScopeTasks(ov) {
+        if (!ov || !ov.is_phone_cta || !this._shouldSyncStyleToScope(ov)) return;
+        const scopedTasks = this._getStyleApplyScopeTasks?.() || [];
+        scopedTasks.forEach(task => {
+            if (!task || !Array.isArray(task.overlays)) return;
+            const match = this._findMatchingOverlayInTask(task, ov);
+            if (match && match.is_phone_cta) {
+                task.overlays = task.overlays.filter(o => o !== match);
+            }
+        });
+    }
+
     _deleteOverlay() {
         if (!this._selectedOv) return;
-        const wasDecor = this._selectedOv.type === 'decor';
-        if (this.videoCanvas) this.videoCanvas.removeOverlay(this._selectedOv.id);
+        const targetOv = this._selectedOv;
+        const wasDecor = targetOv.type === 'decor';
+        this._removePhoneCtaFromScopeTasks(targetOv);
+        if (this.videoCanvas) this.videoCanvas.removeOverlay(targetOv.id);
         this._selectedOv = null;
         this._refreshList();
         this.container.querySelector('#rop-props').style.display = 'none';
@@ -4288,11 +4739,12 @@ class ReelsOverlayPanel {
 
         list.innerHTML = overlays.slice().reverse().map(ov => {
             const isSelected = this._selectedOv?.id === ov.id;
-            const icon = ov.type === 'text' ? '📝' : (ov.type === 'textcard' ? '📋' : (ov.type === 'scroll' ? '🔄' : (ov.type === 'solid_mask' ? '🔳' : (ov.type === 'decor' ? '✨' : '🖼️'))));
+            const icon = ov.is_phone_cta ? '📞' : (ov.type === 'text' ? '📝' : (ov.type === 'textcard' ? '📋' : (ov.type === 'scroll' ? '🔄' : (ov.type === 'solid_mask' ? '🔳' : (ov.type === 'decor' ? '✨' : '🖼️')))));
             const lockIcon = ov.fixed_text ? '🔒' : '';
             let label = ov.name;
             if (!label) {
-                if (ov.type === 'textcard') label = (ov.title_text || '').slice(0, 15) || '文字卡片';
+                if (ov.is_phone_cta) label = '邀约电话: ' + (ov.body_text || ov.title_text || '').slice(0, 14);
+                else if (ov.type === 'textcard') label = (ov.title_text || '').slice(0, 15) || '文字卡片';
                 else if (ov.type === 'solid_mask') label = '纯色蒙版';
                 else if (ov.type === 'scroll') label = '滚动: ' + (ov.content || '').split('\n')[0].slice(0, 12);
                 else if (ov.type === 'decor') {
@@ -4417,6 +4869,7 @@ class ReelsOverlayPanel {
                 const wasDecor = ov?.type === 'decor';
                 const label = ov ? (ov.name || ov.title_text || ov.content || '').slice(0, 20) || ov.type : id;
                 if (!confirm(`确定删除覆层「${label}」吗？`)) return;
+                if (ov) this._removePhoneCtaFromScopeTasks(ov);
                 if (typeof this.videoCanvas?.removeOverlay === 'function') {
                     this.videoCanvas.removeOverlay(id);
                 } else {
@@ -4456,6 +4909,8 @@ class ReelsOverlayPanel {
             animPreviewBtn.textContent = '👁 预览终点';
         }
         this.container.querySelector('#rop-props').style.display = 'block';
+        const phoneCtaPropsEl = this.container.querySelector('#rop-phone-cta-props');
+        if (phoneCtaPropsEl) phoneCtaPropsEl.style.display = ov.is_phone_cta ? 'block' : 'none';
         this.container.querySelector('#rop-text-props').style.display = ov.type === 'text' ? 'block' : 'none';
         this.container.querySelector('#rop-image-props').style.display = (ov.type === 'image' || ov.type === 'video') ? 'block' : 'none';
         this.container.querySelector('#rop-textcard-props').style.display = ov.type === 'textcard' ? 'block' : 'none';
@@ -5408,6 +5863,38 @@ class ReelsOverlayPanel {
         this._val('rop-anim-out', ov.anim_out_type || 'none');
         this._val('rop-anim-in-dur', ov.anim_in_duration || 0.3);
         this._val('rop-anim-out-dur', ov.anim_out_duration || 0.3);
+        this._val('rop-anim-loop', ov.cta_loop_anim || 'none');
+
+        // 📞 邀约电话专属快捷面板同步
+        if (ov.is_phone_cta) {
+            this._val('rop-phone-cta-style', ov.cta_style_id || 'whatsapp_lime_inline');
+            this._val('rop-phone-cta-title', ov.title_text || '');
+            this._val('rop-phone-cta-number', ov.body_text || '');
+            const maskMode = ov.cta_mask_mode
+                || (ov.body_bg_enabled ? (ov.body_bg_mode || 'inline-joined') : (ov.card_enabled !== false ? 'card' : 'none'));
+            const maskColor = ov.cta_mask_color || (maskMode === 'card' ? (ov.card_color || '#0B1021') : (ov.body_bg_color || '#E0FF14'));
+            const maskOp = ov.cta_mask_opacity ?? (maskMode === 'card' ? (ov.card_opacity ?? 92) : (ov.body_bg_opacity ?? 100));
+            const maskRad = ov.cta_mask_radius ?? (maskMode === 'card' ? (ov.radius_tl ?? 36) : (ov.body_bg_radius ?? 14));
+            const padH = ov.cta_mask_pad_h ?? (ov.body_bg_pad_h ?? 22);
+            this._val('rop-phone-cta-mask-mode', maskMode);
+            this._val('rop-phone-cta-mask-color', maskColor);
+            this._val('rop-phone-cta-mask-opacity', maskOp);
+            this._val('rop-phone-cta-mask-radius', maskRad);
+            this._val('rop-phone-cta-pad-h', padH);
+            this._val('rop-phone-cta-text-color', ov.body_color || '#000000');
+            this._val('rop-phone-cta-phone-color', ov.cta_phone_color || '#E60039');
+            this._val('rop-phone-cta-start', ov.start ?? 30);
+            this._val('rop-phone-cta-end', ov.end ?? 9999);
+            this._highlightPhoneCtaTimeChip(ov.start ?? 30);
+            this._val('rop-phone-cta-anim-in', ov.anim_in_type || 'ring_shake');
+            this._val('rop-phone-cta-anim-dur', ov.anim_in_duration ?? 0.55);
+            this._val('rop-phone-cta-anim-out', ov.anim_out_type || 'fade');
+            this._val('rop-phone-cta-loop-anim', ov.cta_loop_anim || 'pulse');
+            this._val('rop-phone-cta-x', this._get('rop-x'));
+            this._val('rop-phone-cta-y', this._get('rop-y'));
+            this._val('rop-phone-cta-fontsize', ov.body_fontsize ?? 48);
+            this._val('rop-phone-cta-width', ov.w ?? 920);
+        }
 
         // Fixed text flag
         this._val('rop-fixed-text', ov.fixed_text || false);
@@ -5547,6 +6034,10 @@ class ReelsOverlayPanel {
             }
         } else {
             ov.end = panelEnd;
+        }
+        if (Array.isArray(ov.display_ranges) && ov.display_ranges.length === 1) {
+            ov.display_ranges[0].start = ov.start;
+            ov.display_ranges[0].end = ov.end;
         }
         
         ov.anim_dest_enabled = !!this._get('rop-anim-dest-enabled');
@@ -6053,11 +6544,28 @@ class ReelsOverlayPanel {
         ov.anim_out_type = this._get('rop-anim-out');
         ov.anim_in_duration = this._get('rop-anim-in-dur');
         ov.anim_out_duration = this._get('rop-anim-out-dur');
+        ov.cta_loop_anim = this._get('rop-anim-loop') || 'none';
 
         // Fixed text and name flags
         ov.fixed_text = this._get('rop-fixed-text');
         const endNameVal = this._get('rop-name');
         if (endNameVal !== undefined) ov.name = endNameVal || '';
+
+        if (ov.is_phone_cta) {
+            this._val('rop-phone-cta-title', ov.title_text || '');
+            this._val('rop-phone-cta-number', ov.body_text || '');
+            this._val('rop-phone-cta-start', ov.start ?? 30);
+            this._val('rop-phone-cta-end', ov.end ?? 9999);
+            this._highlightPhoneCtaTimeChip(ov.start ?? 30);
+            this._val('rop-phone-cta-anim-in', ov.anim_in_type || 'ring_shake');
+            this._val('rop-phone-cta-anim-dur', ov.anim_in_duration ?? 0.55);
+            this._val('rop-phone-cta-anim-out', ov.anim_out_type || 'fade');
+            this._val('rop-phone-cta-loop-anim', ov.cta_loop_anim || 'pulse');
+            this._val('rop-phone-cta-x', this._get('rop-card-x'));
+            this._val('rop-phone-cta-y', this._get('rop-card-y'));
+            this._val('rop-phone-cta-fontsize', ov.body_fontsize ?? 56);
+            this._val('rop-phone-cta-width', ov.w ?? 920);
+        }
 
         // Auto-Colorize panel visibility & sync
         const autoColorProps = this.container.querySelector('#rop-autocolor-props');
@@ -6212,17 +6720,19 @@ class ReelsOverlayPanel {
     _findMatchingOverlayInTask(task, sourceOv) {
         if (!task || !Array.isArray(task.overlays) || !sourceOv) return null;
         if (task.overlays.includes(sourceOv)) return null;
+        const isPhoneCta = Boolean(sourceOv.is_phone_cta);
+        const matchesSubKind = (o) => Boolean(o && o.type === sourceOv.type && Boolean(o.is_phone_cta) === isPhoneCta);
         const mgrOverlays = this.videoCanvas?.overlayMgr?.overlays || [];
         const exactIdx = mgrOverlays.indexOf(sourceOv);
-        if (exactIdx >= 0 && task.overlays[exactIdx] && task.overlays[exactIdx].type === sourceOv.type) {
+        if (exactIdx >= 0 && matchesSubKind(task.overlays[exactIdx])) {
             return task.overlays[exactIdx];
         }
-        const sameTypeInMgr = mgrOverlays.filter(o => o && o.type === sourceOv.type);
+        const sameTypeInMgr = mgrOverlays.filter(matchesSubKind);
         const typeOrderIdx = sameTypeInMgr.indexOf(sourceOv);
-        const sameTypeInTask = task.overlays.filter(o => o && o.type === sourceOv.type);
+        const sameTypeInTask = task.overlays.filter(matchesSubKind);
         if (typeOrderIdx >= 0) {
             if (sameTypeInTask[typeOrderIdx]) return sameTypeInTask[typeOrderIdx];
-            if (sourceOv.type === 'decor') return null;
+            if (sourceOv.type === 'decor' || isPhoneCta) return null;
         }
         return sameTypeInTask[0] || null;
     }
@@ -6310,10 +6820,19 @@ class ReelsOverlayPanel {
             }
 
             scopedTasks.forEach(task => {
+                if (!task) return;
+                if (!Array.isArray(task.overlays)) task.overlays = [];
+                if (task.overlays.includes(ov)) return;
                 const targetOv = this._findMatchingOverlayInTask(task, ov);
                 if (targetOv) {
                     const styleCopy = JSON.parse(JSON.stringify(styleObj));
                     Object.assign(targetOv, styleCopy);
+                } else if (ov.is_phone_cta) {
+                    const clone = JSON.parse(JSON.stringify(ov, (key, val) => key === '_allOverlays' ? undefined : val));
+                    clone.id = 'ov_cta_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                    delete clone._selected;
+                    delete clone._ctaAnimPreviewStart;
+                    task.overlays.push(clone);
                 }
             });
         } finally {
@@ -6375,7 +6894,7 @@ class ReelsOverlayPanel {
             // 磨砂模糊
             'bg_blur_enabled', 'bg_blur_amount',
             // 动画
-            'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration',
+            'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration', 'cta_loop_anim',
         ];
         if (ov.fixed_text) {
             keys.push('scroll_title', 'content', 'scroll_title_styled_ranges', 'scroll_styled_ranges');
@@ -6909,7 +7428,8 @@ class ReelsOverlayPanel {
             'body_stroke_color', 'body_stroke_width', 'body_shadow_color', 'body_shadow_blur', 'body_shadow_x', 'body_shadow_y',
             'footer_stroke_color', 'footer_stroke_width', 'footer_shadow_color', 'footer_shadow_blur', 'footer_shadow_x', 'footer_shadow_y',
             // 动画
-            'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration',
+            'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration', 'cta_loop_anim',
+            'is_phone_cta', 'cta_style_id', 'mask_start', 'mask_end',
             // 文字翻转器
             'flipper_enabled', 'flipper_duration', 'flipper_lines', 'flipper_loop', 'flipper_effect', 'flipper_transition_duration',
         ];

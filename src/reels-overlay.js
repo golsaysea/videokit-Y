@@ -288,6 +288,18 @@ function createTextCardOverlay(opts = {}) {
         anim_out_type: opts.anim_out_type || 'none',
         anim_in_duration: opts.anim_in_duration || 0.3,
         anim_out_duration: opts.anim_out_duration || 0.3,
+        cta_loop_anim: opts.cta_loop_anim || 'none',
+        is_phone_cta: Boolean(opts.is_phone_cta),
+        cta_style_id: opts.cta_style_id || '',
+        cta_mask_mode: opts.cta_mask_mode || '',
+        cta_mask_color: opts.cta_mask_color || '',
+        cta_mask_opacity: opts.cta_mask_opacity ?? 100,
+        cta_mask_radius: opts.cta_mask_radius ?? 14,
+        cta_mask_pad_h: opts.cta_mask_pad_h ?? 22,
+        cta_mask_pad_v: opts.cta_mask_pad_v ?? 14,
+        cta_phone_color: opts.cta_phone_color || '#E60039',
+        auto_color_rules: Array.isArray(opts.auto_color_rules) ? opts.auto_color_rules : null,
+        fixed_text: Boolean(opts.fixed_text),
         // ── 富文本样式范围 ──
         title_styled_ranges: opts.title_styled_ranges || null,
         body_styled_ranges: opts.body_styled_ranges || null,
@@ -300,6 +312,589 @@ function createTextCardOverlay(opts = {}) {
         flipper_effect: opts.flipper_effect || 'none',
         flipper_transition_duration: opts.flipper_transition_duration ?? 0.3,
     };
+}
+
+/**
+ * 邀约电话 (Phone Call-to-Action) 预设样式字典。
+ */
+const PHONE_CTA_STYLES = {
+    whatsapp_lime_inline: {
+        name: '🟢 荧光黄逐行紧贴蒙版 (WhatsApp同款)',
+        cta_mask_mode: 'inline-joined',
+        cta_mask_color: '#E0FF14',
+        cta_mask_opacity: 100,
+        cta_mask_radius: 14,
+        cta_mask_pad_h: 22,
+        cta_mask_pad_v: 14,
+        cta_phone_color: '#E60039',
+        card_enabled: false,
+        card_color: '#E0FF14',
+        card_opacity: 100,
+        radius_tl: 18, radius_tr: 18, radius_bl: 18, radius_br: 18,
+        card_border_enabled: false,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 42,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#000000',
+        title_uppercase: false,
+        title_line_spacing: 6,
+        body_font_family: 'Montserrat, Arial, sans-serif',
+        body_fontsize: 48,
+        body_font_weight: 800,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#000000',
+        body_line_spacing: 10,
+        independent_effects: true,
+        title_stroke_color: '#000000',
+        title_stroke_width: 0,
+        title_shadow_blur: 0,
+        body_stroke_color: '#000000',
+        body_stroke_width: 0,
+        body_shadow_color: '#000000',
+        body_shadow_blur: 0,
+        body_shadow_x: 0,
+        body_shadow_y: 0,
+        body_bg_enabled: true,
+        body_bg_mode: 'inline-joined',
+        body_bg_color: '#E0FF14',
+        body_bg_opacity: 100,
+        body_bg_radius: 14,
+        body_bg_pad_h: 22,
+        body_bg_pad_top: 14,
+        body_bg_pad_bottom: 14,
+        padding_top: 16,
+        padding_bottom: 16,
+        padding_left: 24,
+        padding_right: 24,
+        title_body_gap: 8,
+    },
+    white_red_inline: {
+        name: '⬜ 白底红号逐行紧贴蒙版 (高对比)',
+        cta_mask_mode: 'inline-joined',
+        cta_mask_color: '#FFFFFF',
+        cta_mask_opacity: 98,
+        cta_mask_radius: 14,
+        cta_mask_pad_h: 22,
+        cta_mask_pad_v: 14,
+        cta_phone_color: '#DC2626',
+        card_enabled: false,
+        card_color: '#FFFFFF',
+        card_opacity: 98,
+        radius_tl: 18, radius_tr: 18, radius_bl: 18, radius_br: 18,
+        card_border_enabled: false,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 42,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#111827',
+        title_uppercase: false,
+        title_line_spacing: 6,
+        body_font_family: 'Montserrat, Arial, sans-serif',
+        body_fontsize: 48,
+        body_font_weight: 800,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#111827',
+        body_line_spacing: 10,
+        independent_effects: true,
+        title_stroke_width: 0,
+        title_shadow_blur: 0,
+        body_stroke_width: 0,
+        body_shadow_blur: 0,
+        body_bg_enabled: true,
+        body_bg_mode: 'inline-joined',
+        body_bg_color: '#FFFFFF',
+        body_bg_opacity: 98,
+        body_bg_radius: 14,
+        body_bg_pad_h: 22,
+        body_bg_pad_top: 14,
+        body_bg_pad_bottom: 14,
+        padding_top: 16,
+        padding_bottom: 16,
+        padding_left: 24,
+        padding_right: 24,
+        title_body_gap: 8,
+    },
+    black_gold_inline: {
+        name: '🖤 黑底金号逐行紧贴蒙版 (沉稳醒目)',
+        cta_mask_mode: 'inline-joined',
+        cta_mask_color: '#0B1021',
+        cta_mask_opacity: 94,
+        cta_mask_radius: 14,
+        cta_mask_pad_h: 22,
+        cta_mask_pad_v: 14,
+        cta_phone_color: '#FFD700',
+        card_enabled: false,
+        card_color: '#0B1021',
+        card_opacity: 94,
+        radius_tl: 18, radius_tr: 18, radius_bl: 18, radius_br: 18,
+        card_border_enabled: false,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 42,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FFFFFF',
+        title_uppercase: false,
+        title_line_spacing: 6,
+        body_font_family: 'Montserrat, Arial, sans-serif',
+        body_fontsize: 48,
+        body_font_weight: 800,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 10,
+        independent_effects: true,
+        title_stroke_width: 0,
+        title_shadow_blur: 0,
+        body_stroke_width: 0,
+        body_shadow_blur: 0,
+        body_bg_enabled: true,
+        body_bg_mode: 'inline-joined',
+        body_bg_color: '#0B1021',
+        body_bg_opacity: 94,
+        body_bg_radius: 14,
+        body_bg_pad_h: 22,
+        body_bg_pad_top: 14,
+        body_bg_pad_bottom: 14,
+        padding_top: 16,
+        padding_bottom: 16,
+        padding_left: 24,
+        padding_right: 24,
+        title_body_gap: 8,
+    },
+    gold_dark_banner: {
+        name: '📞 黑金祈祷热线横幅 (经典整块卡)',
+        cta_mask_mode: 'card',
+        cta_mask_color: '#0B1021',
+        cta_mask_opacity: 92,
+        cta_mask_radius: 48,
+        cta_mask_pad_h: 24,
+        cta_mask_pad_v: 14,
+        cta_phone_color: '#FFD700',
+        card_enabled: true,
+        card_color: '#0B1021',
+        card_opacity: 92,
+        radius_tl: 48, radius_tr: 48, radius_bl: 48, radius_br: 48,
+        card_border_enabled: true,
+        card_border_color: '#FFD700',
+        card_border_width: 4,
+        card_border_style: 'solid',
+        card_border_opacity: 100,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 34,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FFD700',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        body_fontsize: 56,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#000000',
+        title_stroke_width: 0,
+        title_shadow_color: '#000000',
+        title_shadow_blur: 6,
+        title_shadow_x: 0,
+        title_shadow_y: 2,
+        body_stroke_color: '#000000',
+        body_stroke_width: 3,
+        body_shadow_color: '#000000',
+        body_shadow_blur: 8,
+        body_shadow_x: 0,
+        body_shadow_y: 3,
+        padding_top: 24,
+        padding_bottom: 24,
+        padding_left: 36,
+        padding_right: 36,
+        title_body_gap: 10,
+    },
+    green_call_pill: {
+        name: '🟢 翠绿来电胶囊条 (醒目按钮)',
+        card_enabled: true,
+        card_color: '#15803D',
+        card_opacity: 95,
+        radius_tl: 64, radius_tr: 64, radius_bl: 64, radius_br: 64,
+        card_border_enabled: true,
+        card_border_color: '#86EFAC',
+        card_border_width: 4,
+        card_border_style: 'solid',
+        card_border_opacity: 100,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 32,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FEF08A',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        body_fontsize: 56,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#052E16',
+        title_stroke_width: 0,
+        title_shadow_color: '#052E16',
+        title_shadow_blur: 4,
+        title_shadow_x: 0,
+        title_shadow_y: 2,
+        body_stroke_color: '#052E16',
+        body_stroke_width: 3,
+        body_shadow_color: '#052E16',
+        body_shadow_blur: 8,
+        body_shadow_x: 0,
+        body_shadow_y: 3,
+        padding_top: 24,
+        padding_bottom: 24,
+        padding_left: 38,
+        padding_right: 38,
+        title_body_gap: 10,
+    },
+    yellow_black_alert: {
+        name: '🟡 黄底黑字热线牌 (强视觉冲击)',
+        card_enabled: true,
+        card_color: '#FFD700',
+        card_opacity: 96,
+        radius_tl: 32, radius_tr: 32, radius_bl: 32, radius_br: 32,
+        card_border_enabled: true,
+        card_border_color: '#000000',
+        card_border_width: 5,
+        card_border_style: 'solid',
+        card_border_opacity: 100,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        title_fontsize: 33,
+        title_font_weight: 900,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#111827',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Impact, Montserrat, Arial, sans-serif',
+        body_fontsize: 58,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#B91C1C',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#FFFFFF',
+        title_stroke_width: 0,
+        title_shadow_blur: 0,
+        body_stroke_color: '#FFFFFF',
+        body_stroke_width: 3,
+        body_shadow_color: '#000000',
+        body_shadow_blur: 0,
+        body_shadow_x: 0,
+        body_shadow_y: 0,
+        padding_top: 22,
+        padding_bottom: 22,
+        padding_left: 36,
+        padding_right: 36,
+        title_body_gap: 8,
+    },
+    red_white_urgent: {
+        name: '🔴 红白紧急呼召卡 (高转化)',
+        card_enabled: true,
+        card_color: '#B91C1C',
+        card_opacity: 95,
+        radius_tl: 38, radius_tr: 38, radius_bl: 38, radius_br: 38,
+        card_border_enabled: true,
+        card_border_color: '#FDE047',
+        card_border_width: 4,
+        card_border_style: 'solid',
+        card_border_opacity: 100,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 33,
+        title_font_weight: 800,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FDE047',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        body_fontsize: 56,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#450A0A',
+        title_stroke_width: 0,
+        title_shadow_color: '#450A0A',
+        title_shadow_blur: 4,
+        title_shadow_x: 0,
+        title_shadow_y: 2,
+        body_stroke_color: '#450A0A',
+        body_stroke_width: 3,
+        body_shadow_color: '#450A0A',
+        body_shadow_blur: 6,
+        body_shadow_x: 0,
+        body_shadow_y: 3,
+        padding_top: 24,
+        padding_bottom: 24,
+        padding_left: 36,
+        padding_right: 36,
+        title_body_gap: 10,
+    },
+    frosted_glass_gold: {
+        name: '✨ 磨砂玻璃金字条 (高级感)',
+        card_enabled: true,
+        card_color: '#0F172A',
+        card_opacity: 72,
+        radius_tl: 44, radius_tr: 44, radius_bl: 44, radius_br: 44,
+        card_border_enabled: true,
+        card_border_color: '#F59E0B',
+        card_border_width: 2,
+        card_border_style: 'solid',
+        card_border_opacity: 90,
+        card_blur_enabled: true,
+        card_blur_amount: 14,
+        title_font_family: 'Montserrat, Arial, sans-serif',
+        title_fontsize: 31,
+        title_font_weight: 700,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FDE68A',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Montserrat, Arial, sans-serif',
+        body_fontsize: 52,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#000000',
+        title_stroke_width: 0,
+        title_shadow_color: '#000000',
+        title_shadow_blur: 6,
+        title_shadow_x: 0,
+        title_shadow_y: 2,
+        body_stroke_color: '#000000',
+        body_stroke_width: 2,
+        body_shadow_color: '#000000',
+        body_shadow_blur: 8,
+        body_shadow_x: 0,
+        body_shadow_y: 3,
+        padding_top: 22,
+        padding_bottom: 22,
+        padding_left: 36,
+        padding_right: 36,
+        title_body_gap: 8,
+    },
+    pure_text_stroked: {
+        name: '💬 纯文字粗描边 (无底框)',
+        card_enabled: false,
+        card_color: '#000000',
+        card_opacity: 0,
+        radius_tl: 0, radius_tr: 0, radius_bl: 0, radius_br: 0,
+        card_border_enabled: false,
+        card_blur_enabled: false,
+        title_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        title_fontsize: 38,
+        title_font_weight: 900,
+        title_bold: true,
+        title_italic: false,
+        title_color: '#FFD700',
+        title_uppercase: true,
+        title_line_spacing: 4,
+        body_font_family: 'Montserrat, Impact, Arial, sans-serif',
+        body_fontsize: 64,
+        body_font_weight: 900,
+        body_bold: true,
+        body_italic: false,
+        body_color: '#FFFFFF',
+        body_line_spacing: 4,
+        independent_effects: true,
+        title_stroke_color: '#000000',
+        title_stroke_width: 7,
+        title_shadow_color: '#000000',
+        title_shadow_blur: 8,
+        title_shadow_x: 0,
+        title_shadow_y: 3,
+        body_stroke_color: '#000000',
+        body_stroke_width: 9,
+        body_shadow_color: '#000000',
+        body_shadow_blur: 10,
+        body_shadow_x: 0,
+        body_shadow_y: 4,
+        padding_top: 14,
+        padding_bottom: 14,
+        padding_left: 24,
+        padding_right: 24,
+        title_body_gap: 8,
+    },
+};
+
+function syncPhoneCtaMaskAndColors(ov) {
+    if (!ov) return ov;
+    ov.independent_effects = true;
+    const mode = ov.cta_mask_mode
+        || (ov.body_bg_enabled ? (ov.body_bg_mode || 'inline-joined') : (ov.card_enabled !== false ? 'card' : 'none'));
+    ov.cta_mask_mode = mode;
+
+    const maskColor = ov.cta_mask_color || (mode === 'card' ? (ov.card_color || '#0B1021') : (ov.body_bg_color || '#E0FF14'));
+    const maskOpacity = Number.isFinite(Number(ov.cta_mask_opacity))
+        ? Math.max(0, Math.min(100, Number(ov.cta_mask_opacity)))
+        : (mode === 'card' ? (ov.card_opacity ?? 92) : (ov.body_bg_opacity ?? 100));
+    const maskRadius = Number.isFinite(Number(ov.cta_mask_radius))
+        ? Math.max(0, Number(ov.cta_mask_radius))
+        : (mode === 'card' ? (ov.radius_tl ?? 36) : (ov.body_bg_radius ?? 14));
+    const padH = Number.isFinite(Number(ov.cta_mask_pad_h))
+        ? Math.max(0, Number(ov.cta_mask_pad_h))
+        : (ov.body_bg_pad_h ?? 22);
+    const padV = Number.isFinite(Number(ov.cta_mask_pad_v))
+        ? Math.max(0, Number(ov.cta_mask_pad_v))
+        : (ov.body_bg_pad_top ?? 14);
+
+    ov.cta_mask_color = maskColor;
+    ov.cta_mask_opacity = maskOpacity;
+    ov.cta_mask_radius = maskRadius;
+    ov.cta_mask_pad_h = padH;
+    ov.cta_mask_pad_v = padV;
+
+    if (mode === 'inline-joined' || mode === 'inline' || mode === 'block-fit') {
+        ov.card_enabled = false;
+        ov.card_border_enabled = false;
+        ov.card_blur_enabled = false;
+        ov.body_bg_enabled = true;
+        ov.body_bg_mode = mode;
+        ov.body_bg_color = maskColor;
+        ov.body_bg_opacity = maskOpacity;
+        ov.body_bg_radius = maskRadius;
+        ov.body_bg_pad_h = padH;
+        ov.body_bg_pad_top = padV;
+        ov.body_bg_pad_bottom = padV;
+        if ((ov.title_text || '').trim()) {
+            ov.title_bg_enabled = true;
+            ov.title_bg_mode = mode;
+            ov.title_bg_color = maskColor;
+            ov.title_bg_opacity = maskOpacity;
+            ov.title_bg_radius = maskRadius;
+            ov.title_bg_pad_h = padH;
+            ov.title_bg_pad_top = padV;
+            ov.title_bg_pad_bottom = padV;
+        } else {
+            ov.title_bg_enabled = false;
+        }
+    } else if (mode === 'card') {
+        ov.card_enabled = true;
+        ov.card_color = maskColor;
+        ov.card_opacity = maskOpacity;
+        ov.radius_tl = maskRadius;
+        ov.radius_tr = maskRadius;
+        ov.radius_bl = maskRadius;
+        ov.radius_br = maskRadius;
+        ov.body_bg_enabled = false;
+        ov.title_bg_enabled = false;
+    } else {
+        ov.card_enabled = false;
+        ov.card_border_enabled = false;
+        ov.card_blur_enabled = false;
+        ov.body_bg_enabled = false;
+        ov.title_bg_enabled = false;
+    }
+
+    const phoneColor = (ov.cta_phone_color || '').trim();
+    const otherRules = Array.isArray(ov.auto_color_rules)
+        ? ov.auto_color_rules.filter(r => !r || !r._ctaPhoneRule)
+        : [];
+    if (phoneColor) {
+        otherRules.push({
+            _ctaPhoneRule: true,
+            type: 'regex',
+            keywords: ['(?:[aA][tT]\\s+)?[+\\d][\\d\\s()\\-\\.]{5,}\\d'],
+            color: phoneColor,
+            bold: true,
+        });
+    }
+    ov.auto_color_rules = otherRules;
+    return ov;
+}
+
+function applyPhoneCtaStylePreset(ov, styleId) {
+    if (!ov || !styleId || !PHONE_CTA_STYLES[styleId]) return ov;
+    const preset = PHONE_CTA_STYLES[styleId];
+    ov.cta_style_id = styleId;
+    ov.is_phone_cta = true;
+    for (const [k, v] of Object.entries(preset)) {
+        if (k === 'name') continue;
+        ov[k] = v;
+    }
+    if (!preset.cta_mask_mode) {
+        ov.cta_mask_mode = preset.card_enabled === false ? 'none' : 'card';
+        ov.cta_mask_color = preset.card_color || '#0B1021';
+        ov.cta_mask_opacity = preset.card_opacity ?? 92;
+        ov.cta_mask_radius = preset.radius_tl ?? 38;
+        ov.cta_phone_color = preset.body_color || '#FFD700';
+        ov.body_bg_enabled = false;
+        ov.title_bg_enabled = false;
+    }
+    syncPhoneCtaMaskAndColors(ov);
+    return ov;
+}
+
+/**
+ * 创建邀约电话 (Phone Call-to-Action) 覆层对象。
+ * 默认在 30 秒后出现 (start: 30, end: 9999)，固定文案 (fixed_text: true)，自带入场动画与呼吸/震动效果。
+ */
+function createPhoneCtaOverlay(opts = {}) {
+    const styleId = (opts.cta_style_id && PHONE_CTA_STYLES[opts.cta_style_id])
+        ? opts.cta_style_id
+        : 'whatsapp_lime_inline';
+    const preset = PHONE_CTA_STYLES[styleId];
+    const ov = createTextCardOverlay({
+        ...preset,
+        x: opts.x ?? 80,
+        y: opts.y ?? 1380,
+        w: opts.w ?? 920,
+        h: opts.h ?? 260,
+        start: opts.start ?? 30,
+        end: opts.end ?? 9999,
+        title_text: opts.title_text ?? '',
+        body_text: opts.body_text ?? 'Message on Whats/App\nat +1 (315) 277-2179\nto join our Free Bible\nstudy.',
+        footer_text: opts.footer_text ?? '',
+        auto_fit: opts.auto_fit ?? true,
+        auto_center_v: opts.auto_center_v ?? false,
+        anim_in_type: opts.anim_in_type || 'ring_shake',
+        anim_in_duration: opts.anim_in_duration ?? 0.55,
+        anim_out_type: opts.anim_out_type || 'fade',
+        anim_out_duration: opts.anim_out_duration ?? 0.3,
+        cta_loop_anim: opts.cta_loop_anim ?? 'pulse',
+        is_phone_cta: true,
+        cta_style_id: styleId,
+        fixed_text: opts.fixed_text ?? true,
+        ...opts,
+    });
+    ov.name = opts.name || '📞 邀约电话';
+    ov.is_phone_cta = true;
+    ov.fixed_text = opts.fixed_text ?? true;
+    ov.cta_style_id = styleId;
+    syncPhoneCtaMaskAndColors(ov);
+    return ov;
 }
 
 /**
@@ -1259,6 +1854,29 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     const start = parseFloat(ov.start || 0);
     const end = parseFloat(ov.end || 0);
 
+    // 支持覆层面板点击“▶ 预览出场动画”时，即使当前时间轴停在 0s 也能实时预览入场与持续动态
+    const isAnimPreviewing = Boolean(!ov._exporting && ov._ctaAnimPreviewStart && typeof performance !== 'undefined');
+    if (isAnimPreviewing) {
+        const elapsed = (performance.now() - ov._ctaAnimPreviewStart) / 1000;
+        if (elapsed >= 0 && elapsed <= 2.4) {
+            currentTime = start + elapsed;
+        } else {
+            delete ov._ctaAnimPreviewStart;
+        }
+    }
+
+    // 暂停编辑模式下，若用户在覆层面板中选中了延后出现的覆层（如 30s 后出现的邀约电话），
+    // 允许在画布上直接显示其静止态以便拖拽定位与调样式；播放或导出时严格遵守 start/end 时间。
+    const isSelectedInPausedEditor = Boolean(
+        !ov._exporting &&
+        !isAnimPreviewing &&
+        (ov._selected || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id)) &&
+        !(typeof window !== 'undefined' && window._reelsState?.playing)
+    );
+    if (isSelectedInPausedEditor && (currentTime < start || (end < 9999 && currentTime > end))) {
+        currentTime = start + Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3)) + 0.05;
+    }
+
     // 时间范围检查 (允许边界值)
     // end >= 9999 = 全程，永不超时
     // scroll 覆层: 动画完成后保持在最终位置
@@ -1409,47 +2027,10 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
 
         ctx.globalAlpha = opacity * transOp;
 
-        // ── 入/出场动画（image/video/text 在此统一处理；textcard 有自己的特化实现）──
-        const inType = ov.anim_in_type || 'none';
-        const outType = ov.anim_out_type || 'none';
-        const _applySharedAnim = ov.type !== 'textcard' && ov.type !== 'scroll';
-        if (_applySharedAnim && window.ReelsAnimEngine && (inType !== 'none' || outType !== 'none')) {
-            const inDur = inType !== 'none' ? parseFloat(ov.anim_in_duration || 0.3) : 0;
-            const outDur = outType !== 'none' ? parseFloat(ov.anim_out_duration || 0.3) : 0;
-            const [inProgress, outProgress] = ReelsAnimEngine.computeAnimProgress(
-                currentTime, start, end, inDur, outDur
-            );
-
-            // 淡入/淡出
-            if (inType === 'fade') ctx.globalAlpha *= inProgress;
-            if (outType === 'fade') ctx.globalAlpha *= outProgress;
-
-            // 弹出
-            if (inType === 'pop' || outType === 'pop') {
-                let popScale = 1;
-                if (inType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(inProgress));
-                if (outType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(outProgress));
-                if (popScale < 0.999) {
-                    ctx.translate(x + w / 2, y + h / 2);
-                    ctx.scale(popScale, popScale);
-                    ctx.translate(-(x + w / 2), -(y + h / 2));
-                }
-            }
-
-            // 滑入/滑出
-            const slideDistance = Math.max(w, h) * 0.5;
-            if (inType.startsWith('slide_') && inProgress < 1) {
-                const ease = 1 - inProgress;
-                if (inType === 'slide_up') ctx.translate(0, slideDistance * ease);
-                else if (inType === 'slide_down') ctx.translate(0, -slideDistance * ease);
-                else if (inType === 'slide_left') ctx.translate(slideDistance * ease, 0);
-                else if (inType === 'slide_right') ctx.translate(-slideDistance * ease, 0);
-            }
-            if (outType.startsWith('slide_') && outProgress < 1) {
-                const ease = 1 - outProgress;
-                if (outType === 'slide_up') ctx.translate(0, -slideDistance * ease);
-                else if (outType === 'slide_down') ctx.translate(0, slideDistance * ease);
-            }
+        // ── 入/出场动画（image/video/text 在此统一处理；textcard/solid_mask 有自己的特化实现）──
+        const _applySharedAnim = ov.type !== 'textcard' && ov.type !== 'solid_mask' && ov.type !== 'scroll';
+        if (_applySharedAnim) {
+            _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, x + w / 2, y + h / 2, Math.max(140, Math.max(w, h) * 0.35));
         }
 
         if (ov.type === 'image') {
@@ -1470,6 +2051,117 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     } finally {
         ctx.restore();
     }
+}
+
+/**
+ * 统一处理覆层入场/出场动画及出现后的持续动态（如来电震动、呼吸放大、Q弹弹出、上下滑入等）。
+ */
+function _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, centerY, slideDist = 140) {
+    let animOpFactor = 1;
+    const inType = ov.anim_in_type || 'none';
+    const outType = ov.anim_out_type || 'none';
+    const loopType = ov.cta_loop_anim || 'none';
+    const inDur = inType !== 'none' ? Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3)) : 0;
+    const outDur = outType !== 'none' ? Math.max(0.05, parseFloat(ov.anim_out_duration || 0.3)) : 0;
+
+    if (window.ReelsAnimEngine && (inType !== 'none' || outType !== 'none')) {
+        const [inProgress, outProgress] = ReelsAnimEngine.computeAnimProgress(
+            currentTime, start, end, inDur, outDur
+        );
+
+        if (inType === 'fade') animOpFactor *= inProgress;
+        else if (inType !== 'none' && inProgress < 1) animOpFactor *= Math.min(1, inProgress * 2.2);
+
+        if (outType === 'fade') animOpFactor *= outProgress;
+        else if (outType !== 'none' && outProgress < 1) animOpFactor *= Math.min(1, outProgress * 2.2);
+
+        let scaleX = 1, scaleY = 1, rotRad = 0, extraDx = 0, extraDy = 0;
+
+        if (inProgress < 1) {
+            if (inType === 'pop') {
+                const sc = ReelsAnimEngine.computePopScale(inProgress);
+                scaleX *= sc; scaleY *= sc;
+            } else if (inType === 'elastic_pop') {
+                const sc = ReelsAnimEngine.EASING_MAP?.elastic
+                    ? Math.max(0.05, ReelsAnimEngine.EASING_MAP.elastic(inProgress))
+                    : ReelsAnimEngine.computePopScale(inProgress);
+                scaleX *= sc; scaleY *= sc;
+            } else if (inType === 'ring_shake') {
+                const sc = ReelsAnimEngine.computePopScale(Math.min(1, inProgress * 1.45));
+                scaleX *= sc; scaleY *= sc;
+                const env = Math.pow(1 - inProgress, 1.15);
+                rotRad += Math.sin(inProgress * Math.PI * 9) * env * (7.5 * Math.PI / 180);
+                extraDx += Math.sin(inProgress * Math.PI * 11) * env * 14;
+            } else if (inType === 'zoom_bounce') {
+                const b = ReelsAnimEngine.EASING_MAP?.bounce
+                    ? ReelsAnimEngine.EASING_MAP.bounce(inProgress)
+                    : inProgress;
+                const sc = 1 + 0.65 * (1 - b);
+                scaleX *= sc; scaleY *= sc;
+            }
+        }
+
+        if (outProgress < 1) {
+            if (outType === 'pop' || outType === 'elastic_pop' || outType === 'ring_shake' || outType === 'zoom_bounce') {
+                const sc = ReelsAnimEngine.computePopScale(outProgress);
+                scaleX *= sc; scaleY *= sc;
+            }
+        }
+
+        const slideTypes = ['slide_up', 'slide_down', 'slide_left', 'slide_right'];
+        if (slideTypes.includes(inType) && inProgress < 1) {
+            const [dx, dy] = ReelsAnimEngine.computeSlideOffset(inProgress, inType, slideDist, false);
+            extraDx += dx; extraDy += dy;
+        }
+        if (slideTypes.includes(outType) && outProgress < 1) {
+            const [dx, dy] = ReelsAnimEngine.computeSlideOffset(outProgress, outType, slideDist, true);
+            extraDx += dx; extraDy += dy;
+        }
+
+        if (extraDx !== 0 || extraDy !== 0) {
+            ctx.translate(extraDx, extraDy);
+        }
+        if (Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001 || Math.abs(rotRad) > 0.0005) {
+            ctx.translate(centerX, centerY);
+            if (Math.abs(rotRad) > 0.0005) ctx.rotate(rotRad);
+            if (Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001) ctx.scale(scaleX, scaleY);
+            ctx.translate(-centerX, -centerY);
+        }
+    }
+
+    // 出现后持续动态（仅在播放、导出或点击“预览出场动画”时生效，暂停编辑时静止以便拖拽）
+    const elapsedAfterIn = currentTime - (start + inDur);
+    const isPlayingOrPreview = Boolean(
+        ov._exporting ||
+        ov._ctaAnimPreviewStart ||
+        (typeof window !== 'undefined' && window._reelsState?.playing)
+    );
+    if (loopType && loopType !== 'none' && elapsedAfterIn > 0 && isPlayingOrPreview) {
+        if (loopType === 'pulse') {
+            const pulse = 1 + 0.042 * Math.sin(elapsedAfterIn * Math.PI * 2.2);
+            ctx.translate(centerX, centerY);
+            ctx.scale(pulse, pulse);
+            ctx.translate(-centerX, -centerY);
+        } else if (loopType === 'ring') {
+            const cycle = elapsedAfterIn % 2.2;
+            if (cycle < 0.55) {
+                const p = cycle / 0.55;
+                const env = Math.sin(p * Math.PI);
+                const angle = Math.sin(p * Math.PI * 8) * env * (4.5 * Math.PI / 180);
+                const sc = 1 + 0.035 * env;
+                ctx.translate(centerX, centerY);
+                ctx.rotate(angle);
+                ctx.scale(sc, sc);
+                ctx.translate(-centerX, -centerY);
+            }
+        } else if (loopType === 'float') {
+            const dy = Math.sin(elapsedAfterIn * Math.PI * 1.6) * 8;
+            ctx.translate(0, dy);
+        }
+    }
+
+    ctx.globalAlpha *= animOpFactor;
+    return animOpFactor;
 }
 
 /**
@@ -2161,49 +2853,10 @@ function _drawTextCardOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTime
         maskX = 0; maskY = 0; maskW = canvasW; maskH = canvasH;
     }
 
-    // 入/出场动画
-    let animOpFactor = 1;
-    const inType = ov.anim_in_type || 'none';
-    const outType = ov.anim_out_type || 'none';
+    // 入/出场动画 + 持续动态
     const start = parseFloat(ov.start || 0);
     const end = parseFloat(ov.end || 0);
-
-    if (window.ReelsAnimEngine && (inType !== 'none' || outType !== 'none')) {
-        const inDur = inType !== 'none' ? parseFloat(ov.anim_in_duration || 0.3) : 0;
-        const outDur = outType !== 'none' ? parseFloat(ov.anim_out_duration || 0.3) : 0;
-        const [inProgress, outProgress] = ReelsAnimEngine.computeAnimProgress(
-            currentTime, start, end, inDur, outDur
-        );
-        if (inType === 'fade') animOpFactor *= inProgress;
-        if (outType === 'fade') animOpFactor *= outProgress;
-
-        if (inType === 'pop' || outType === 'pop') {
-            let popScale = 1;
-            if (inType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(inProgress));
-            if (outType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(outProgress));
-            if (popScale < 0.999) {
-                const pcx = x + w / 2, pcy = cardY + cardH / 2;
-                ctx.translate(pcx, pcy);
-                ctx.scale(popScale, popScale);
-                ctx.translate(-pcx, -pcy);
-            }
-        }
-
-        const slideTypes = ['slide_up', 'slide_down', 'slide_left', 'slide_right'];
-        if (slideTypes.includes(inType) || slideTypes.includes(outType)) {
-            let sdx = 0, sdy = 0;
-            if (slideTypes.includes(inType)) {
-                const [dx, dy] = ReelsAnimEngine.computeSlideOffset(inProgress, inType, 120);
-                sdx += dx; sdy += dy;
-            }
-            if (slideTypes.includes(outType)) {
-                const [dx, dy] = ReelsAnimEngine.computeSlideOffset(outProgress, outType, 120);
-                sdx += dx; sdy += dy;
-            }
-            ctx.translate(sdx, sdy);
-        }
-    }
-    ctx.globalAlpha *= animOpFactor;
+    _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, x + w / 2, cardY + cardH / 2, 140);
 
     // ── 磨砂模糊 (Frosted Glass) ──
     if (ov.card_blur_enabled) {
@@ -3414,48 +4067,9 @@ function _drawSolidMaskOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTim
     }
 
     // 入/出场动画
-    let animOpFactor = 1;
-    const inType = ov.anim_in_type || 'none';
-    const outType = ov.anim_out_type || 'none';
     const start = parseFloat(ov.start || 0);
     const end = parseFloat(ov.end || 0);
-
-    if (window.ReelsAnimEngine && (inType !== 'none' || outType !== 'none')) {
-        const inDur = inType !== 'none' ? parseFloat(ov.anim_in_duration || 0.3) : 0;
-        const outDur = outType !== 'none' ? parseFloat(ov.anim_out_duration || 0.3) : 0;
-        const [inProgress, outProgress] = ReelsAnimEngine.computeAnimProgress(
-            currentTime, start, end, inDur, outDur
-        );
-        if (inType === 'fade') animOpFactor *= inProgress;
-        if (outType === 'fade') animOpFactor *= outProgress;
-
-        if (inType === 'pop' || outType === 'pop') {
-            let popScale = 1;
-            if (inType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(inProgress));
-            if (outType === 'pop') popScale = Math.min(popScale, ReelsAnimEngine.computePopScale(outProgress));
-            if (popScale < 0.999) {
-                const pcx = x + w / 2, pcy = y + h / 2;
-                ctx.translate(pcx, pcy);
-                ctx.scale(popScale, popScale);
-                ctx.translate(-pcx, -pcy);
-            }
-        }
-
-        const slideTypes = ['slide_up', 'slide_down', 'slide_left', 'slide_right'];
-        if (slideTypes.includes(inType) || slideTypes.includes(outType)) {
-            let sdx = 0, sdy = 0;
-            if (slideTypes.includes(inType)) {
-                const [dx, dy] = ReelsAnimEngine.computeSlideOffset(inProgress, inType, 120);
-                sdx += dx; sdy += dy;
-            }
-            if (slideTypes.includes(outType)) {
-                const [dx, dy] = ReelsAnimEngine.computeSlideOffset(outProgress, outType, 120);
-                sdx += dx; sdy += dy;
-            }
-            ctx.translate(sdx, sdy);
-        }
-    }
-    ctx.globalAlpha *= animOpFactor;
+    _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, x + w / 2, y + h / 2, 140);
 
     // ── 磨砂模糊 (Frosted Glass) ──
     if (ov.card_blur_enabled) {
@@ -4662,7 +5276,10 @@ function _buildScrollTypewriterLines(ov, lines, textDirection, twContext) {
     const revealType = (textDirection === 'rtl' && rawRevealType === 'char') ? 'word' : rawRevealType;
     const rawSegments = speechSync && Array.isArray(twContext?.segments) ? twContext.segments : null;
     const segSig = rawSegments && rawSegments.length > 0
-        ? `${rawSegments.length}:${rawSegments[0]?.start ?? 0}:${rawSegments[rawSegments.length - 1]?.end ?? 0}:${(rawSegments[0]?.edited_text ?? rawSegments[0]?.text ?? '').slice(0, 20)}`
+        ? rawSegments.map(s => {
+            const w0 = Array.isArray(s?.words) && s.words.length > 0 ? `${Number(s.words[0]?.start || 0).toFixed(2)}-${Number(s.words[s.words.length - 1]?.end || 0).toFixed(2)}` : '';
+            return `${Number(s?.start || 0).toFixed(2)}-${Number(s?.end || 0).toFixed(2)}:${(s?.edited_text ?? s?.text ?? '').length}:${w0}`;
+        }).join(',')
         : 'none';
     const cacheId = ov.id || '_default';
     const cacheKey = `${lines.join('\n')}|${revealType}|${speechSync ? 1 : 0}|${start.toFixed(3)}|${effectiveDur.toFixed(3)}|${segSig}|${ov.scroll_title || ''}|${ov.scroll_tw_start ?? ''}|${ov.scroll_tw_end ?? ''}`;
@@ -5372,7 +5989,11 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             if (run.state !== 'active' && !(keepReadColor && run.state === 'read') && _scrollBodyRanges && _scrollBodyRanges.length > 0 && typeof ReelsRichText !== 'undefined') {
                 _drawRichLine(ctx, run.text, rawContent, _scrollBodyRanges, runX, yc, run.color, fontSize, bodyFamily, bodyFallback, bodyWeight, bLetterSpacing, undefined, undefined, undefined, gradDir);
             } else {
-                ctx.fillStyle = _resolveOverlayTextFill(ctx, run.color, lx, yc, fontSize, lineW, gradDir);
+                const isSingleWordGrad = (run.state === 'active' && !keepReadColor && typeof run.color === 'string' && run.color.includes(','));
+                const fillSpanX = isSingleWordGrad ? runX : lx;
+                const fillSpanW = isSingleWordGrad ? Math.max(1, runW) : lineW;
+                const fillGradDir = isSingleWordGrad ? 'horizontal' : gradDir;
+                ctx.fillStyle = _resolveOverlayTextFill(ctx, run.color, fillSpanX, yc, fontSize, fillSpanW, fillGradDir);
                 if (typeof _fillTextWithLetterSpacing !== 'undefined' && bLetterSpacing !== 0 && typeof ctx.letterSpacing === 'undefined') {
                     _fillTextWithLetterSpacing(ctx, run.text, runX, yc, bLetterSpacing);
                 } else {
@@ -10371,6 +10992,10 @@ const ReelsOverlay = {
     createTextOverlay,
     createImageOverlay,
     createTextCardOverlay,
+    createPhoneCtaOverlay,
+    applyPhoneCtaStylePreset,
+    syncPhoneCtaMaskAndColors,
+    PHONE_CTA_STYLES,
     createSolidMaskOverlay,
     createScrollOverlay,
     createDecorOverlay,

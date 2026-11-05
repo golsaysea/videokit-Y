@@ -1,3 +1,13 @@
+if (process.argv.includes('--headless')) {
+    const headlessIdx = process.argv.indexOf('--headless');
+    const cliArgs = process.argv.slice(headlessIdx + 1);
+    const { runCli } = require('../bin/videokit-cli.cjs');
+    runCli(cliArgs).then((code) => {
+        process.exit(code);
+    });
+    return;
+}
+
 const { app, BrowserWindow, ipcMain, MessageChannelMain, dialog, powerSaveBlocker, protocol, shell, net, screen, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');

@@ -1,0 +1,42 @@
+{
+  "id": "0001",
+  "width": 720,
+  "height": 1280,
+  "fps": 30,
+  "quality": "medium",
+  "bgPath": "./heaven-0001.png",
+  "motion": "none",
+  "audioPath": "./0001.mp3",
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 1.5,
+      "text": "Today I pray that God's hand"
+    },
+    {
+      "start": 1.5,
+      "end": 3.0,
+      "text": "rests gently upon your life."
+    }
+  ],
+  "subtitle": {
+    "font_family": "Anton",
+    "fontsize": 74,
+    "bold": true,
+    "italic": false,
+    "color_text": "#FFFFFF",
+    "color_outline": "#000000",
+    "color_high": "#FFD700",
+    "karaoke_highlight": true,
+    "use_stroke": true,
+    "border_width": 3,
+    "shadow_blur": 0,
+    "pos_x": 0.5,
+    "pos_y": 0.52,
+    "anim_in_type": "none",
+    "anim_out_type": "none",
+    "credit": "AI Created",
+    "credit_position": "top-right"
+  },
+  "output": "./out/0001.mp4"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "0002",
+  "width": 720,
+  "height": 1280,
+  "fps": 30,
+  "quality": "low",
+  "bgPath": "./heaven-0001.png",
+  "motion": "none",
+  "audioPath": "./0001.mp3",
+  "srtPath": "./0001.srt",
+  "subtitle": {
+    "font_family": "Anton",
+    "fontsize": 74,
+    "bold": true,
+    "primary_color": "#FFFFFF",
+    "outline_color": "#000000",
+    "keyword_color": "#FFD700",
+    "highlight": "word-by-word",
+    "border_width": 3,
+    "pos_x": 0.5,
+    "pos_y": 0.52,
+    "credit": "AI Created",
+    "credit_position": "top-right"
+  },
+  "output": "./out/0002.mp4"
+}
