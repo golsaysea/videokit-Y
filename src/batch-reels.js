@@ -1162,7 +1162,14 @@ function _initReelsModule() {
                     const unpartitioned = tasks.filter(task => task && !task._folderQueueId && !task._batchTabId);
                     return unpartitioned.length > 0 ? unpartitioned : tasks;
                 },
-                render() { /* rAF loop handles rendering */ },
+                render() {
+                    if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
+                    if (window.ReelsPreviewV2?.isOpen?.() && typeof window.ReelsPreviewV2?.requestRender === 'function') {
+                        window.ReelsPreviewV2.requestRender();
+                    } else if (typeof window.ReelsPreviewV2?.render === 'function') {
+                        window.ReelsPreviewV2.render();
+                    }
+                },
                 getOverlayAboveSubtitle() {
                     const task = _getSelectedTask();
                     return task ? task.overlayAboveSubtitle !== false : true;

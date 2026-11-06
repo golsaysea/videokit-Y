@@ -10611,7 +10611,7 @@ class ReelsDecorPanel {
         if (!src || typeof src !== 'string') return '';
         if (/^(data|blob|https?|local-media):/i.test(src)) return src;
         if (window.electronAPI && typeof window.electronAPI.toFileUrl === 'function') {
-            return window.electronAPI.toFileUrl(src);
+            return window.electronAPI.toFileUrl(src.replace(/^\/+([a-zA-Z]:)/, '$1'));
         }
         const clean = src.replace(/\\/g, '/');
         return clean.startsWith('/') ? `local-media://${clean}` : `local-media:///${clean}`;
@@ -10623,17 +10623,20 @@ class ReelsDecorPanel {
         target._ctaAnimPreviewStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
         if (this._ctaPreviewRaf) cancelAnimationFrame(this._ctaPreviewRaf);
         const startWall = target._ctaAnimPreviewStart;
+        const redraw = () => {
+            this.videoCanvas?.render?.();
+            if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
+            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+        };
         const step = () => {
             const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
             if (!target._ctaAnimPreviewStart || (now - startWall) > 2450) {
                 delete target._ctaAnimPreviewStart;
                 this._ctaPreviewRaf = null;
-                this.videoCanvas?.render?.();
-                if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+                redraw();
                 return;
             }
-            this.videoCanvas?.render?.();
-            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+            redraw();
             this._ctaPreviewRaf = requestAnimationFrame(step);
         };
         this._ctaPreviewRaf = requestAnimationFrame(step);
@@ -11656,6 +11659,7 @@ class ReelsDecorPanel {
 
             const probeImg = new Image();
             probeImg.onload = () => {
+                window.ReelsOverlay?.primeImageCache?.(imgSrc, probeImg);
                 const nw = probeImg.naturalWidth || probeImg.width || 880;
                 const nh = probeImg.naturalHeight || probeImg.height || 220;
                 const aspect = nw / Math.max(1, nh);

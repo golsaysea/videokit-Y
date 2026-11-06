@@ -2726,6 +2726,42 @@ test('Phone CTA is extracted to Decor Panel (#rdp-phone-cta-card) and supports c
     assert.ok(Math.abs(drawnImages[0].dh - 220 * 1.1) < 0.5, 'Rendered image height should preserve aspect ratio (220 * 110% = 242)');
     assert.ok(Number.isFinite(ctaImgOv._renderedX) && Number.isFinite(ctaImgOv._renderedY), '_renderedX and _renderedY must be populated for canvas drag/resize');
     assert.ok(Math.abs(ctaImgOv._renderedW - 968) < 0.5 && Math.abs(ctaImgOv._renderedH - 242) < 0.5, '_renderedW and _renderedH must match drawn image bounds');
+
+    // Verify Windows file path with primeImageCache AND paused editor at exact start time (e.g. currentTime === 5.0 === start)
+    const winPath = 'C:\\Users\\User\\Downloads\\ChatGPT Image 2026年.png';
+    let passedToElectronToFileUrl = null;
+    sandbox.window.electronAPI = {
+        toFileUrl(p) {
+            passedToElectronToFileUrl = p;
+            return 'local-media:///C:/Users/User/Downloads/ChatGPT%20Image%202026%E5%B9%B4.png';
+        },
+    };
+    const fakeImg = { naturalWidth: 920, naturalHeight: 230, width: 920, height: 230 };
+    ReelsOverlay.primeImageCache(winPath, fakeImg);
+    assert.equal(passedToElectronToFileUrl, winPath, 'toFileUrl must receive raw Windows path without prepended leading slash');
+
+    const ctaWinOv = ReelsOverlay.createPhoneCtaOverlay({
+        cta_mode: 'image',
+        cta_image_src: winPath,
+        cta_image_scale: 80,
+        w: 920,
+        h: 230,
+        start: 5,
+        end: 9999,
+        anim_in_type: 'ring_shake',
+        anim_in_duration: 0.55,
+    });
+    ctaWinOv._selected = true;
+    drawnImages.length = 0;
+    let drawnAlphaAtExactStart = 0;
+    ctx.drawImage = (img, dx, dy, dw, dh) => {
+        drawnAlphaAtExactStart = ctx.globalAlpha;
+        drawnImages.push({ img, dx, dy, dw, dh });
+    };
+    // Paused at exact start time (currentTime === 5.0, start === 5.0)
+    ReelsOverlay.drawOverlay(ctx, ctaWinOv, 5.0, 1080, 1920);
+    assert.equal(drawnImages.length, 1, 'Phone CTA image must render when paused at exact start time (5.0s)');
+    assert.ok(drawnAlphaAtExactStart > 0.95, `Phone CTA image must render at full opacity when paused at start time, got alpha=${drawnAlphaAtExactStart}`);
 });
 
 

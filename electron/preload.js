@@ -168,6 +168,9 @@ function toFileUrl(filePath) {
         } else if (/^file:\/\//i.test(nativePath)) {
             nativePath = fileURLToPath(nativePath);
         }
+        if (process.platform === 'win32' && /^\/+[a-zA-Z]:/.test(nativePath)) {
+            nativePath = nativePath.replace(/^\/+([a-zA-Z]:)/, '$1');
+        }
         nativePath = sharedProfile.resolveSharedProfileFilePath(nativePath);
         // Node 自带的 URL 转换会正确处理 Windows 盘符、UNC、中文、空格和 #/%。
         return pathToFileURL(nativePath).href.replace(/^file:/i, 'local-media:') + suffix;

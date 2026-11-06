@@ -1240,7 +1240,12 @@ function applyDecorStylePreset(ov, styleId) {
 function _normalizeOverlayMediaPath(p) {
     if (!p || typeof p !== 'string') return '';
     if (/^(local-media|https?|blob|data):/i.test(p)) return p;
-    
+
+    if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.toFileUrl === 'function') {
+        const rawForElectron = p.replace(/^\/+([a-zA-Z]:)/, '$1');
+        return window.electronAPI.toFileUrl(rawForElectron);
+    }
+
     let clean = p;
     if (clean.startsWith('file://')) {
         clean = clean.substring(7);
@@ -1248,7 +1253,7 @@ function _normalizeOverlayMediaPath(p) {
     // Normalize backslashes to forward slashes for Windows compatibility
     clean = clean.replace(/\\/g, '/');
 
-    const isWin = (typeof process !== 'undefined' && process.platform === 'win32') || navigator.userAgent.toLowerCase().includes('windows');
+    const isWin = (typeof process !== 'undefined' && process.platform === 'win32') || (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('windows'));
     if (isWin || (clean.includes(':') && !clean.startsWith('/'))) {
         if (!clean.startsWith('/') && /^[a-zA-Z]:/.test(clean)) {
             clean = '/' + clean;
@@ -1258,16 +1263,13 @@ function _normalizeOverlayMediaPath(p) {
             clean = '/' + clean;
         }
     }
-    
-    if (window.electronAPI && typeof window.electronAPI.toFileUrl === 'function') {
-        return window.electronAPI.toFileUrl(clean);
-    }
+
     // For shadow-renderer (loaded via file: protocol in BrowserWindow with webSecurity: false)
-    if (window.location.protocol === 'file:') {
+    if (typeof window !== 'undefined' && window.location?.protocol === 'file:') {
         try {
             if (typeof require === 'function') {
                 const { pathToFileURL, fileURLToPath } = require('url');
-                const nativePath = /^file:\/\//i.test(p) ? fileURLToPath(p) : p;
+                const nativePath = /^file:\/\//i.test(p) ? fileURLToPath(p) : p.replace(/^\/+([a-zA-Z]:)/, '$1');
                 return pathToFileURL(nativePath).href;
             }
         } catch (_) { }
@@ -1279,6 +1281,13 @@ function _normalizeOverlayMediaPath(p) {
 
 const _imageCache = {};
 const _IMAGE_LOADING = { _loading: true }; // sentinel (truthy, prevents re-creation)
+
+function primeImageCache(path, img) {
+    if (!path || !img) return;
+    _imageCache[path] = img;
+    const norm = _normalizeOverlayMediaPath(path);
+    if (norm) _imageCache[norm] = img;
+}
 
 /**
  * 加载并缓存图片。
@@ -1870,7 +1879,7 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     if (isAnimPreviewing) {
         const elapsed = (performance.now() - ov._ctaAnimPreviewStart) / 1000;
         if (elapsed >= 0 && elapsed <= 2.4) {
-            currentTime = start + elapsed;
+            currentTime = start + Math.max(0.06, elapsed);
         } else {
             delete ov._ctaAnimPreviewStart;
         }
@@ -1889,8 +1898,14 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
         (ov._selected || isDecorTabOpenForPhoneCta || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id)) &&
         !(typeof window !== 'undefined' && window._reelsState?.playing)
     );
-    if (isSelectedInPausedEditor && (currentTime < start || (end < 9999 && currentTime > end))) {
-        currentTime = start + Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3)) + 0.05;
+    const inDurForEdit = (ov.anim_in_type && ov.anim_in_type !== 'none')
+        ? Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3))
+        : 0;
+    const outDurForEdit = (ov.anim_out_type && ov.anim_out_type !== 'none')
+        ? Math.max(0.05, parseFloat(ov.anim_out_duration || 0.3))
+        : 0;
+    if (isSelectedInPausedEditor && (currentTime < start + inDurForEdit || (end < 9999 && currentTime > end - outDurForEdit))) {
+        currentTime = start + inDurForEdit + 0.05;
     }
 
     // 时间范围检查 (允许边界值)
@@ -11202,6 +11217,7 @@ const ReelsOverlay = {
     DECOR_OVERLAY_STYLES,
     measureScrollMotion,
     drawOverlay,
+    primeImageCache,
     prepareScrollWritingCursorImage,
     splitBodyText,
     OverlayManager,
