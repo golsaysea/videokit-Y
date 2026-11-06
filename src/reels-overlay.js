@@ -5047,7 +5047,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 ctx, ov, lines, curX, curY, textW, lineHeight,
                 bodyClipY, bodyClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
             );
-            const ovProxy = Object.assign({}, ov, { _skipTitle: true, _skipBodyBlockBg: _drewBodyBlockBg });
+            const ovProxy = Object.assign({}, ov, { _skipTitle: true, _skipBodyBlockBg: Boolean(_drewBodyBlockBg) });
             const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff > 0 || featherBotOff > 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0;
             if (hasFeather) {
                 const cW = Math.ceil(clipW), cH = Math.ceil(bodyClipH);
@@ -5116,13 +5116,35 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                     tc.fillRect(0, 0, cW, cH);
                 }
                 
-                ctx.drawImage(tmp, clipX, bodyClipY);
+                if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
+                    if (!_drewBodyBlockBg.clippedEmpty) {
+                        ctx.save();
+                        const cx = Math.min(clipX, _drewBodyBlockBg.x);
+                        const cw = Math.max(clipX + clipW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
+                        _roundRect(ctx, cx, _drewBodyBlockBg.y, cw, _drewBodyBlockBg.h, _drewBodyBlockBg.r);
+                        ctx.clip();
+                        ctx.drawImage(tmp, clipX, bodyClipY);
+                        ctx.restore();
+                    }
+                } else {
+                    ctx.drawImage(tmp, clipX, bodyClipY);
+                }
             } else {
                 ctx.save();
-                ctx.beginPath();
-                ctx.rect(clipX, bodyClipY, clipW, bodyClipH);
-                ctx.clip();
-                _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+                if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
+                    if (!_drewBodyBlockBg.clippedEmpty) {
+                        const cx = Math.min(clipX, _drewBodyBlockBg.x);
+                        const cw = Math.max(clipX + clipW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
+                        _roundRect(ctx, cx, _drewBodyBlockBg.y, cw, _drewBodyBlockBg.h, _drewBodyBlockBg.r);
+                        ctx.clip();
+                        _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+                    }
+                } else {
+                    ctx.beginPath();
+                    ctx.rect(clipX, bodyClipY, clipW, bodyClipH);
+                    ctx.clip();
+                    _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+                }
                 ctx.restore();
             }
         }
@@ -5207,13 +5229,35 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 tc.fillRect(0, 0, cW, cH);
             }
 
-            ctx.drawImage(tmp, clipX, effClipY);
+            if (_drewBodyBlockBg2 && typeof _drewBodyBlockBg2 === 'object') {
+                if (!_drewBodyBlockBg2.clippedEmpty) {
+                    ctx.save();
+                    const cx = Math.min(clipX, _drewBodyBlockBg2.x);
+                    const cw = Math.max(clipX + clipW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
+                    _roundRect(ctx, cx, _drewBodyBlockBg2.y, cw, _drewBodyBlockBg2.h, _drewBodyBlockBg2.r);
+                    ctx.clip();
+                    ctx.drawImage(tmp, clipX, effClipY);
+                    ctx.restore();
+                }
+            } else {
+                ctx.drawImage(tmp, clipX, effClipY);
+            }
         } else {
             ctx.save();
-            ctx.beginPath();
-            ctx.rect(clipX, effClipY, clipW, effClipH);
-            ctx.clip();
-            _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+            if (_drewBodyBlockBg2 && typeof _drewBodyBlockBg2 === 'object') {
+                if (!_drewBodyBlockBg2.clippedEmpty) {
+                    const cx = Math.min(clipX, _drewBodyBlockBg2.x);
+                    const cw = Math.max(clipX + clipW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
+                    _roundRect(ctx, cx, _drewBodyBlockBg2.y, cw, _drewBodyBlockBg2.h, _drewBodyBlockBg2.r);
+                    ctx.clip();
+                    _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+                }
+            } else {
+                ctx.beginPath();
+                ctx.rect(clipX, effClipY, clipW, effClipH);
+                ctx.clip();
+                _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+            }
             ctx.restore();
         }
     }
@@ -6160,20 +6204,22 @@ function _drawScrollBodyBlockBgOutsideClip(
     const bodyBlockH = lines.length * lineHeight;
     const rawBlockW = textW + bbgPadH * 2;
     const rawBlockH = bodyBlockH + bbgPadTop + bbgPadBot;
-    const effBlockW = (Number(ov.bg_width) > 0) ? Math.max(60, Number(ov.bg_width)) : rawBlockW;
-    const effBlockH = (Number(ov.bg_height) > 0) ? Math.max(60, Number(ov.bg_height)) : rawBlockH;
-    const effBlockX = (curX - bbgPadH) + (rawBlockW - effBlockW) / 2 + (parseFloat(ov.bg_offset_x) || 0);
-    const effBlockY = (bodyStartY - bbgPadTop) + (parseFloat(ov.bg_offset_y) || 0);
+    const effBlockW = (isCardBoardStyle && Number(ov.bg_width) > 0) ? Math.max(60, Number(ov.bg_width)) : rawBlockW;
+    const effBlockH = rawBlockH;
+    const effBlockX = (curX - bbgPadH) + (rawBlockW - effBlockW) / 2;
+    const effBlockY = bodyStartY - bbgPadTop;
 
-    const fTopInset = Math.max(0, parseFloat(ov.feather_top_offset ?? 0)) + Math.max(0, parseFloat(ov.feather_top ?? 0)) * 0.5;
-    const fBotInset = Math.max(0, parseFloat(ov.feather_bottom_offset ?? 0)) + Math.max(0, parseFloat(ov.feather_bottom ?? 0)) * 0.5;
-    const minVisY = activeClipY + fTopInset - bbgPadTop;
-    const maxVisBot = activeClipY + activeClipH - fBotInset + bbgPadBot;
+    const topZeroPx = (Number(featherTopOff) > 0) ? Math.min(Number(featherTopOff), activeClipH * 0.49) : 0;
+    const botZeroPx = (Number(featherBotOff) > 0) ? Math.min(Number(featherBotOff), activeClipH * 0.49) : 0;
+    const winTop = activeClipY + topZeroPx;
+    const winBot = activeClipY + activeClipH - botZeroPx;
+    const minVisY = winTop - bbgPadTop;
+    const maxVisBot = winBot + bbgPadBot;
     const visBlockY = Math.max(minVisY, effBlockY);
     const visBlockBot = Math.min(maxVisBot, effBlockY + effBlockH);
     const visBlockH = visBlockBot - visBlockY;
 
-    if (visBlockH <= 2 || effBlockW <= 2) return true;
+    if (visBlockH <= 2 || effBlockW <= 2) return { drawn: true, clippedEmpty: true };
 
     if (isCardBoardStyle) {
         ReelsBrushEngine.drawThemedCardBackground(
@@ -6201,7 +6247,7 @@ function _drawScrollBodyBlockBgOutsideClip(
         ctx.fill();
         ctx.restore();
     }
-    return true;
+    return { drawn: true, x: effBlockX, y: visBlockY, w: effBlockW, h: visBlockH, r: bbgRad };
 }
 
 /**

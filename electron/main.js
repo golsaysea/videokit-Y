@@ -814,6 +814,7 @@ function createWindow() {
         minWidth: 900,
         minHeight: 700,
         title: app.isPackaged ? 'VideoKit' : 'VideoKit — 源码测试版',
+        icon: getResourcePath(process.platform === 'win32' ? 'assets/icon.ico' : (process.platform === 'darwin' ? 'assets/icon.icns' : 'assets/icon.png')),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
