@@ -85,7 +85,15 @@ function readJSON(filePath) {
 
 function writeJSON(filePath, data) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    const serialized = JSON.stringify(data, null, 2);
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        fs.writeFileSync(tmpPath, serialized, 'utf-8');
+        fs.renameSync(tmpPath, filePath);
+    } catch (_) {
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+        fs.writeFileSync(filePath, serialized, 'utf-8');
+    }
 }
 
 // Gladia Keys

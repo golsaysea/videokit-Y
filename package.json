@@ -66,7 +66,8 @@
       "dist/**/*",
       "electron/**/*",
       "bin/**/*",
-      "src/reels-subtitle-processor.js"
+      "src/reels-subtitle-processor.js",
+      "scripts/cloudflare-hub-worker.js"
     ],
     "mac": {
       "target": [

@@ -31,6 +31,7 @@ const wav2lipService = require('./services/wav2lip');
 const geminiService = require('./services/gemini');
 const templateService = require('./services/templates');
 const autoEditService = require('./services/autoEdit');
+const cloudHubService = require('./services/cloud-hub');
 const activeAutoEditRequests = new Map();
 
 function normalizeNumbers(text) {
@@ -539,6 +540,24 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             if (data._method === 'GET') return settingsService.loadReplaceRules();
             settingsService.saveReplaceRules(data);
             return { message: '保存成功' };
+
+        case 'settings/cloud-hub': {
+            if (data._method === 'GET') return cloudHubService.loadCloudHubSettings();
+            const saved = cloudHubService.saveCloudHubSettings(data);
+            return { ok: true, status: 'success', settings: saved, ...saved };
+        }
+
+        case 'settings/cloud-hub/sync':
+            return await cloudHubService.syncFromCloudHub(data);
+
+        case 'settings/cloud-hub/push':
+            return await cloudHubService.pushToCloudHub(data);
+
+        case 'settings/cloud-hub/download-project':
+            return await cloudHubService.downloadCloudProject(data);
+
+        case 'settings/cloud-hub/worker-code':
+            return { code: cloudHubService.getWorkerTemplateCode() };
 
         case 'languages':
             return { languages: settingsService.getLanguages() };

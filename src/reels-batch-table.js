@@ -1571,6 +1571,7 @@ function _renderBatchTable() {
                         <button class="rbt-btn rbt-btn-primary" id="rbt-save-queue-btn">保存队列</button>
                         <button class="rbt-btn" id="rbt-load-queue-btn">调用队列</button>
                         <button class="rbt-btn" id="rbt-cloud-settings-btn">转录 API · Groq / Gladia</button>
+                        <button class="rbt-btn" id="rbt-cloud-hub-btn" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,rgba(14,165,233,0.28),rgba(37,99,235,0.32));border:1px solid rgba(56,189,248,0.5);color:#7dd3fc;font-weight:700;" title="Cloudflare 远程总控中心：一键同步全套 API Key + Google Drive 每日工程(日期贴)直接下载加载">☁️ 云端中控 · 日期贴</button>
                         <button class="rbt-btn" id="rbt-save-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;" title="只保存当前标签页的工程和任务">保存当前工程</button>
                         <button class="rbt-btn" id="rbt-save-all-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;" title="保存所有标签页的工程和任务">保存全部工程</button>
                         <button class="rbt-btn" id="rbt-load-config-btn" style="padding:2px 8px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;">加载工程</button>
@@ -4705,6 +4706,7 @@ function _bindBatchTableEvents() {
     container.querySelector('#rbt-save-queue-btn')?.addEventListener('click', () => _saveNamedQueue());
     container.querySelector('#rbt-load-queue-btn')?.addEventListener('click', () => _openQueueLibrary());
     container.querySelector('#rbt-cloud-settings-btn')?.addEventListener('click', () => _openQueueTranscriptionSettings());
+    container.querySelector('#rbt-cloud-hub-btn')?.addEventListener('click', () => window.openCloudHubDialog?.());
 
     // Save config (Legacy manual export)
     container.querySelector('#rbt-save-config-btn')?.addEventListener('click', () => {
@@ -18669,6 +18671,8 @@ function _batchAutoSave(options = {}) {
         if (!_batchTableState.projectName) {
             _batchTableState.projectName = 'UntitledProject.json';
         }
+        const appliedSet = new Set(_batchTableState.appliedTabIds || []);
+        const forceFullSerialize = !!options.forceFullSerialize;
         const data = {
             timestamp: new Date().toISOString(),
             version: '2.0',
@@ -18677,15 +18681,28 @@ function _batchAutoSave(options = {}) {
             nextTabId: _batchTableState.nextTabId,
             projectDir: _batchTableState.projectDir || defaultProjDir || '',
             projectName: _batchTableState.projectName || 'UntitledProject.json',
-            tabs: _batchTableState.tabs.map(tab => ({
-                id: tab.id,
-                name: tab.name,
-                materialDir: tab.materialDir || '',
-                folderQueueId: tab._folderQueueId || '',
-                externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined,
-                lastRefreshTime: tab.lastRefreshTime || null,
-                tasks: _serializeTasks(tab.tasks),
-            })),
+            tabs: _batchTableState.tabs.map(tab => {
+                const isActiveOrApplied = tab.id === _batchTableState.activeTabId || appliedSet.has(tab.id);
+                const tasksLen = Array.isArray(tab.tasks) ? tab.tasks.length : 0;
+                const canReuseCache = !forceFullSerialize &&
+                    !isActiveOrApplied &&
+                    Array.isArray(tab._cachedSerializedTasks) &&
+                    tab._cachedTasksRef === tab.tasks &&
+                    tab._cachedTasksLen === tasksLen;
+                const serializedTasks = canReuseCache ? tab._cachedSerializedTasks : _serializeTasks(tab.tasks);
+                tab._cachedSerializedTasks = serializedTasks;
+                tab._cachedTasksRef = tab.tasks;
+                tab._cachedTasksLen = tasksLen;
+                return {
+                    id: tab.id,
+                    name: tab.name,
+                    materialDir: tab.materialDir || '',
+                    folderQueueId: tab._folderQueueId || '',
+                    externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined,
+                    lastRefreshTime: tab.lastRefreshTime || null,
+                    tasks: serializedTasks,
+                };
+            }),
         };
         const jsonStr = JSON.stringify(data);
         // Persist the workspace independently of named project saves and browser quota.
@@ -19687,8 +19704,9 @@ async function _relocateMissingMaterials() {
         }
     }
 
-    // 刷新表格
+    // 刷新表格并落盘保存已修复的素材路径
     if (typeof _renderBatchTable === 'function') _renderBatchTable();
+    _batchAutoSave({ forceFullSerialize: true });
 
     // 刷新侧边栏 (若修改了当前选中的任务)
     const selectedIdx = window._reelsState.selectedIdx;
@@ -19837,6 +19855,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     _initBatchTable();
+
+    // 启动时静默检查 Cloudflare 云端中控配置（若开启启动自动同步则拉取最新 API Key 与每日工程列表）
+    setTimeout(async () => {
+        try {
+            const resp = await apiFetch('settings/cloud-hub');
+            if (!resp.ok) return;
+            const cfg = await resp.json();
+            if (cfg && cfg.hub_url && cfg.auto_sync_on_startup !== false) {
+                const syncResp = await apiFetch('settings/cloud-hub/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sync_mode: cfg.sync_mode || 'merge' }),
+                });
+                const syncData = await syncResp.json().catch(() => ({}));
+                if (syncData && syncData.status === 'success') {
+                    const st = syncData.stats || {};
+                    const totalKeys = (st.groq || 0) + (st.gladia || 0) + (st.deepgram || 0) + (st.gemini || 0) + (st.elevenlabs || 0);
+                    console.log(`[CloudHub] 启动自动同步完成: Keys=${totalKeys}, 日期贴=${st.daily_projects || 0}`);
+                    if (typeof showToast === 'function' && (totalKeys > 0 || st.daily_projects > 0)) {
+                        showToast(`☁️ 云端已同步：${totalKeys} 个 API Key · ${st.daily_projects || 0} 个每日工程`, 'info', 3500);
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[CloudHub] Startup auto-sync skipped:', err?.message || err);
+        }
+    }, 1200);
 
     // 每30秒自动保存一次（安全网）
     setInterval(() => {
@@ -21409,9 +21454,677 @@ window.reelsRefreshTasksUsingOverlayPreset = function(name, previousPreset = nul
     _syncSelectedTaskOverlayMgrIfNeeded(window._reelsState.selectedIdx);
     if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
     _skipNextApply = true;
-    _batchAutoSave({ skipSync: true });
+    _batchAutoSave({ skipSync: true, forceFullSerialize: true });
     if (typeof showToast === 'function') showToast('已同步更新 ' + updatedIds.size + ' 个使用此预设的画面', 'success', 4000);
     return updatedIds.size;
+};
+
+// ═══════════════════════════════════════════════════════
+// 14. Cloudflare 远程总控中心 & Google Drive 每日工程(日期贴)一键下载加载
+// ═══════════════════════════════════════════════════════
+
+async function _applyDownloadedCloudProjectToBatchTable(rawProject, savedPath = '', loadMode = 'append', projectLabel = '') {
+    let data = rawProject;
+    if (!data || typeof data !== 'object') {
+        throw new Error('工程数据为空或格式无效');
+    }
+    const fallbackName = String(projectLabel || (savedPath ? savedPath.split(/[/\\]/).pop().replace(/\.json$/i, '') : '云端每日工程')).trim() || '云端每日工程';
+    if (data.version !== '2.0' && Array.isArray(data.tasks)) {
+        data = {
+            version: '2.0',
+            tabs: [{ id: 'cloud_legacy', name: fallbackName, tasks: data.tasks }],
+            activeTabId: 'cloud_legacy',
+        };
+    }
+    if (!Array.isArray(data.tabs) || data.tabs.length === 0) {
+        throw new Error('该云端工程中没有有效的标签页或任务');
+    }
+
+    if (_batchTableState.visible) {
+        try { _applyBatchTableChanges(); } catch (_) {}
+    }
+    _syncTasksToActiveTab();
+    _normalizeBatchTabState();
+
+    if (loadMode === 'replace') {
+        const backupDir = _batchTableState.projectDir || (await window.electronAPI?.getDownloadsPath?.()) || '';
+        if (backupDir && window.electronAPI?.writeFileText) {
+            const backupPath = backupDir.replace(/[\\/]$/, '') + '/云端加载前备份_' + Date.now() + '.json';
+            const backup = {
+                version: '2.0',
+                timestamp: new Date().toISOString(),
+                activeTabId: _batchTableState.activeTabId,
+                nextTabId: _batchTableState.nextTabId,
+                tabs: _batchTableState.tabs.map(tab => ({
+                    id: tab.id,
+                    name: tab.name,
+                    materialDir: tab.materialDir || '',
+                    folderQueueId: tab._folderQueueId || '',
+                    externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined,
+                    lastRefreshTime: tab.lastRefreshTime || null,
+                    tasks: _serializeTasks(tab.tasks),
+                })),
+            };
+            try { await window.electronAPI.writeFileText(backupPath, JSON.stringify(backup, null, 2)); } catch (_) {}
+        }
+    }
+
+    const importedTabs = data.tabs.map((t, tIdx) => {
+        const id = 'tab_' + _batchTableState.nextTabId++;
+        const queueIds = new Map();
+        const remapQueue = old => {
+            if (!old) return '';
+            if (!queueIds.has(old)) queueIds.set(old, `${id}_cloud_${Date.now()}_${queueIds.size}`);
+            return queueIds.get(old);
+        };
+        const rawTabName = String(t?.name || '').trim();
+        const tabName = (data.tabs.length === 1 && (!rawTabName || rawTabName === '默认' || rawTabName === '标签1'))
+            ? fallbackName
+            : (rawTabName || `${fallbackName}_${tIdx + 1}`);
+        return {
+            id,
+            name: tabName,
+            materialDir: t?.materialDir || '',
+            _folderQueueId: remapQueue(t?.folderQueueId || t?._folderQueueId),
+            _externalFolderQueuesCombined: !!(t?.externalFolderQueuesCombined || t?._externalFolderQueuesCombined),
+            lastRefreshTime: t?.lastRefreshTime || null,
+            tasks: (Array.isArray(t?.tasks) ? t.tasks : []).map(task => {
+                const imported = _stripBatchGroupMeta(task);
+                delete imported.id;
+                _ensureTaskId(imported);
+                if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
+                const mediaBg = imported.bgPath || imported.videoPath || '';
+                if (mediaBg && window.electronAPI?.toFileUrl) {
+                    imported.bgSrcUrl = window.electronAPI.toFileUrl(mediaBg);
+                }
+                return imported;
+            }),
+        };
+    });
+
+    if (loadMode === 'replace') {
+        _batchTableState.tabs = importedTabs;
+        if (savedPath) {
+            const parts = String(savedPath).split(/[/\\]/);
+            _batchTableState.projectName = parts[parts.length - 1] || _batchTableState.projectName;
+        }
+    } else {
+        // 如果当前仅有一个完全空白的默认标签，直接替换掉空白标签避免残留空标签
+        if (_batchTableState.tabs.length === 1 && _isBatchTabEmpty(_batchTableState.tabs[0])) {
+            _batchTableState.tabs = importedTabs;
+        } else {
+            _batchTableState.tabs.push(...importedTabs);
+        }
+    }
+
+    const activeIndex = Math.max(0, data.tabs.findIndex(t => t && t.id === data.activeTabId));
+    _batchTableState.activeTabId = importedTabs[Math.min(activeIndex, importedTabs.length - 1)].id;
+    _loadTabTasks(_getActiveTab());
+    _skipNextApply = true;
+    if (_batchTableState.visible) {
+        _renderBatchTable();
+    } else {
+        // 如果在主界面加载，同步更新左侧外部任务列表并选中第一条任务
+        if (importedTabs.length > 1) {
+            _restoreGroupedProjectionFromTabs(_batchTableState.tabs.map(tab => tab.id));
+        }
+        if (typeof _renderTaskList === 'function') _renderTaskList();
+        if (window._reelsState?.tasks?.length > 0 && typeof reelsSelectTask === 'function') {
+            reelsSelectTask(0);
+        }
+    }
+    _batchAutoSave({ skipSync: true, forceFullSerialize: true });
+    const totalTasks = importedTabs.reduce((s, tab) => s + (tab.tasks?.length || 0), 0);
+    return { tabsCount: importedTabs.length, tasksCount: totalTasks };
+}
+
+window.openCloudHubDialog = async function() {
+    const existing = document.getElementById('rbt-cloud-hub-modal');
+    if (existing) existing.remove();
+
+    let cfg = {
+        hub_url: '',
+        access_token: '',
+        has_access_token: false,
+        sync_mode: 'merge',
+        auto_sync_on_startup: true,
+        local_material_root: '',
+        last_sync_at: '',
+        last_sync_summary: null,
+        daily_projects: [],
+    };
+    try {
+        const resp = await apiFetch('settings/cloud-hub');
+        if (resp.ok) {
+            const loaded = await resp.json();
+            if (loaded && typeof loaded === 'object') cfg = { ...cfg, ...loaded };
+        }
+    } catch (e) {
+        console.warn('[CloudHub] Failed to load settings:', e);
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const modal = document.createElement('div');
+    modal.id = 'rbt-cloud-hub-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:100020;background:rgba(4,7,18,0.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px;';
+
+    const renderProjectsListHtml = (projects = []) => {
+        if (!Array.isArray(projects) || projects.length === 0) {
+            return `<div style="padding:26px 16px;text-align:center;color:#64748b;font-size:12px;border:1px dashed rgba(148,163,184,0.2);border-radius:8px;">
+                📭 暂无每日工程（日期贴）。点击上方「🔄 立即从云端同步」拉取团队发布的日期贴，或在下方发布新的 Google Drive 工程链接。
+            </div>`;
+        }
+        return projects.map((item, idx) => {
+            const pId = _escHtml(item.id || `proj_${idx}`);
+            const pDate = _escHtml(item.date || '');
+            const pTitle = _escHtml(item.title || '未命名工程');
+            const pUrl = _escHtml(item.url || item.drive_url || '');
+            const pNote = _escHtml(item.note || '');
+            const pMatHint = _escHtml(item.material_folder_hint || '');
+            const isDrive = /drive\.google\.com/i.test(item.url || item.drive_url || '');
+            return `
+            <div class="ch-project-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:rgba(15,23,42,0.82);border:1px solid rgba(56,189,248,0.22);border-radius:8px;transition:border-color .15s;">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        ${pDate ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(14,165,233,0.2);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);font-family:monospace;">📅 ${pDate}</span>` : ''}
+                        <span style="font-size:13px;font-weight:700;color:#f1f5f9;">${pTitle}</span>
+                        <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${isDrive ? 'rgba(34,197,94,0.16)' : 'rgba(168,85,247,0.16)'};color:${isDrive ? '#4ade80' : '#c084fc'};">${isDrive ? 'Google Drive 直链转换' : '云端直链'}</span>
+                    </div>
+                    <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${pUrl}">
+                        🔗 ${pUrl}
+                    </div>
+                    ${(pNote || pMatHint) ? `<div style="font-size:11px;color:#cbd5e1;display:flex;gap:12px;flex-wrap:wrap;">
+                        ${pNote ? `<span>💬 备注: ${pNote}</span>` : ''}
+                        ${pMatHint ? `<span style="color:#fbbf24;">📁 对应素材目录: ${pMatHint}</span>` : ''}
+                    </div>` : ''}
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    <button type="button" class="rbt-btn ch-download-proj-btn" data-idx="${idx}" style="padding:6px 12px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);border:1px solid #38bdf8;color:#fff;border-radius:6px;cursor:pointer;">
+                        ⬇️ 下载并加载工程
+                    </button>
+                    <button type="button" class="rbt-btn ch-copy-proj-url-btn" data-idx="${idx}" title="复制分享链接" style="padding:6px 8px;font-size:11px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#cbd5e1;border-radius:6px;cursor:pointer;">
+                        📋
+                    </button>
+                    <button type="button" class="rbt-btn ch-delete-proj-btn" data-id="${pId}" data-idx="${idx}" title="从列表/云端移除该日期贴" style="padding:6px 8px;font-size:11px;background:rgba(239,68,68,0.14);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:6px;cursor:pointer;">
+                        🗑
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    const renderSyncBadge = () => {
+        if (!cfg.last_sync_at) return '<span style="color:#64748b;">尚未同步</span>';
+        const s = cfg.last_sync_summary || {};
+        const keySum = (s.groq || 0) + (s.gladia || 0) + (s.deepgram || 0) + (s.gemini || 0) + (s.elevenlabs || 0);
+        const timeStr = new Date(cfg.last_sync_at).toLocaleString('zh-CN');
+        return `<span style="color:#4ade80;">✅ 上次同步: ${_escHtml(timeStr)}（同步 ${keySum} 个 Key · ${s.daily_projects || 0} 个日期贴）</span>`;
+    };
+
+    modal.innerHTML = `
+        <div style="background:#0f172a;border:1px solid rgba(56,189,248,0.35);border-radius:14px;width:min(960px,96vw);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,0.85);color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;">
+            <!-- Header -->
+            <div style="padding:14px 20px;background:linear-gradient(90deg,rgba(14,165,233,0.18),rgba(37,99,235,0.12));border-bottom:1px solid rgba(56,189,248,0.25);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:20px;">☁️</span>
+                    <div>
+                        <div style="font-size:16px;font-weight:800;color:#f8fafc;letter-spacing:0.3px;">Cloudflare 远程总控中心 & Google Drive 每日工程（日期贴）</div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:2px;">一条 Cloudflare 链接自动分发全套 API Key（Groq / Gladia / Deepgram / Gemini / ElevenLabs）+ 每日 Google Drive 工程一键下载加载并自动关联本地素材</div>
+                    </div>
+                </div>
+                <button type="button" id="ch-close-btn" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;line-height:1;padding:4px 8px;">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <div style="padding:18px 20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px;">
+                <!-- Section 1: Cloudflare 总配置 -->
+                <div style="background:rgba(30,41,59,0.55);border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:13px;font-weight:700;color:#38bdf8;display:flex;align-items:center;gap:6px;">
+                            <span>🔑 一、Cloudflare 远程中控链接（一键同步全部 API Key 与日期贴）</span>
+                        </div>
+                        <div id="ch-sync-status-badge" style="font-size:11px;">${renderSyncBadge()}</div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 220px;gap:10px;">
+                        <div>
+                            <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;">Cloudflare Worker / KV / JSON 总控地址 (URL)</label>
+                            <input type="text" id="ch-hub-url" value="${_escHtml(cfg.hub_url || '')}" placeholder="例如: https://videokit-hub.你的域名.workers.dev" style="width:100%;box-sizing:border-box;padding:8px 10px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                        </div>
+                        <div>
+                            <label style="display:block;font-size:11px;color:#94a3b8;margin-bottom:4px;">访问口令 (Token，选填·本机硬件加密)</label>
+                            <input type="password" id="ch-access-token" value="${_escHtml(cfg.access_token || '')}" placeholder="对应 Worker 的 HUB_TOKEN" style="width:100%;box-sizing:border-box;padding:8px 10px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                        </div>
+                    </div>
+
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;">
+                            <span>Key 同步策略:</span>
+                            <select id="ch-sync-mode" style="padding:4px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                                <option value="merge" ${cfg.sync_mode !== 'overwrite' ? 'selected' : ''}>合并追加（保留本机已有 Key + 追加云端新 Key）</option>
+                                <option value="overwrite" ${cfg.sync_mode === 'overwrite' ? 'selected' : ''}>云端覆盖（完全以云端 Key 池为准，一键停用失效旧 Key）</option>
+                            </select>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;cursor:pointer;">
+                            <input type="checkbox" id="ch-auto-sync" ${cfg.auto_sync_on_startup !== false ? 'checked' : ''} style="accent-color:#0ea5e9;">
+                            <span>软件启动时自动从云端静默同步</span>
+                        </label>
+                    </div>
+
+                    <!-- 本地素材总目录（用于跨电脑下载 Google Drive 工程后自动重连视频/音频/SRT） -->
+                    <div style="padding-top:6px;border-top:1px dashed rgba(148,163,184,0.16);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <span style="font-size:11px;color:#94a3b8;white-space:nowrap;" title="下载他人分享的 Google Drive 工程后，会自动在此目录及其子文件夹中按文件名匹配并替换视频/配音/SRT路径">📁 本机素材自动关联总目录:</span>
+                        <input type="text" id="ch-local-mat-root" value="${_escHtml(cfg.local_material_root || '')}" placeholder="可选：选择你电脑存放每日视频/音频素材的根目录，下载云端工程时将自动按文件名匹配修正路径" style="flex:1;min-width:220px;padding:6px 10px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:11px;">
+                        <button type="button" class="rbt-btn" id="ch-pick-mat-root-btn" style="padding:5px 10px;font-size:11px;background:rgba(51,65,85,0.7);border:1px solid #475569;color:#e2e8f0;border-radius:6px;cursor:pointer;">📂 浏览选择</button>
+                    </div>
+
+                    <!-- 操作按钮栏 -->
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:4px;">
+                        <button type="button" id="ch-save-sync-btn" style="padding:7px 16px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#0ea5e9,#2563eb);border:1px solid #38bdf8;color:#fff;border-radius:6px;cursor:pointer;">
+                            🔄 保存并立即从云端同步 Key 与日期贴
+                        </button>
+                        <button type="button" id="ch-save-only-btn" style="padding:7px 12px;font-size:12px;background:rgba(51,65,85,0.65);border:1px solid #475569;color:#e2e8f0;border-radius:6px;cursor:pointer;">
+                            💾 仅保存设置
+                        </button>
+                        <button type="button" id="ch-push-keys-btn" title="将当前电脑里已配置的 Groq / Gladia / Deepgram / Gemini / ElevenLabs Key 与日期贴一键上传到你的 Cloudflare Worker" style="padding:7px 12px;font-size:12px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.45);color:#6ee7b7;border-radius:6px;cursor:pointer;font-weight:600;">
+                            ⬆️ 将本机全部 Key 推送到 Cloudflare
+                        </button>
+                        <button type="button" id="ch-open-web-admin-btn" title="在浏览器打开 Cloudflare 网页管理后台，直接网页修改 Key 和发每日工程" style="padding:7px 12px;font-size:12px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.45);color:#c4b5fd;border-radius:6px;cursor:pointer;">
+                            🌐 打开云端网页后台
+                        </button>
+                        <button type="button" id="ch-copy-worker-btn" title="复制单文件 Cloudflare Worker 代码（自带可视化网页后台，粘贴到 Cloudflare 即可免费使用）" style="margin-left:auto;padding:7px 12px;font-size:11px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.45);color:#fcd34d;border-radius:6px;cursor:pointer;font-weight:600;">
+                            📋 复制 Cloudflare Worker 部署代码
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Section 2: Google Drive 每日工程（日期贴） -->
+                <div style="background:rgba(30,41,59,0.55);border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <div style="font-size:13px;font-weight:700;color:#fbbf24;display:flex;align-items:center;gap:6px;">
+                            <span>📅 二、每日工程（Google Drive 日期贴）一键下载并加载</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:11px;color:#94a3b8;">加载方式:</span>
+                            <select id="ch-project-load-mode" style="padding:4px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:11px;">
+                                <option value="append" selected>➕ 新增为独立标签页（保留当前工程）</option>
+                                <option value="replace">🔄 覆盖当前全部标签页（自动备份原工程）</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 快速粘贴任意 Google Drive 链接直接下载加载 -->
+                    <div style="display:flex;align-items:center;gap:8px;background:rgba(9,13,22,0.65);padding:8px 10px;border-radius:8px;border:1px solid rgba(56,189,248,0.2);">
+                        <span style="font-size:12px;color:#38bdf8;font-weight:700;white-space:nowrap;">⚡ 临时链接直装:</span>
+                        <input type="text" id="ch-quick-drive-url" placeholder="直接粘贴 Google Drive 分享链接 (https://drive.google.com/file/d/.../view?usp=sharing) 或 .json 直链，无需点开网页下载..." style="flex:1;padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                        <button type="button" id="ch-quick-download-btn" style="padding:6px 14px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);border:1px solid #34d399;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;">
+                            ⬇️ 直接下载并加载
+                        </button>
+                    </div>
+
+                    <!-- 发布新日期贴到列表 / 云端 -->
+                    <details style="background:rgba(15,23,42,0.6);border:1px solid rgba(148,163,184,0.18);border-radius:8px;padding:8px 12px;">
+                        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:#93c5fd;user-select:none;">➕ 发布 / 添加新的每日工程（日期贴）到列表与 Cloudflare 云端</summary>
+                        <div style="margin-top:10px;display:grid;grid-template-columns:130px 180px 1fr;gap:8px;">
+                            <input type="date" id="ch-new-date" value="${_escHtml(todayStr)}" style="padding:6px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                            <input type="text" id="ch-new-title" placeholder="标题，如: 11月6日英语组工程" style="padding:6px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                            <input type="text" id="ch-new-url" placeholder="粘贴 Google Drive 工程 .json 分享链接 (Anyone with the link)..." style="padding:6px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+                            <input type="text" id="ch-new-note" placeholder="备注说明（可选，例如：今日共12条任务，使用v3音色）" style="flex:1;padding:6px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                            <input type="text" id="ch-new-mat-hint" placeholder="素材目录提示（可选，例如：2026-11-06_素材包）" style="width:220px;padding:6px 8px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                            <button type="button" id="ch-add-daily-btn" style="padding:6px 14px;font-size:12px;font-weight:700;background:#3b82f6;border:none;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;">
+                                ➕ 添加并同步到云端
+                            </button>
+                        </div>
+                    </details>
+
+                    <!-- 日期贴列表 -->
+                    <div id="ch-projects-list" style="display:flex;flex-direction:column;gap:8px;max-height:290px;overflow-y:auto;padding-right:2px;">
+                        ${renderProjectsListHtml(cfg.daily_projects)}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="padding:10px 20px;background:#090d16;border-top:1px solid rgba(148,163,184,0.15);display:flex;align-items:center;justify-content:space-between;font-size:11px;color:#94a3b8;">
+                <span id="ch-footer-msg">💡 提示：把工程 .json 上传到 Google Drive 并设为「知道链接的任何人可查看」，把分享链接贴入日期贴即可全员一键下载并加载。</span>
+                <button type="button" id="ch-footer-close-btn" style="padding:5px 16px;font-size:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:6px;cursor:pointer;">关闭</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const setFooterMsg = (text, color = '#94a3b8') => {
+        const el = modal.querySelector('#ch-footer-msg');
+        if (el) {
+            el.style.color = color;
+            el.textContent = text;
+        }
+    };
+
+    const readFormSettings = () => ({
+        hub_url: modal.querySelector('#ch-hub-url')?.value?.trim() || '',
+        access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
+        sync_mode: modal.querySelector('#ch-sync-mode')?.value || 'merge',
+        auto_sync_on_startup: !!modal.querySelector('#ch-auto-sync')?.checked,
+        local_material_root: modal.querySelector('#ch-local-mat-root')?.value?.trim() || '',
+        daily_projects: cfg.daily_projects || [],
+    });
+
+    const saveCurrentSettings = async () => {
+        const payload = readFormSettings();
+        const resp = await apiFetch('settings/cloud-hub', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const resData = await resp.json();
+        if (resData && resData.settings) {
+            cfg = { ...cfg, ...resData.settings };
+        }
+        return cfg;
+    };
+
+    const triggerDownloadAndLoadProject = async (projItem, btnEl = null) => {
+        const rawUrl = String(projItem?.url || projItem?.drive_url || '').trim();
+        if (!rawUrl) {
+            alert('该日期贴没有有效的下载链接');
+            return;
+        }
+        const origText = btnEl ? btnEl.textContent : '';
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = '⏳ 下载解析中...';
+        }
+        setFooterMsg(`⏳ 正在从云端直接下载工程「${projItem.title || projItem.date || ''}」并关联本地素材...`, '#38bdf8');
+        try {
+            await saveCurrentSettings();
+            const activeTab = _getActiveTab();
+            const matRoot = cfg.local_material_root || activeTab?.materialDir || _batchTableState.projectDir || '';
+            const resp = await apiFetch('settings/cloud-hub/download-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: rawUrl,
+                    title: projItem.title || '',
+                    date: projItem.date || '',
+                    local_material_root: matRoot,
+                    save_dir: _batchTableState.projectDir || '',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                throw new Error(data.detail || '下载云端工程失败');
+            }
+            const loadMode = modal.querySelector('#ch-project-load-mode')?.value || 'append';
+            const label = [projItem.date, projItem.title].filter(Boolean).join('_') || '云端每日工程';
+            const applied = await _applyDownloadedCloudProjectToBatchTable(data.project, data.saved_path, loadMode, label);
+            const relink = data.relink_stats || { fixed: 0, missing: 0 };
+            const summaryMsg = `✅ 已成功下载并加载「${label}」：${applied.tabsCount} 个标签页、${applied.tasksCount} 条任务` +
+                (relink.fixed > 0 ? `（自动关联本机素材 ${relink.fixed} 处）` : '') +
+                (relink.missing > 0 ? `（仍有 ${relink.missing} 处素材未找到，可点“🔍 查找素材”关联）` : '');
+            setFooterMsg(summaryMsg, '#4ade80');
+            if (typeof showToast === 'function') showToast(summaryMsg, 'success', 5000);
+            else alert(summaryMsg);
+        } catch (err) {
+            const errMsg = `❌ 下载或加载工程失败: ${err.message || err}`;
+            setFooterMsg(errMsg, '#f87171');
+            alert(errMsg);
+        } finally {
+            if (btnEl) {
+                btnEl.disabled = false;
+                btnEl.textContent = origText;
+            }
+        }
+    };
+
+    const rebindProjectItemEvents = () => {
+        const listEl = modal.querySelector('#ch-projects-list');
+        if (!listEl) return;
+        listEl.innerHTML = renderProjectsListHtml(cfg.daily_projects);
+        listEl.querySelectorAll('.ch-download-proj-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                const item = (cfg.daily_projects || [])[idx];
+                if (item) triggerDownloadAndLoadProject(item, btn);
+            });
+        });
+        listEl.querySelectorAll('.ch-copy-proj-url-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                const item = (cfg.daily_projects || [])[idx];
+                const url = item?.url || item?.drive_url || '';
+                if (!url) return;
+                try {
+                    await navigator.clipboard.writeText(url);
+                    setFooterMsg(`📋 已复制链接: ${url}`, '#4ade80');
+                } catch (_) {}
+            });
+        });
+        listEl.querySelectorAll('.ch-delete-proj-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                const item = (cfg.daily_projects || [])[idx];
+                if (!item) return;
+                if (!confirm(`确定移除每日工程「${item.date ? item.date + ' ' : ''}${item.title || ''}」吗？`)) return;
+                cfg.daily_projects.splice(idx, 1);
+                await saveCurrentSettings();
+                const hubUrl = modal.querySelector('#ch-hub-url')?.value?.trim() || '';
+                if (hubUrl && item.id) {
+                    try {
+                        await apiFetch('settings/cloud-hub/push', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                hub_url: hubUrl,
+                                access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
+                                action: 'delete_daily_project',
+                                id: item.id,
+                            }),
+                        });
+                    } catch (_) {}
+                }
+                rebindProjectItemEvents();
+                setFooterMsg('🗑 已移除该日期贴', '#fbbf24');
+            });
+        });
+    };
+
+    rebindProjectItemEvents();
+
+    const closeModal = () => modal.remove();
+    modal.querySelector('#ch-close-btn')?.addEventListener('click', closeModal);
+    modal.querySelector('#ch-footer-close-btn')?.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    modal.querySelector('#ch-pick-mat-root-btn')?.addEventListener('click', async () => {
+        if (!window.electronAPI?.selectDirectory) {
+            alert('请在桌面客户端中使用目录浏览功能');
+            return;
+        }
+        const dir = await window.electronAPI.selectDirectory();
+        if (dir) {
+            const input = modal.querySelector('#ch-local-mat-root');
+            if (input) input.value = dir;
+        }
+    });
+
+    modal.querySelector('#ch-save-only-btn')?.addEventListener('click', async () => {
+        try {
+            await saveCurrentSettings();
+            setFooterMsg('✅ 云端中控设置已保存到本机', '#4ade80');
+            if (typeof showToast === 'function') showToast('✅ 云端中控设置已保存', 'success');
+        } catch (err) {
+            setFooterMsg(`❌ 保存失败: ${err.message}`, '#f87171');
+        }
+    });
+
+    modal.querySelector('#ch-save-sync-btn')?.addEventListener('click', async () => {
+        const btn = modal.querySelector('#ch-save-sync-btn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ 正在连接 Cloudflare 同步...';
+        setFooterMsg('⏳ 正在从 Cloudflare 拉取最新 API Key 池与每日工程列表...', '#38bdf8');
+        try {
+            const payload = readFormSettings();
+            if (!payload.hub_url) {
+                throw new Error('请先填写 Cloudflare 总控地址 (URL)');
+            }
+            const resp = await apiFetch('settings/cloud-hub/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                throw new Error(data.detail || '同步失败');
+            }
+            if (data.settings) cfg = { ...cfg, ...data.settings };
+            const badgeEl = modal.querySelector('#ch-sync-status-badge');
+            if (badgeEl) badgeEl.innerHTML = renderSyncBadge();
+            rebindProjectItemEvents();
+            const s = data.stats || {};
+            const msg = `✅ 同步成功！Groq(${s.groq || 0}) · Gladia(${s.gladia || 0}) · Deepgram(${s.deepgram || 0}) · Gemini(${s.gemini || 0}) · ElevenLabs(${s.elevenlabs || 0}) · 日期贴(${s.daily_projects || 0}个)`;
+            setFooterMsg(msg, '#4ade80');
+            if (typeof showToast === 'function') showToast(msg, 'success', 4500);
+        } catch (err) {
+            const msg = `❌ 同步失败: ${err.message || err}`;
+            setFooterMsg(msg, '#f87171');
+            alert(msg);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    });
+
+    modal.querySelector('#ch-push-keys-btn')?.addEventListener('click', async () => {
+        const hubUrl = modal.querySelector('#ch-hub-url')?.value?.trim() || '';
+        if (!hubUrl) {
+            alert('请先填写你的 Cloudflare Worker 地址 (URL)，再推送本机 Key');
+            return;
+        }
+        if (!confirm('确定将当前电脑上配置的全部 API Key（Groq / Gladia / Deepgram / Gemini / ElevenLabs）和每日工程列表推送到 Cloudflare 云端吗？')) {
+            return;
+        }
+        const btn = modal.querySelector('#ch-push-keys-btn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '⏳ 正在推送...';
+        try {
+            await saveCurrentSettings();
+            const resp = await apiFetch('settings/cloud-hub/push', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hub_url: hubUrl,
+                    access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
+                    action: 'push_local_all',
+                }),
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status !== 'success') {
+                throw new Error(data.detail || '推送到 Cloudflare 失败（请确认目标 URL 是支持 POST 的 Cloudflare Worker 且 Token 正确）');
+            }
+            setFooterMsg('✅ 已将本机全部 API Key 与日期贴成功推送到 Cloudflare 云端！', '#4ade80');
+            if (typeof showToast === 'function') showToast('✅ 已成功推送到 Cloudflare 云端', 'success');
+        } catch (err) {
+            setFooterMsg(`❌ 推送失败: ${err.message}`, '#f87171');
+            alert(`推送失败: ${err.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    });
+
+    modal.querySelector('#ch-open-web-admin-btn')?.addEventListener('click', () => {
+        const hubUrl = modal.querySelector('#ch-hub-url')?.value?.trim() || '';
+        if (!hubUrl) {
+            alert('请先输入你的 Cloudflare Worker 链接');
+            return;
+        }
+        window.open(hubUrl, '_blank', 'noopener,noreferrer');
+    });
+
+    modal.querySelector('#ch-copy-worker-btn')?.addEventListener('click', async () => {
+        try {
+            const resp = await apiFetch('settings/cloud-hub/worker-code');
+            const data = await resp.json();
+            if (!data?.code) throw new Error('未能读取 Worker 模板代码');
+            await navigator.clipboard.writeText(data.code);
+            const msg = '✅ 已复制 Cloudflare Worker 完整代码！去 Cloudflare Workers 新建 Worker 粘贴部署并绑定 KV (名称填 HUB_KV) 即可使用。';
+            setFooterMsg(msg, '#4ade80');
+            alert(msg);
+        } catch (err) {
+            alert('复制 Worker 代码失败: ' + err.message);
+        }
+    });
+
+    modal.querySelector('#ch-quick-download-btn')?.addEventListener('click', () => {
+        const quickUrl = modal.querySelector('#ch-quick-drive-url')?.value?.trim() || '';
+        if (!quickUrl) {
+            alert('请先粘贴 Google Drive 工程分享链接或 .json 链接');
+            return;
+        }
+        triggerDownloadAndLoadProject(
+            { date: todayStr, title: '临时云端工程', url: quickUrl },
+            modal.querySelector('#ch-quick-download-btn')
+        );
+    });
+
+    modal.querySelector('#ch-add-daily-btn')?.addEventListener('click', async () => {
+        const dateVal = modal.querySelector('#ch-new-date')?.value?.trim() || todayStr;
+        const titleVal = modal.querySelector('#ch-new-title')?.value?.trim() || `${dateVal} 每日工程`;
+        const urlVal = modal.querySelector('#ch-new-url')?.value?.trim() || '';
+        const noteVal = modal.querySelector('#ch-new-note')?.value?.trim() || '';
+        const matHintVal = modal.querySelector('#ch-new-mat-hint')?.value?.trim() || '';
+        if (!urlVal) {
+            alert('请粘贴 Google Drive 工程文件的分享链接');
+            return;
+        }
+        const newEntry = {
+            id: `dp_${Date.now()}`,
+            date: dateVal,
+            title: titleVal,
+            url: urlVal,
+            drive_url: urlVal,
+            note: noteVal,
+            material_folder_hint: matHintVal,
+        };
+        if (!Array.isArray(cfg.daily_projects)) cfg.daily_projects = [];
+        cfg.daily_projects.unshift(newEntry);
+        await saveCurrentSettings();
+        rebindProjectItemEvents();
+
+        // 若已配置 Cloudflare Worker 地址，同时尝试推送到云端让所有成员可见
+        const hubUrl = modal.querySelector('#ch-hub-url')?.value?.trim() || '';
+        let pushedCloud = false;
+        if (hubUrl) {
+            try {
+                const resp = await apiFetch('settings/cloud-hub/push', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        hub_url: hubUrl,
+                        access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
+                        action: 'add_daily_project',
+                        project: newEntry,
+                    }),
+                });
+                if (resp.ok) pushedCloud = true;
+            } catch (_) {}
+        }
+        modal.querySelector('#ch-new-title').value = '';
+        modal.querySelector('#ch-new-url').value = '';
+        modal.querySelector('#ch-new-note').value = '';
+        setFooterMsg(
+            pushedCloud
+                ? `✅ 已添加日期贴「${dateVal} ${titleVal}」并同步发布到 Cloudflare 云端！`
+                : `✅ 已添加日期贴「${dateVal} ${titleVal}」到本地列表！`,
+            '#4ade80'
+        );
+    });
 };
 
 window.reelsEditWritingTask=function(idx){

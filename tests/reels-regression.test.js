@@ -2764,6 +2764,80 @@ test('Phone CTA is extracted to Decor Panel (#rdp-phone-cta-card) and supports c
     assert.ok(drawnAlphaAtExactStart > 0.95, `Phone CTA image must render at full opacity when paused at start time, got alpha=${drawnAlphaAtExactStart}`);
 });
 
+test('Cloudflare Hub service parses Google Drive share links, relinks local media paths, and provides Worker template', () => {
+    const cloudHub = require('../electron/services/cloud-hub');
+
+    // 1. Google Drive URL extraction & direct download conversion
+    const shareUrl1 = 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz123456/view?usp=sharing';
+    const shareUrl2 = 'https://drive.google.com/open?id=1ZyXwVuTsRqPoNmLkJiHgFeDcBa654321';
+    assert.equal(cloudHub.extractGoogleDriveFileId(shareUrl1), '1AbCdEfGhIjKlMnOpQrStUvWxYz123456');
+    assert.equal(cloudHub.extractGoogleDriveFileId(shareUrl2), '1ZyXwVuTsRqPoNmLkJiHgFeDcBa654321');
+    assert.equal(
+        cloudHub.resolveCloudDownloadUrl(shareUrl1),
+        'https://drive.google.com/uc?export=download&id=1AbCdEfGhIjKlMnOpQrStUvWxYz123456&confirm=t'
+    );
+
+    // 2. Relink media paths against a temporary local material root directory
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cloudhub-test-'));
+    try {
+        const subFolder = path.join(tmpRoot, '2026-11-06_素材');
+        fs.mkdirSync(subFolder, { recursive: true });
+        const localBg = path.join(subFolder, 'morning_prayer_bg.mp4');
+        const localAudio = path.join(subFolder, 'voice_01.mp3');
+        const localSrt = path.join(subFolder, 'voice_01.srt');
+        const localCta = path.join(subFolder, 'whatsapp_cta.png');
+        fs.writeFileSync(localBg, 'fake-mp4');
+        fs.writeFileSync(localAudio, 'fake-mp3');
+        fs.writeFileSync(localSrt, '1\n00:00:00,000 --> 00:00:02,000\nAmen\n');
+        fs.writeFileSync(localCta, 'fake-png');
+
+        const mockProject = {
+            version: '2.0',
+            tabs: [
+                {
+                    id: 'tab_1',
+                    name: '11月6日工程',
+                    tasks: [
+                        {
+                            id: 't1',
+                            bgPath: 'D:\\OtherUser\\Desktop\\morning_prayer_bg.mp4',
+                            audioPath: '/Users/macuser/Downloads/voice_01.mp3',
+                            srtPath: 'C:\\MissingFolder\\voice_01.srt',
+                            overlays: [
+                                {
+                                    type: 'textcard',
+                                    is_phone_cta: true,
+                                    cta_image_src: 'E:\\OldPath\\whatsapp_cta.png',
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        const stats = cloudHub.relinkProjectMediaPaths(mockProject, tmpRoot);
+        assert.equal(stats.fixed, 4, 'Should relink bgPath, audioPath, srtPath, and overlay cta_image_src');
+        assert.equal(stats.missing, 0, 'No media paths should remain missing');
+        const task0 = mockProject.tabs[0].tasks[0];
+        assert.equal(task0.bgPath, localBg);
+        assert.equal(task0.audioPath, localAudio);
+        assert.equal(task0.srtPath, localSrt);
+        assert.equal(task0.overlays[0].cta_image_src, localCta);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+
+    // 3. Worker template code & UI dialog presence
+    const workerCode = cloudHub.getWorkerTemplateCode();
+    assert.ok(workerCode.includes('Cloudflare Worker 单文件完整版'), 'Worker template code should be readable');
+    const batchTableSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    assert.ok(batchTableSrc.includes('window.openCloudHubDialog = async function'), 'openCloudHubDialog must be defined in reels-batch-table.js');
+    assert.ok(batchTableSrc.includes('settings/cloud-hub/download-project'), 'Cloud Hub dialog must wire up Google Drive project download');
+});
+
+
 
 
 

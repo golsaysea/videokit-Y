@@ -533,6 +533,23 @@ class ReelsCanvasRenderer {
     }
 
     setContextSegments(segments, originalScript = '') {
+        const segLen = Array.isArray(segments) ? segments.length : 0;
+        const firstSeg = segLen > 0 ? segments[0] : null;
+        const lastSeg = segLen > 0 ? segments[segLen - 1] : null;
+        if (
+            this._rawContextSegmentsRef === segments &&
+            this._rawContextSegmentsLen === segLen &&
+            this._rawContextFirstSeg === firstSeg &&
+            this._rawContextLastSeg === lastSeg &&
+            this._writingOriginalScript === originalScript &&
+            Array.isArray(this._contextSegments)
+        ) {
+            return;
+        }
+        this._rawContextSegmentsRef = segments;
+        this._rawContextSegmentsLen = segLen;
+        this._rawContextFirstSeg = firstSeg;
+        this._rawContextLastSeg = lastSeg;
         this._writingOriginalScript = originalScript;
         this._contextSegments = repairCollapsedWritingSegments(segments || []);
     }

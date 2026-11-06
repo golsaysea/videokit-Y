@@ -16,8 +16,8 @@
  * Canvas → Raw RGBA Uint8Array（零压缩，专业级画质）
  * getImageData 每次已创建独立像素快照，两种模式都可直接交给 IPC。
  */
-function _canvasToRawRGBA(canvas, transferable = false) {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+function _canvasToRawRGBA(canvas, transferable = false, cachedCtx = null) {
+    const ctx = cachedCtx || canvas.getContext('2d', { willReadFrequently: true });
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     return imageData.data.buffer;
 }
@@ -1035,11 +1035,20 @@ async function reelsWysiwygExport(params) {
     log('阶段3: 逐帧 Canvas 渲染...');
     const t0 = Date.now();
 
-    // 预加载第一帧
+    // 预加载第一帧与循环外不变项预计算（避免长视频数千帧重复分配与排序）
     let currentBgImg = null;
     let currentBgIdx = -1;
     let currentCvImg = null;
     let currentCvIdx = -1;
+    let segCursor = 0;
+    const sortedOvs = (taskOverlays && taskOverlays.length > 0)
+        ? taskOverlays.filter(ov => ov && !ov.disabled).slice().sort((a, b) => (Number(a.z_index) || 0) - (Number(b.z_index) || 0))
+        : [];
+    const middleOvs = sortedOvs.filter(ov => Boolean(ov._insertClip || ov.type === 'decor'));
+    const regularOvs = sortedOvs.filter(ov => !ov._insertClip && ov.type !== 'decor');
+    if (showSubtitle && segments && segments.length > 0) {
+        renderer.setContextSegments(segments, originalScript);
+    }
 
     try {
         for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
@@ -1220,7 +1229,18 @@ async function reelsWysiwygExport(params) {
                 if (hasKineticBackdrop) {
                     renderer.renderKineticGlowBackdrop(style, targetWidth, targetHeight);
                 }
-                let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
+                let activeSeg = null;
+                if (segments && segments.length > 0) {
+                    while (segCursor < segments.length - 1 && (segments[segCursor].end || 0) < t) {
+                        segCursor++;
+                    }
+                    const cand = segments[segCursor];
+                    if (cand && t >= (cand.start || 0) && t <= (cand.end || 0)) {
+                        activeSeg = cand;
+                    } else {
+                        activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
+                    }
+                }
                 // Scrolling/typewriter mode: find nearest segment during gaps (same as preview logic)
                 if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segments.length > 0) {
                     let best = segments[0];
@@ -1230,7 +1250,6 @@ async function reelsWysiwygExport(params) {
                     activeSeg = best;
                 }
                 if (activeSeg) {
-                    renderer.setContextSegments(segments, originalScript);
                     renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight, false, hasKineticBackdrop);
                 }
             };
@@ -1260,12 +1279,6 @@ async function reelsWysiwygExport(params) {
                 }
             };
 
-            const sortedOvs = (taskOverlays && taskOverlays.length > 0)
-                ? taskOverlays.filter(ov => ov && !ov.disabled).slice().sort((a, b) => (Number(a.z_index) || 0) - (Number(b.z_index) || 0))
-                : [];
-            const middleOvs = sortedOvs.filter(ov => Boolean(ov._insertClip || ov.type === 'decor'));
-            const regularOvs = sortedOvs.filter(ov => !ov._insertClip && ov.type !== 'decor');
-
             // 1. 先绘制插片轨与独立中间装饰层【✨ 点缀与颗粒】（严格位于素材前面、T字幕与普通覆层后面，绝不遮挡字幕）
             drawOverlayGroup(middleOvs);
 
@@ -1282,9 +1295,9 @@ async function reelsWysiwygExport(params) {
             // ── Canvas → Raw RGBA → FFmpeg ──
             if (framePipeline) {
                 // getImageData 已经返回独立 ArrayBuffer；直接交给 IPC，避免再 slice 一次整帧。
-                await framePipeline.send(_canvasToRawRGBA(canvas, true));
+                await framePipeline.send(_canvasToRawRGBA(canvas, true, ctx));
             } else {
-                const rawBuf = _canvasToRawRGBA(canvas);
+                const rawBuf = _canvasToRawRGBA(canvas, false, ctx);
                 const frameResult = await window.electronAPI.reelsComposeWysiwyg('frame', { sessionId, raw: rawBuf });
                 const frameOk = frameResult === true || (frameResult && frameResult.ok);
                 if (!frameOk) {
