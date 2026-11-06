@@ -834,6 +834,11 @@ function createWindow() {
     }
 
     mainWindow = new BrowserWindow(windowOptions);
+    if (process.platform === 'win32' && windowOptions.icon && fs.existsSync(windowOptions.icon)) {
+        try {
+            mainWindow.setIcon(windowOptions.icon);
+        } catch (_) {}
+    }
     attachTemplateLibraryNavigation(mainWindow);
     if (!app.isPackaged) {
         mainWindow.webContents.on('page-title-updated', event => {

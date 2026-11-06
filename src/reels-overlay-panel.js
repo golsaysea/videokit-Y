@@ -3419,7 +3419,14 @@ class ReelsOverlayPanel {
                 const dx = me.clientX - startX;
                 const speed = me.shiftKey ? 0.1 : 1;
                 const step = parseFloat(el.step) || 1;
-                el.value = Math.round((startVal + dx * speed * step) / step) * step;
+                let nextVal = Math.round((startVal + dx * speed * step) / step) * step;
+                if (el.min !== '' && el.min != null && Number.isFinite(parseFloat(el.min))) {
+                    nextVal = Math.max(parseFloat(el.min), nextVal);
+                }
+                if (el.max !== '' && el.max != null && Number.isFinite(parseFloat(el.max))) {
+                    nextVal = Math.min(parseFloat(el.max), nextVal);
+                }
+                el.value = nextVal;
                 el.dispatchEvent(new Event('input', { bubbles: true }));
             };
             const onUp = (ue) => {
@@ -5779,14 +5786,14 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-offset-x', ov.scroll_offset_x ?? 0);
             this._val('rop-scroll-offset-y', ov.scroll_offset_y ?? 0);
             // scroll_speed 已移除，速度由 距离÷时间 自动决定
-            this._val('rop-scroll-feather-top', ov.feather_top ?? 80);
-            this._val('rop-scroll-feather-bottom', ov.feather_bottom ?? 80);
-            this._val('rop-scroll-feather-top-offset', ov.feather_top_offset ?? 0);
-            this._val('rop-scroll-feather-bottom-offset', ov.feather_bottom_offset ?? 0);
-            this._val('rop-scroll-feather-left', ov.feather_left ?? 0);
-            this._val('rop-scroll-feather-right', ov.feather_right ?? 0);
-            this._val('rop-scroll-feather-left-offset', ov.feather_left_offset ?? 0);
-            this._val('rop-scroll-feather-right-offset', ov.feather_right_offset ?? 0);
+            this._val('rop-scroll-feather-top', Math.max(0, Number(ov.feather_top ?? 80) || 0));
+            this._val('rop-scroll-feather-bottom', Math.max(0, Number(ov.feather_bottom ?? 80) || 0));
+            this._val('rop-scroll-feather-top-offset', Math.max(0, Number(ov.feather_top_offset ?? 0) || 0));
+            this._val('rop-scroll-feather-bottom-offset', Math.max(0, Number(ov.feather_bottom_offset ?? 0) || 0));
+            this._val('rop-scroll-feather-left', Math.max(0, Number(ov.feather_left ?? 0) || 0));
+            this._val('rop-scroll-feather-right', Math.max(0, Number(ov.feather_right ?? 0) || 0));
+            this._val('rop-scroll-feather-left-offset', Math.max(0, Number(ov.feather_left_offset ?? 0) || 0));
+            this._val('rop-scroll-feather-right-offset', Math.max(0, Number(ov.feather_right_offset ?? 0) || 0));
             this._val('rop-scroll-auto-stop', ov.scroll_auto_stop === true);
             this._val('rop-scroll-auto-stop-lead', ov.scroll_auto_stop_lead ?? 0);
             this._val('rop-scroll-static', ov.scroll_static === true);
@@ -6422,14 +6429,14 @@ class ReelsOverlayPanel {
             ov.scroll_offset_x = this._get('rop-scroll-offset-x') ?? 0;
             ov.scroll_offset_y = this._get('rop-scroll-offset-y') ?? 0;
             ov.scroll_speed = 1;  // 固定为1，速度由 距离÷时间 自动决定
-            ov.feather_top = this._get('rop-scroll-feather-top');
-            ov.feather_bottom = this._get('rop-scroll-feather-bottom');
-            ov.feather_top_offset = this._get('rop-scroll-feather-top-offset');
-            ov.feather_bottom_offset = this._get('rop-scroll-feather-bottom-offset');
-            ov.feather_left = this._get('rop-scroll-feather-left');
-            ov.feather_right = this._get('rop-scroll-feather-right');
-            ov.feather_left_offset = this._get('rop-scroll-feather-left-offset');
-            ov.feather_right_offset = this._get('rop-scroll-feather-right-offset');
+            ov.feather_top = Math.max(0, Number(this._get('rop-scroll-feather-top')) || 0);
+            ov.feather_bottom = Math.max(0, Number(this._get('rop-scroll-feather-bottom')) || 0);
+            ov.feather_top_offset = Math.max(0, Number(this._get('rop-scroll-feather-top-offset')) || 0);
+            ov.feather_bottom_offset = Math.max(0, Number(this._get('rop-scroll-feather-bottom-offset')) || 0);
+            ov.feather_left = Math.max(0, Number(this._get('rop-scroll-feather-left')) || 0);
+            ov.feather_right = Math.max(0, Number(this._get('rop-scroll-feather-right')) || 0);
+            ov.feather_left_offset = Math.max(0, Number(this._get('rop-scroll-feather-left-offset')) || 0);
+            ov.feather_right_offset = Math.max(0, Number(this._get('rop-scroll-feather-right-offset')) || 0);
             ov.scroll_auto_stop = this._get('rop-scroll-auto-stop');
             ov.scroll_auto_stop_lead = parseFloat(this._get('rop-scroll-auto-stop-lead')) || 0;
             ov.scroll_static = this._get('rop-scroll-static');
