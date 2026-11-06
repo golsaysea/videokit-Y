@@ -134,7 +134,6 @@ class ReelsOverlayPanel {
                     <div class="rop-header-actions">
                         <button class="btn btn-secondary rop-btn" id="rop-add-text" title="添加文本覆层">+ 文本</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-textcard" title="添加文字卡片" style="background:#FFD700;color:#000;">+ 文字卡片</button>
-                        <button class="btn btn-secondary rop-btn" id="rop-add-phone-cta" title="添加30秒后出现的邀约电话覆层（可自由调整位置、几秒后出现、出场动画与电话号码）" style="background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-weight:700;border:1px solid #6ee7b7;">+ 📞 邀约电话</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-solidmask" title="添加纯色蒙版" style="background:#4CAF50;color:#fff;">+ 纯色蒙版</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-image" title="添加图片/视频/动图覆层">+ 媒体</button>
                         <button class="btn btn-secondary rop-btn" id="rop-media-library" title="打开固定覆层素材库" style="padding:2px 6px;">📂 素材</button>
@@ -3925,6 +3924,13 @@ class ReelsOverlayPanel {
     }
 
     _addPhoneCtaOverlay() {
+        if (typeof window.switchReelsInspectorTab === 'function') {
+            window.switchReelsInspectorTab('decor');
+        }
+        if (window._reelsState?.decorPanel && typeof window._reelsState.decorPanel.enablePhoneCta === 'function') {
+            window._reelsState.decorPanel.enablePhoneCta();
+            return;
+        }
         const ReelsOverlay = window.ReelsOverlay;
         if (!ReelsOverlay || typeof ReelsOverlay.createPhoneCtaOverlay !== 'function') return;
         const ov = ReelsOverlay.createPhoneCtaOverlay({
@@ -3936,9 +3942,6 @@ class ReelsOverlayPanel {
         this._refreshList();
         this.selectOverlay(ov);
         this._previewPhoneCtaAnim(ov);
-        if (typeof showToast === 'function') {
-            showToast('📞 已添加邀约电话覆层（默认 30 秒后出现，支持直接拖拽位置与修改出场动画）', 'success');
-        }
     }
 
     _addTextCardOverlay() {
@@ -4736,9 +4739,9 @@ class ReelsOverlayPanel {
 
         // 面板显示顺序必须与时间线/预览/导出使用的合成栈一致。
         // getOrderedOverlays 会返回底到顶的普通覆层；列表反转后仍保持“顶层在最上”。
-        // 点缀与颗粒层(decor)已在顶部独立【✨ 点缀与颗粒】标签页中单独管理，此处不再混入覆层列表。
+        // 点缀与颗粒层(decor)和邀约电话(is_phone_cta)已在顶部独立【✨ 点缀与颗粒】标签页中单独管理，此处不再混入覆层列表。
         const rawOverlays = this.videoCanvas.getOrderedOverlays?.() || this.videoCanvas.overlayMgr.overlays || [];
-        const overlays = rawOverlays.filter(ov => ov && ov.type !== 'decor');
+        const overlays = rawOverlays.filter(ov => ov && ov.type !== 'decor' && !ov.is_phone_cta);
         if (overlays.length === 0) {
             list.innerHTML = '<div class="rop-empty">暂无覆层，点击上方按钮添加</div>';
             return;
@@ -7434,9 +7437,11 @@ class ReelsOverlayPanel {
             'title_stroke_color', 'title_stroke_width', 'title_shadow_color', 'title_shadow_blur', 'title_shadow_x', 'title_shadow_y',
             'body_stroke_color', 'body_stroke_width', 'body_shadow_color', 'body_shadow_blur', 'body_shadow_x', 'body_shadow_y',
             'footer_stroke_color', 'footer_stroke_width', 'footer_shadow_color', 'footer_shadow_blur', 'footer_shadow_x', 'footer_shadow_y',
-            // 动画
+            // 动画与邀约电话扩展
             'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration', 'cta_loop_anim',
-            'is_phone_cta', 'cta_style_id', 'mask_start', 'mask_end',
+            'is_phone_cta', 'cta_style_id', 'cta_mode', 'cta_image_src', 'cta_image_name', 'cta_image_scale',
+            'cta_mask_mode', 'cta_mask_color', 'cta_mask_opacity', 'cta_mask_radius', 'cta_mask_pad_h', 'cta_mask_pad_v', 'cta_phone_color',
+            'mask_start', 'mask_end',
             // 文字翻转器
             'flipper_enabled', 'flipper_duration', 'flipper_lines', 'flipper_loop', 'flipper_effect', 'flipper_transition_duration',
         ];
@@ -10540,6 +10545,114 @@ class ReelsDecorPanel {
         return list.filter(o => o && o.type === 'decor');
     }
 
+    _getPhoneCtaOverlays() {
+        const list = this.videoCanvas?.overlayMgr?.overlays || [];
+        return list.filter(o => o && o.is_phone_cta);
+    }
+
+    _getPhoneCta() {
+        const list = this._getPhoneCtaOverlays();
+        return list.length ? list[list.length - 1] : null;
+    }
+
+    _ensurePhoneCtaOverlay(opts = {}) {
+        let ov = this._getPhoneCta();
+        if (ov) {
+            ov.disabled = false;
+            return ov;
+        }
+        const ReelsOverlayMod = window.ReelsOverlay;
+        if (!ReelsOverlayMod || typeof ReelsOverlayMod.createPhoneCtaOverlay !== 'function') return null;
+        ov = ReelsOverlayMod.createPhoneCtaOverlay({
+            start: 30,
+            end: 9999,
+            ...opts,
+        });
+        if (this.videoCanvas && typeof this.videoCanvas.addOverlay === 'function') {
+            this.videoCanvas.addOverlay(ov);
+        } else if (this.videoCanvas?.overlayMgr?.overlays) {
+            this.videoCanvas.overlayMgr.overlays.push(ov);
+        }
+        if (typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
+        if (this.linkedOverlayPanel) {
+            this.linkedOverlayPanel._refreshList();
+        }
+        return ov;
+    }
+
+    _toCtaCenterPos(ov) {
+        const canvasSize = this.videoCanvas?.getCanvasSize?.() || { w: 1080, h: 1920 };
+        const cw = canvasSize.w || 1080;
+        const ch = canvasSize.h || 1920;
+        const w = Math.max(40, Number(ov?.w) || 860);
+        const h = Math.max(24, Number(ov?.h || ov?._renderedH) || 220);
+        const x = Number(ov?.x) || 0;
+        const y = Number(ov?.y) || 0;
+        return {
+            x: Math.round((x + w / 2) - cw / 2),
+            y: Math.round((y + h / 2) - ch / 2),
+        };
+    }
+
+    _applyCtaCenterPos(ov, centerX, centerY) {
+        if (!ov) return;
+        const canvasSize = this.videoCanvas?.getCanvasSize?.() || { w: 1080, h: 1920 };
+        const cw = canvasSize.w || 1080;
+        const ch = canvasSize.h || 1920;
+        const w = Math.max(40, Number(ov.w) || 860);
+        const h = Math.max(24, Number(ov.h || ov._renderedH) || 220);
+        ov.x = Math.round(cw / 2 + Number(centerX || 0) - w / 2);
+        ov.y = Math.round(ch / 2 + Number(centerY || 0) - h / 2);
+    }
+
+    _resolvePreviewImgUrl(src) {
+        if (!src || typeof src !== 'string') return '';
+        if (/^(data|blob|https?|local-media):/i.test(src)) return src;
+        if (window.electronAPI && typeof window.electronAPI.toFileUrl === 'function') {
+            return window.electronAPI.toFileUrl(src);
+        }
+        const clean = src.replace(/\\/g, '/');
+        return clean.startsWith('/') ? `local-media://${clean}` : `local-media:///${clean}`;
+    }
+
+    _previewPhoneCtaAnim(ov) {
+        const target = ov || this._getPhoneCta();
+        if (!target) return;
+        target._ctaAnimPreviewStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+        if (this._ctaPreviewRaf) cancelAnimationFrame(this._ctaPreviewRaf);
+        const startWall = target._ctaAnimPreviewStart;
+        const step = () => {
+            const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            if (!target._ctaAnimPreviewStart || (now - startWall) > 2450) {
+                delete target._ctaAnimPreviewStart;
+                this._ctaPreviewRaf = null;
+                this.videoCanvas?.render?.();
+                if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+                return;
+            }
+            this.videoCanvas?.render?.();
+            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+            this._ctaPreviewRaf = requestAnimationFrame(step);
+        };
+        this._ctaPreviewRaf = requestAnimationFrame(step);
+    }
+
+    enablePhoneCta(preferredMode = null) {
+        const ov = this._ensurePhoneCtaOverlay(preferredMode ? { cta_mode: preferredMode } : {});
+        if (!ov) return null;
+        ov.disabled = false;
+        if (preferredMode) ov.cta_mode = preferredMode;
+        if (typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
+        this._syncPhoneCtaUI(ov);
+        this._syncScopeAndRender(ov);
+        this._previewPhoneCtaAnim(ov);
+        return ov;
+    }
+
     _getSelectedDecor() {
         const list = this._getDecorOverlays();
         if (!list.length) return null;
@@ -10611,6 +10724,19 @@ class ReelsDecorPanel {
             `<option value="${id}">${idx + 1}. ${cfg.name}</option>`
         ).join('');
 
+        const ctaStyles = window.ReelsOverlay?.PHONE_CTA_STYLES || {};
+        const ctaStyleOptionsHtml = Object.entries(ctaStyles).map(([id, cfg]) =>
+            `<option value="${id}">${cfg.name}</option>`
+        ).join('') || `
+            <option value="whatsapp_lime_inline">🟢 WhatsApp 荧光黄绿连通条 (爆款推荐·红字号码)</option>
+            <option value="gold_dark_banner">🏆 黑金奢华热线卡 (最推荐·高对比)</option>
+            <option value="green_call_pill">🟢 翠绿来电胶囊条 (醒目按钮)</option>
+            <option value="yellow_black_alert">🟡 黄底黑字热线牌 (强视觉冲击)</option>
+            <option value="red_white_urgent">🔴 红白紧急呼召卡 (高转化)</option>
+            <option value="frosted_glass_gold">✨ 磨砂玻璃金字条 (高级感)</option>
+            <option value="pure_text_stroked">💬 纯文字粗描边 (无底框)</option>
+        `;
+
         this.container.innerHTML = `
             <div class="rop-root rdp-root" style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--text-primary,#e2e8f0);">
                 <!-- 顶部独立启用总开关（与 T字幕、🖼️覆层 完全独立，打勾预览并导出，不打勾不显示不导出） -->
@@ -10653,6 +10779,231 @@ class ReelsDecorPanel {
                     </div>
 
                     <div id="rdp-layer-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+                </div>
+
+                <!-- ═══ 独立专区: 📞 邀约电话 (支持上传设计好的电话图片 / 文字蒙版号码) ═══ -->
+                <div id="rdp-phone-cta-card" style="padding:10px 11px;background:linear-gradient(155deg,rgba(6,78,59,0.34),rgba(15,23,42,0.92));border:1px solid rgba(16,185,129,0.55);border-radius:9px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.22);">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin:0;">
+                            <input type="checkbox" id="rdp-cta-enable" style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;">
+                            <span style="font-weight:800;font-size:13px;color:#6ee7b7;">📞 邀约电话 (上传电话图 / 文字蒙版)</span>
+                            <span id="rdp-cta-status-badge" style="font-size:10px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;">未启用</span>
+                        </label>
+                        <div style="display:flex;align-items:center;gap:5px;">
+                            <button type="button" id="rdp-cta-preview-btn" class="rop-btn" style="padding:3px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:1px solid #6ee7b7;border-radius:5px;cursor:pointer;" title="在画布上立即演示邀约电话的出场动画与呼吸动态">▶ 预览动画</button>
+                            <button type="button" id="rdp-cta-delete-btn" class="rop-btn" style="padding:3px 7px;font-size:11px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;" title="从当前任务与同步队列中移除邀约电话">🗑️ 移除</button>
+                        </div>
+                    </div>
+
+                    <!-- 模式切换栏: 上传电话图片 vs 文字蒙版号码 -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                        <button type="button" id="rdp-cta-mode-image" class="rdp-cta-mode-btn" data-mode="image"
+                            style="padding:6px 8px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(14,116,144,0.35);color:#e0f2fe;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
+                            🖼️ 上传电话图片 (现成设计图)
+                        </button>
+                        <button type="button" id="rdp-cta-mode-text" class="rdp-cta-mode-btn" data-mode="text"
+                            style="padding:6px 8px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.28);color:#ecfdf5;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
+                            📝 文字蒙版号码 (自定义文案)
+                        </button>
+                    </div>
+
+                    <!-- 模式A: 🖼️ 上传电话图片专区 -->
+                    <div id="rdp-cta-image-section" style="display:none;flex-direction:column;gap:7px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.68);border:1px solid rgba(56,189,248,0.38);">
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                            <button type="button" id="rdp-cta-upload-btn" class="rop-btn"
+                                style="flex:1;padding:6px 10px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#fff;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">
+                                📁 上传电话图片 (PNG / JPG / WEBP / GIF)
+                            </button>
+                            <button type="button" id="rdp-cta-reuse-last-btn" class="rop-btn"
+                                style="display:none;padding:6px 8px;font-size:11px;background:rgba(56,189,248,0.16);color:#bae6fd;border:1px solid rgba(56,189,248,0.45);border-radius:6px;cursor:pointer;"
+                                title="一键加载上次上传过的电话图片">
+                                🕘 用上次电话图
+                            </button>
+                            <input type="file" id="rdp-cta-file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/jpg" style="display:none;">
+                        </div>
+
+                        <div id="rdp-cta-img-dropzone" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:6px;background:rgba(2,6,23,0.65);border:1px dashed rgba(125,211,252,0.45);min-height:52px;">
+                            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                                <img id="rdp-cta-img-thumb" alt="电话图片预览" style="display:none;max-width:110px;max-height:46px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 50% / 10px 10px;">
+                                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                                    <div id="rdp-cta-img-name" style="font-size:11px;font-weight:600;color:#e0f2fe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传电话图片（支持点击上方按钮或直接把图片拖进此处）</div>
+                                    <div style="font-size:10px;color:#94a3b8;">💡 上传别人设计好的电话条/联系方式卡片后，可在下方或直接在画面中拖拽调节位置、大小、出场时间与动画</div>
+                                </div>
+                            </div>
+                            <button type="button" id="rdp-cta-clear-img-btn" class="rop-btn" style="display:none;padding:3px 7px;font-size:10.5px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;flex-shrink:0;" title="清除已上传的电话图片并切回文字模式">✕ 清除图片</button>
+                        </div>
+
+                        <div class="rop-grid" style="gap:5px;">
+                            <label style="color:#bae6fd;font-weight:600;">图片宽度(px)</label>
+                            <div class="rop-slider-combo">
+                                <input type="range" id="rdp-cta-img-width" class="rop-range" min="120" max="1080" step="10" value="880">
+                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-width" min="80" max="1080" step="10" value="880">
+                            </div>
+
+                            <label style="color:#bae6fd;font-weight:600;">图片缩放%</label>
+                            <div class="rop-slider-combo">
+                                <input type="range" id="rdp-cta-img-scale" class="rop-range" min="20" max="220" step="2" value="100">
+                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-scale" min="10" max="300" step="2" value="100">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 模式B: 📝 文字蒙版号码专区 -->
+                    <div id="rdp-cta-text-section" style="display:flex;flex-direction:column;gap:6px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.62);border:1px solid rgba(16,185,129,0.35);">
+                        <div class="rop-grid" style="gap:5px;">
+                            <label style="color:#a7f3d0;font-weight:600;">样式模板</label>
+                            <select id="rdp-cta-style" class="rop-select">
+                                ${ctaStyleOptionsHtml}
+                            </select>
+
+                            <label style="color:#a7f3d0;font-weight:600;">邀约电话文案<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(支持多行回车)</span></label>
+                            <textarea id="rdp-cta-body" class="rop-textarea" rows="3" placeholder="Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible study." style="font-size:12.5px;font-weight:700;color:#fde047;line-height:1.35;">Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible&#10;study.</textarea>
+
+                            <label>顶部副标题(可选)</label>
+                            <input type="text" id="rdp-cta-title" class="rop-input" placeholder="默认留空，可填 CALL OR TEXT NOW">
+
+                            <label style="color:#86efac;font-weight:600;">蒙版样式</label>
+                            <select id="rdp-cta-mask-mode" class="rop-select">
+                                <option value="inline-joined">🟩 逐行紧贴连通蒙版 (WhatsApp同款推荐)</option>
+                                <option value="inline">💊 逐行独立圆角胶囊条</option>
+                                <option value="block-fit">📦 整块自适应包裹框</option>
+                                <option value="card">💳 完整横幅卡片底框</option>
+                                <option value="none">🚫 无底框 (纯文字+描边)</option>
+                            </select>
+
+                            <label style="color:#86efac;font-weight:600;">蒙版颜色 & 透明%</label>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <input type="color" id="rdp-cta-mask-color" class="rop-color" value="#E0FF14" title="蒙版背景颜色">
+                                <button type="button" class="rdp-cta-mask-chip" data-color="#E0FF14" style="padding:1px 5px;font-size:10px;background:#E0FF14;color:#000;border:1px solid #65a30d;border-radius:4px;cursor:pointer;font-weight:700;">荧光黄绿</button>
+                                <button type="button" class="rdp-cta-mask-chip" data-color="#15803D" style="padding:1px 5px;font-size:10px;background:#15803D;color:#fff;border:1px solid #4ade80;border-radius:4px;cursor:pointer;">翠绿</button>
+                                <button type="button" class="rdp-cta-mask-chip" data-color="#0B1021" style="padding:1px 5px;font-size:10px;background:#0B1021;color:#fde047;border:1px solid #f59e0b;border-radius:4px;cursor:pointer;">黑金底</button>
+                                <button type="button" class="rdp-cta-mask-chip" data-color="#FFFFFF" style="padding:1px 5px;font-size:10px;background:#FFFFFF;color:#000;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;">纯白</button>
+                                <div class="rop-slider-combo" style="flex:1;min-width:110px;">
+                                    <input type="range" id="rdp-cta-mask-opacity" class="rop-range" min="0" max="100" step="2" value="100">
+                                    <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-mask-opacity" min="0" max="100" step="2" value="100">
+                                </div>
+                            </div>
+
+                            <label>蒙版圆角 & 内距</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <div style="display:flex;align-items:center;gap:4px;">
+                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">圆角</span>
+                                    <input type="number" id="rdp-cta-mask-radius" class="rop-input" min="0" max="80" step="1" value="14">
+                                </div>
+                                <div style="display:flex;align-items:center;gap:4px;">
+                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">左右内距</span>
+                                    <input type="number" id="rdp-cta-pad-h" class="rop-input" min="0" max="80" step="2" value="22">
+                                </div>
+                            </div>
+
+                            <label style="color:#fda4af;font-weight:600;">文字色 & 号码色</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <div style="display:flex;align-items:center;gap:5px;">
+                                    <input type="color" id="rdp-cta-text-color" class="rop-color" value="#000000" title="普通文案颜色">
+                                    <span style="font-size:11px;color:var(--text-secondary);">正文色</span>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:5px;">
+                                    <input type="color" id="rdp-cta-phone-color" class="rop-color" value="#E60039" title="电话号码自动高亮颜色">
+                                    <span style="font-size:11px;color:#fda4af;font-weight:600;">📞 号码高亮色</span>
+                                </div>
+                            </div>
+
+                            <label>字号 & 横幅宽度</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <div style="display:flex;align-items:center;gap:4px;">
+                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">字号</span>
+                                    <input type="number" id="rdp-cta-fontsize" class="rop-input" min="18" max="130" step="2" value="48">
+                                </div>
+                                <div style="display:flex;align-items:center;gap:4px;">
+                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">宽度</span>
+                                    <input type="number" id="rdp-cta-text-width" class="rop-input" min="260" max="1080" step="10" value="920">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 公共控制区: 位置调节 + 几秒后出现 + 出场动画与持续动态 (对上传电话图片与文字蒙版同时生效) -->
+                    <div style="display:flex;flex-direction:column;gap:6px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.52);border:1px solid rgba(148,163,184,0.22);">
+                        <div class="rop-grid" style="gap:5px;">
+                            <label style="color:#fde047;font-weight:700;">快速定位<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(可画布直接拖移)</span></label>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="top" style="padding:2px 6px;font-size:10.5px;">⬆️ 顶部横幅</button>
+                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center" style="padding:2px 6px;font-size:10.5px;">🎯 画面正中</button>
+                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="lower" style="padding:2px 6px;font-size:10.5px;border-color:#10b981;color:#6ee7b7;">⬇️ 中下黄金位</button>
+                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="bottom" style="padding:2px 6px;font-size:10.5px;">⬇️ 底部贴边</button>
+                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center-x" style="padding:2px 6px;font-size:10.5px;">↔️ 水平居中</button>
+                            </div>
+
+                            <label>水平位置 X</label>
+                            <div class="rop-slider-combo">
+                                <input type="range" id="rdp-cta-x" class="rop-range" min="-540" max="540" step="2" value="0">
+                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-x" min="-1080" max="1080" step="2" value="0">
+                            </div>
+
+                            <label>垂直位置 Y</label>
+                            <div class="rop-slider-combo">
+                                <input type="range" id="rdp-cta-y" class="rop-range" min="-960" max="960" step="2" value="550">
+                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-y" min="-1920" max="1920" step="2" value="550">
+                            </div>
+
+                            <label style="color:#fde047;font-weight:700;">几秒后出现</label>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <div style="display:flex;align-items:center;gap:5px;">
+                                    <input type="number" id="rdp-cta-start" class="rop-input" min="0" max="3600" step="0.5" value="30" style="width:70px;font-weight:700;color:#fde047;">
+                                    <span style="font-size:11px;color:var(--text-secondary);">秒出现 → 结束:</span>
+                                    <input type="number" id="rdp-cta-end" class="rop-input" min="0" max="9999" step="0.5" value="9999" style="width:72px;">
+                                    <button type="button" class="rop-btn" id="rdp-cta-end-full" style="padding:2px 6px;font-size:10px;" title="一直显示到视频结束">全程</button>
+                                </div>
+                                <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="0" style="padding:1px 5px;font-size:10px;">0s立即</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="5" style="padding:1px 5px;font-size:10px;">5s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="10" style="padding:1px 5px;font-size:10px;">10s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="15" style="padding:1px 5px;font-size:10px;">15s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="20" style="padding:1px 5px;font-size:10px;">20s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="25" style="padding:1px 5px;font-size:10px;">25s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="30" style="padding:1px 5px;font-size:10px;border-color:#10b981;color:#6ee7b7;font-weight:700;">30s(默认)</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="45" style="padding:1px 5px;font-size:10px;">45s</button>
+                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="60" style="padding:1px 5px;font-size:10px;">60s</button>
+                                </div>
+                            </div>
+
+                            <label style="color:#a7f3d0;font-weight:600;">出场动画</label>
+                            <select id="rdp-cta-anim-in" class="rop-select">
+                                <option value="ring_shake">📳 来电震动弹出 (最吸睛推荐)</option>
+                                <option value="pop">💥 弹跳放大 (Pop)</option>
+                                <option value="elastic_pop">🍮 Q弹果冻弹出 (Elastic)</option>
+                                <option value="zoom_bounce">🚀 冲刺回弹放大 (Bounce)</option>
+                                <option value="slide_up">⬆️ 底部上滑推入</option>
+                                <option value="slide_down">⬇️ 顶部下滑落入</option>
+                                <option value="slide_left">⬅️ 右侧滑入</option>
+                                <option value="slide_right">➡️ 左侧滑入</option>
+                                <option value="fade">✨ 柔和渐显 (Fade)</option>
+                                <option value="none">无入场动画</option>
+                            </select>
+
+                            <label>动画时长 & 退场</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <div style="display:flex;align-items:center;gap:4px;">
+                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">入场(s)</span>
+                                    <input type="number" id="rdp-cta-anim-dur" class="rop-input" value="0.55" min="0.1" max="3" step="0.05">
+                                </div>
+                                <select id="rdp-cta-anim-out" class="rop-select">
+                                    <option value="fade">退场: 渐隐</option>
+                                    <option value="pop">退场: 缩回</option>
+                                    <option value="slide_down">退场: 下滑</option>
+                                    <option value="none">退场: 无</option>
+                                </select>
+                            </div>
+
+                            <label style="color:#a7f3d0;font-weight:600;">出现后动态</label>
+                            <select id="rdp-cta-loop-anim" class="rop-select">
+                                <option value="pulse">💓 持续呼吸放大脉冲 (推荐)</option>
+                                <option value="ring">🔔 间歇来电震动提醒</option>
+                                <option value="float">🎈 持续柔和上下轻浮</option>
+                                <option value="none">⏸️ 保持静止</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 30款模板分类筛选与可视化卡片库 -->
@@ -11023,6 +11374,526 @@ class ReelsDecorPanel {
                 }
             });
         }
+
+        // 绑定独立邀约电话模块事件
+        this._bindPhoneCtaModuleEvents();
+    }
+
+    _bindPhoneCtaModuleEvents() {
+        if (!this.container) return;
+        const q = (sel) => this.container.querySelector(sel);
+
+        // 绑定 range <-> number readout (data-cta-link)
+        this.container.querySelectorAll('.rop-num-readout[data-cta-link]').forEach(numEl => {
+            const rangeId = numEl.dataset.ctaLink;
+            const rangeEl = this.container.querySelector('#' + rangeId);
+            if (!rangeEl) return;
+            rangeEl.addEventListener('input', () => {
+                numEl.value = rangeEl.value;
+                this._syncToPhoneCtaOverlay();
+            });
+            numEl.addEventListener('input', () => {
+                rangeEl.value = numEl.value;
+                this._syncToPhoneCtaOverlay();
+            });
+        });
+
+        // 启用/暂停开关
+        const enableChk = q('#rdp-cta-enable');
+        if (enableChk) {
+            enableChk.addEventListener('change', () => {
+                if (enableChk.checked) {
+                    const ov = this._ensurePhoneCtaOverlay();
+                    if (ov) {
+                        ov.disabled = false;
+                        if (typeof window !== 'undefined' && window._reelsState) {
+                            window._reelsState.overlaySelectedId = ov.id;
+                        }
+                        this._syncPhoneCtaUI(ov);
+                        this._syncScopeAndRender(ov);
+                        this._previewPhoneCtaAnim(ov);
+                    }
+                } else {
+                    const ov = this._getPhoneCta();
+                    if (ov) {
+                        ov.disabled = true;
+                        this._syncPhoneCtaUI(ov);
+                        this._syncScopeAndRender(ov);
+                    }
+                }
+            });
+        }
+
+        // 预览出场动画按钮
+        q('#rdp-cta-preview-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const ov = this._ensurePhoneCtaOverlay();
+            if (!ov) return;
+            ov.disabled = false;
+            if (typeof window !== 'undefined' && window._reelsState) {
+                window._reelsState.overlaySelectedId = ov.id;
+            }
+            this._syncPhoneCtaUI(ov);
+            this._syncScopeAndRender(ov);
+            this._previewPhoneCtaAnim(ov);
+        });
+
+        // 移除电话按钮
+        q('#rdp-cta-delete-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const ctas = this._getPhoneCtaOverlays();
+            ctas.forEach(c => {
+                if (this.videoCanvas && typeof this.videoCanvas.removeOverlay === 'function') {
+                    this.videoCanvas.removeOverlay(c.id);
+                }
+            });
+            if (typeof window !== 'undefined' && window._reelsState && ctas.some(c => c.id === window._reelsState.overlaySelectedId)) {
+                window._reelsState.overlaySelectedId = null;
+            }
+            this._syncDecorStackToScopeTasks();
+            this._syncPhoneCtaUI(null);
+            if (this.linkedOverlayPanel) this.linkedOverlayPanel._refreshList();
+            if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                this.videoCanvas.onOverlayChange(this._getSelectedDecor());
+            }
+        });
+
+        // 模式切换按钮 (🖼️ 上传电话图片 vs 📝 文字蒙版号码)
+        this.container.querySelectorAll('.rdp-cta-mode-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetMode = btn.dataset.mode === 'image' ? 'image' : 'text';
+                const ov = this._ensurePhoneCtaOverlay({ cta_mode: targetMode });
+                if (!ov) return;
+                ov.disabled = false;
+                ov.cta_mode = targetMode;
+                if (typeof window !== 'undefined' && window._reelsState) {
+                    window._reelsState.overlaySelectedId = ov.id;
+                }
+                this._syncPhoneCtaUI(ov);
+                this._syncScopeAndRender(ov);
+            });
+        });
+
+        // 上传电话图片按钮 + 文件选择器 + 拖拽上传
+        const fileInput = q('#rdp-cta-file-input');
+        q('#rdp-cta-upload-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (fileInput) {
+                fileInput.value = '';
+                fileInput.click();
+            }
+        });
+        fileInput?.addEventListener('change', (e) => {
+            const file = e.target.files?.[0];
+            if (file) this._handlePhoneCtaImageFile(file);
+        });
+
+        const dropzone = q('#rdp-cta-img-dropzone');
+        if (dropzone) {
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = '#38bdf8';
+                dropzone.style.background = 'rgba(14,116,144,0.28)';
+            });
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.style.borderColor = 'rgba(125,211,252,0.45)';
+                dropzone.style.background = 'rgba(2,6,23,0.65)';
+            });
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.style.borderColor = 'rgba(125,211,252,0.45)';
+                dropzone.style.background = 'rgba(2,6,23,0.65)';
+                const file = e.dataTransfer?.files?.[0];
+                if (file && file.type.startsWith('image/')) {
+                    this._handlePhoneCtaImageFile(file);
+                }
+            });
+        }
+
+        // 一键复用上次上传的电话图
+        q('#rdp-cta-reuse-last-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            try {
+                const raw = localStorage.getItem('vk_last_phone_cta_image');
+                if (!raw) return;
+                const saved = JSON.parse(raw);
+                if (!saved || !saved.src) return;
+                const ov = this._ensurePhoneCtaOverlay({
+                    cta_mode: 'image',
+                    cta_image_src: saved.src,
+                    cta_image_name: saved.name || '上次电话图片',
+                });
+                if (!ov) return;
+                ov.disabled = false;
+                ov.cta_mode = 'image';
+                ov.cta_image_src = saved.src;
+                ov.cta_image_name = saved.name || '上次电话图片';
+                if (saved.aspect > 0) {
+                    const pos = this._toCtaCenterPos(ov);
+                    ov.h = Math.max(30, Math.round((ov.w || 880) / saved.aspect));
+                    this._applyCtaCenterPos(ov, pos.x, pos.y);
+                }
+                if (typeof window !== 'undefined' && window._reelsState) {
+                    window._reelsState.overlaySelectedId = ov.id;
+                }
+                this._syncPhoneCtaUI(ov);
+                this._syncScopeAndRender(ov);
+                this._previewPhoneCtaAnim(ov);
+            } catch (_) {}
+        });
+
+        // 清除已上传电话图片并切回文字模式
+        q('#rdp-cta-clear-img-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const ov = this._getPhoneCta();
+            if (!ov) return;
+            ov.cta_image_src = '';
+            ov.cta_image_name = '';
+            ov.cta_mode = 'text';
+            this._syncPhoneCtaUI(ov);
+            this._syncScopeAndRender(ov);
+        });
+
+        // 预设模板下拉切换
+        q('#rdp-cta-style')?.addEventListener('change', (e) => {
+            const ov = this._ensurePhoneCtaOverlay({ cta_mode: 'text' });
+            if (!ov) return;
+            ov.disabled = false;
+            ov.cta_mode = 'text';
+            window.ReelsOverlay?.applyPhoneCtaStylePreset?.(ov, e.target.value);
+            this._syncPhoneCtaUI(ov);
+            this._syncScopeAndRender(ov);
+        });
+
+        // 快捷蒙版色块
+        this.container.querySelectorAll('.rdp-cta-mask-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.preventDefault();
+                const col = chip.dataset.color || '#E0FF14';
+                this._setVal('rdp-cta-mask-color', col);
+                this._syncToPhoneCtaOverlay();
+            });
+        });
+
+        // 快速定位按钮 (顶部 / 正中 / 中下黄金位 / 底部 / 水平居中)
+        this.container.querySelectorAll('.rdp-cta-pos-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const ov = this._ensurePhoneCtaOverlay();
+                if (!ov) return;
+                const posKey = btn.dataset.pos || 'lower';
+                const curPos = this._toCtaCenterPos(ov);
+                const posMap = {
+                    top: -715,
+                    center: 0,
+                    lower: 550,
+                    bottom: 780,
+                };
+                const nextX = posKey === 'center-x' ? 0 : 0;
+                const nextY = posKey === 'center-x' ? curPos.y : (posMap[posKey] ?? 550);
+                this._setVal('rdp-cta-x', nextX);
+                this._setVal('rdp-cta-y', nextY);
+                this._syncToPhoneCtaOverlay();
+            });
+        });
+
+        // 快速出现秒数按钮 (0s / 5s / 10s / 15s / 20s / 25s / 30s / 45s / 60s)
+        this.container.querySelectorAll('.rdp-cta-time-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.preventDefault();
+                const sec = Math.max(0, parseFloat(chip.dataset.sec) || 0);
+                this._setVal('rdp-cta-start', sec);
+                this._syncToPhoneCtaOverlay();
+            });
+        });
+
+        // 结束时间：全程按钮
+        q('#rdp-cta-end-full')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this._setVal('rdp-cta-end', 9999);
+            this._syncToPhoneCtaOverlay();
+        });
+
+        // 绑定所有表单输入项到 _syncToPhoneCtaOverlay
+        const ctaFieldIds = [
+            'rdp-cta-body', 'rdp-cta-title',
+            'rdp-cta-mask-mode', 'rdp-cta-mask-color', 'rdp-cta-mask-radius', 'rdp-cta-pad-h',
+            'rdp-cta-text-color', 'rdp-cta-phone-color',
+            'rdp-cta-fontsize', 'rdp-cta-text-width',
+            'rdp-cta-start', 'rdp-cta-end',
+            'rdp-cta-anim-in', 'rdp-cta-anim-dur', 'rdp-cta-anim-out', 'rdp-cta-loop-anim',
+        ];
+        ctaFieldIds.forEach(id => {
+            const el = q('#' + id);
+            if (!el) return;
+            const onChange = () => {
+                this._syncToPhoneCtaOverlay();
+                if (id === 'rdp-cta-anim-in' || id === 'rdp-cta-loop-anim') {
+                    this._previewPhoneCtaAnim();
+                }
+            };
+            el.addEventListener('input', onChange);
+            el.addEventListener('change', onChange);
+        });
+    }
+
+    _handlePhoneCtaImageFile(file) {
+        if (!file) return;
+        const applyLoadedImage = (imgSrc, fileName) => {
+            const ov = this._ensurePhoneCtaOverlay({
+                cta_mode: 'image',
+                cta_image_src: imgSrc,
+                cta_image_name: fileName,
+            });
+            if (!ov) return;
+            ov.disabled = false;
+            ov.cta_mode = 'image';
+            ov.cta_image_src = imgSrc;
+            ov.cta_image_name = fileName || '自定义电话图片';
+            if (!ov.w || ov.w < 120) ov.w = 880;
+            if (!ov.cta_image_scale) ov.cta_image_scale = 100;
+
+            const probeImg = new Image();
+            probeImg.onload = () => {
+                const nw = probeImg.naturalWidth || probeImg.width || 880;
+                const nh = probeImg.naturalHeight || probeImg.height || 220;
+                const aspect = nw / Math.max(1, nh);
+                const curPos = this._toCtaCenterPos(ov);
+                ov.h = Math.max(30, Math.round((ov.w || 880) / aspect));
+                this._applyCtaCenterPos(ov, curPos.x, curPos.y);
+                try {
+                    if (imgSrc.length < 2_500_000) {
+                        localStorage.setItem('vk_last_phone_cta_image', JSON.stringify({
+                            src: imgSrc,
+                            name: ov.cta_image_name,
+                            aspect,
+                        }));
+                    }
+                } catch (_) {}
+                this._syncPhoneCtaUI(ov);
+                this._syncScopeAndRender(ov);
+                this._previewPhoneCtaAnim(ov);
+            };
+            probeImg.onerror = () => {
+                this._syncPhoneCtaUI(ov);
+                this._syncScopeAndRender(ov);
+            };
+            probeImg.src = this._resolvePreviewImgUrl(imgSrc);
+
+            if (typeof window !== 'undefined' && window._reelsState) {
+                window._reelsState.overlaySelectedId = ov.id;
+            }
+            this._syncPhoneCtaUI(ov);
+            this._syncScopeAndRender(ov);
+        };
+
+        const nativePath = (typeof getFileNativePath === 'function') ? getFileNativePath(file) : (file.path || '');
+        if (nativePath && nativePath !== file.name) {
+            applyLoadedImage(nativePath, file.name || nativePath.split(/[\\/]/).pop());
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = String(reader.result || '');
+            if (dataUrl) applyLoadedImage(dataUrl, file.name || '自定义电话图片');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    _syncPhoneCtaUI(ov = undefined) {
+        if (!this.container) return;
+        const target = ov !== undefined ? ov : this._getPhoneCta();
+        this._syncingCta = true;
+        try {
+            const exists = Boolean(target);
+            const isEnabled = Boolean(target && !target.disabled);
+            this._setVal('rdp-cta-enable', isEnabled);
+
+            const badge = this.container.querySelector('#rdp-cta-status-badge');
+            if (badge) {
+                if (!exists) {
+                    badge.textContent = '未添加 (勾选或上传图片即启用)';
+                    badge.style.background = 'rgba(148,163,184,0.18)';
+                    badge.style.color = '#cbd5e1';
+                    badge.style.borderColor = 'rgba(148,163,184,0.38)';
+                } else if (isEnabled) {
+                    const startSec = Number(target.start ?? 30);
+                    const modeTag = (target.cta_mode === 'image' && target.cta_image_src) ? '图片模式' : '文字模式';
+                    badge.textContent = `已启用 · ${modeTag} · ${startSec}s弹出`;
+                    badge.style.background = 'rgba(16,185,129,0.26)';
+                    badge.style.color = '#6ee7b7';
+                    badge.style.borderColor = 'rgba(52,211,153,0.55)';
+                } else {
+                    badge.textContent = '已暂停·不显示';
+                    badge.style.background = 'rgba(239,68,68,0.22)';
+                    badge.style.color = '#fca5a5';
+                    badge.style.borderColor = 'rgba(248,113,113,0.48)';
+                }
+            }
+
+            // 检查是否有上次保存的电话图可供一键复用
+            const reuseBtn = this.container.querySelector('#rdp-cta-reuse-last-btn');
+            if (reuseBtn) {
+                let hasSaved = false;
+                try { hasSaved = Boolean(localStorage.getItem('vk_last_phone_cta_image')); } catch (_) {}
+                reuseBtn.style.display = hasSaved ? 'inline-block' : 'none';
+            }
+
+            const mode = (target?.cta_mode === 'image' || (!target?.cta_mode && target?.cta_image_src)) ? 'image' : 'text';
+            const imgBtn = this.container.querySelector('#rdp-cta-mode-image');
+            const txtBtn = this.container.querySelector('#rdp-cta-mode-text');
+            if (imgBtn) {
+                const act = mode === 'image';
+                imgBtn.style.background = act ? 'linear-gradient(135deg,#0284c7,#2563eb)' : 'rgba(15,23,42,0.55)';
+                imgBtn.style.borderColor = act ? '#7dd3fc' : '#334155';
+                imgBtn.style.color = act ? '#ffffff' : '#94a3b8';
+                imgBtn.style.boxShadow = act ? '0 0 0 1px rgba(125,211,252,0.45)' : 'none';
+            }
+            if (txtBtn) {
+                const act = mode === 'text';
+                txtBtn.style.background = act ? 'linear-gradient(135deg,#059669,#10b981)' : 'rgba(15,23,42,0.55)';
+                txtBtn.style.borderColor = act ? '#6ee7b7' : '#334155';
+                txtBtn.style.color = act ? '#ffffff' : '#94a3b8';
+                txtBtn.style.boxShadow = act ? '0 0 0 1px rgba(110,231,183,0.45)' : 'none';
+            }
+
+            const imgSec = this.container.querySelector('#rdp-cta-image-section');
+            const txtSec = this.container.querySelector('#rdp-cta-text-section');
+            if (imgSec) imgSec.style.display = mode === 'image' ? 'flex' : 'none';
+            if (txtSec) txtSec.style.display = mode === 'text' ? 'flex' : 'none';
+
+            // 同步图片预览
+            const imgSrc = target?.cta_image_src || '';
+            const thumbEl = this.container.querySelector('#rdp-cta-img-thumb');
+            const nameEl = this.container.querySelector('#rdp-cta-img-name');
+            const clearImgBtn = this.container.querySelector('#rdp-cta-clear-img-btn');
+            if (thumbEl) {
+                if (imgSrc) {
+                    thumbEl.src = this._resolvePreviewImgUrl(imgSrc);
+                    thumbEl.style.display = 'block';
+                } else {
+                    thumbEl.removeAttribute('src');
+                    thumbEl.style.display = 'none';
+                }
+            }
+            if (nameEl) {
+                nameEl.textContent = imgSrc
+                    ? `已加载电话图: ${target?.cta_image_name || (imgSrc.startsWith('data:') ? '自定义电话图片' : imgSrc.split(/[\\/]/).pop())}`
+                    : '尚未上传电话图片（支持点击上方按钮或直接把图片拖进此处）';
+                nameEl.style.color = imgSrc ? '#6ee7b7' : '#e0f2fe';
+            }
+            if (clearImgBtn) {
+                clearImgBtn.style.display = imgSrc ? 'inline-block' : 'none';
+            }
+
+            if (!target) return;
+
+            const setCtaVal = (id, val) => {
+                const el = this.container.querySelector('#' + id);
+                if (!el) return;
+                el.value = val;
+                const ro = this.container.querySelector(`.rop-num-readout[data-cta-link="${id}"]`);
+                if (ro) ro.value = val;
+            };
+
+            const wVal = Math.round(Number(target.w) || 880);
+            setCtaVal('rdp-cta-img-width', wVal);
+            setCtaVal('rdp-cta-img-scale', Math.round(Number(target.cta_image_scale) || 100));
+            setCtaVal('rdp-cta-text-width', wVal);
+            setCtaVal('rdp-cta-style', target.cta_style_id || 'whatsapp_lime_inline');
+            setCtaVal('rdp-cta-body', target.body_text ?? '');
+            setCtaVal('rdp-cta-title', target.title_text ?? '');
+
+            const maskMode = target.cta_mask_mode
+                || (target.body_bg_enabled ? (target.body_bg_mode || 'inline-joined') : (target.card_enabled !== false ? 'card' : 'none'));
+            const maskColor = target.cta_mask_color || (maskMode === 'card' ? (target.card_color || '#0B1021') : (target.body_bg_color || '#E0FF14'));
+            const maskOp = target.cta_mask_opacity ?? (maskMode === 'card' ? (target.card_opacity ?? 92) : (target.body_bg_opacity ?? 100));
+            const maskRad = target.cta_mask_radius ?? (maskMode === 'card' ? (target.radius_tl ?? 36) : (target.body_bg_radius ?? 14));
+            const padH = target.cta_mask_pad_h ?? (target.body_bg_pad_h ?? 22);
+
+            setCtaVal('rdp-cta-mask-mode', maskMode);
+            setCtaVal('rdp-cta-mask-color', maskColor);
+            setCtaVal('rdp-cta-mask-opacity', maskOp);
+            setCtaVal('rdp-cta-mask-radius', maskRad);
+            setCtaVal('rdp-cta-pad-h', padH);
+            setCtaVal('rdp-cta-text-color', target.body_color || '#000000');
+            setCtaVal('rdp-cta-phone-color', target.cta_phone_color || '#E60039');
+            setCtaVal('rdp-cta-fontsize', target.body_fontsize ?? 48);
+
+            const pos = this._toCtaCenterPos(target);
+            setCtaVal('rdp-cta-x', pos.x);
+            setCtaVal('rdp-cta-y', pos.y);
+
+            const startSec = Number(target.start ?? 30);
+            const endSec = Number(target.end ?? 9999);
+            setCtaVal('rdp-cta-start', startSec);
+            setCtaVal('rdp-cta-end', endSec);
+            this.container.querySelectorAll('.rdp-cta-time-chip').forEach(btn => {
+                const chipSec = parseFloat(btn.dataset.sec);
+                const active = Math.abs(chipSec - startSec) < 0.01;
+                btn.style.borderColor = active ? '#10b981' : '';
+                btn.style.color = active ? '#6ee7b7' : '';
+                btn.style.fontWeight = active ? '700' : '';
+                btn.style.background = active ? 'rgba(16,185,129,0.2)' : '';
+            });
+
+            setCtaVal('rdp-cta-anim-in', target.anim_in_type || 'ring_shake');
+            setCtaVal('rdp-cta-anim-dur', target.anim_in_duration ?? 0.55);
+            setCtaVal('rdp-cta-anim-out', target.anim_out_type || 'fade');
+            setCtaVal('rdp-cta-loop-anim', target.cta_loop_anim || 'pulse');
+        } finally {
+            this._syncingCta = false;
+        }
+    }
+
+    _syncToPhoneCtaOverlay() {
+        if (this._syncingCta) return;
+        const ov = this._ensurePhoneCtaOverlay();
+        if (!ov) return;
+        ov.disabled = false;
+
+        const mode = (ov.cta_mode === 'image' || (!ov.cta_mode && ov.cta_image_src)) ? 'image' : 'text';
+        if (mode === 'image') {
+            ov.w = Math.max(80, Number(this._getVal('rdp-cta-img-width') ?? ov.w ?? 880));
+            ov.cta_image_scale = Math.max(10, Math.min(300, Number(this._getVal('rdp-cta-img-scale') ?? ov.cta_image_scale ?? 100)));
+        } else {
+            ov.w = Math.max(200, Number(this._getVal('rdp-cta-text-width') ?? ov.w ?? 920));
+            ov.body_text = String(this._getVal('rdp-cta-body') ?? ov.body_text ?? '');
+            ov.title_text = String(this._getVal('rdp-cta-title') ?? ov.title_text ?? '');
+            ov.body_fontsize = Math.max(16, Number(this._getVal('rdp-cta-fontsize') ?? ov.body_fontsize ?? 48));
+            ov.cta_mask_mode = this._getVal('rdp-cta-mask-mode') || 'inline-joined';
+            ov.cta_mask_color = this._getVal('rdp-cta-mask-color') || '#E0FF14';
+            ov.cta_mask_opacity = Math.max(0, Math.min(100, Number(this._getVal('rdp-cta-mask-opacity') ?? 100)));
+            ov.cta_mask_radius = Math.max(0, Number(this._getVal('rdp-cta-mask-radius') ?? 14));
+            ov.cta_mask_pad_h = Math.max(0, Number(this._getVal('rdp-cta-pad-h') ?? 22));
+            ov.body_color = this._getVal('rdp-cta-text-color') || '#000000';
+            ov.cta_phone_color = this._getVal('rdp-cta-phone-color') || '#E60039';
+            window.ReelsOverlay?.syncPhoneCtaMaskAndColors?.(ov);
+        }
+
+        const centerX = Number(this._getVal('rdp-cta-x') ?? 0);
+        const centerY = Number(this._getVal('rdp-cta-y') ?? 550);
+        ov.auto_center_v = false;
+        this._applyCtaCenterPos(ov, centerX, centerY);
+
+        const startSec = Math.max(0, Number(this._getVal('rdp-cta-start') ?? 30));
+        const endSec = Math.max(0, Number(this._getVal('rdp-cta-end') ?? 9999));
+        ov.start = startSec;
+        ov.mask_start = startSec;
+        ov.end = endSec;
+        ov.mask_end = endSec;
+
+        ov.anim_in_type = this._getVal('rdp-cta-anim-in') || 'ring_shake';
+        ov.anim_in_duration = Math.max(0.05, Number(this._getVal('rdp-cta-anim-dur') ?? 0.55));
+        ov.anim_out_type = this._getVal('rdp-cta-anim-out') || 'fade';
+        ov.cta_loop_anim = this._getVal('rdp-cta-loop-anim') || 'pulse';
+
+        if (typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
+        this._syncPhoneCtaUI(ov);
+        this._syncScopeAndRender(ov);
     }
 
     applyPreset(styleId) {
@@ -11220,12 +12091,22 @@ class ReelsDecorPanel {
                 delete copy._selected;
                 return copy;
             });
+            const sourcePhoneCtas = this._getPhoneCtaOverlays().map(c => {
+                const copy = JSON.parse(JSON.stringify(c, (key, val) => key === '_allOverlays' ? undefined : val));
+                delete copy._img;
+                delete copy._imgLoaded;
+                delete copy._exportImage;
+                delete copy._selected;
+                delete copy._ctaAnimPreviewStart;
+                return copy;
+            });
 
             const applyToTaskObj = (task) => {
                 if (!task || task === selectedTask) return;
                 const existing = Array.isArray(task.overlays) ? task.overlays : [];
                 const existingDecors = existing.filter(o => o && o.type === 'decor');
-                const nonDecors = existing.filter(o => o && o.type !== 'decor');
+                const existingPhoneCtas = existing.filter(o => o && o.is_phone_cta);
+                const otherOverlays = existing.filter(o => o && o.type !== 'decor' && !o.is_phone_cta);
                 const nextDecors = sourceDecors.map((srcOv, idx) => {
                     const clone = JSON.parse(JSON.stringify(srcOv));
                     const prevId = existingDecors[idx]?.id;
@@ -11234,7 +12115,15 @@ class ReelsDecorPanel {
                         : ('ov_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
                     return clone;
                 });
-                task.overlays = [...nonDecors, ...nextDecors];
+                const nextPhoneCtas = sourcePhoneCtas.map((srcOv, idx) => {
+                    const clone = JSON.parse(JSON.stringify(srcOv));
+                    const prevId = existingPhoneCtas[idx]?.id;
+                    clone.id = (prevId && prevId !== srcOv.id)
+                        ? prevId
+                        : ('ov_cta_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
+                    return clone;
+                });
+                task.overlays = [...otherOverlays, ...nextDecors, ...nextPhoneCtas];
             };
 
             const updatedIds = new Set();
@@ -11378,6 +12267,7 @@ class ReelsDecorPanel {
         if (ov) {
             this._syncFromDecorOverlay(ov);
         }
+        this._syncPhoneCtaUI(this._getPhoneCta());
     }
 }
 

@@ -7215,6 +7215,9 @@
             if (tab === 'decor' && window._reelsState && window._reelsState.decorPanel && typeof window._reelsState.decorPanel.refresh === 'function') {
               window._reelsState.decorPanel.refresh();
             }
+            if (typeof window.reelsUpdatePreview === 'function') {
+              window.reelsUpdatePreview();
+            }
           }
           </script>
 

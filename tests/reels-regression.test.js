@@ -2672,6 +2672,63 @@ test('Google Sheets scroll subtitle paste accurately recognizes each cell (HTML 
     assert.deepEqual(parsedLeadingEmpty, [['Cell A'], ['Cell B']], 'Leading empty column across all rows must be stripped');
 });
 
+test('Phone CTA is extracted to Decor Panel (#rdp-phone-cta-card) and supports custom Phone Image upload, positioning, scaling, and animations', () => {
+    const overlayPanelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    assert.ok(overlayPanelSrc.includes('id="rdp-phone-cta-card"'), 'ReelsDecorPanel must include dedicated #rdp-phone-cta-card section');
+    assert.ok(overlayPanelSrc.includes('id="rdp-cta-upload-btn"'), 'ReelsDecorPanel must include #rdp-cta-upload-btn for uploading custom phone images');
+    assert.ok(overlayPanelSrc.includes('id="rdp-cta-mode-image"') && overlayPanelSrc.includes('id="rdp-cta-mode-text"'), 'ReelsDecorPanel must include image and text mode switcher buttons');
+
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        navigator: { userAgent: 'win32' },
+    });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    const ReelsOverlay = sandbox.window.ReelsOverlay;
+
+    const ctaImgOv = ReelsOverlay.createPhoneCtaOverlay({
+        cta_mode: 'image',
+        cta_image_src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        cta_image_name: 'custom-phone-banner.png',
+        cta_image_scale: 110,
+        x: 100,
+        y: 1360,
+        w: 880,
+        h: 220,
+        start: 30,
+        end: 9999,
+        anim_in_type: 'ring_shake',
+        cta_loop_anim: 'pulse',
+    });
+
+    assert.equal(ctaImgOv.is_phone_cta, true);
+    assert.equal(ctaImgOv.cta_mode, 'image');
+    assert.equal(ctaImgOv.cta_image_name, 'custom-phone-banner.png');
+    assert.equal(ctaImgOv.cta_image_scale, 110);
+
+    // Simulate preloaded export/preview image (880x220 aspect = 4:1)
+    ctaImgOv._exporting = true;
+    ctaImgOv._exportImage = { naturalWidth: 880, naturalHeight: 220, width: 880, height: 220 };
+
+    const drawnImages = [];
+    const ctx = sandbox.document.createElement('canvas').getContext('2d');
+    ctx.drawImage = (img, dx, dy, dw, dh) => {
+        drawnImages.push({ img, dx, dy, dw, dh });
+    };
+
+    // Before 30s -> should not draw during export
+    ReelsOverlay.drawOverlay(ctx, ctaImgOv, 15.0, 1080, 1920);
+    assert.equal(drawnImages.length, 0, 'Phone CTA image should not render before start time (30s) during export');
+
+    // At 31s -> should draw custom phone image with 110% scale and populate _renderedX/_renderedY/_renderedW/_renderedH
+    ReelsOverlay.drawOverlay(ctx, ctaImgOv, 31.0, 1080, 1920);
+    assert.equal(drawnImages.length, 1, 'Phone CTA image should render after start time (30s)');
+    assert.ok(Math.abs(drawnImages[0].dw - 880 * 1.1) < 0.5, 'Rendered image width should reflect w * cta_image_scale (880 * 110% = 968)');
+    assert.ok(Math.abs(drawnImages[0].dh - 220 * 1.1) < 0.5, 'Rendered image height should preserve aspect ratio (220 * 110% = 242)');
+    assert.ok(Number.isFinite(ctaImgOv._renderedX) && Number.isFinite(ctaImgOv._renderedY), '_renderedX and _renderedY must be populated for canvas drag/resize');
+    assert.ok(Math.abs(ctaImgOv._renderedW - 968) < 0.5 && Math.abs(ctaImgOv._renderedH - 242) < 0.5, '_renderedW and _renderedH must match drawn image bounds');
+});
+
+
 
 
 

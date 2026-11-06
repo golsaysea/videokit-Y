@@ -290,6 +290,10 @@ function createTextCardOverlay(opts = {}) {
         anim_out_duration: opts.anim_out_duration || 0.3,
         cta_loop_anim: opts.cta_loop_anim || 'none',
         is_phone_cta: Boolean(opts.is_phone_cta),
+        cta_mode: opts.cta_mode || (opts.cta_image_src ? 'image' : 'text'),
+        cta_image_src: opts.cta_image_src || '',
+        cta_image_name: opts.cta_image_name || '',
+        cta_image_scale: opts.cta_image_scale ?? 100,
         cta_style_id: opts.cta_style_id || '',
         cta_mask_mode: opts.cta_mask_mode || '',
         cta_mask_color: opts.cta_mask_color || '',
@@ -893,6 +897,10 @@ function createPhoneCtaOverlay(opts = {}) {
     ov.is_phone_cta = true;
     ov.fixed_text = opts.fixed_text ?? true;
     ov.cta_style_id = styleId;
+    ov.cta_mode = opts.cta_mode || (opts.cta_image_src ? 'image' : 'text');
+    ov.cta_image_src = opts.cta_image_src || '';
+    ov.cta_image_name = opts.cta_image_name || '';
+    ov.cta_image_scale = opts.cta_image_scale ?? 100;
     syncPhoneCtaMaskAndColors(ov);
     return ov;
 }
@@ -1295,6 +1303,9 @@ function _getCachedImage(path) {
         }
         if (typeof window !== 'undefined' && typeof window.reelsUpdatePreview === 'function') {
             window.reelsUpdatePreview();
+        }
+        if (typeof window !== 'undefined' && typeof window._reelsState?.overlayProxy?.render === 'function') {
+            window._reelsState.overlayProxy.render();
         }
     };
     img.onerror = () => { _imageCache[path] = null; }; // allow retry on error
@@ -1865,12 +1876,17 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
         }
     }
 
-    // 暂停编辑模式下，若用户在覆层面板中选中了延后出现的覆层（如 30s 后出现的邀约电话），
+    // 暂停编辑模式下，若用户在覆层面板或点缀面板中正在调整延后出现的覆层（如 30s 后出现的邀约电话），
     // 允许在画布上直接显示其静止态以便拖拽定位与调样式；播放或导出时严格遵守 start/end 时间。
+    const isDecorTabOpenForPhoneCta = Boolean(
+        ov.is_phone_cta &&
+        typeof document !== 'undefined' &&
+        document.getElementById('inspector-tab-decor')?.style?.display !== 'none'
+    );
     const isSelectedInPausedEditor = Boolean(
         !ov._exporting &&
         !isAnimPreviewing &&
-        (ov._selected || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id)) &&
+        (ov._selected || isDecorTabOpenForPhoneCta || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id)) &&
         !(typeof window !== 'undefined' && window._reelsState?.playing)
     );
     if (isSelectedInPausedEditor && (currentTime < start || (end < 9999 && currentTime > end))) {
@@ -2478,12 +2494,88 @@ function _drawTextOverlay(ctx, ov, x, y, w, h, currentTime) {
  * 功能：半透明纯色背景 + 四角独立圆角 + 标题（粗体大字）+ 内容（正常字体）
  * 自动适配：根据文案长短调整蒙版大小和位置
  */
+function _drawPhoneCtaImageOverlay(ctx, ov, originalOverlay, x, y, w, h, canvasW, canvasH, currentTime) {
+    const imgSrc = String(ov.cta_image_src || '').trim();
+    if (!imgSrc) return false;
+
+    const scalePct = Math.max(10, Math.min(300, Number(ov.cta_image_scale) || 100)) / 100;
+    const drawW = Math.max(40, w * scalePct);
+    const useAutoCenterV = (ov.auto_center_v === true || ov.auto_center_v === 1 || ov.auto_center_v === '1');
+
+    let drawable = (ov._exporting && ov._exportImage) || null;
+    if (!drawable) {
+        const isGif = /\.gif($|\?)/i.test(imgSrc) || /^data:image\/gif/i.test(imgSrc);
+        if (isGif && typeof _getGifDecoder === 'function') {
+            const gifData = _getGifDecoder(imgSrc);
+            if (gifData && gifData.ready && gifData.frameCount > 0) {
+                const startSec = parseFloat(ov.start || 0);
+                const relTime = Math.max(0, currentTime - startSec);
+                const totalGifDur = gifData.totalDuration || 1;
+                const loopedTime = relTime % totalGifDur;
+                let accumulated = 0;
+                let targetFrame = 0;
+                for (let fi = 0; fi < gifData.frameCount; fi++) {
+                    accumulated += (gifData.frameDurations[fi] || 100) / 1000;
+                    if (loopedTime < accumulated) { targetFrame = fi; break; }
+                    targetFrame = fi;
+                }
+                drawable = gifData.frames[targetFrame] || gifData.frames[0] || null;
+                _ensureGifFrameDecoded(gifData, targetFrame);
+            }
+        }
+        if (!drawable) {
+            drawable = _getCachedImage(imgSrc);
+        }
+    }
+
+    const srcW = Number(drawable?.naturalWidth || drawable?.width || 0);
+    const srcH = Number(drawable?.naturalHeight || drawable?.height || 0);
+    const aspect = (srcW > 0 && srcH > 0) ? (srcW / srcH) : (w / Math.max(40, h || 220));
+    const drawH = Math.max(24, drawW / Math.max(0.05, aspect));
+
+    const centerX = x + w / 2;
+    const origCenterY = y + (h > 0 ? h : drawH) / 2;
+    const centerY = useAutoCenterV ? (canvasH / 2) : origCenterY;
+    const drawX = centerX - drawW / 2;
+    const drawY = centerY - drawH / 2;
+
+    ov._renderedX = drawX;
+    ov._renderedY = drawY;
+    ov._renderedW = drawW;
+    ov._renderedH = drawH;
+    if (originalOverlay && originalOverlay !== ov) {
+        originalOverlay._renderedX = drawX;
+        originalOverlay._renderedY = drawY;
+        originalOverlay._renderedW = drawW;
+        originalOverlay._renderedH = drawH;
+    }
+
+    if (!drawable || !(srcW > 0 && srcH > 0)) {
+        return true;
+    }
+
+    const start = parseFloat(ov.start || 0);
+    const end = parseFloat(ov.end || 0);
+    ctx.save();
+    _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, centerY, 140);
+    try {
+        ctx.drawImage(drawable, drawX, drawY, drawW, drawH);
+    } catch (_) {}
+    ctx.restore();
+    return true;
+}
+
 function _drawTextCardOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTime) {
+    const originalOverlay = ov;
+    if (ov.is_phone_cta && ov.cta_mode === 'image' && ov.cta_image_src) {
+        if (_drawPhoneCtaImageOverlay(ctx, ov, originalOverlay, x, y, w, h, canvasW, canvasH, currentTime)) {
+            return;
+        }
+    }
     const directionSample = [ov.title_text, ov.body_text, ov.footer_text].filter(Boolean).join('\n');
     ctx.direction = (typeof ReelsTextDirection !== 'undefined')
         ? ReelsTextDirection.resolve(ov.text_direction, directionSample)
         : 'ltr';
-    const originalOverlay = ov;
     const guideLineW = Math.max(2, canvasW / 540);
     if (ov.body_follow_title) {
         const indep = ov.independent_effects;

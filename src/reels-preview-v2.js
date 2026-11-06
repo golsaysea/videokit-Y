@@ -1819,6 +1819,7 @@
         const filterByToggle = (ov) => {
             if (!ov) return false;
             if (ov._insertClip) return true;
+            if (ov.is_phone_cta) return !ov.disabled && Boolean(showDecor || showOverlay);
             if (ov.type === 'decor') return showDecor;
             return showOverlay;
         };

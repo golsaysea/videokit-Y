@@ -485,7 +485,25 @@ async function reelsWysiwygExport(params) {
     // 文件猜测，否则会把另一任务的图片/GIF/视频覆层烧进成片。
     const overlayMediaBindings = [];
     for (const ov of (taskOverlays || [])) {
-        if (!ov || ov.disabled || !['image', 'video'].includes(ov.type)) continue;
+        if (!ov || ov.disabled) continue;
+        if (ov.is_phone_cta && ov.cta_mode === 'image' && ov.cta_image_src) {
+            const rawCtaSrc = String(ov.cta_image_src || '').trim();
+            if (/^data:image\//i.test(rawCtaSrc)) {
+                ov._exportImage = await _loadImage(rawCtaSrc);
+                overlayMediaBindings.push(`${ov.name || ov.id || '邀约电话图'}=data-url`);
+            } else {
+                const probeOv = { ...ov, content: rawCtaSrc };
+                const resolvedCtaPath = await _resolveMissingOverlayPath(probeOv, taskOverlays, log);
+                const finalCtaSrc = (resolvedCtaPath && !/^blob:/i.test(resolvedCtaPath) && (await _overlayLocalPathExists(resolvedCtaPath)))
+                    ? resolvedCtaPath
+                    : rawCtaSrc;
+                ov.cta_image_src = finalCtaSrc;
+                ov._exportImage = await _loadImage(finalCtaSrc);
+                overlayMediaBindings.push(`${ov.name || ov.id || '邀约电话图'}=${finalCtaSrc}`);
+            }
+            continue;
+        }
+        if (!['image', 'video'].includes(ov.type)) continue;
         const mediaPath = await _resolveMissingOverlayPath(ov, taskOverlays, log);
         if (!mediaPath || /^blob:/i.test(mediaPath) || !(await _overlayLocalPathExists(mediaPath))) {
             throw new Error(`覆层「${ov.name || ov.id || '未命名媒体'}」缺少有效本地路径，请重新选择该覆层素材后再导出：${ov.content || '(空)'}`);

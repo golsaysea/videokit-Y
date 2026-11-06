@@ -1818,6 +1818,10 @@ function _ovGetBounds(ov) {
     let x = parseFloat(ov.x || 0);
     let y, h;
     if (ov.type === 'textcard' && ov._renderedY != null) {
+        if (ov.is_phone_cta && ov.cta_mode === 'image' && ov._renderedW > 0) {
+            x = ov._renderedX ?? x;
+            w = ov._renderedW;
+        }
         y = ov._renderedY;
         h = ov._renderedH || 100;
     } else if (ov.type === 'scroll' && ov._renderedW > 0 && ov._renderedH > 0) {
@@ -1945,9 +1949,12 @@ function _ovOnMouseDown(e) {
             origX: hit.x, origY: hit.y, origW: hit.w, origH: hit.h || hit._renderedH || 100,
             handle: null, // move mode
         };
-        // Sync with overlay panel
+        // Sync with overlay panel & decor panel
         if (_reelsState.overlayPanel) {
             _reelsState.overlayPanel.selectOverlay(hit);
+        }
+        if (hit.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncPhoneCtaUI === 'function') {
+            _reelsState.decorPanel._syncPhoneCtaUI(hit);
         }
         e.stopPropagation();
     } else {
@@ -1995,6 +2002,10 @@ function _ovOnMouseMove(e) {
     if (_reelsState.overlayPanel && _reelsState.overlayPanel._selectedOv?.id === ov.id) {
         _reelsState.overlayPanel._syncFromOverlay(ov);
     }
+    if (ov.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncPhoneCtaUI === 'function') {
+        _reelsState.decorPanel._syncPhoneCtaUI(ov);
+    }
+    reelsUpdatePreview();
 }
 
 function _ovOnMouseUp(e) {
@@ -2004,6 +2015,9 @@ function _ovOnMouseUp(e) {
         _syncCurrentOverlayEditorToSelectedTask();
         if (ov && _reelsState.overlayPanel && typeof _reelsState.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
             _reelsState.overlayPanel._syncOverlayStyleToScopeTasks(ov);
+        }
+        if (ov && ov.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncDecorStackToScopeTasks === 'function') {
+            _reelsState.decorPanel._syncDecorStackToScopeTasks();
         }
     }
     _reelsState.overlayDrag = null;
@@ -4407,7 +4421,7 @@ function _reelsUpdatePreviewInternal() {
             }
         }
         // ── 选中框 + 拖拽手柄 ──
-        if (ovMgr && showOverlay && passMode !== 'middle') {
+        if (ovMgr && (showOverlay || showDecor) && passMode !== 'middle') {
             _drawOverlaySelectionUI(ctx, w, h);
         }
     }
@@ -10144,8 +10158,8 @@ function reelsSelectTask(idx, options = {}) {
         } else {
             prevTask.overlays = [...(_reelsState.overlayProxy.overlayMgr.overlays || [])];
         }
-        // 若点缀面板勾选了“同步”且上一任务已有 decor 图层，切换任务前自动确保作用范围内任务均已同步
-        if (!_reelsState._coverEditMode && (prevTask.overlays || []).some(o => o && o.type === 'decor')) {
+        // 若点缀面板勾选了“同步”且上一任务已有 decor 图层或邀约电话，切换任务前自动确保作用范围内任务均已同步
+        if (!_reelsState._coverEditMode && (prevTask.overlays || []).some(o => o && (o.type === 'decor' || o.is_phone_cta))) {
             if (_reelsState.decorPanel && typeof _reelsState.decorPanel._syncDecorStackToScopeTasks === 'function') {
                 _reelsState.decorPanel._syncDecorStackToScopeTasks();
             }
@@ -15845,6 +15859,7 @@ function _getTaskRenderOverlays(task, customOptions = {}) {
     const filterByToggle = (ov) => {
         if (!ov) return false;
         if (ov._insertClip) return true;
+        if (ov.is_phone_cta) return !ov.disabled && Boolean(showDecor || showOverlay);
         if (ov.type === 'decor') return Boolean(showDecor);
         return Boolean(showOverlay);
     };
