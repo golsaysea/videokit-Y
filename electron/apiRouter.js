@@ -493,8 +493,12 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
         case 'queue-library/load': {
             const { createQueueLibrary } = require('./services/queueLibrary');
             const sharedProfile = require('./services/sharedProfile');
+            const electronApp = require('electron')?.app;
+            const userDataDir = (electronApp && typeof electronApp.getPath === 'function')
+                ? electronApp.getPath('userData')
+                : path.join(os.homedir(), '.videokit');
             const primaryRoot = path.join(
-                sharedProfile.getPrimarySharedProfileDir() || require('electron').app.getPath('userData'),
+                sharedProfile.getPrimarySharedProfileDir() || userDataDir,
                 'queue-library',
             );
             const extraRoots = sharedProfile.getCandidateQueueLibraryDirs();
@@ -2887,8 +2891,11 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
                 throw new Error('不支持的归档格式');
             }
 
-            const { app } = require('electron');
-            const permAssetsDir = path.join(app.getPath('userData'), 'videokit-templates', 'assets', `tpl_${Date.now()}`);
+            const electronApp = require('electron')?.app;
+            const userDataDir = (electronApp && typeof electronApp.getPath === 'function')
+                ? electronApp.getPath('userData')
+                : path.join(os.homedir(), '.videokit');
+            const permAssetsDir = path.join(userDataDir, 'videokit-templates', 'assets', `tpl_${Date.now()}`);
             fs.mkdirSync(permAssetsDir, { recursive: true });
 
             const tmpAssetsDir = path.join(extractDir, 'Assets');
@@ -2950,7 +2957,7 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
 
             // 获取窗口以发送进度事件
             const { BrowserWindow } = require('electron');
-            const wins = BrowserWindow.getAllWindows();
+            const wins = (BrowserWindow && typeof BrowserWindow.getAllWindows === 'function') ? BrowserWindow.getAllWindows() : [];
 
             return await wav2lipService.lipSync({
                 facePath: data.face_path,
@@ -3235,4 +3242,4 @@ async function routeUpload(endpoint, fileBuffer, fileName, formData) {
     }
 }
 
-module.exports = { registerAPIHandlers, routeAPI };
+module.exports = { registerAPIHandlers, routeAPI, routeUpload };

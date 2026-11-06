@@ -432,3 +432,106 @@ test('A16-A18: server.py Waitress map_size removed, Bearer Token auth, and /api/
     assert.match(serverPy, /@app\.route\('\/api\/reels\/render\/<task_id>\/download',\s*methods=\['GET'\]\)/);
     assert.match(serverPy, /_ALLOWED_RENDER_EXTENSIONS/);
 });
+
+test('A19: Native Web Edition (web-bridge.js + videokit-web-server.cjs) RPC, upload, Range streaming, and Token auth', async () => {
+    const http = require('http');
+    const { createWebServer } = require('../bin/videokit-web-server.cjs');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'videokit-web-test-'));
+    const server = createWebServer({ token: 'secret-web-token' });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = server.address().port;
+
+    const httpReq = (reqPath, { method = 'GET', headers = {}, body = null } = {}) =>
+        new Promise((resolve, reject) => {
+            const req = http.request(
+                { hostname: '127.0.0.1', port, path: reqPath, method, headers },
+                (res) => {
+                    const chunks = [];
+                    res.on('data', (c) => chunks.push(c));
+                    res.on('end', () => {
+                        const buf = Buffer.concat(chunks);
+                        resolve({ status: res.statusCode, headers: res.headers, body: buf, text: buf.toString('utf8') });
+                    });
+                }
+            );
+            req.on('error', reject);
+            if (body) req.write(body);
+            req.end();
+        });
+
+    try {
+        // 1. /api/health is public
+        const healthRes = await httpReq('/api/health');
+        assert.equal(healthRes.status, 200);
+        const healthJson = JSON.parse(healthRes.text);
+        assert.equal(healthJson.status, 'ok');
+        assert.equal(healthJson.auth_required, true);
+
+        // 2. Unauthorized RPC is rejected with 401
+        const unauthRes = await httpReq('/api/web-bridge/rpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getAppVersion', args: [] }),
+        });
+        assert.equal(unauthRes.status, 401);
+
+        // 3. Authorized RPC works (getAppVersion, webListDir, scanFonts)
+        const authHeaders = {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer secret-web-token',
+        };
+        const verRes = await httpReq('/api/web-bridge/rpc', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ action: 'getAppVersion', args: [] }),
+        });
+        assert.equal(verRes.status, 200);
+        const verJson = JSON.parse(verRes.text);
+        assert.equal(verJson.ok, true);
+        assert.match(verJson.result, /^\d+\.\d+\.\d+/);
+
+        const listRes = await httpReq('/api/web-bridge/rpc', {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({ action: 'webListDir', args: [demoDir] }),
+        });
+        assert.equal(listRes.status, 200);
+        const listJson = JSON.parse(listRes.text);
+        assert.equal(listJson.ok, true);
+        assert.ok(Array.isArray(listJson.result.items) && listJson.result.items.length > 0);
+
+        // 4. Raw upload endpoint saves file and returns server path
+        const sampleBytes = Buffer.from('WEB_BRIDGE_UPLOAD_TEST_CONTENT_1234567890');
+        const upRes = await httpReq('/api/web-bridge/upload-raw?name=sample.txt', {
+            method: 'POST',
+            headers: {
+                Authorization: 'Bearer secret-web-token',
+                'Content-Type': 'application/octet-stream',
+            },
+            body: sampleBytes,
+        });
+        assert.equal(upRes.status, 200);
+        const upJson = JSON.parse(upRes.text);
+        assert.equal(upJson.ok, true);
+        assert.ok(fs.existsSync(upJson.path));
+
+        // 5. Media endpoint supports HTTP Range (206 Partial Content) with token query param
+        const mediaRes = await httpReq(
+            `/api/web-bridge/media?path=${encodeURIComponent(upJson.path)}&token=secret-web-token`,
+            {
+                method: 'GET',
+                headers: { Range: 'bytes=0-9' },
+            }
+        );
+        assert.equal(mediaRes.status, 206);
+        assert.equal(mediaRes.text, 'WEB_BRIDGE');
+
+        // Clean up uploaded file
+        try { fs.unlinkSync(upJson.path); } catch (_) {}
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

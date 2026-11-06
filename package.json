@@ -8,13 +8,15 @@
   },
   "main": "electron/main.js",
   "bin": {
-    "videokit-cli": "bin/videokit-cli.cjs"
+    "videokit-cli": "bin/videokit-cli.cjs",
+    "videokit-web": "bin/videokit-web-server.cjs"
   },
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/pre-build-check.js",
     "build": "vite build",
     "build:web": "vite build",
+    "start:web": "node bin/videokit-web-server.cjs",
     "build:desktop": "npm run build && electron-builder",
     "build:all": "npm run build && echo '✅ 网站版本已生成到 dist/' && electron-builder && echo '✅ 桌面版本已生成到 dist-electron/'",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:${VITE_PORT:-5173} && node scripts/run-electron-dev.js\"",
