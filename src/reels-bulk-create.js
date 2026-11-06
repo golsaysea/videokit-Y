@@ -2086,7 +2086,7 @@ function _bcEditTemplateOverlays(ti) {
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, 1080, 1920);
         const time = Math.max(0, Number(get('[data-time]').value) || 0);
-        (mgr.overlays || []).forEach(overlay => ReelsOverlay.drawOverlay(ctx, { ...overlay, _exporting: true }, time, 1080, 1920));
+        (mgr.overlays || []).forEach(overlay => ReelsOverlay.drawOverlay(ctx, { ...overlay, _exporting: true, _staticPreview: true }, time, 1080, 1920));
     };
 
     const saveChanges = () => {
@@ -2253,7 +2253,7 @@ function _bcPreviewGroup(key, initialRow = null, onClose = null) {
         ctx.clearRect(0, 0, 1080, 1920);
         if (!task) return;
         const time = Math.max(0, Number(get('[data-time]').value) || 0);
-        (task.overlays || []).forEach(overlay => ReelsOverlay.drawOverlay(ctx, { ...overlay, _exporting: true }, time, 1080, 1920));
+        (task.overlays || []).forEach(overlay => ReelsOverlay.drawOverlay(ctx, { ...overlay, _exporting: true, _staticPreview: true }, time, 1080, 1920));
     };
     const renderBoundTextEditors = () => {
         const container = get('[data-copy-fields-container]');

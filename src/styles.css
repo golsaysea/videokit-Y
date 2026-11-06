@@ -1688,15 +1688,22 @@ body .tab:hover {
     background: var(--bg-hover) !important;
 }
 
-body .btn-secondary {
+body .btn-secondary:not(.rop-scroll-tw-style-preset):not(.rop-scroll-card-bg-preset):not(.rop-scroll-body-bg-preset):not(.rop-decor-preset-btn) {
     background: var(--bg-hover-strong) !important;
     color: var(--text-primary) !important;
     border-color: var(--border-color) !important;
 }
 
-body .btn-secondary:hover {
+body .btn-secondary:not(.rop-scroll-tw-style-preset):not(.rop-scroll-card-bg-preset):not(.rop-scroll-body-bg-preset):not(.rop-decor-preset-btn):hover {
     background: var(--bg-hover-strong) !important;
     filter: brightness(1.2);
+}
+
+body .rop-scroll-tw-style-preset:hover,
+body .rop-scroll-card-bg-preset:hover,
+body .rop-scroll-body-bg-preset:hover,
+body .rop-decor-preset-btn:hover {
+    filter: brightness(1.15);
 }
 
 body .panel-content .hint {

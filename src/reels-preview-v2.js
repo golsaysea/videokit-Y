@@ -1850,7 +1850,7 @@
                 const measured = { ...(window.ReelsScrollTiming?.renderingOverlay(ov, task, {
                     bodyDuration: Math.max(0, computeDuration() - getTimelineOffset(task)),
                     mediaDurations: window._reelsState?._mediaDurations || {},
-                }) || ov), _taskSegments: task.segments, _exporting: false };
+                }) || ov), _taskSegments: task.segments, _exporting: false, _previewPlaying: Boolean(state.isPlaying) };
                 try {
                     window.ReelsOverlay.drawOverlay(measureCtx, measured, time, w, h);
                     ov._scrollBodyFirstLineY = measured._scrollBodyFirstLineY;
@@ -1874,7 +1874,7 @@
                         bodyDuration: Math.max(0, computeDuration() - getTimelineOffset(task)),
                         mediaDurations: window._reelsState?._mediaDurations || {},
                     }) || ov;
-                    const previewOv = { ...effective, _allOverlays: allEnabled, _taskSegments: task.segments, _exporting: false };
+                    const previewOv = { ...effective, _allOverlays: allEnabled, _taskSegments: task.segments, _exporting: false, _previewPlaying: Boolean(state.isPlaying) };
                     window.ReelsOverlay.drawOverlay(ctx, previewOv, time, w, h);
                     // Keep computed bounds available to hit-testing/property UI.
                     for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX']) {

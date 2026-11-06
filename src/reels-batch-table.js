@@ -83,7 +83,7 @@ window.openBatchOverlayPresetEditor = function(name, preset) {
     }
 
     let bgPath = '';
-    const draw = () => { const c = get('[data-canvas]'), ctx = c.getContext('2d'); ctx.clearRect(0,0,1080,1920); for (const ov of mgr.overlays) window.ReelsOverlay.drawOverlay(ctx, { ...ov, _exporting:true }, 0, 1080, 1920); };
+    const draw = () => { const c = get('[data-canvas]'), ctx = c.getContext('2d'); ctx.clearRect(0,0,1080,1920); for (const ov of mgr.overlays) window.ReelsOverlay.drawOverlay(ctx, { ...ov, _exporting:true, _staticPreview:true }, 0, 1080, 1920); };
     const proxy = { overlayMgr:mgr, getCanvasSize:()=>({w:1080,h:1920,cx:540,cy:960}), getDuration:()=>9999, previewEnd:()=>{}, addOverlay:o=>{mgr.addOverlay(o);draw();panel._refreshList();}, removeOverlay:id=>{mgr.removeOverlay(id);draw();panel._refreshList();}, render:draw, getOverlayAboveSubtitle:()=>true, setOverlayAboveSubtitle:()=>{} };
     const panel = new window.ReelsOverlayPanel(get('[data-panel]'), proxy); get('[data-panel]').querySelector('.rop-section')?.remove(); panel._refreshList(); if(mgr.overlays[0]) panel.selectOverlay(mgr.overlays[0]); draw();
     get('[data-bg]').onclick = async () => { const p = await window.electronAPI?.selectFiles?.({title:'选择临时预览背景',filters:[{name:'图片或视频',extensions:['mp4','mov','mkv','webm','jpg','jpeg','png','webp','gif']}]}); bgPath=p?.[0]||''; if(!bgPath)return; const isImg=/\.(jpg|jpeg|png|webp|gif)$/i.test(bgPath), el=isImg?get('[data-image]'):get('[data-video]'); get('[data-image]').style.display=isImg?'':'none';get('[data-video]').style.display=isImg?'none':'';el.src=window.electronAPI?.toFileUrl?window.electronAPI.toFileUrl(bgPath):bgPath;if(!isImg)el.play().catch(()=>{});get('[data-label]').textContent=bgPath.split(/[\\/]/).pop(); };
@@ -304,7 +304,7 @@ function _isBatchGroupedProjection(tasks = window._reelsState?.tasks || []) {
 }
 
 /** 将外部按组任务的修改精确回写到各自标签，避免覆盖当前活动标签。 */
-function _syncGroupedProjectionToTabs(activeTasks) {
+function _syncGroupedProjectionToTabs(activeTasks, forceAllTabs = false) {
     const grouped = new Map();
     for (const task of activeTasks) {
         if (!task?._batchTabId){
@@ -319,15 +319,28 @@ function _syncGroupedProjectionToTabs(activeTasks) {
         if (!grouped.has(task._batchTabId)) grouped.set(task._batchTabId, []);
         grouped.get(task._batchTabId).push(task);
     }
+    const selectedTaskTabId = window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?._batchTabId || '';
+    const styleScope = document.getElementById('reels-style-scope')?.value || document.getElementById('rop-style-scope')?.value || 'folder';
+    const syncAllBecauseGlobalScope = forceAllTabs || styleScope === 'all';
     // A task may have just arrived from another workflow while the external
     // queue is a merged projection.  Include every group present in that queue,
     // not only the groups that were part of the older projection snapshot.
     for (const tabId of new Set([...( _batchTableState.appliedTabIds || []), ...grouped.keys()])) {
         const tab = _batchTableState.tabs.find(t => t.id === tabId);
         if (!tab) continue;
-        tab.tasks = (grouped.get(tabId) || [])
-            .sort((a, b) => (a._batchTaskOrder || 0) - (b._batchTaskOrder || 0))
-            .map(_stripBatchGroupMeta);
+        const projGroup = (grouped.get(tabId) || []).sort((a, b) => (a._batchTaskOrder || 0) - (b._batchTaskOrder || 0));
+        const existingTasks = Array.isArray(tab.tasks) ? tab.tasks : [];
+        const membershipChanged = projGroup.length !== existingTasks.length ||
+            projGroup.some((pt, i) => pt?.id !== existingTasks[i]?.id);
+        const shouldResyncTab = syncAllBecauseGlobalScope ||
+            membershipChanged ||
+            Boolean(tab._dirty) ||
+            !Array.isArray(tab._cachedSerializedTasks) ||
+            tab.id === _batchTableState.activeTabId ||
+            (selectedTaskTabId && tab.id === selectedTaskTabId);
+        if (!shouldResyncTab) continue;
+        tab.tasks = projGroup.map(_stripBatchGroupMeta);
+        tab._dirty = true;
     }
 }
 
@@ -18634,11 +18647,26 @@ function _serializeBatchValue(value, seen = new WeakSet()) {
     return out;
 }
 
+const _VALID_TASK_OVERLAY_TYPES = new Set(['text', 'textcard', 'scroll', 'image', 'video', 'solid_mask', 'decor', 'pip']);
+function _isValidTaskOverlayObj(ov) {
+    return Boolean(
+        ov &&
+        typeof ov === 'object' &&
+        !Array.isArray(ov) &&
+        !Array.isArray(ov.tasks) &&
+        typeof ov.type === 'string' &&
+        _VALID_TASK_OVERLAY_TYPES.has(ov.type)
+    );
+}
+
 /** 序列化任务数据（去掉不可序列化的部分） */
 function _serializeTasks(tasks) {
     return (tasks || []).map(t => {
-        // 确保被保存的所有层在内存中都有 ID
+        // 过滤掉异常混入的非覆层对象（例如误导入的工程标签对象），并确保有效覆层都有 ID
         if (t.overlays && Array.isArray(t.overlays)) {
+            if (t.overlays.some(ov => !_isValidTaskOverlayObj(ov))) {
+                t.overlays = t.overlays.filter(_isValidTaskOverlayObj);
+            }
             t.overlays.forEach(ov => {
                 if (!ov.id) {
                     ov.id = 'ov_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now().toString(36);
@@ -18671,7 +18699,7 @@ function _batchAutoSave(options = {}) {
         if (!_batchTableState.projectName) {
             _batchTableState.projectName = 'UntitledProject.json';
         }
-        const appliedSet = new Set(_batchTableState.appliedTabIds || []);
+        const selectedTaskTabId = window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?._batchTabId || '';
         const forceFullSerialize = !!options.forceFullSerialize;
         const data = {
             timestamp: new Date().toISOString(),
@@ -18682,10 +18710,12 @@ function _batchAutoSave(options = {}) {
             projectDir: _batchTableState.projectDir || defaultProjDir || '',
             projectName: _batchTableState.projectName || 'UntitledProject.json',
             tabs: _batchTableState.tabs.map(tab => {
-                const isActiveOrApplied = tab.id === _batchTableState.activeTabId || appliedSet.has(tab.id);
+                const isDirtyOrActive = tab.id === _batchTableState.activeTabId ||
+                    (selectedTaskTabId && tab.id === selectedTaskTabId) ||
+                    Boolean(tab._dirty);
                 const tasksLen = Array.isArray(tab.tasks) ? tab.tasks.length : 0;
                 const canReuseCache = !forceFullSerialize &&
-                    !isActiveOrApplied &&
+                    !isDirtyOrActive &&
                     Array.isArray(tab._cachedSerializedTasks) &&
                     tab._cachedTasksRef === tab.tasks &&
                     tab._cachedTasksLen === tasksLen;
@@ -18693,6 +18723,7 @@ function _batchAutoSave(options = {}) {
                 tab._cachedSerializedTasks = serializedTasks;
                 tab._cachedTasksRef = tab.tasks;
                 tab._cachedTasksLen = tasksLen;
+                tab._dirty = false;
                 return {
                     id: tab.id,
                     name: tab.name,
@@ -18705,6 +18736,7 @@ function _batchAutoSave(options = {}) {
             }),
         };
         const jsonStr = JSON.stringify(data);
+        window._workspaceDirty = false;
         // Persist the workspace independently of named project saves and browser quota.
         let diskSaved=false,cacheSaved=false;
         if (window.electronAPI?.saveBatchWorkspace)diskSaved=window.electronAPI.saveBatchWorkspace(jsonStr)===true;
@@ -18712,7 +18744,7 @@ function _batchAutoSave(options = {}) {
             console.warn('[BatchTable] Workspace file save failed');
             if (typeof showToast === 'function') showToast('标签自动保存失败，请检查软件目录是否可写', 'warning', 5000);
         }
-        if (!diskSaved || jsonStr.length <= 4_500_000) {
+        if (!diskSaved || jsonStr.length <= 1_500_000) {
             try { localStorage.setItem(BATCH_CONFIG_KEY, jsonStr); cacheSaved=true; }
             catch (e) { console.warn('[BatchTable] Browser cache save failed:', e.message); }
         }
@@ -18775,7 +18807,9 @@ function _batchAutoRestore() {
                 if (!cached || (diskTime > 0 && diskTime >= cachedTime) || (diskTime === 0 && cachedTime === 0 && diskCount >= cachedCount)) {
                     raw = diskRaw;
                     data = disk;
-                    try { localStorage.setItem(BATCH_CONFIG_KEY, raw); } catch (_) { }
+                    if (raw.length <= 1_500_000) {
+                        try { localStorage.setItem(BATCH_CONFIG_KEY, raw); } catch (_) { }
+                    }
                 } else if (raw) {
                     data = cached;
                     try { window.electronAPI?.saveBatchWorkspace?.(raw); } catch (_) { }
@@ -18794,16 +18828,31 @@ function _batchAutoRestore() {
                 ? (defaultProjDir || data.projectDir || '')
                 : data.projectDir;
             _batchTableState.projectName = data.projectName || 'UntitledProject.json';
-            _batchTableState.tabs = data.tabs.map(t => ({
-                id: t.id,
-                name: t.name,
-                materialDir: t.materialDir || '',
-                _folderQueueId: t.folderQueueId || '',
-                // 兼容此前没有持久化该标记的版本。
-                _externalFolderQueuesCombined: !!t.externalFolderQueuesCombined || t.name === '批量导入任务',
-                lastRefreshTime: t.lastRefreshTime || null,
-                tasks: t.tasks || [],
-            }));
+            let sanitizedOverlayCount = 0;
+            _batchTableState.tabs = data.tabs.map(t => {
+                const tabTasks = Array.isArray(t.tasks) ? t.tasks : [];
+                tabTasks.forEach(task => {
+                    if (task && Array.isArray(task.overlays) && task.overlays.some(ov => !_isValidTaskOverlayObj(ov))) {
+                        const beforeLen = task.overlays.length;
+                        task.overlays = task.overlays.filter(_isValidTaskOverlayObj);
+                        sanitizedOverlayCount += (beforeLen - task.overlays.length);
+                    }
+                });
+                return {
+                    id: t.id,
+                    name: t.name,
+                    materialDir: t.materialDir || '',
+                    _folderQueueId: t.folderQueueId || '',
+                    // 兼容此前没有持久化该标记的版本。
+                    _externalFolderQueuesCombined: !!t.externalFolderQueuesCombined || t.name === '批量导入任务',
+                    lastRefreshTime: t.lastRefreshTime || null,
+                    tasks: tabTasks,
+                    _cachedSerializedTasks: tabTasks,
+                    _cachedTasksRef: tabTasks,
+                    _cachedTasksLen: tabTasks.length,
+                    _dirty: false,
+                };
+            });
             if(data.uiState && window._reelsState){
                 if(data.uiState.globalSubtitleStyle)window._reelsState.globalSubtitleStyle=_cloneBatchTasks([data.uiState.globalSubtitleStyle])[0];
                 for(const key of ['targetWidth','targetHeight'])if(data.uiState[key])window._reelsState[key]=data.uiState[key];
@@ -18866,7 +18915,12 @@ function _batchAutoRestore() {
                     restoredTasks.push(cloned);
                     contributed = true;
                 });
-                if (uniqueTabTasks.length !== tabTasks.length) tab.tasks = uniqueTabTasks;
+                if (uniqueTabTasks.length !== tabTasks.length) {
+                    tab.tasks = uniqueTabTasks;
+                    tab._cachedSerializedTasks = uniqueTabTasks;
+                    tab._cachedTasksRef = uniqueTabTasks;
+                    tab._cachedTasksLen = uniqueTabTasks.length;
+                }
                 if (contributed) restoredTabIds.push(tab.id);
             });
             if (restoredTasks.length > 0) {
@@ -18877,10 +18931,10 @@ function _batchAutoRestore() {
                 const selectedId=data.uiState?.selectedTaskId;
                 if(selectedId){const index=restoredTasks.findIndex(t=>t.id===selectedId);if(index>=0 && typeof reelsSelectTask==='function')setTimeout(()=>reelsSelectTask(index),0);}
             }
-            console.log(`[BatchTable] Auto-restored ${_batchTableState.tabs.length} tabs, ${restoredTasks.length} unique tasks${duplicateTaskCount ? `, skipped ${duplicateTaskCount} duplicates` : ''}${migratedLegacyStyleCount ? `, migrated ${migratedLegacyStyleCount} legacy styles` : ''} from ${data.timestamp}`);
-            if (duplicateTaskCount > 0 || migratedLegacyStyleCount > 0) {
+            console.log(`[BatchTable] Auto-restored ${_batchTableState.tabs.length} tabs, ${restoredTasks.length} unique tasks${duplicateTaskCount ? `, skipped ${duplicateTaskCount} duplicates` : ''}${migratedLegacyStyleCount ? `, migrated ${migratedLegacyStyleCount} legacy styles` : ''}${sanitizedOverlayCount ? `, cleaned ${sanitizedOverlayCount} invalid overlays` : ''} from ${data.timestamp}`);
+            if (duplicateTaskCount > 0 || migratedLegacyStyleCount > 0 || sanitizedOverlayCount > 0) {
                 // 延迟回写清理后的标签数据，避免阻塞首屏启动。
-                setTimeout(() => _batchAutoSave({ skipSync: true }), 1500);
+                setTimeout(() => _batchAutoSave({ skipSync: true, forceFullSerialize: sanitizedOverlayCount > 0 }), 1500);
             }
         } else if (data.tasks && data.tasks.length > 0) {
             // v1: legacy single-list format — migrate to tab
@@ -19883,9 +19937,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }, 1200);
 
-    // 每30秒自动保存一次（安全网）
+    // 每30秒自动保存一次（安全网：仅在有未保存改动时触发，避免无意义的整包序列化阻塞界面）
     setInterval(() => {
-        if (window._reelsState && _batchTableState.tabs.length > 0) {
+        if (window._workspaceDirty && window._reelsState && _batchTableState.tabs.length > 0) {
             _batchAutoSave();
         }
     }, 30000);
@@ -19906,8 +19960,9 @@ let _workspaceEditSaveTimer;
 function scheduleWorkspaceEditSave(event){
     if(!event?.isTrusted || !event.target?.closest?.('#batch-reels-panel, .reels-batch-table-container'))return;
     window._workspaceCloseAlreadySaved=false;
+    window._workspaceDirty=true;
     clearTimeout(_workspaceEditSaveTimer);
-    _workspaceEditSaveTimer=setTimeout(()=>{_workspaceEditSaveTimer=null;_batchAutoSave();},1800);
+    _workspaceEditSaveTimer=setTimeout(()=>{_workspaceEditSaveTimer=null;_batchAutoSave();},3500);
 }
 document.addEventListener('input',scheduleWorkspaceEditSave);
 document.addEventListener('change',scheduleWorkspaceEditSave);

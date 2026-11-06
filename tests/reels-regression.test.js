@@ -528,7 +528,12 @@ test('Item 13: Scroll text real-time preview responds immediately to uppercase a
         stroke() {},
         strokeRect() {},
         setLineDash() {},
+        arc() {},
+        ellipse() {},
+        bezierCurveTo() {},
+        createPattern: () => ({}),
         createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
         measureText: (txt) => ({ width: String(txt || '').length * 18 }),
         fillText: (txt) => { drawnTexts.push(String(txt)); },
         strokeText: () => {},
@@ -1700,7 +1705,12 @@ test('Synthetic bold on single-weight fonts and default off state for scroll typ
         stroke() {},
         strokeRect() {},
         setLineDash() {},
+        arc() {},
+        ellipse() {},
+        bezierCurveTo() {},
+        createPattern: () => ({}),
         createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
         measureText: (txt) => ({ width: String(txt || '').length * 18 }),
         fillText() { drawnFonts.push(this.font); },
         strokeText() {},
@@ -1834,6 +1844,50 @@ test('Synthetic bold on single-weight fonts and default off state for scroll typ
     assert.ok(
         fillRecords.some(r => r.text.includes('have time.') && r.fillStyle.toLowerCase() === '#ffffff'),
         'Already spoken words on the same line must render in base #FFFFFF color'
+    );
+
+    // 4. When paused at t=0.0s (or in Preset Editor with _staticPreview=true) with hide_unread=true (unrevealed_opacity=0),
+    // enabling scroll_typewriter_enabled must show a static preview demonstration (first ~2-3 lines + ribbon backing) instead of disappearing
+    const twHiddenUnreadOv = ReelsOverlay.createScrollOverlay({
+        scroll_title: '',
+        scroll_title_enabled: false,
+        content: 'Line one of the prayer.\nLine two of the prayer.\nLine three of the prayer.\nLine four of the prayer.',
+        scroll_uppercase: false,
+        color: '#FFFDF9',
+        scroll_body_bg_enabled: true,
+        scroll_body_bg_style: 'xmas_candy_ribbon',
+        scroll_body_bg_mode: 'inline-joined',
+        scroll_typewriter_enabled: true,
+        scroll_tw_speech_sync: true,
+        scroll_tw_reveal_type: 'char',
+        scroll_tw_hide_unread: true,
+        scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: true,
+        scroll_tw_active_color: '#ffd700',
+        start: 0,
+        end: 12,
+        _exporting: false,
+        _previewPlaying: false,
+        _taskSegments: [
+            {
+                start: 4.0,
+                end: 10.0,
+                text: 'Line one of the prayer. Line two of the prayer. Line three of the prayer. Line four of the prayer.',
+            },
+        ],
+    });
+    fillRecords.length = 0;
+    ReelsOverlay.drawOverlay(ovCtx, twHiddenUnreadOv, 0.0, 1080, 1920);
+    assert.ok(
+        fillRecords.some(r => r.text.includes('Line one')),
+        'Paused preview at t=0.0s with hide_unread=true must show demonstration lines instead of blanking out the subtitle'
+    );
+    // Preset editor static preview (_exporting: true, _staticPreview: true) at t=0.0s must also show demonstration lines
+    fillRecords.length = 0;
+    ReelsOverlay.drawOverlay(ovCtx, { ...twHiddenUnreadOv, _exporting: true, _staticPreview: true }, 0.0, 1080, 1920);
+    assert.ok(
+        fillRecords.some(r => r.text.includes('Line one')),
+        'Preset editor static preview at t=0.0s with hide_unread=true must show demonstration lines'
     );
 });
 

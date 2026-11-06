@@ -15619,9 +15619,9 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 自动保存 (每 60 秒)
+    // 自动保存 (每 60 秒，仅当工程存在未保存改动时触发)
     setInterval(() => {
-        if (_reelsState.tasks.length > 0 && window.ReelsProject) {
+        if (window._workspaceDirty && _reelsState.tasks.length > 0 && window.ReelsProject) {
             const style = _readStyleFromUI();
             _persistSubtitleStyleByScope(style);
             const globalStyle = _cloneSubtitleStyle(_reelsState.globalSubtitleStyle) || style;

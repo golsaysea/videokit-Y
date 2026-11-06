@@ -4657,21 +4657,37 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 let lastRangeIdx = lineRanges.length - 1;
                 while (lastRangeIdx >= 0 && !lineRanges[lastRangeIdx]) lastRangeIdx--;
                 const lastRange = lastRangeIdx >= 0 ? lineRanges[lastRangeIdx] : null;
-                if (firstRange && currentTime <= firstRange.start) {
+                const _hideUnreadEarly = ov.scroll_tw_hide_unread !== undefined
+                    ? Boolean(ov.scroll_tw_hide_unread)
+                    : (Number(ov.scroll_tw_unrevealed_opacity ?? 0) < 100);
+                const _unrevealedOpEarly = _hideUnreadEarly
+                    ? Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100))
+                    : 1.0;
+                const _isRealExportEarly = Boolean(ov._exporting && !ov._staticPreview);
+                const _isPlayingEarly = Boolean(ov._previewPlaying);
+                let _evalTwTime = currentTime;
+                if (!_isRealExportEarly && !_isPlayingEarly && _hideUnreadEarly && _unrevealedOpEarly <= 0.05 && firstRange && currentTime <= Math.max(0.05, firstRange.start + 0.05)) {
+                    const validRanges = lineRanges.filter(Boolean);
+                    const demoRange = validRanges[Math.min(validRanges.length - 1, Math.min(2, Math.max(0, Math.floor(validRanges.length * 0.35))))];
+                    if (demoRange) {
+                        _evalTwTime = demoRange.start + (demoRange.end - demoRange.start) * 0.65;
+                    }
+                }
+                if (firstRange && _evalTwTime <= firstRange.start) {
                     smoothActiveLine = 0;
-                } else if (lastRange && currentTime >= lastRange.end) {
+                } else if (lastRange && _evalTwTime >= lastRange.end) {
                     smoothActiveLine = lastRangeIdx + 1;
                 } else {
                     for (let li = 0; li < lineRanges.length; li++) {
                         const lr = lineRanges[li];
                         if (!lr) continue;
-                        if (currentTime >= lr.start && currentTime <= lr.end) {
-                            const frac = (currentTime - lr.start) / Math.max(0.05, lr.end - lr.start);
+                        if (_evalTwTime >= lr.start && _evalTwTime <= lr.end) {
+                            const frac = (_evalTwTime - lr.start) / Math.max(0.05, lr.end - lr.start);
                             smoothActiveLine = li + Math.max(0, Math.min(1, frac));
                             break;
                         }
                         const nextLr = lineRanges[li + 1];
-                        if (nextLr && currentTime > lr.end && currentTime < nextLr.start) {
+                        if (nextLr && _evalTwTime > lr.end && _evalTwTime < nextLr.start) {
                             smoothActiveLine = li + 1;
                             break;
                         }
@@ -5760,7 +5776,7 @@ async function prepareScrollWritingCursorImage(ov) {
 }
 
 function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHeight, fontSize, align, bLetterSpacing, twContext) {
-    const currentTime = Number(twContext?.currentTime) || 0;
+    const rawCurrentTime = Number(twContext?.currentTime) || 0;
     const textDirection = ctx.direction || 'ltr';
     const isRtl = textDirection === 'rtl';
     const rawRevealType = ov.scroll_tw_reveal_type || 'char';
@@ -5774,6 +5790,21 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
     const unrevealedOpacity = hideUnread
         ? Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100))
         : 1.0;
+    let currentTime = rawCurrentTime;
+    const isRealExport = Boolean(ov._exporting && !ov._staticPreview);
+    const isPlayingPreview = Boolean(ov._previewPlaying);
+    const firstWordStart = wordGroups.length > 0 ? wordGroups[0].start : 0;
+    if (!isRealExport && !isPlayingPreview && hideUnread && unrevealedOpacity <= 0.05 && rawCurrentTime <= Math.max(0.05, firstWordStart + 0.05)) {
+        const validRanges = (lineTokensList._lineTimeRanges || []).filter(Boolean);
+        if (validRanges.length > 0) {
+            const demoIdx = Math.min(validRanges.length - 1, Math.min(2, Math.max(0, Math.floor(validRanges.length * 0.35))));
+            const demoRange = validRanges[demoIdx];
+            currentTime = demoRange.start + (demoRange.end - demoRange.start) * 0.65;
+        } else if (wordGroups.length > 0) {
+            const demoWgIdx = Math.min(wordGroups.length - 1, Math.min(8, Math.max(1, Math.floor(wordGroups.length * 0.25))));
+            currentTime = wordGroups[demoWgIdx].start + (wordGroups[demoWgIdx].end - wordGroups[demoWgIdx].start) * 0.5;
+        }
+    }
     const activeHighlight = ov.scroll_tw_active_highlight !== false;
     const activeColor = ov.scroll_tw_active_color || '#FFD700';
     const keepReadColor = Boolean(ov.scroll_tw_keep_read_color);

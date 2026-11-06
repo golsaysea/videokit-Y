@@ -1103,9 +1103,6 @@ class ReelsOverlayPanel {
                         </div>
 
                         <div id="rop-scroll-tw-details" class="rop-grid" style="grid-column:span 2;display:none;">
-                        <label>开始(S)</label><input type="number" id="rop-scroll-tw-start" class="rop-input" min="0" step="0.1" placeholder="跟随滚动开始">
-                        <label>结束(S)</label><input type="number" id="rop-scroll-tw-end" class="rop-input" min="0" step="0.1" placeholder="跟随滚动结束">
-                        <div style="grid-column:span 2;font-size:11px;color:var(--text-muted);">留空沿用原来的语音时间；填写后仅调整出字时间，不改变滚动运动。</div>
                         <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #C8BFA8;background:#F3EFE6;color:#3B2220;cursor:pointer;">📰 复古旧报纸剪报贴字出字 (爆款同款)</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="xmas_candy" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px dashed #FCA5A5;background:#88131B;color:#FFFDF9;cursor:pointer;">🍬 圣诞拐杖糖带+糖笔出字</button>
@@ -1119,6 +1116,9 @@ class ReelsOverlayPanel {
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rainbow_karaoke" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(168,85,247,0.55);background:linear-gradient(90deg,rgba(255,56,36,0.22),rgba(255,214,0,0.22),rgba(42,214,72,0.22),rgba(36,107,255,0.22),rgba(155,77,255,0.28));color:#fff;cursor:pointer;">🌈 彩虹渐变逐词跟读 (已读保留彩虹·未读纯白)</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="word_pink_cyan_grad" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(0,229,255,0.55);background:linear-gradient(90deg,rgba(255,0,128,0.28),rgba(138,43,226,0.28),rgba(0,229,255,0.28));color:#fff;cursor:pointer;">✨ 单词粉紫青渐变跟读 (Lord Jesus同款·仅当前词渐变)</button>
                         </div>
+                        <label>开始(S)</label><input type="number" id="rop-scroll-tw-start" class="rop-input" min="0" step="0.1" placeholder="跟随滚动开始">
+                        <label>结束(S)</label><input type="number" id="rop-scroll-tw-end" class="rop-input" min="0" step="0.1" placeholder="跟随滚动结束">
+                        <div style="grid-column:span 2;font-size:11px;color:var(--text-muted);">留空沿用原来的语音时间；填写后仅调整出字时间，不改变滚动运动。</div>
 
                         <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
                         <div style="display:flex;align-items:center;gap:6px;">
@@ -6603,7 +6603,15 @@ class ReelsOverlayPanel {
             const motion = window.ReelsOverlay?.measureScrollMotion?.(ov);
             if (motion) { ov.scroll_to_y = Math.round(motion.endY * 10) / 10; this._val('rop-scroll-to-y', ov.scroll_to_y); }
         }
-        this._syncOverlayStyleToScopeTasks(ov);
+        if (typeof setTimeout === 'function' && typeof clearTimeout === 'function') {
+            if (this._scopeSyncTimer) clearTimeout(this._scopeSyncTimer);
+            this._scopeSyncTimer = setTimeout(() => {
+                this._scopeSyncTimer = null;
+                this._syncOverlayStyleToScopeTasks(ov);
+            }, 90);
+        } else {
+            this._syncOverlayStyleToScopeTasks(ov);
+        }
 
         // Re-render canvas to reflect changes, coalesced to avoid intermediate frames while applying panel values.
         this._requestRender();
@@ -6622,7 +6630,15 @@ class ReelsOverlayPanel {
         const ov = this._selectedOv;
         const twEnabled = Boolean(this._get('rop-scroll-tw-enabled') ?? ov?.scroll_typewriter_enabled);
         const detailsEl = this.container?.querySelector('#rop-scroll-tw-details');
-        if (detailsEl) detailsEl.style.display = twEnabled ? '' : 'none';
+        if (detailsEl) {
+            const wasHidden = detailsEl.style.display === 'none';
+            detailsEl.style.display = twEnabled ? '' : 'none';
+            if (wasHidden && twEnabled && !this._syncing && typeof detailsEl.scrollIntoView === 'function') {
+                setTimeout(() => {
+                    try { detailsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+                }, 30);
+            }
+        }
         const kind = this._get('rop-scroll-tw-cursor-kind') || ov?.scroll_tw_cursor_kind || 'quill';
 
         // 1. 首次绘制 16 款内置笔尖小图标的 Canvas 预览
@@ -9807,7 +9823,7 @@ class ReelsOverlayPanel {
             if (!isImage) media.play().catch(() => {});
         }
         const mgr = new window.ReelsOverlay.OverlayManager(); mgr.overlays = layers;
-        const draw = () => { const canvas = get('[data-lib-canvas]'); const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, 1080, 1920); mgr.overlays.forEach(ov => window.ReelsOverlay.drawOverlay(ctx, { ...ov, _exporting: true }, 0, 1080, 1920)); };
+        const draw = () => { const canvas = get('[data-lib-canvas]'); const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, 1080, 1920); mgr.overlays.forEach(ov => window.ReelsOverlay.drawOverlay(ctx, { ...ov, _exporting: true, _staticPreview: true }, 0, 1080, 1920)); };
         let _editorDrawRaf = null;
         const requestDraw = () => {
             if (_editorDrawRaf) cancelAnimationFrame(_editorDrawRaf);
@@ -10160,8 +10176,21 @@ class ReelsOverlayPanel {
     }
 
     _mergeImportedOverlayGroupPresets(data, missingMedia = []) {
+        if (!data || typeof data !== 'object' || Array.isArray(data) || (data.version === '2.0' && Array.isArray(data.tabs))) {
+            alert('⚠️ 该文件是工程备份文件而非覆层预设文件，请在批量列表中打开或导入工程。');
+            return;
+        }
+        const validTypes = new Set(['text', 'textcard', 'scroll', 'image', 'video', 'solid_mask', 'decor', 'pip']);
+        const isValidPresetEntry = (val) => {
+            const list = Array.isArray(val) ? val : (Array.isArray(val?.layers) ? val.layers : (Array.isArray(val?.overlays) ? val.overlays : null));
+            return Array.isArray(list) && list.length > 0 && list.every(item => item && typeof item === 'object' && !Array.isArray(item.tasks) && validTypes.has(item.type));
+        };
         const presets = this._getOverlayGroupPresets(); let addedCount = 0, overwrittenCount = 0;
-        const safeKeys = Object.keys(data || {}).filter(k => k !== '__proto__' && k !== 'constructor' && k !== 'prototype');
+        const safeKeys = Object.keys(data || {}).filter(k => k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && isValidPresetEntry(data[k]));
+        if (!safeKeys.length) {
+            alert('⚠️ 未在文件中检测到有效的覆层预设数据。');
+            return;
+        }
         const conflicts = safeKeys.filter(name => Object.prototype.hasOwnProperty.call(presets, name));
         const overwrite = !conflicts.length || confirm(`导入中有已存在的预设：\n${conflicts.join(', ')}\n\n是否覆盖？取消将跳过冲突项。`);
         for (const name of safeKeys) {
@@ -12110,7 +12139,7 @@ class ReelsDecorPanel {
                 const existing = Array.isArray(task.overlays) ? task.overlays : [];
                 const existingDecors = existing.filter(o => o && o.type === 'decor');
                 const existingPhoneCtas = existing.filter(o => o && o.is_phone_cta);
-                const otherOverlays = existing.filter(o => o && o.type !== 'decor' && !o.is_phone_cta);
+                const otherOverlays = existing.filter(o => o && typeof o.type === 'string' && !Array.isArray(o.tasks) && o.type !== 'decor' && !o.is_phone_cta);
                 const nextDecors = sourceDecors.map((srcOv, idx) => {
                     const clone = JSON.parse(JSON.stringify(srcOv));
                     const prevId = existingDecors[idx]?.id;
