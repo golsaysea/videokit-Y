@@ -793,11 +793,15 @@ function generateEnhancedASS(segments, style, opts = {}) {
         posY = advValign === 'top' ? advY : (advValign === 'bottom' ? advY + advH : advY + advH / 2);
     }
 
-    // 与预览一致的自动换行宽度
+    // 与预览一致的自动换行宽度（支持 ass_wrap_width_calibration 校准系数）
     const wrapPercent = Math.max(20, Math.min(120, parseFloat(s.wrap_width_percent) || 90));
-    const wrapWidth = useAdvTextbox
+    const wrapCalib = Number.isFinite(parseFloat(s.ass_wrap_width_calibration))
+        ? Math.max(0.5, Math.min(1.5, parseFloat(s.ass_wrap_width_calibration)))
+        : 1.0;
+    const rawWrapWidth = useAdvTextbox
         ? Math.max(80, parseFloat(s.advanced_textbox_w) || videoW * 0.8)
         : Math.max(200, Math.floor(videoW * (wrapPercent / 100)));
+    const wrapWidth = Math.max(80, Math.round(rawWrapWidth * wrapCalib));
     const wrapFontOpts = {
         fontFamily, fontSize,
         bold: fontWeight >= 600,
@@ -1033,6 +1037,117 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
                         events.push(`Dialogue: ${layerNum},${toASSTime(w.start)},${toASSTime(w.end)},SE_Layer${li},,0,0,0,,{${wPosTag}${wAnimTag}${directionTags}}${directionMark}${wText}`);
                     }
                 }
+            }
+        }
+        // ── 逐词随机弹跳 (word_pop_random / word_pop_random_pulse) ──
+        else if (animInType === 'word_pop_random' || animInType === 'word_pop_random_pulse') {
+            const segWords = (seg.words && seg.words.length > 0)
+                ? seg.words
+                : (srtToSegmentsWithWords([{ start: seg.start, end: seg.end, text: rawText, _timeUnit: 'sec' }])[0]?.words || []);
+            if (segWords.length > 0) {
+                const segPos = resolveSegmentPos(segStyle);
+                const highColor = toASSColor(colorHighHex || '#FFD700');
+                const readColor = toASSColor(colorTextHex || '#FFFFFF');
+                const rawReadOp = s.word_pop_random_read_opacity ?? s.wpr_read_opacity ?? 1.0;
+                const readOpacity = Math.max(0, Math.min(1, parseFloat(rawReadOp)));
+                const readAlphaHex = Math.round(255 * (1 - readOpacity)).toString(16).padStart(2, '0').toUpperCase();
+                const readAlphaTag = readOpacity < 0.999 ? `\\1a&H${readAlphaHex}&` : '';
+                const minScale = parseFloat(
+                    animInType === 'word_pop_random_pulse'
+                        ? (s.word_pop_random_pulse_min_scale ?? s.word_pop_random_min_scale ?? s.wpr_scale_min)
+                        : (s.word_pop_random_min_scale ?? s.wpr_scale_min)
+                ) || 1.08;
+                const maxScale = parseFloat(
+                    animInType === 'word_pop_random_pulse'
+                        ? (s.word_pop_random_pulse_max_scale ?? s.word_pop_random_max_scale ?? s.wpr_scale_max)
+                        : (s.word_pop_random_max_scale ?? s.wpr_scale_max)
+                ) || 1.38;
+                const popRatio = parseFloat(s.wpr_pop_ratio) || 0.35;
+                const blockTypo = !!s.block_typography_enabled;
+                const blockScaleMin = parseFloat(s.block_scale_min) || 0.78;
+                const blockScaleMax = parseFloat(s.block_scale_max) || 1.62;
+                const lineSpacingPx = Number.isFinite(parseFloat(s.line_spacing)) ? parseFloat(s.line_spacing) : Math.round(fontSize * 0.18);
+
+                // Group words into wrapped lines
+                const spaceW = measureTextWidth(' ', wrapFontOpts);
+                const linesOfWords = [];
+                let curLine = [];
+                let curW = 0;
+                for (let wi = 0; wi < segWords.length; wi++) {
+                    const wObj = segWords[wi];
+                    const wStr = String(wObj.word || '').trim();
+                    if (!wStr) continue;
+                    const ww = measureTextWidth(wStr, wrapFontOpts);
+                    const nextW = curLine.length === 0 ? ww : (curW + spaceW + ww);
+                    if (curLine.length > 0 && nextW > wrapWidth) {
+                        linesOfWords.push({ words: curLine, width: curW });
+                        curLine = [{ wObj, wStr, ww, wordIdx: wi }];
+                        curW = ww;
+                    } else {
+                        curLine.push({ wObj, wStr, ww, wordIdx: wi });
+                        curW = nextW;
+                    }
+                }
+                if (curLine.length > 0) {
+                    linesOfWords.push({ words: curLine, width: curW });
+                }
+
+                const maxLineW = linesOfWords.reduce((m, l) => Math.max(m, l.width), 0) || wrapWidth;
+                const lineLayouts = linesOfWords.map((line) => {
+                    let lineScale = 1.0;
+                    if (blockTypo && linesOfWords.length > 1 && line.width > 0) {
+                        lineScale = Math.max(blockScaleMin, Math.min(blockScaleMax, maxLineW / line.width));
+                    }
+                    const lineH = Math.round(fontSize * lineScale);
+                    const scaledLineW = Math.round(line.width * lineScale);
+                    return { ...line, lineScale, lineH, scaledLineW };
+                });
+
+                const totalBlockH = lineLayouts.reduce((sum, l, i) => sum + l.lineH + (i > 0 ? lineSpacingPx : 0), 0);
+                let curY = Math.round(segPos.y - totalBlockH / 2);
+
+                for (const line of lineLayouts) {
+                    let curX = Math.round(segPos.x - line.scaledLineW / 2);
+                    const basePct = Math.round(line.lineScale * 100);
+                    const startPct = Math.max(10, Math.round(line.lineScale * 85));
+                    for (let j = 0; j < line.words.length; j++) {
+                        const { wObj, wStr, ww, wordIdx } = line.words[j];
+                        const wStart = Number(wObj.start) || seg.start;
+                        const wEnd = Math.max(wStart + 0.02, Number(wObj.end) || seg.end);
+                        const wordDurMs = Math.max(40, Math.round((wEnd - wStart) * 1000));
+
+                        // Exact Canvas deterministic seed formula
+                        const key = (Number(wordIdx) + 1.0) * 12.9898 + Number(seg.start) * 78.233 + Number(wStart) * 37.719;
+                        const raw = (Math.sin(key) * 43758.5453) % 1;
+                        const rand01 = raw < 0 ? raw + 1 : raw;
+                        const peakScale = minScale + rand01 * (maxScale - minScale);
+                        const peakPct = Math.round(line.lineScale * peakScale * 100);
+
+                        const popPeakMs = Math.max(20, Math.round(wordDurMs * popRatio * 0.45));
+                        const popEndMs = Math.max(popPeakMs + 20, Math.round(wordDurMs * popRatio));
+                        let pulseTag = '';
+                        if (animInType === 'word_pop_random_pulse' && wordDurMs > popEndMs + 80) {
+                            const pulseMidMs = Math.round((popEndMs + wordDurMs) / 2);
+                            const pulsePct = Math.round(line.lineScale * (1 + (peakScale - 1) * 0.35) * 100);
+                            pulseTag = `\\t(${popEndMs},${pulseMidMs},\\fscx${pulsePct}\\fscy${pulsePct})\\t(${pulseMidMs},${wordDurMs},\\fscx${basePct}\\fscy${basePct})`;
+                        }
+
+                        const wordX = Math.round(curX);
+                        const wordY = Math.round(curY);
+                        const activeTags = `{\\an7\\pos(${wordX},${wordY})\\1c${highColor}\\fscx${startPct}\\fscy${startPct}\\t(0,${popPeakMs},\\fscx${peakPct}\\fscy${peakPct})\\t(${popPeakMs},${popEndMs},\\fscx${basePct}\\fscy${basePct})${pulseTag}${segStyleTags}${directionTags}}`;
+                        events.push(`Dialogue: 1,${toASSTime(wStart)},${toASSTime(wEnd)},Default,,0,0,0,,${activeTags}${directionMark}${wStr}`);
+
+                        if (!s.only_show_active_word && readOpacity > 0 && seg.end > wEnd + 0.01) {
+                            const readTags = `{\\an7\\pos(${wordX},${wordY})\\1c${readColor}${readAlphaTag}\\fscx${basePct}\\fscy${basePct}${segStyleTags}${directionTags}}`;
+                            events.push(`Dialogue: 0,${toASSTime(wEnd)},${toASSTime(seg.end)},Default,,0,0,0,,${readTags}${directionMark}${wStr}`);
+                        }
+
+                        curX += Math.round((ww + spaceW) * line.lineScale);
+                    }
+                    curY += line.lineH + lineSpacingPx;
+                }
+            } else {
+                events.push(`Dialogue: 0,${toASSTime(seg.start)},${toASSTime(seg.end)},Default,,0,0,0,,${overrideOpen}${text}`);
             }
         }
         // ── 打字机效果 (typewriter) ──

@@ -2243,7 +2243,7 @@ for (const [label, layout] of [
         anim_in_type: 'none', anim_out_type: 'none',
     };
 }
-window.REELS_BUILTIN_PRESETS = REELS_BUILTIN_PRESETS;
+if (typeof window !== 'undefined') window.REELS_BUILTIN_PRESETS = REELS_BUILTIN_PRESETS;
 
 const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {
 
@@ -3117,7 +3117,7 @@ const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {
 };
 
 // 暴露到全局供面板读取
-window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS = REELS_BUILTIN_OVERLAY_GROUP_PRESETS;
+if (typeof window !== 'undefined') window.REELS_BUILTIN_OVERLAY_GROUP_PRESETS = REELS_BUILTIN_OVERLAY_GROUP_PRESETS;
 
 function initBuiltinPresets() {
     if (!window.ReelsStyleEngine) {
@@ -3181,7 +3181,15 @@ function initBuiltinOverlayGroupPresets() {
 }
 
 // 自动初始化
-window.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initBuiltinPresets, 500);
-    setTimeout(initBuiltinOverlayGroupPresets, 600);
-});
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(initBuiltinPresets, 500);
+        setTimeout(initBuiltinOverlayGroupPresets, 600);
+    });
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        REELS_BUILTIN_PRESETS,
+        REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
+    };
+}

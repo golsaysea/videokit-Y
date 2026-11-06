@@ -89,15 +89,44 @@ def handle_404(e):
 def handle_500(e):
     return jsonify({"error": "服务器错误"}), 500
 
-# 全局处理 OPTIONS 预检请求
+def _get_configured_api_token():
+    """Read Bearer token from VIDEOKIT_API_TOKEN env var or ~/.config/videokit/config.json."""
+    env_tok = os.environ.get('VIDEOKIT_API_TOKEN', '').strip()
+    if env_tok:
+        return env_tok
+    try:
+        cfg_path = os.path.join(os.path.expanduser('~'), '.config', 'videokit', 'config.json')
+        if os.path.isfile(cfg_path):
+            with open(cfg_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict) and data.get('api_token'):
+                    return str(data['api_token']).strip()
+    except Exception:
+        pass
+    return ''
+
+
+# 全局处理 OPTIONS 预检请求 + Bearer Token 鉴权 (§1.4 & §3.6)
 @app.before_request
 def handle_preflight():
     if request.method == 'OPTIONS':
         response = app.make_default_options_response()
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
         return response
+
+    # Bearer Token 鉴权：当设置了 VIDEOKIT_API_TOKEN（或 VIDEOKIT_REQUIRE_AUTH=1）时，所有受保护接口必须携带有效 Bearer Token
+    expected_token = _get_configured_api_token()
+    require_auth = bool(expected_token) or os.environ.get('VIDEOKIT_REQUIRE_AUTH', '') == '1'
+    if require_auth and request.path.startswith('/api/') and request.path != '/api/health':
+        import hmac
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Unauthorized", "code": "UNAUTHORIZED"}), 401
+        provided_token = auth_header[len('Bearer '):].strip()
+        if not expected_token or not provided_token or not hmac.compare_digest(provided_token, expected_token):
+            return jsonify({"error": "Unauthorized", "code": "UNAUTHORIZED"}), 401
 
 # 全局状态
 processing_status = {
@@ -4502,24 +4531,355 @@ with a grateful heart.
         return jsonify({"error": f"AI处理失败: {str(e)}"}), 500
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 远程渲染队列 API (/api/reels/render) — §3.6
+# ═══════════════════════════════════════════════════════════════════════════
+import queue
+import uuid
+
+_ALLOWED_RENDER_EXTENSIONS = {
+    '.mp4', '.mp3', '.wav', '.png', '.jpg', '.jpeg', '.webp', '.srt', '.json'
+}
+_SAFE_TASK_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+_REMOTE_RENDER_BASE_DIR = os.environ.get(
+    'VIDEOKIT_REMOTE_WORK_DIR',
+    os.path.join(tempfile.gettempdir(), 'videokit_remote_renders')
+)
+_REMOTE_TASKS_DIR = os.path.join(_REMOTE_RENDER_BASE_DIR, 'tasks')
+_REMOTE_OUTPUTS_DIR = os.path.join(_REMOTE_RENDER_BASE_DIR, 'outputs')
+os.makedirs(_REMOTE_TASKS_DIR, exist_ok=True)
+os.makedirs(_REMOTE_OUTPUTS_DIR, exist_ok=True)
+
+_render_jobs = {}
+_render_jobs_lock = threading.Lock()
+_render_queue = queue.Queue()
+_render_workers_started = False
+
+
+def _is_safe_relative_filename(name):
+    """Reject empty names, absolute paths, path separators, or '..' traversal."""
+    if not name or not isinstance(name, str):
+        return False
+    norm = name.strip().replace('\\', '/')
+    if not norm or norm.startswith('/') or ':' in norm:
+        return False
+    parts = [p for p in norm.split('/') if p]
+    if any(p in ('..', '.') for p in parts):
+        return False
+    if len(parts) != 1:
+        return False
+    _, ext = os.path.splitext(parts[0].lower())
+    return ext in _ALLOWED_RENDER_EXTENSIONS
+
+
+def _cleanup_expired_remote_renders():
+    """Remove task/output directories older than VIDEOKIT_OUTPUT_RETENTION_DAYS (default 7)."""
+    try:
+        retention_days = float(os.environ.get('VIDEOKIT_OUTPUT_RETENTION_DAYS', '7'))
+    except ValueError:
+        retention_days = 7.0
+    cutoff = time.time() - max(0.01, retention_days) * 86400.0
+    with _render_jobs_lock:
+        expired_ids = [
+            tid for tid, meta in _render_jobs.items()
+            if meta.get('status') in ('completed', 'failed') and meta.get('updated_at', 0) < cutoff
+        ]
+        for tid in expired_ids:
+            _render_jobs.pop(tid, None)
+    for root_dir in (_REMOTE_TASKS_DIR, _REMOTE_OUTPUTS_DIR):
+        if not os.path.isdir(root_dir):
+            continue
+        for entry in os.listdir(root_dir):
+            full_path = os.path.join(root_dir, entry)
+            try:
+                if os.path.getmtime(full_path) < cutoff:
+                    shutil.rmtree(full_path, ignore_errors=True)
+            except Exception:
+                pass
+
+
+def _remote_render_worker_loop():
+    """Single-worker background consumer executing bin/videokit-cli.cjs reels --task."""
+    cli_script = os.path.join(PROJECT_ROOT, 'bin', 'videokit-cli.cjs')
+    while True:
+        task_id = _render_queue.get()
+        if task_id is None:
+            _render_queue.task_done()
+            break
+        try:
+            with _render_jobs_lock:
+                job = _render_jobs.get(task_id)
+                if not job:
+                    continue
+                job['status'] = 'running'
+                job['updated_at'] = time.time()
+                task_json_path = job['task_json_path']
+                output_mp4_path = job['output_mp4_path']
+                engine_opt = job.get('requested_engine') or 'auto'
+
+            cmd = [
+                'node', cli_script, 'reels',
+                '--task', task_json_path,
+                '--output', output_mp4_path,
+                '--engine', engine_opt,
+                '--overwrite'
+            ]
+            proc = subprocess.Popen(
+                cmd,
+                cwd=PROJECT_ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding='utf-8',
+                errors='replace'
+            )
+            last_stdout_obj = {}
+            last_stderr_obj = {}
+            for line in proc.stdout:
+                line_str = line.strip()
+                if not line_str:
+                    continue
+                try:
+                    data = json.loads(line_str)
+                    if data.get('status') == 'progress':
+                        with _render_jobs_lock:
+                            if task_id in _render_jobs:
+                                _render_jobs[task_id]['progress'] = int(data.get('percent', 0))
+                                _render_jobs[task_id]['updated_at'] = time.time()
+                    elif data.get('status') == 'ok':
+                        last_stdout_obj = data
+                except Exception:
+                    pass
+
+            stderr_text = proc.stderr.read() if proc.stderr else ''
+            ret_code = proc.wait(timeout=660)
+            for sline in stderr_text.splitlines():
+                sline = sline.strip()
+                if sline.startswith('{'):
+                    try:
+                        last_stderr_obj = json.loads(sline)
+                    except Exception:
+                        pass
+
+            with _render_jobs_lock:
+                if task_id in _render_jobs:
+                    job = _render_jobs[task_id]
+                    job['exit_code'] = ret_code
+                    job['updated_at'] = time.time()
+                    if ret_code == 0 and os.path.isfile(output_mp4_path) and os.path.getsize(output_mp4_path) > 0:
+                        job['status'] = 'completed'
+                        job['progress'] = 100
+                        job['engine'] = last_stdout_obj.get('engine') or job.get('engine') or 'ass'
+                        job['engine_reason'] = last_stdout_obj.get('engine_reason') or job.get('engine_reason') or ''
+                        job['duration'] = last_stdout_obj.get('duration')
+                    else:
+                        job['status'] = 'failed'
+                        job['error'] = last_stderr_obj.get('message') or stderr_text[-500:] or f'CLI exited with code {ret_code}'
+                        job['error_code'] = last_stderr_obj.get('code') or 'RENDER_FAILED'
+        except Exception as worker_err:
+            with _render_jobs_lock:
+                if task_id in _render_jobs:
+                    _render_jobs[task_id]['status'] = 'failed'
+                    _render_jobs[task_id]['error'] = str(worker_err)
+                    _render_jobs[task_id]['updated_at'] = time.time()
+        finally:
+            _render_queue.task_done()
+
+
+def _ensure_render_workers_started():
+    global _render_workers_started
+    with _render_jobs_lock:
+        if _render_workers_started:
+            return
+        try:
+            num_workers = max(1, int(os.environ.get('VIDEOKIT_RENDER_WORKERS', '1')))
+        except ValueError:
+            num_workers = 1
+        for i in range(num_workers):
+            t = threading.Thread(target=_remote_render_worker_loop, name=f'ReelsRenderWorker-{i}', daemon=True)
+            t.start()
+        _render_workers_started = True
+
+
+@app.route('/api/reels/render', methods=['POST'])
+def submit_remote_reels_render():
+    """Submit a remote Reels render task (JSON or multipart/form-data). Returns 202 Accepted."""
+    _cleanup_expired_remote_renders()
+    _ensure_render_workers_started()
+
+    task_obj = None
+    uploaded_files = []
+
+    if request.content_type and 'multipart/form-data' in request.content_type.lower():
+        raw_task = request.form.get('task', '')
+        if not raw_task and 'task' in request.files:
+            raw_task = request.files['task'].read().decode('utf-8', errors='replace')
+        if not raw_task:
+            return jsonify({"error": "Missing 'task' JSON in multipart form", "code": "INVALID_SCHEMA"}), 400
+        try:
+            task_obj = json.loads(raw_task)
+        except Exception as e:
+            return jsonify({"error": f"Invalid task JSON: {str(e)}", "code": "INVALID_JSON"}), 400
+        for key in request.files:
+            if key == 'task':
+                continue
+            for fobj in request.files.getlist(key):
+                uploaded_files.append(fobj)
+    else:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object", "code": "INVALID_JSON"}), 400
+        task_obj = payload.get('task') if isinstance(payload.get('task'), dict) else payload
+
+    if not isinstance(task_obj, dict):
+        return jsonify({"error": "Task must be a JSON object", "code": "INVALID_SCHEMA"}), 400
+
+    raw_id = str(task_obj.get('id') or uuid.uuid4().hex[:12]).strip()
+    if not _SAFE_TASK_ID_RE.match(raw_id):
+        return jsonify({"error": f"Invalid task id '{raw_id}'", "code": "PATH_TRAVERSAL"}), 400
+
+    task_id = f"{raw_id}-{uuid.uuid4().hex[:6]}" if raw_id in _render_jobs else raw_id
+
+    # Validate path fields in task_obj against '..' traversal
+    for path_field in ('bgPath', 'contentVideoPath', 'audioPath', 'bgmPath', 'srtPath', 'output'):
+        val = task_obj.get(path_field)
+        if isinstance(val, str) and val.strip():
+            norm_parts = val.replace('\\', '/').split('/')
+            if '..' in norm_parts:
+                return jsonify({"error": f"Path traversal '..' not allowed in {path_field}", "code": "PATH_TRAVERSAL"}), 400
+
+    if isinstance(task_obj.get('bgClipPool'), list):
+        for idx, clip_p in enumerate(task_obj['bgClipPool']):
+            if isinstance(clip_p, str) and '..' in clip_p.replace('\\', '/').split('/'):
+                return jsonify({"error": f"Path traversal '..' not allowed in bgClipPool[{idx}]", "code": "PATH_TRAVERSAL"}), 400
+
+    task_dir = os.path.join(_REMOTE_TASKS_DIR, task_id)
+    out_dir = os.path.join(_REMOTE_OUTPUTS_DIR, task_id)
+    os.makedirs(task_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Save uploaded files after strict filename & extension validation
+    for fobj in uploaded_files:
+        fname = fobj.filename or ''
+        if not _is_safe_relative_filename(fname):
+            shutil.rmtree(task_dir, ignore_errors=True)
+            shutil.rmtree(out_dir, ignore_errors=True)
+            return jsonify({
+                "error": f"Disallowed or unsafe uploaded filename: '{fname}'",
+                "code": "INVALID_UPLOAD_FILE"
+            }), 400
+        fobj.save(os.path.join(task_dir, fname))
+
+    output_mp4_path = os.path.join(out_dir, f"{task_id}.mp4")
+    task_to_save = dict(task_obj)
+    task_to_save['id'] = task_id
+    task_to_save['output'] = output_mp4_path
+
+    task_json_path = os.path.join(task_dir, 'task.json')
+    with open(task_json_path, 'w', encoding='utf-8') as f:
+        json.dump(task_to_save, f, ensure_ascii=False, indent=2)
+
+    now = time.time()
+    download_token = uuid.uuid4().hex
+    with _render_jobs_lock:
+        _render_jobs[task_id] = {
+            "task_id": task_id,
+            "status": "queued",
+            "progress": 0,
+            "engine": None,
+            "engine_reason": None,
+            "requested_engine": str(task_obj.get('engine') or 'auto'),
+            "task_json_path": task_json_path,
+            "output_mp4_path": output_mp4_path,
+            "download_token": download_token,
+            "downloaded": False,
+            "exit_code": None,
+            "error": None,
+            "error_code": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    _render_queue.put(task_id)
+
+    return jsonify({
+        "status": "queued",
+        "task_id": task_id,
+        "status_url": f"/api/reels/render/{task_id}",
+        "download_url": f"/api/reels/render/{task_id}/download?token={download_token}",
+    }), 202
+
+
+@app.route('/api/reels/render/<task_id>', methods=['GET'])
+def get_remote_reels_render_status(task_id):
+    """Query status of a remote Reels render task."""
+    if not _SAFE_TASK_ID_RE.match(task_id or ''):
+        return jsonify({"error": "Invalid task_id", "code": "INVALID_TASK_ID"}), 400
+    with _render_jobs_lock:
+        job = _render_jobs.get(task_id)
+        if not job:
+            return jsonify({"error": "Task not found", "code": "TASK_NOT_FOUND"}), 404
+        resp = {
+            "task_id": job["task_id"],
+            "status": job["status"],
+            "progress": job["progress"],
+            "engine": job["engine"],
+            "engine_reason": job["engine_reason"],
+            "exit_code": job["exit_code"],
+            "error": job["error"],
+            "error_code": job["error_code"],
+            "download_url": f"/api/reels/render/{task_id}/download?token={job['download_token']}" if job["status"] == "completed" else None,
+        }
+    return jsonify(resp), 200
+
+
+@app.route('/api/reels/render/<task_id>/download', methods=['GET'])
+def download_remote_reels_render(task_id):
+    """Download rendered MP4 for a completed remote Reels task."""
+    if not _SAFE_TASK_ID_RE.match(task_id or ''):
+        return jsonify({"error": "Invalid task_id", "code": "INVALID_TASK_ID"}), 400
+    with _render_jobs_lock:
+        job = _render_jobs.get(task_id)
+        if not job:
+            return jsonify({"error": "Task not found", "code": "TASK_NOT_FOUND"}), 404
+        if job["status"] != "completed":
+            return jsonify({"error": f"Task is not completed (status={job['status']})", "code": "TASK_NOT_READY"}), 409
+        req_token = request.args.get('token', '').strip()
+        if req_token and req_token != job.get('download_token'):
+            return jsonify({"error": "Invalid download token", "code": "FORBIDDEN"}), 403
+        if request.args.get('once') == '1':
+            if job.get('downloaded'):
+                return jsonify({"error": "One-time download link has already been used", "code": "LINK_EXPIRED"}), 410
+            job['downloaded'] = True
+        mp4_path = job["output_mp4_path"]
+
+    if not os.path.isfile(mp4_path):
+        return jsonify({"error": "Output MP4 file missing on disk", "code": "FILE_NOT_FOUND"}), 404
+
+    return send_file(mp4_path, mimetype='video/mp4', as_attachment=True, download_name=f"{task_id}.mp4")
+
+
 if __name__ == '__main__':
-    port = 5001
+    host = os.environ.get('VIDEOKIT_HOST', '127.0.0.1').strip() or '127.0.0.1'
+    try:
+        port = int(os.environ.get('VIDEOKIT_PORT', '5001'))
+    except ValueError:
+        port = 5001
     try:
         from waitress import serve
-        print(f"Starting Python backend with Waitress on port {port}...")
+        print(f"Starting Python backend with Waitress on {host}:{port}...")
         print(f"  Threads: 6 | Channel timeout: 120s")
         serve(
             app,
-            host='127.0.0.1',
+            host=host,
             port=port,
             threads=6,                    # 6 个 worker 线程（比 Flask 单线程可靠得多）
             channel_timeout=120,          # 单个连接最长存活 120 秒
             connection_limit=100,         # 最大并发连接数
             cleanup_interval=30,          # 每 30 秒清理空闲连接
-            map_size=100000,              # asyncore map 大小
             url_scheme='http',
             expose_tracebacks=False,      # 禁用对外返回堆栈信息，避免敏感路径泄露
         )
     except Exception as waitress_err:
         print(f"[警告] Waitress 不可用或启动失败 ({waitress_err})，回退到 Flask 开发服务器")
-        app.run(host='127.0.0.1', port=port, debug=False, threaded=True)
+        app.run(host=host, port=port, debug=False, threaded=True)

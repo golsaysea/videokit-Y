@@ -14,6 +14,48 @@ const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const ReelsSubtitleProcessor = require('../src/reels-subtitle-processor.js');
+const { REELS_BUILTIN_PRESETS, REELS_BUILTIN_OVERLAY_GROUP_PRESETS } = require('../src/reels-presets-init.js');
+
+const CANVAS_EXCLUSIVE_ANIMATIONS = new Set([
+    'metronome',
+    'flash_highlight',
+    'char_bounce',
+    'letter_jump',
+    'zoom_typewriter',
+    'line_focus',
+    'floating',
+    'bullet_reveal',
+    'scatter_pop',
+    'word_random_position',
+    'box_wipe',
+    'kinetic_glow_stack',
+    'underline_sweep',
+    'three_word_focus_stack',
+    'rolling_rainbow_karaoke',
+    'char_fade',
+    'char_scale',
+    'char_slide',
+    'char_rotate',
+    'char_wave',
+    'char_glitch',
+    'char_typewriter',
+    'random_pop',
+]);
+
+const ASS_SUPPORTED_ANIMATIONS = new Set([
+    'none',
+    'fade',
+    'slide_up',
+    'slide_down',
+    'slide_left',
+    'slide_right',
+    'pop',
+    'typewriter',
+    'blur_sharp',
+    'holy_glow',
+    'word_pop_random',
+    'word_pop_random_pulse',
+]);
 
 const EXIT_CODES = {
     OK: 0,
@@ -107,6 +149,10 @@ function parseArgs(argv) {
         outputDir: null,
         config: null,
         quality: null,
+        engine: null,
+        width: null,
+        height: null,
+        fps: null,
         dryRun: false,
         overwrite: false,
         skipExisting: false,
@@ -189,6 +235,22 @@ function parseArgs(argv) {
             args.quality = readValue('--quality');
         } else if (token.startsWith('--quality=')) {
             args.quality = token.slice('--quality='.length);
+        } else if (token === '--engine') {
+            args.engine = readValue('--engine');
+        } else if (token.startsWith('--engine=')) {
+            args.engine = token.slice('--engine='.length);
+        } else if (token === '--width') {
+            args.width = Number(readValue('--width'));
+        } else if (token.startsWith('--width=')) {
+            args.width = Number(token.slice('--width='.length));
+        } else if (token === '--height') {
+            args.height = Number(readValue('--height'));
+        } else if (token.startsWith('--height=')) {
+            args.height = Number(token.slice('--height='.length));
+        } else if (token === '--fps') {
+            args.fps = Number(readValue('--fps'));
+        } else if (token.startsWith('--fps=')) {
+            args.fps = Number(token.slice('--fps='.length));
         } else if (token === '--timeout') {
             const val = Number(readValue('--timeout'));
             if (!Number.isFinite(val) || val <= 0) {
@@ -221,7 +283,12 @@ function parseArgs(argv) {
     }
 
     if (positional.length > 0) {
-        args.subcommand = positional[0];
+        if (positional[0] === 'wysiwyg') {
+            args.subcommand = 'reels';
+            if (!args.engine) args.engine = 'wysiwyg';
+        } else {
+            args.subcommand = positional[0];
+        }
     }
 
     return args;
@@ -358,6 +425,21 @@ function normalizeFontKey(str) {
  * Throws CLIError('FONT_NOT_FOUND', ..., 3) if the requested font does not exist.
  */
 function resolveFontFamily(fontFamilyRaw, taskId = null) {
+    const rawStr = String(fontFamilyRaw || 'Arial').trim() || 'Arial';
+    if (rawStr.includes(',')) {
+        const parts = rawStr.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+        for (const candidate of parts) {
+            try {
+                return resolveSingleFontFamily(candidate, taskId);
+            } catch {
+                // Try next fallback in CSS font stack
+            }
+        }
+    }
+    return resolveSingleFontFamily(rawStr.replace(/^['"]|['"]$/g, ''), taskId);
+}
+
+function resolveSingleFontFamily(fontFamilyRaw, taskId = null) {
     const requestedFamily = String(fontFamilyRaw || 'Arial').trim() || 'Arial';
     const requestedKey = normalizeFontKey(requestedFamily);
     const repoRoot = path.resolve(__dirname, '..');
@@ -419,8 +501,12 @@ function resolveFontFamily(fontFamilyRaw, taskId = null) {
 
     const winFontAliases = {
         arial: ['arial.ttf', 'arialbd.ttf', 'arimo-regular.ttf', 'arimo-bold.ttf'],
+        arialblack: ['ariblk.ttf', 'arialbd.ttf', 'arimo-bold.ttf'],
         helvetica: ['arial.ttf', 'arimo-regular.ttf'],
         sansserif: ['arial.ttf', 'arimo-regular.ttf', 'dejavusans.ttf'],
+        systemui: ['segoeui.ttf', 'arial.ttf', 'arimo-regular.ttf'],
+        segoeui: ['segoeui.ttf', 'segoeuib.ttf', 'arimo-regular.ttf'],
+        comicsansms: ['comic.ttf', 'comicbd.ttf', 'arimo-regular.ttf'],
         impact: ['impact.ttf'],
         timesnewroman: ['times.ttf', 'timesbd.ttf'],
         couriernew: ['cour.ttf', 'courbd.ttf'],
@@ -620,6 +706,101 @@ function assertFileExistsAndNonEmpty(filePath, fieldName, taskId = null) {
 }
 
 /**
+ * Resolve rendering engine ('ass' | 'wysiwyg') per §3.1 routing rules.
+ * Throws CLIError('ENGINE_UNSUPPORTED', ..., 2) if --engine ass is forced on a Canvas-exclusive task.
+ */
+function resolveTaskEngine(task, subConfig = {}, overlays = [], cliArgs = {}, taskId = null) {
+    const requestedEngine = String(cliArgs.engine || task.engine || 'auto').trim().toLowerCase();
+    if (!['auto', 'ass', 'wysiwyg'].includes(requestedEngine)) {
+        throw new CLIError(
+            'INVALID_ARGS',
+            `Invalid engine '${requestedEngine}'; must be auto, ass, or wysiwyg`,
+            EXIT_CODES.VALIDATION_ERROR,
+            taskId
+        );
+    }
+
+    const wysiwygReasons = [];
+    const animIn = String(subConfig.anim_in_type || 'none').trim();
+    const animOut = String(subConfig.anim_out_type || 'none').trim();
+
+    if (CANVAS_EXCLUSIVE_ANIMATIONS.has(animIn) || (animIn && !ASS_SUPPORTED_ANIMATIONS.has(animIn))) {
+        wysiwygReasons.push(`anim_in_type=${animIn}`);
+    }
+    if (CANVAS_EXCLUSIVE_ANIMATIONS.has(animOut) || (animOut && !ASS_SUPPORTED_ANIMATIONS.has(animOut))) {
+        wysiwygReasons.push(`anim_out_type=${animOut}`);
+    }
+    if (subConfig.dynamic_box === true || (typeof subConfig.color_high_bg === 'string' && subConfig.color_high_bg.trim() !== '')) {
+        wysiwygReasons.push('dynamic_box/color_high_bg');
+    }
+    const hasGradientColor = (val) => typeof val === 'string' && val.includes(',') && val.split(',').filter(Boolean).length > 1;
+    if (
+        subConfig.high_gradient_enabled === true ||
+        (typeof subConfig.high_gradient_colors === 'string' && subConfig.high_gradient_colors.trim() !== '') ||
+        subConfig.text_gradient_enabled === true ||
+        hasGradientColor(subConfig.color_text) ||
+        hasGradientColor(subConfig.color_high)
+    ) {
+        wysiwygReasons.push('text_gradient');
+    }
+    if (
+        subConfig.box_wipe_enabled === true ||
+        subConfig.active_line_focus_enabled === true ||
+        subConfig.scrolling_mode === true ||
+        subConfig.fullpage_typewriter === true ||
+        Boolean(subConfig.mixed_layout)
+    ) {
+        wysiwygReasons.push('canvas_layout_mode');
+    }
+    if (Array.isArray(overlays)) {
+        for (const ov of overlays) {
+            if (!ov || typeof ov !== 'object') continue;
+            const bm = String(ov.blend_mode || 'source-over').toLowerCase();
+            if (bm !== 'source-over' && bm !== 'normal') {
+                wysiwygReasons.push(`overlay_blend_mode=${bm}`);
+                break;
+            }
+            const ovType = String(ov.type || '').toLowerCase();
+            if (ovType === 'scroll' || ovType === 'flipper') {
+                wysiwygReasons.push(`overlay_type=${ovType}`);
+                break;
+            }
+        }
+    }
+
+    if (requestedEngine === 'ass') {
+        if (wysiwygReasons.length > 0) {
+            throw new CLIError(
+                'ENGINE_UNSUPPORTED',
+                `Task '${taskId || 'unknown'}' uses Canvas-exclusive features (${wysiwygReasons.join(', ')}) and cannot be rendered with engine='ass'`,
+                EXIT_CODES.VALIDATION_ERROR,
+                taskId
+            );
+        }
+        return { engine: 'ass', engineReason: 'explicit_ass' };
+    }
+
+    if (requestedEngine === 'wysiwyg') {
+        return {
+            engine: 'wysiwyg',
+            engineReason: wysiwygReasons.length > 0 ? wysiwygReasons.join(', ') : 'explicit_wysiwyg',
+        };
+    }
+
+    if (wysiwygReasons.length > 0) {
+        return {
+            engine: 'wysiwyg',
+            engineReason: wysiwygReasons.join(', '),
+        };
+    }
+
+    return {
+        engine: 'ass',
+        engineReason: 'ass_compatible',
+    };
+}
+
+/**
  * Validate a task JSON file and return normalized task plan.
  */
 function validateTaskFile(taskFilePath, cliArgs = {}) {
@@ -653,9 +834,27 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
     const taskDir = path.dirname(absTaskPath);
     const taskId = String(task.id || path.basename(absTaskPath, path.extname(absTaskPath)) || '0001');
 
+    // Validate renderer_version if specified (§3.1)
+    if (task.renderer_version !== undefined && task.renderer_version !== null && String(task.renderer_version).trim() !== '') {
+        const expectedVer = getPackageVersion();
+        const taskVer = String(task.renderer_version).trim();
+        if (taskVer !== expectedVer) {
+            throw new CLIError(
+                'RENDERER_VERSION_MISMATCH',
+                `Task renderer_version '${taskVer}' does not match CLI version '${expectedVer}'`,
+                EXIT_CODES.VALIDATION_ERROR,
+                taskId
+            );
+        }
+    }
+
     // Validate dimensions (only 720x1280 or 1080x1920 allowed per §3.2)
-    const width = task.width !== undefined ? Number(task.width) : 720;
-    const height = task.height !== undefined ? Number(task.height) : 1280;
+    const width = cliArgs.width !== null && cliArgs.width !== undefined
+        ? Number(cliArgs.width)
+        : (task.width !== undefined ? Number(task.width) : 720);
+    const height = cliArgs.height !== null && cliArgs.height !== undefined
+        ? Number(cliArgs.height)
+        : (task.height !== undefined ? Number(task.height) : 1280);
     const validDims = (width === 720 && height === 1280) || (width === 1080 && height === 1920);
     if (!Number.isInteger(width) || !Number.isInteger(height) || !validDims) {
         throw new CLIError(
@@ -667,11 +866,13 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
     }
 
     // Validate fps (only 24, 25, 30 allowed per §3.2)
-    const fps = task.fps !== undefined ? Number(task.fps) : 30;
+    const fps = cliArgs.fps !== null && cliArgs.fps !== undefined
+        ? Number(cliArgs.fps)
+        : (task.fps !== undefined ? Number(task.fps) : 30);
     if (![24, 25, 30].includes(fps)) {
         throw new CLIError(
             'INVALID_FPS',
-            `Invalid fps '${task.fps}'; only 24, 25, or 30 are supported`,
+            `Invalid fps '${cliArgs.fps ?? task.fps}'; only 24, 25, or 30 are supported`,
             EXIT_CODES.VALIDATION_ERROR,
             taskId
         );
@@ -791,8 +992,40 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
     // Check ffmpeg/ffprobe availability
     const binaries = resolveFFmpegBinaries(taskId);
 
+    // Resolve preset & subtitle style (Single Source of Truth from src/reels-presets-init.js)
+    const rawSub = (task.subtitle && typeof task.subtitle === 'object') ? task.subtitle : {};
+    const presetName = (typeof task.preset === 'string' && task.preset.trim())
+        ? task.preset.trim()
+        : ((typeof rawSub.preset === 'string' && rawSub.preset.trim()) ? rawSub.preset.trim() : null);
+    let presetStyle = {};
+    if (presetName) {
+        if (!REELS_BUILTIN_PRESETS || !REELS_BUILTIN_PRESETS[presetName]) {
+            throw new CLIError(
+                'PRESET_NOT_FOUND',
+                `Builtin subtitle preset '${presetName}' not found`,
+                EXIT_CODES.VALIDATION_ERROR,
+                taskId
+            );
+        }
+        presetStyle = { ...REELS_BUILTIN_PRESETS[presetName] };
+    }
+    const subConfig = { ...presetStyle, ...rawSub };
+
+    // Resolve overlays (direct task.overlays or task.overlay_group_preset)
+    let overlays = [];
+    if (Array.isArray(task.overlays)) {
+        overlays = task.overlays;
+    } else if (typeof task.overlay_group_preset === 'string' && task.overlay_group_preset.trim()) {
+        const ogName = task.overlay_group_preset.trim();
+        if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS && Array.isArray(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName])) {
+            overlays = JSON.parse(JSON.stringify(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName]));
+        }
+    }
+
+    // Resolve rendering engine ('ass' | 'wysiwyg') per §3.1
+    const { engine, engineReason } = resolveTaskEngine(task, subConfig, overlays, cliArgs, taskId);
+
     // Check font availability
-    const subConfig = (task.subtitle && typeof task.subtitle === 'object') ? task.subtitle : {};
     const fontInfo = resolveFontFamily(subConfig.font_family || 'Arial', taskId);
 
     // Compute target duration
@@ -849,6 +1082,10 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         srtPath,
         segments,
         subtitle: subConfig,
+        preset: presetName,
+        overlays,
+        engine,
+        engineReason,
         fontInfo,
         binaries,
         targetDuration,
@@ -1071,11 +1308,149 @@ function buildFFmpegArgs(plan, tmpOutputPath) {
 }
 
 /**
+ * Locate Electron binary for headless WYSIWYG rendering (§3.2)
+ */
+function findElectronBinary() {
+    if (process.env.VIDEOKIT_ELECTRON_PATH && fs.existsSync(process.env.VIDEOKIT_ELECTRON_PATH)) {
+        return process.env.VIDEOKIT_ELECTRON_PATH;
+    }
+    if (process.versions && process.versions.electron && process.execPath && fs.existsSync(process.execPath)) {
+        return process.execPath;
+    }
+    try {
+        const electronBin = require('electron');
+        if (typeof electronBin === 'string' && fs.existsSync(electronBin)) {
+            return electronBin;
+        }
+    } catch {}
+    return null;
+}
+
+/**
+ * Run headless WYSIWYG export via Electron hidden BrowserWindow (`electron/isolated-wysiwyg-renderer.html`)
+ */
+function runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir) {
+    const electronBin = findElectronBinary();
+    if (!electronBin) {
+        return Promise.resolve({ usedElectron: false, reason: 'electron_binary_not_found' });
+    }
+    const mainJsPath = path.resolve(__dirname, '..', 'electron', 'main.js');
+    if (!fs.existsSync(mainJsPath)) {
+        return Promise.resolve({ usedElectron: false, reason: 'electron_main_not_found' });
+    }
+
+    const segmentsWithWords = ReelsSubtitleProcessor.srtToSegmentsWithWords(
+        plan.segments.map(s => ({ ...s, _timeUnit: 'sec' }))
+    );
+    const qualityCrfMap = { high: 15, medium: 18, low: 23 };
+    const qualityPresetMap = { high: 'slow', medium: 'medium', low: 'faster' };
+
+    const jobPayload = {
+        taskId: plan.taskId,
+        timeoutSec: Number(cliArgs.timeout || 600),
+        quiet: Boolean(cliArgs.quiet),
+        params: {
+            style: {
+                ...plan.subtitle,
+                font_family: plan.fontInfo.fontFamily,
+            },
+            segments: segmentsWithWords,
+            overlays: plan.overlays || [],
+            backgroundPath: plan.bgPath || '',
+            bgMode: (plan.bgClipPool && plan.bgClipPool.length > 0) ? 'multi' : 'single',
+            bgClipPool: plan.bgClipPool || [],
+            contentVideoPath: plan.contentVideoPath || null,
+            voicePath: plan.audioPath || '',
+            bgmPath: plan.bgmPath || '',
+            outputPath: tmpOutputPath,
+            targetWidth: plan.width,
+            targetHeight: plan.height,
+            fps: plan.fps,
+            customDuration: plan.targetDuration,
+            crf: qualityCrfMap[plan.quality] || 18,
+            qualityPreset: qualityPresetMap[plan.quality] || 'medium',
+        },
+    };
+
+    const jobFile = path.join(tempDir, 'wysiwyg-job.json');
+    fs.writeFileSync(jobFile, JSON.stringify(jobPayload, null, 2), 'utf-8');
+
+    return new Promise((resolve, reject) => {
+        const env = { ...process.env };
+        delete env.ELECTRON_RUN_AS_NODE;
+
+        let cmd = electronBin;
+        let args = [mainJsPath, '--headless-wysiwyg-worker', jobFile];
+
+        if (process.platform === 'linux' && !env.DISPLAY && !env.WAYLAND_DISPLAY) {
+            const xvfbProbe = spawnSync('xvfb-run', ['--help'], { stdio: 'ignore', timeout: 3000 });
+            if (!xvfbProbe.error && xvfbProbe.status === 0) {
+                cmd = 'xvfb-run';
+                args = ['-a', electronBin, '--no-sandbox', '--disable-gpu', mainJsPath, '--headless-wysiwyg-worker', jobFile];
+            } else {
+                args = ['--headless', '--ozone-platform=headless', '--disable-gpu', '--no-sandbox', mainJsPath, '--headless-wysiwyg-worker', jobFile];
+            }
+        }
+
+        let timedOut = false;
+        let stderrTail = '';
+        const child = spawn(cmd, args, {
+            cwd: path.resolve(__dirname, '..'),
+            env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
+        });
+
+        const timeoutMs = Math.max(1, Number(cliArgs.timeout || 600)) * 1000;
+        const timer = setTimeout(() => {
+            timedOut = true;
+            try { child.kill('SIGKILL'); } catch {}
+        }, timeoutMs);
+
+        child.stdout.on('data', (chunk) => {
+            const lines = chunk.toString('utf-8').split(/\r?\n/).filter(Boolean);
+            for (const line of lines) {
+                if (line.startsWith('{"status":"progress"') && !cliArgs.quiet) {
+                    process.stdout.write(line + '\n');
+                }
+            }
+        });
+
+        child.stderr.on('data', (chunk) => {
+            stderrTail = (stderrTail + chunk.toString('utf-8')).slice(-4000);
+        });
+
+        child.on('error', (err) => {
+            clearTimeout(timer);
+            resolve({ usedElectron: false, reason: err.message });
+        });
+
+        child.on('close', (code) => {
+            clearTimeout(timer);
+            if (timedOut) {
+                return reject(
+                    new CLIError(
+                        'RENDER_TIMEOUT',
+                        `WYSIWYG render timed out after ${cliArgs.timeout || 600}s`,
+                        EXIT_CODES.RENDER_ERROR,
+                        plan.taskId
+                    )
+                );
+            }
+            if (code === 0 && fs.existsSync(tmpOutputPath) && fs.statSync(tmpOutputPath).size > 0) {
+                return resolve({ usedElectron: true });
+            }
+            resolve({ usedElectron: false, reason: `exit_${code}: ${stderrTail.slice(-300)}` });
+        });
+    });
+}
+
+/**
  * Render a single Reels task
  */
 async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
     const plan = validateTaskFile(taskFilePath, cliArgs);
-    const { taskId, width, height, targetDuration, outputPath, binaries, fontInfo } = plan;
+    const { taskId, width, height, targetDuration, outputPath, binaries, fontInfo, engine, engineReason } = plan;
 
     const outDir = path.dirname(outputPath);
     fs.mkdirSync(outDir, { recursive: true });
@@ -1089,6 +1464,8 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
                     status: 'ok',
                     skipped: true,
                     task: taskId,
+                    engine,
+                    engine_reason: engineReason,
                     output: outputPath,
                     duration: targetDuration,
                     width,
@@ -1138,7 +1515,7 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
     const ffmpegArgs = buildFFmpegArgs(plan, tmpOutputPath);
 
     if (cliArgs.dryRun) {
-        logStderr(`[videokit-cli] [dry-run] ${binaries.ffmpeg} ${ffmpegArgs.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`);
+        logStderr(`[videokit-cli] [dry-run] [engine=${engine} reason=${engineReason}] ${binaries.ffmpeg} ${ffmpegArgs.map(a => (/\s/.test(a) ? `"${a}"` : a)).join(' ')}`);
         if (!cliArgs.keepTemp) {
             try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
         }
@@ -1146,6 +1523,8 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
             status: 'ok',
             dry_run: true,
             task: taskId,
+            engine,
+            engine_reason: engineReason,
             output: outputPath,
             duration: targetDuration,
             width,
@@ -1162,6 +1541,42 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
             fs.unlinkSync(tmpOutputPath);
         }
     } catch {}
+
+    // If routed to 'wysiwyg' and Electron headless worker is enabled/requested, attempt Chromium Canvas export first
+    if (engine === 'wysiwyg' && process.env.VIDEOKIT_WYSIWYG_BACKEND !== 'ass-fallback') {
+        const wysiwygRes = await runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir);
+        if (wysiwygRes && wysiwygRes.usedElectron) {
+            try {
+                if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+                fs.renameSync(tmpOutputPath, outputPath);
+            } catch (renameErr) {
+                if (!cliArgs.keepTemp) {
+                    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+                }
+                throw new CLIError('RENDER_FAILED', `Failed to finalize output file ${outputPath}: ${renameErr.message}`, EXIT_CODES.RENDER_ERROR, taskId);
+            }
+            if (!cliArgs.keepTemp) {
+                try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+            }
+            if (!cliArgs.quiet) {
+                emitStdoutJson({ status: 'progress', task: taskId, percent: 100 });
+            }
+            const actualDuration = probeMediaDuration(binaries.ffprobe, outputPath) || targetDuration;
+            const finalResult = {
+                status: 'ok',
+                engine,
+                engine_reason: engineReason,
+                output: outputPath,
+                duration: Math.round(actualDuration * 100) / 100,
+                width,
+                height,
+            };
+            if (!isBatch) {
+                emitStdoutJson(finalResult);
+            }
+            return { ...finalResult, task: taskId };
+        }
+    }
 
     return new Promise((resolve, reject) => {
         let timedOut = false;
@@ -1298,6 +1713,8 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
             const actualDuration = probeMediaDuration(binaries.ffprobe, outputPath) || targetDuration;
             const finalResult = {
                 status: 'ok',
+                engine,
+                engine_reason: engineReason,
                 output: outputPath,
                 duration: Math.round(actualDuration * 100) / 100,
                 width,
@@ -1614,6 +2031,9 @@ async function runCli(argv = process.argv.slice(2)) {
                 status: 'ok',
                 valid: true,
                 task: plan.taskId,
+                engine: plan.engine,
+                engine_reason: plan.engineReason,
+                preset: plan.preset || null,
                 duration: plan.targetDuration,
                 width: plan.width,
                 height: plan.height,
@@ -1668,7 +2088,10 @@ if (require.main === module) {
 module.exports = {
     EXIT_CODES,
     CLIError,
+    CANVAS_EXCLUSIVE_ANIMATIONS,
+    ASS_SUPPORTED_ANIMATIONS,
     parseArgs,
+    resolveTaskEngine,
     validateTaskFile,
     buildTaskASS,
     buildFFmpegArgs,

@@ -578,6 +578,164 @@ if (_customUserData) {
     app.setPath('userData', _customUserData);
 }
 
+if (process.argv.includes('--headless-wysiwyg-worker')) {
+    const workerFlagIdx = process.argv.indexOf('--headless-wysiwyg-worker');
+    const jobFilePath = process.argv[workerFlagIdx + 1];
+    const os = require('os');
+    const workerUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'videokit-wysiwyg-worker-'));
+    try {
+        app.setPath('userData', workerUserData);
+        app.disableHardwareAcceleration();
+    } catch (_) {}
+
+    app.whenReady().then(async () => {
+        const cleanupWorkerDir = () => {
+            try { fs.rmSync(workerUserData, { recursive: true, force: true }); } catch (_) {}
+        };
+        try {
+            if (!jobFilePath || !fs.existsSync(jobFilePath)) {
+                throw new Error(`Missing WYSIWYG worker job file: ${jobFilePath}`);
+            }
+            const job = JSON.parse(fs.readFileSync(jobFilePath, 'utf-8'));
+            const taskId = String(job.taskId || '0001');
+            const params = job.params || {};
+
+            registerAPIHandlers(ipcMain);
+
+            ipcMain.handle('check-files-exist', async (_ev, filePaths = []) => {
+                const results = {};
+                for (const p of filePaths) {
+                    try { results[p] = fs.existsSync(p); } catch (_) { results[p] = false; }
+                }
+                return results;
+            });
+            ipcMain.handle('search-files-recursive', async () => ({}));
+
+            const { renderChromiumAudioWav } = require('./services/ffmpeg-rawvideo');
+            const { ReelsExportService } = require('./services/reels-export-service');
+            const exportSettings = require('./services/settings');
+            const workerExportService = new ReelsExportService({
+                config: {
+                    userData: workerUserData,
+                    tempDir: exportSettings.getSecureTmpDir(),
+                    systemDirs: [os.tmpdir(), path.dirname(params.outputPath || jobFilePath)],
+                    ffmpegPath: ffmpegService.resolveCommand('ffmpeg'),
+                    ffprobePath: ffmpegService.resolveCommand('ffprobe'),
+                },
+                renderAudio: renderChromiumAudioWav,
+                trace: () => {},
+            });
+
+            ipcMain.handle('reels-compose-wysiwyg', (event, action, data) =>
+                workerExportService.handle(event.sender, action, data)
+            );
+            ipcMain.on('reels-frame-pipeline-open', async (event, data = {}) => {
+                const sender = event.sender;
+                const { port1, port2 } = new MessageChannelMain();
+                const fail = (err) => {
+                    if (!sender.isDestroyed()) {
+                        sender.send('reels-frame-pipeline-failed', {
+                            requestId: data.requestId,
+                            error: err?.message || String(err),
+                        });
+                    }
+                };
+                try {
+                    const result = await workerExportService.attach(sender, data.sessionId, port1, fail);
+                    if (!result?.ok) throw new Error(result?.error || '无法建立帧通道');
+                    if (!sender.isDestroyed()) {
+                        sender.postMessage('reels-frame-pipeline-ready', { requestId: data.requestId, ...result }, [port2]);
+                    }
+                } catch (err) {
+                    try { port1.close(); port2.close(); } catch (_) {}
+                    fail(err);
+                    workerExportService.handle(sender, 'abort', { sessionId: data.sessionId }).catch(() => {});
+                }
+            });
+
+            const htmlPath = path.join(__dirname, 'isolated-wysiwyg-renderer.html');
+            const scriptBase = app.isPackaged
+                ? path.join(__dirname, '..', 'dist')
+                : path.join(__dirname, '..', 'src');
+            const scriptPaths = [
+                'reels-text-direction.js',
+                'reels-anim-engine.js',
+                'reels-rich-text.js',
+                'reels-scroll-timing.js',
+                'reels-overlay.js',
+                'reels-canvas-renderer.js',
+                'fonts-metadata.js',
+                'reels-font-manager.js',
+                'reels-frame-pipeline.js',
+                'reels-wysiwyg-export.js',
+            ].map(name => path.join(scriptBase, name));
+
+            await new Promise((resolve, reject) => {
+                const win = new BrowserWindow({
+                    show: false,
+                    width: 160,
+                    height: 160,
+                    webPreferences: {
+                        nodeIntegration: true,
+                        contextIsolation: false,
+                        backgroundThrottling: false,
+                        webSecurity: false,
+                    },
+                });
+                const renderer = win.webContents;
+                const requestId = `headless-wysiwyg-${Date.now()}`;
+                let lastPct = -1;
+
+                const onReady = (ev) => {
+                    if (ev.sender !== renderer) return;
+                    win.webContents.send('isolated-wysiwyg-run', {
+                        requestId,
+                        params,
+                        scriptPaths,
+                    });
+                };
+                const onProgress = (ev, data = {}) => {
+                    if (ev.sender !== renderer) return;
+                    const pct = Math.min(99, Math.max(0, Math.floor(Number(data.pct) || 0)));
+                    if (!job.quiet && pct >= lastPct + 10) {
+                        lastPct = pct;
+                        process.stdout.write(JSON.stringify({ status: 'progress', task: taskId, percent: pct }) + '\n');
+                    }
+                };
+                const onResult = (ev, data = {}) => {
+                    if (ev.sender !== renderer) return;
+                    workerExportService.cancelOwner(renderer.id);
+                    if (!win.isDestroyed()) win.destroy();
+                    if (data.success) resolve(data.result || {});
+                    else reject(new Error(data.error || 'Headless WYSIWYG export failed'));
+                };
+                ipcMain.on('isolated-wysiwyg-ready', onReady);
+                ipcMain.on('isolated-wysiwyg-progress', onProgress);
+                ipcMain.on('isolated-wysiwyg-result', onResult);
+                win.webContents.once('did-fail-load', (_ev, code, desc) => {
+                    reject(new Error(`did-fail-load (${code}: ${desc || 'unknown'})`));
+                });
+                win.webContents.once('render-process-gone', (_ev, details = {}) => {
+                    reject(new Error(`render-process-gone (${details.reason || 'unknown'})`));
+                });
+                win.loadFile(htmlPath).catch(reject);
+            });
+
+            cleanupWorkerDir();
+            app.exit(0);
+        } catch (err) {
+            process.stderr.write(JSON.stringify({
+                status: 'error',
+                code: 'RENDER_FAILED',
+                message: err && err.message ? err.message : String(err),
+            }) + '\n');
+            cleanupWorkerDir();
+            app.exit(4);
+        }
+    });
+    return;
+}
+
 // The editor is the only workspace owner; a second launch focuses it.
 // On packaged update/restart, the previous process may still be releasing its lock for a few hundred ms.
 let _workspaceInstanceOwner = app.requestSingleInstanceLock();

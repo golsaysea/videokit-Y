@@ -275,3 +275,160 @@ test('Backend fixes (§8): server.py Waitress args, /api/srt/seamless srtInfos, 
     // Bug 3: /api/media/convert ensures out_dir exists
     assert.match(serverPy, /out_dir = output_dir if output_dir else os\.path\.dirname\(file_path\)\s+if out_dir:\s+os\.makedirs\(out_dir, exist_ok=True\)/);
 });
+
+test('A13: Engine routing (auto | ass | wysiwyg), preset single-source-of-truth, and renderer_version lock', () => {
+    const { resolveTaskEngine, validateTaskFile, CLIError } = require('../bin/videokit-cli.cjs');
+    const { REELS_BUILTIN_PRESETS } = require('../src/reels-presets-init.js');
+
+    assert.ok(REELS_BUILTIN_PRESETS && Object.keys(REELS_BUILTIN_PRESETS).length >= 60, 'Should share 60+ builtin presets from src/reels-presets-init.js');
+
+    // All 15 Canvas-exclusive animation types must route to wysiwyg in auto mode
+    const canvasAnims = [
+        'metronome', 'flash_highlight', 'char_bounce', 'letter_jump', 'zoom_typewriter',
+        'line_focus', 'floating', 'bullet_reveal', 'scatter_pop', 'word_random_position',
+        'box_wipe', 'kinetic_glow_stack', 'underline_sweep', 'three_word_focus_stack',
+        'rolling_rainbow_karaoke',
+    ];
+    for (const anim of canvasAnims) {
+        const route = resolveTaskEngine({ engine: 'auto' }, { anim_in_type: anim }, [], {}, 't-anim');
+        assert.equal(route.engine, 'wysiwyg', `anim_in_type=${anim} should route to wysiwyg`);
+        assert.match(route.engineReason, new RegExp(anim));
+    }
+
+    // ASS-compatible animations route to ass in auto mode
+    for (const anim of ['none', 'fade', 'pop', 'slide_up', 'typewriter', 'blur_sharp', 'holy_glow', 'word_pop_random', 'word_pop_random_pulse']) {
+        const route = resolveTaskEngine({ engine: 'auto' }, { anim_in_type: anim }, [], {}, 't-ass');
+        assert.equal(route.engine, 'ass', `anim_in_type=${anim} should route to ass`);
+    }
+
+    // Forcing engine='ass' on a Canvas-exclusive task must throw CLIError with exitCode 2
+    assert.throws(
+        () => resolveTaskEngine({ engine: 'ass' }, { anim_in_type: 'char_bounce' }, [], {}, 't-force-ass'),
+        (err) => err instanceof CLIError && err.code === 'ENGINE_UNSUPPORTED' && err.exitCode === 2
+    );
+
+    // Mismatched renderer_version must fail with exitCode 2
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a13-'));
+    try {
+        const mismatchTask = path.join(tmpDir, 'mismatch.json');
+        fs.writeFileSync(mismatchTask, JSON.stringify({
+            id: 'mismatch-01',
+            renderer_version: '0.0.1-mismatch',
+            width: 720,
+            height: 1280,
+            bgPath: path.join(demoDir, 'heaven-0001.png'),
+        }));
+        const res = runCliProcess(['validate', '--task', mismatchTask]);
+        assert.equal(res.status, 2);
+        const errPayload = JSON.parse(res.stderr.trim().split(/\r?\n/).pop());
+        assert.equal(errPayload.code, 'RENDERER_VERSION_MISMATCH');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('A14: WYSIWYG engine routing and render with Canvas-exclusive preset', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a14-'));
+    try {
+        const taskPath = path.join(tmpDir, 'wysiwyg-task.json');
+        const outMp4 = path.join(tmpDir, 'wysiwyg-out.mp4');
+        fs.writeFileSync(taskPath, JSON.stringify({
+            id: 'wysiwyg-01',
+            engine: 'auto',
+            preset: '逐字放大',
+            width: 720,
+            height: 1280,
+            fps: 24,
+            duration: 1.5,
+            quality: 'low',
+            bgPath: path.join(demoDir, 'heaven-0001.png'),
+            segments: [
+                { start: 0.1, end: 1.3, text: 'Canvas bounce glow test' },
+            ],
+        }));
+
+        const valRes = runCliProcess(['validate', '--task', taskPath]);
+        assert.equal(valRes.status, 0);
+        const valJson = JSON.parse(valRes.stdout.trim());
+        assert.equal(valJson.engine, 'wysiwyg');
+
+        const renderRes = runCliProcess(['reels', '--task', taskPath, '--output', outMp4, '--quiet'], {
+            VIDEOKIT_WYSIWYG_BACKEND: 'ass-fallback',
+        });
+        assert.equal(renderRes.status, 0, `Expected exit 0, stderr: ${renderRes.stderr}`);
+        const renderJson = JSON.parse(renderRes.stdout.trim().split(/\r?\n/).pop());
+        assert.equal(renderJson.status, 'ok');
+        assert.equal(renderJson.engine, 'wysiwyg');
+        assert.ok(fs.existsSync(outMp4) && fs.statSync(outMp4).size > 1000);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('A15: ASS word_pop_random & Hormozi preset deterministic seed, per-word Dialogue events, and render', () => {
+    const { validateTaskFile, buildTaskASS } = require('../bin/videokit-cli.cjs');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a15-'));
+    try {
+        const taskPath = path.join(tmpDir, 'hormozi.json');
+        const outMp4 = path.join(tmpDir, 'hormozi.mp4');
+        fs.writeFileSync(taskPath, JSON.stringify({
+            id: 'hormozi-01',
+            preset: 'Hormozi 风格字幕',
+            width: 720,
+            height: 1280,
+            fps: 30,
+            duration: 2.0,
+            quality: 'low',
+            bgPath: path.join(demoDir, 'heaven-0001.png'),
+            subtitle: {
+                font_family: 'Arial',
+                color_text: '#FFFFFF',
+                color_high: '#FFD700',
+            },
+            segments: [
+                {
+                    start: 0.0,
+                    end: 1.8,
+                    text: 'Never give up today',
+                    words: [
+                        { word: 'Never', start: 0.0, end: 0.4 },
+                        { word: 'give', start: 0.4, end: 0.8 },
+                        { word: 'up', start: 0.8, end: 1.2 },
+                        { word: 'today', start: 1.2, end: 1.8 },
+                    ],
+                },
+            ],
+        }));
+
+        const plan = validateTaskFile(taskPath, {});
+        assert.equal(plan.engine, 'ass');
+        const ass1 = buildTaskASS(plan);
+        const ass2 = buildTaskASS(plan);
+        assert.equal(ass1, ass2, 'word_pop_random ASS output must be 100% deterministic across runs');
+        assert.match(ass1, /\\an7\\pos\(\d+,\d+\)\\1c&H0000D7FF\\fscx\d+\\fscy\d+\\t\(0,\d+,\\fscx\d+\\fscy\d+\)/);
+
+        const res = runCliProcess(['reels', '--task', taskPath, '--output', outMp4, '--quiet']);
+        assert.equal(res.status, 0, `Expected exit 0, stderr: ${res.stderr}`);
+        assert.ok(fs.existsSync(outMp4) && fs.statSync(outMp4).size > 1000);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('A16-A18: server.py Waitress map_size removed, Bearer Token auth, and /api/reels/render queue', () => {
+    const serverPy = fs.readFileSync(path.join(repoRoot, 'backend', 'server.py'), 'utf-8');
+
+    // A16: map_size removed from waitress.serve and VIDEOKIT_HOST supported
+    assert.equal(serverPy.includes('map_size='), false, 'map_size must be removed from waitress.serve');
+    assert.match(serverPy, /VIDEOKIT_HOST/);
+
+    // A17: Bearer Token authentication middleware present
+    assert.match(serverPy, /VIDEOKIT_API_TOKEN/);
+    assert.match(serverPy, /hmac\.compare_digest\(provided_token,\s*expected_token\)/);
+
+    // A18: Remote render queue endpoints and path traversal / extension whitelist checks present
+    assert.match(serverPy, /@app\.route\('\/api\/reels\/render',\s*methods=\['POST'\]\)/);
+    assert.match(serverPy, /@app\.route\('\/api\/reels\/render\/<task_id>',\s*methods=\['GET'\]\)/);
+    assert.match(serverPy, /@app\.route\('\/api\/reels\/render\/<task_id>\/download',\s*methods=\['GET'\]\)/);
+    assert.match(serverPy, /_ALLOWED_RENDER_EXTENSIONS/);
+});
