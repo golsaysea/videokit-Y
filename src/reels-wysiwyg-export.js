@@ -1218,8 +1218,17 @@ async function reelsWysiwygExport(params) {
                 _drawImageFlipped(ctx, currentCvImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, contentVideoFlipH, contentVideoFlipV);
             }
 
+            // 预设与覆层坐标基于 1080×1920 虚拟画布设计；当导出分辨率不同（如 720×1280）时按比例缩放，确保字号、描边、卡片坐标完全一致
+            const designW = 1080;
+            const designH = Math.round(1080 * (targetHeight / targetWidth)) || 1920;
+            const needDesignScale = (targetWidth !== designW || targetHeight !== designH);
+            ctx.save();
+            if (needDesignScale) {
+                ctx.scale(targetWidth / designW, targetHeight / designH);
+            }
+
             // 环境暗部与逐字光源属于同一效果；先压暗画面，再由字幕光局部提亮。
-            renderer.renderAmbientLightingBase?.(style, targetWidth, targetHeight);
+            renderer.renderAmbientLightingBase?.(style, designW, designH);
 
             // ── 动态字幕 ──
             const renderSubtitle = () => {
@@ -1227,7 +1236,7 @@ async function reelsWysiwygExport(params) {
                 const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
                     typeof renderer.renderKineticGlowBackdrop === 'function';
                 if (hasKineticBackdrop) {
-                    renderer.renderKineticGlowBackdrop(style, targetWidth, targetHeight);
+                    renderer.renderKineticGlowBackdrop(style, designW, designH);
                 }
                 let activeSeg = null;
                 if (segments && segments.length > 0) {
@@ -1250,7 +1259,7 @@ async function reelsWysiwygExport(params) {
                     activeSeg = best;
                 }
                 if (activeSeg) {
-                    renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight, false, hasKineticBackdrop);
+                    renderer.renderSubtitle(style, activeSeg, t, designW, designH, false, hasKineticBackdrop);
                 }
             };
 
@@ -1269,7 +1278,7 @@ async function reelsWysiwygExport(params) {
                             ov._exporting = true;
                             ov._exportDuration = duration; // 让 scroll 覆层知道实际导出时长
                             ov._taskSegments = segments;
-                            ReelsOverlay.drawOverlay(ctx, ov, t, targetWidth, targetHeight);
+                            ReelsOverlay.drawOverlay(ctx, ov, t, designW, designH);
                         } finally {
                             ov._selected = origSelected;
                             delete ov._exporting;
@@ -1289,8 +1298,9 @@ async function reelsWysiwygExport(params) {
 
             // ── AI 水印 ──
             if (typeof _drawWatermarks === 'function') {
-                _drawWatermarks(ctx, targetWidth, targetHeight);
+                _drawWatermarks(ctx, designW, designH);
             }
+            ctx.restore();
 
             // ── Canvas → Raw RGBA → FFmpeg ──
             if (framePipeline) {

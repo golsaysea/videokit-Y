@@ -2254,7 +2254,7 @@ async function mixAudio(session) {
 
         if (audioInputs.length === 0) {
             console.log('[WYSIWYG] 无配音且无音频源，直接拷贝视频');
-            args = ['-y', '-i', tempVideo, '-c:v', 'copy', '-an', ...outputDurationArgs(session), '-movflags', '+faststart', outputPath];
+            args = ['-y', '-i', tempVideo, '-c:v', 'copy', '-an', ...outputDurationArgs(session), '-movflags', '+faststart', ...(String(outputPath || '').toLowerCase().endsWith('.tmp') ? ['-f', 'mp4'] : []), outputPath];
         } else {
             console.log(`[WYSIWYG] 无配音，混合 ${audioInputs.length} 个音频源`);
             args = ['-y', '-i', tempVideo];
@@ -2284,7 +2284,7 @@ async function mixAudio(session) {
             }
             args.push('-filter_complex', filterParts.join(';'),
                 '-map', '0:v', '-map', '[aout]',
-                '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', ...outputDurationArgs(session), '-movflags', '+faststart', outputPath);
+                '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', ...outputDurationArgs(session), '-movflags', '+faststart', ...(String(outputPath || '').toLowerCase().endsWith('.tmp') ? ['-f', 'mp4'] : []), outputPath);
         }
     } else {
         args = ['-y', '-i', tempVideo, '-i', voicePath];
@@ -2460,7 +2460,7 @@ async function mixAudio(session) {
             '-map', '0:v', '-map', '[aout]',
         );
 
-        args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', ...outputDurationArgs(session), '-movflags', '+faststart', outputPath);
+        args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', ...outputDurationArgs(session), '-movflags', '+faststart', ...(String(outputPath || '').toLowerCase().endsWith('.tmp') ? ['-f', 'mp4'] : []), outputPath);
     }
 
     if (session.reverbEnabled) {

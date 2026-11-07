@@ -9302,8 +9302,8 @@ const ReelsBrushEngine = {
         }
 
         const margin = Math.ceil(maxFs * 0.72 + Math.max(0, padX, padTop, padBottom) + (cfg.rimWidth || 2) + 20);
-        const canvasW = ctx.canvas ? ctx.canvas.width : 1080;
-        const canvasH = ctx.canvas ? ctx.canvas.height : 1920;
+        const canvasW = Math.max(1080, ctx.canvas ? ctx.canvas.width : 1080);
+        const canvasH = Math.max(1920, ctx.canvas ? ctx.canvas.height : 1920);
         const boxX = Math.max(-80, Math.floor(minX - margin));
         const boxY = Math.max(-80, Math.floor(minY - margin));
         const boxRight = Math.min(canvasW + 80, Math.ceil(maxX + margin));

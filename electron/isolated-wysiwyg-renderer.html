@@ -46,6 +46,8 @@ window.electronAPI = {
     },
     searchFilesRecursive: (dir, names, depth) => ipcRenderer.invoke('search-files-recursive', localMediaUrlToPath(dir), names, depth),
     scanFonts: () => ipcRenderer.invoke('scan-fonts'),
+    readFileBuffer: file => ipcRenderer.invoke('read-file-buffer', localMediaUrlToPath(file)),
+    saveRenderedAudio: wavData => ipcRenderer.invoke('save-rendered-audio', wavData),
     fetchGoogleFonts: () => ipcRenderer.invoke('fetch-google-fonts'),
     createReelsFramePipeline: (...args) => _reelsFrameBridge.api.createReelsFramePipeline(...args),
     sendReelsFramePipeline: (...args) => _reelsFrameBridge.api.sendReelsFramePipeline(...args),

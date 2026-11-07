@@ -208,26 +208,98 @@ function scanAllFontsForWeb() {
         path.join(repoRoot, 'assets', 'fonts'),
     ];
     const fonts = [];
-    const seen = new Set();
+    const presentFamilies = new Set();
+    const inferWeightStyle = (fileName) => {
+        const base = path.parse(fileName).name.toLowerCase();
+        const style = /(italic|oblique)/.test(base) ? 'italic' : 'normal';
+        let weight = '400';
+        if (/\bblack\b/.test(base)) weight = '900';
+        else if (/extra[\s_-]*bold|ultra[\s_-]*bold|heavy/.test(base)) weight = '800';
+        else if (/\bsemi[\s_-]*bold\b|\bdemi[\s_-]*bold\b/.test(base)) weight = '600';
+        else if (/\bbold\b/.test(base)) weight = '700';
+        else if (/\bmedium\b/.test(base)) weight = '500';
+        else if (/extra[\s_-]*light|ultra[\s_-]*light/.test(base)) weight = '200';
+        else if (/\blight\b/.test(base)) weight = '300';
+        else if (/\bthin\b|\bhairline\b/.test(base)) weight = '100';
+        else if (/variablefont/.test(base)) weight = '100 900';
+        return { weight, style };
+    };
     for (const dir of fontDirs) {
         if (!fs.existsSync(dir)) continue;
-        const walk = (d) => {
+        const walk = (d, parentFamily) => {
             let entries = [];
             try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch (_) { return; }
             for (const entry of entries) {
                 const full = path.join(d, entry.name);
-                if (entry.isDirectory()) walk(full);
-                else if (/\.(ttf|otf|ttc)$/i.test(entry.name)) {
-                    const family = path.basename(entry.name, path.extname(entry.name))
-                        .replace(/[-_](Regular|Bold|Italic|Medium|Light|Black|VariableFont.*)/i, '');
-                    if (!seen.has(family.toLowerCase())) {
-                        seen.add(family.toLowerCase());
-                        fonts.push({ family, name: family, path: full, source: 'bundled' });
-                    }
+                if (entry.isDirectory()) {
+                    walk(full, entry.name.replace(/_/g, ' ').trim());
+                } else if (/\.(ttf|otf|ttc|woff|woff2)$/i.test(entry.name)) {
+                    const family = parentFamily || path.basename(entry.name, path.extname(entry.name))
+                        .replace(/([a-z])([A-Z])/g, '$1 $2')
+                        .replace(/[-_](Regular|Bold|Italic|Medium|Light|Black|VariableFont.*)/i, '')
+                        .replace(/[_-]+/g, ' ')
+                        .trim();
+                    const { weight, style } = inferWeightStyle(entry.name);
+                    presentFamilies.add(family.toLowerCase());
+                    fonts.push({ family, name: family, path: full, weight, style, system: false, source: 'bundled' });
                 }
             }
         };
-        walk(dir);
+        walk(dir, '');
+    }
+
+    const assetsFontsDir = path.join(repoRoot, 'assets', 'fonts');
+    const aliasDefs = [
+        { families: ['Comic Sans MS', 'Balsamiq Sans'], files: [
+            { rel: 'Comic_Relief/ComicRelief-Regular.ttf', weight: '400', style: 'normal' },
+            { rel: 'Comic_Relief/ComicRelief-Bold.ttf', weight: '700', style: 'normal' },
+        ]},
+        { families: ['Segoe UI'], files: [
+            { rel: 'Fira_Sans/FiraSans-Regular.ttf', weight: '400', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-Medium.ttf', weight: '500', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-SemiBold.ttf', weight: '600', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-Bold.ttf', weight: '700', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-ExtraBold.ttf', weight: '800', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-Black.ttf', weight: '900', style: 'normal' },
+            { rel: 'Fira_Sans/FiraSans-Italic.ttf', weight: '400', style: 'italic' },
+            { rel: 'Fira_Sans/FiraSans-BoldItalic.ttf', weight: '700', style: 'italic' },
+            { rel: 'Fira_Sans/FiraSans-ExtraBoldItalic.ttf', weight: '800', style: 'italic' },
+            { rel: 'Fira_Sans/FiraSans-BlackItalic.ttf', weight: '900', style: 'italic' },
+        ]},
+        { families: ['Impact'], files: [
+            { rel: 'Anton/Anton-Regular.ttf', weight: '400', style: 'normal' },
+            { rel: 'Anton/Anton-Regular.ttf', weight: '700', style: 'normal' },
+            { rel: 'Anton/Anton-Regular.ttf', weight: '900', style: 'normal' },
+        ]},
+        { families: ['Arial Black'], files: [
+            { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '400', style: 'normal' },
+            { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '700', style: 'normal' },
+            { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '900', style: 'normal' },
+        ]},
+        { families: ['Georgia', 'Times New Roman'], files: [
+            { rel: 'Gelasio/Gelasio-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+            { rel: 'Gelasio/Gelasio-Italic-VariableFont_wght.ttf', weight: '100 900', style: 'italic' },
+        ]},
+        { families: ['Arial', 'Helvetica'], files: [
+            { rel: 'Arimo/Arimo-Regular.ttf', weight: '400', style: 'normal' },
+            { rel: 'Arimo/Arimo-Bold.ttf', weight: '700', style: 'normal' },
+            { rel: 'Arimo/Arimo-Italic.ttf', weight: '400', style: 'italic' },
+            { rel: 'Arimo/Arimo-BoldItalic.ttf', weight: '700', style: 'italic' },
+        ]},
+        { families: ['Noto Sans SC'], files: [
+            { rel: 'Noto Sans/NotoSans-VariableFont-wght-Regular.ttf', weight: '100 900', style: 'normal' },
+        ]},
+    ];
+    for (const def of aliasDefs) {
+        for (const fam of def.families) {
+            if (presentFamilies.has(fam.toLowerCase())) continue;
+            for (const f of def.files) {
+                const full = path.join(assetsFontsDir, f.rel);
+                if (fs.existsSync(full)) {
+                    fonts.push({ family: fam, name: fam, path: full, weight: f.weight, style: f.style, system: false, source: 'bundled-alias' });
+                }
+            }
+        }
     }
     return fonts;
 }

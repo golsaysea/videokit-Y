@@ -1,4 +1,4 @@
-if (process.argv.includes('--headless')) {
+if (process.argv.includes('--headless') && !process.argv.includes('--headless-wysiwyg-worker')) {
     const headlessIdx = process.argv.indexOf('--headless');
     const cliArgs = process.argv.slice(headlessIdx + 1);
     const { runCli } = require('../bin/videokit-cli.cjs');
@@ -578,6 +578,11 @@ if (_customUserData) {
     app.setPath('userData', _customUserData);
 }
 
+// 日志文件路径
+const logDir = (app && app.isPackaged)
+    ? path.join(app.getPath('userData'), 'logs')
+    : path.join(__dirname, '..', 'logs');
+
 if (process.argv.includes('--headless-wysiwyg-worker')) {
     const workerFlagIdx = process.argv.indexOf('--headless-wysiwyg-worker');
     const jobFilePath = process.argv[workerFlagIdx + 1];
@@ -589,7 +594,9 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
     } catch (_) {}
 
     app.whenReady().then(async () => {
-        const cleanupWorkerDir = () => {
+        let workerExportService = null;
+        const cleanupWorkerDir = async () => {
+            try { if (workerExportService) await workerExportService.close(); } catch (_) {}
             try { fs.rmSync(workerUserData, { recursive: true, force: true }); } catch (_) {}
         };
         try {
@@ -600,6 +607,8 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
             const taskId = String(job.taskId || '0001');
             const params = job.params || {};
 
+            setupFFmpegPath();
+            registerLocalMediaProtocol();
             registerAPIHandlers(ipcMain);
 
             ipcMain.handle('check-files-exist', async (_ev, filePaths = []) => {
@@ -610,11 +619,38 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
                 return results;
             });
             ipcMain.handle('search-files-recursive', async () => ({}));
+            ipcMain.handle('get-media-duration', async (_ev, filePath) => ffmpegService.getDuration(filePath));
+            ipcMain.handle('get-media-duration-detail', async (_ev, filePath) => ffmpegService.getDurationDetailed(filePath));
+            ipcMain.handle('read-file-buffer', async (_ev, filePath) => {
+                if (!filePath || !fs.existsSync(filePath)) throw new Error(`文件不存在: ${filePath}`);
+                const settingsService = require('./services/settings');
+                const ffmpeg = ffmpegService.resolveCommand('ffmpeg');
+                const wavPath = settingsService.secureTmpFile('voice_decode', '.wav');
+                const result = spawnSync(ffmpeg, [
+                    '-y', '-i', filePath,
+                    '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2',
+                    wavPath,
+                ], { timeout: 30000 });
+                if (result.status !== 0 || !fs.existsSync(wavPath)) {
+                    return fs.readFileSync(filePath);
+                }
+                const buf = fs.readFileSync(wavPath);
+                try { fs.unlinkSync(wavPath); } catch (_) {}
+                return buf;
+            });
+            ipcMain.handle('save-rendered-audio', async (_ev, wavData) => {
+                const settingsService = require('./services/settings');
+                const tmpPath = settingsService.secureTmpFile('reels_rendered_audio', '.wav');
+                fs.writeFileSync(tmpPath, Buffer.from(wavData));
+                return tmpPath;
+            });
+            ipcMain.handle('scan-fonts', async (_ev, options = {}) => scanFontsCatalog(options));
+            ipcMain.handle('fetch-google-fonts', async () => '[]');
 
             const { renderChromiumAudioWav } = require('./services/ffmpeg-rawvideo');
             const { ReelsExportService } = require('./services/reels-export-service');
             const exportSettings = require('./services/settings');
-            const workerExportService = new ReelsExportService({
+            workerExportService = new ReelsExportService({
                 config: {
                     userData: workerUserData,
                     tempDir: exportSettings.getSecureTmpDir(),
@@ -721,7 +757,7 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
                 win.loadFile(htmlPath).catch(reject);
             });
 
-            cleanupWorkerDir();
+            await cleanupWorkerDir();
             app.exit(0);
         } catch (err) {
             process.stderr.write(JSON.stringify({
@@ -729,7 +765,7 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
                 code: 'RENDER_FAILED',
                 message: err && err.message ? err.message : String(err),
             }) + '\n');
-            cleanupWorkerDir();
+            await cleanupWorkerDir();
             app.exit(4);
         }
     });
@@ -767,11 +803,6 @@ app.on('second-instance', () => {
         mainWindow.focus();
     }
 });
-
-// 日志文件路径
-const logDir = (app && app.isPackaged)
-    ? path.join(app.getPath('userData'), 'logs')
-    : path.join(__dirname, '..', 'logs');
 
 // 确保日志目录存在
 function ensureLogDir() {
@@ -1264,12 +1295,255 @@ function createWindow() {
     });
 }
 
-// 应用启动
-app.whenReady().then(async () => {
-    if(!_workspaceInstanceOwner)return;
-    appIsReady = true;
-    log('=== App Ready (Node.js Backend) ===');
+var _cachedSystemFonts = null;
+var _cachedLocalFonts = null;
+var _cachedLocalFontsSig = '';
+async function scanFontsCatalog(options = {}) {
+    try {
+        const os = require('os');
+        const fontExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc', '.dfont']);
 
+        function inferWeightAndStyle(fileName) {
+            const base = path.parse(fileName).name.toLowerCase();
+            const style = /(italic|oblique)/.test(base) ? 'italic' : 'normal';
+            let weight = '400';
+            let hasExplicit = false;
+
+            const rules = [
+                [/extra[\s_-]*black|ultra[\s_-]*black/, '900'],
+                [/\bblack\b/, '900'],
+                [/extra[\s_-]*bold|ultra[\s_-]*bold|heavy/, '800'],
+                [/\bsemi[\s_-]*bold\b|\bdemi[\s_-]*bold\b/, '600'],
+                [/\bbold\b/, '700'],
+                [/\bmedium\b/, '500'],
+                [/\bbook\b|\bregular\b|\bnormal\b/, '400'],
+                [/extra[\s_-]*light|ultra[\s_-]*light/, '200'],
+                [/\blight\b/, '300'],
+                [/\bthin\b|\bhairline\b/, '100'],
+            ];
+            for (const [re, w] of rules) {
+                if (re.test(base)) {
+                    weight = w;
+                    hasExplicit = true;
+                    break;
+                }
+            }
+
+            if (!hasExplicit && /variablefont/.test(base)) {
+                weight = '100 900';
+            }
+            return { weight, style, hasExplicit };
+        }
+
+        function cleanFamilyNameFromFile(fileName) {
+            let raw = path.parse(fileName).name;
+            raw = raw.replace(/([a-z])([A-Z])/g, '$1 $2')
+                     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+            raw = raw.replace(/[_-]+/g, ' ');
+            const cleaned = raw
+                .replace(/\b(italic|oblique|regular|normal|book|medium|semibold|semi bold|demibold|demi bold|bold|extrabold|extra bold|ultrabold|ultra bold|black|extrablack|extra black|ultrablack|ultra black|heavy|light|extralight|extra light|ultralight|ultra light|thin|hairline|variablefont|wght|wdth|opsz)\b/gi, '')
+                .replace(/\bHB\b$/i, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+            return cleaned || raw.trim();
+        }
+
+        function computeLocalDirSig(dirs) {
+            const parts = [];
+            for (const d of dirs) {
+                if (!d || !fs.existsSync(d)) {
+                    parts.push(`${d}:missing`);
+                    continue;
+                }
+                try {
+                    const st = fs.statSync(d);
+                    const entries = fs.readdirSync(d);
+                    parts.push(`${d}:${Math.round(st.mtimeMs)}:${entries.length}:${entries.join(',')}`);
+                } catch (_) {
+                    parts.push(`${d}:err`);
+                }
+            }
+            return parts.join('|');
+        }
+
+        function scanDir(dirPath, isSystemFont = false) {
+            const results = [];
+            if (!dirPath || !fs.existsSync(dirPath)) return results;
+            try {
+                let directoryMetadata={};try{directoryMetadata=JSON.parse(fs.readFileSync(path.join(dirPath,'font-metadata.json'),'utf8'));}catch(_){}
+                const items = fs.readdirSync(dirPath, { withFileTypes: true });
+                for (const item of items) {
+                    if (item.name.startsWith('.')) continue;
+                    const fullPath = path.join(dirPath, item.name);
+                    if (item.isDirectory()) {
+                        const familyName = item.name.replace(/_/g, ' ');
+                        try {
+                            const files = fs.readdirSync(fullPath);
+                            let importedMetadata = {};
+                            try { importedMetadata = JSON.parse(fs.readFileSync(path.join(fullPath, 'font-metadata.json'), 'utf8')); } catch (_) {}
+
+                            for (const fontFile of files) {
+                                const ext = path.extname(fontFile).toLowerCase();
+                                if (!fontExts.has(ext)) {
+                                    const child=path.join(fullPath,fontFile);
+                                    try{if(fs.lstatSync(child).isDirectory())results.push(...scanDir(child,isSystemFont));}catch(_){}
+                                    continue;
+                                }
+                                const inferred = inferWeightAndStyle(fontFile);
+                                const parsedMeta = require('./services/fontMetadata').readFontMetadata(path.join(fullPath, fontFile)) || {};
+                                const imported = importedMetadata[fontFile] || {};
+                                const resolvedWeight = imported.weight
+                                    || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
+                                const resolvedStyle = imported.style
+                                    || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
+                                const rawFamily = imported.family || parsedMeta.family || familyName;
+                                const normalizedFamily = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || familyName;
+                                results.push({
+                                    family: normalizedFamily,
+                                    path: path.join(fullPath, fontFile),
+                                    weight: resolvedWeight,
+                                    style: resolvedStyle,
+                                    system: isSystemFont,
+                                });
+                            }
+                        } catch { /* skip unreadable dirs */ }
+                    } else if (item.isFile() && fontExts.has(path.extname(item.name).toLowerCase())) {
+                        const inferred = inferWeightAndStyle(item.name);
+                        const parsedMeta = require('./services/fontMetadata').readFontMetadata(fullPath) || {};
+                        const imported = directoryMetadata[item.name] || {};
+                        const details = { ...parsedMeta, ...imported };
+                        const rawFamily = details.family || cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
+                        const familyName = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || rawFamily;
+                        const resolvedWeight = imported.weight
+                            || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
+                        const resolvedStyle = imported.style
+                            || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
+                        results.push({
+                            family: familyName,
+                            path: fullPath,
+                            weight: resolvedWeight,
+                            style: resolvedStyle,
+                            system: isSystemFont,
+                        });
+                    }
+                }
+            } catch (err) {
+                log(`[Fonts] Error scanning ${dirPath}: ${err.message}`);
+            }
+            return results;
+        }
+
+        const fontsDir = app.isPackaged
+            ? path.join(process.resourcesPath, 'assets', 'fonts')
+            : path.join(__dirname, '..', 'assets', 'fonts');
+        const localDirs = [path.join(path.dirname(process.execPath),'Fonts'), fontsDir];
+        if (!app.isPackaged) localDirs.push(path.join(__dirname, '..', 'fonts-local'));
+
+        const currentLocalSig = computeLocalDirSig(localDirs);
+        if (!_cachedLocalFonts || _cachedLocalFontsSig !== currentLocalSig || options?.forceRescanLocal) {
+            const localScanned = [];
+            for (const dir of localDirs) {
+                localScanned.push(...scanDir(dir, false));
+            }
+            _cachedLocalFonts = localScanned;
+            _cachedLocalFontsSig = currentLocalSig;
+        }
+
+        if (!_cachedSystemFonts || options?.forceRescanSystem) {
+            const systemDirs = [];
+            if (process.platform === 'darwin') {
+                systemDirs.push('/Library/Fonts');
+                systemDirs.push(path.join(os.homedir(), 'Library', 'Fonts'));
+                systemDirs.push('/System/Library/Fonts');
+                systemDirs.push('/System/Library/Fonts/Supplemental');
+            } else if (process.platform === 'win32') {
+                const winFonts = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts');
+                systemDirs.push(winFonts);
+                const userFonts = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Windows', 'Fonts');
+                systemDirs.push(userFonts);
+            } else {
+                systemDirs.push('/usr/share/fonts');
+                systemDirs.push('/usr/local/share/fonts');
+                systemDirs.push(path.join(os.homedir(), '.fonts'));
+                systemDirs.push(path.join(os.homedir(), '.local', 'share', 'fonts'));
+            }
+
+            const sysScanned = [];
+            for (const dir of systemDirs) {
+                sysScanned.push(...scanDir(dir, true));
+            }
+            _cachedSystemFonts = sysScanned;
+            log(`[Fonts] scanned ${_cachedLocalFonts.length + _cachedSystemFonts.length} font files (${systemDirs.length} system dirs + assets)`);
+        }
+
+        const combined = [..._cachedLocalFonts, ..._cachedSystemFonts];
+        const presentFamilies = new Set(combined.map(f => String(f.family || '').toLowerCase()));
+        const aliasDefs = [
+            { families: ['Comic Sans MS', 'Balsamiq Sans'], files: [
+                { rel: 'Comic_Relief/ComicRelief-Regular.ttf', weight: '400', style: 'normal' },
+                { rel: 'Comic_Relief/ComicRelief-Bold.ttf', weight: '700', style: 'normal' },
+            ]},
+            { families: ['Segoe UI'], files: [
+                { rel: 'Fira_Sans/FiraSans-Regular.ttf', weight: '400', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-Medium.ttf', weight: '500', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-SemiBold.ttf', weight: '600', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-Bold.ttf', weight: '700', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-ExtraBold.ttf', weight: '800', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-Black.ttf', weight: '900', style: 'normal' },
+                { rel: 'Fira_Sans/FiraSans-Italic.ttf', weight: '400', style: 'italic' },
+                { rel: 'Fira_Sans/FiraSans-BoldItalic.ttf', weight: '700', style: 'italic' },
+                { rel: 'Fira_Sans/FiraSans-ExtraBoldItalic.ttf', weight: '800', style: 'italic' },
+                { rel: 'Fira_Sans/FiraSans-BlackItalic.ttf', weight: '900', style: 'italic' },
+            ]},
+            { families: ['Impact'], files: [
+                { rel: 'Anton/Anton-Regular.ttf', weight: '400', style: 'normal' },
+                { rel: 'Anton/Anton-Regular.ttf', weight: '700', style: 'normal' },
+                { rel: 'Anton/Anton-Regular.ttf', weight: '900', style: 'normal' },
+            ]},
+            { families: ['Arial Black'], files: [
+                { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '400', style: 'normal' },
+                { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '700', style: 'normal' },
+                { rel: 'Archivo_Black/ArchivoBlack-Regular.ttf', weight: '900', style: 'normal' },
+            ]},
+            { families: ['Georgia', 'Times New Roman'], files: [
+                { rel: 'Gelasio/Gelasio-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+                { rel: 'Gelasio/Gelasio-Italic-VariableFont_wght.ttf', weight: '100 900', style: 'italic' },
+            ]},
+            { families: ['Arial', 'Helvetica'], files: [
+                { rel: 'Arimo/Arimo-Regular.ttf', weight: '400', style: 'normal' },
+                { rel: 'Arimo/Arimo-Bold.ttf', weight: '700', style: 'normal' },
+                { rel: 'Arimo/Arimo-Italic.ttf', weight: '400', style: 'italic' },
+                { rel: 'Arimo/Arimo-BoldItalic.ttf', weight: '700', style: 'italic' },
+            ]},
+            { families: ['Noto Sans SC'], files: [
+                { rel: 'Noto Sans/NotoSans-VariableFont-wght-Regular.ttf', weight: '100 900', style: 'normal' },
+            ]},
+        ];
+        for (const def of aliasDefs) {
+            for (const fam of def.families) {
+                if (presentFamilies.has(fam.toLowerCase())) continue;
+                for (const f of def.files) {
+                    const fullPath = path.join(fontsDir, f.rel);
+                    if (fs.existsSync(fullPath)) {
+                        combined.push({
+                            family: fam,
+                            path: fullPath,
+                            weight: f.weight,
+                            style: f.style,
+                            system: false,
+                        });
+                    }
+                }
+            }
+        }
+        return combined;
+    } catch (err) {
+        log(`[Fonts] scanning error: ${err.message}`);
+        return [];
+    }
+}
+
+function registerLocalMediaProtocol() {
     protocol.handle('local-media', async (request) => {
         // 不用 standard:true → URL 不会被解析为 host/path 格式
         // local-media:///Users/ww/file.mp4 → 直接截取 scheme 后的路径
@@ -1397,6 +1671,15 @@ app.whenReady().then(async () => {
             return new Response('Internal Error: ' + e.message, { status: 500 });
         }
     });
+}
+
+// 应用启动
+app.whenReady().then(async () => {
+    if(!_workspaceInstanceOwner)return;
+    appIsReady = true;
+    log('=== App Ready (Node.js Backend) ===');
+
+    registerLocalMediaProtocol();
 
     // 设置 FFmpeg 环境
     setupFFmpegPath();
@@ -2376,199 +2659,7 @@ app.whenReady().then(async () => {
         const manifest=path.join(path.dirname(file),'font-metadata.json');let metadata={};if(fs.existsSync(manifest))metadata=JSON.parse(fs.readFileSync(manifest,'utf8'));metadata[path.basename(file)]={family,weight:data.weight,style:data.style};const temporary=manifest+'.'+process.pid+'.tmp';fs.writeFileSync(temporary,JSON.stringify(metadata,null,2),'utf8');fs.renameSync(temporary,manifest);
         return data;
     });
-    let _cachedSystemFonts = null;
-    let _cachedLocalFonts = null;
-    let _cachedLocalFontsSig = '';
-    handleTrusted('scan-fonts', async (event, options = {}) => {
-        try {
-            const os = require('os');
-            const fontExts = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc', '.dfont']);
-
-            function inferWeightAndStyle(fileName) {
-                const base = path.parse(fileName).name.toLowerCase();
-                const style = /(italic|oblique)/.test(base) ? 'italic' : 'normal';
-                let weight = '400';
-                let hasExplicit = false;
-
-                const rules = [
-                    [/extra[\s_-]*black|ultra[\s_-]*black/, '900'],
-                    [/\bblack\b/, '900'],
-                    [/extra[\s_-]*bold|ultra[\s_-]*bold|heavy/, '800'],
-                    [/\bsemi[\s_-]*bold\b|\bdemi[\s_-]*bold\b/, '600'],
-                    [/\bbold\b/, '700'],
-                    [/\bmedium\b/, '500'],
-                    [/\bbook\b|\bregular\b|\bnormal\b/, '400'],
-                    [/extra[\s_-]*light|ultra[\s_-]*light/, '200'],
-                    [/\blight\b/, '300'],
-                    [/\bthin\b|\bhairline\b/, '100'],
-                ];
-                for (const [re, w] of rules) {
-                    if (re.test(base)) {
-                        weight = w;
-                        hasExplicit = true;
-                        break;
-                    }
-                }
-
-                if (!hasExplicit && /variablefont/.test(base)) {
-                    weight = '100 900';
-                }
-                return { weight, style, hasExplicit };
-            }
-
-            function cleanFamilyNameFromFile(fileName) {
-                let raw = path.parse(fileName).name;
-                // Split CamelCase: "AppleSDGothicNeo" → "Apple SD Gothic Neo"
-                raw = raw.replace(/([a-z])([A-Z])/g, '$1 $2')
-                         .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
-                raw = raw.replace(/[_-]+/g, ' ');
-                // Remove weight/style tokens
-                const cleaned = raw
-                    .replace(/\b(italic|oblique|regular|normal|book|medium|semibold|semi bold|demibold|demi bold|bold|extrabold|extra bold|ultrabold|ultra bold|black|extrablack|extra black|ultrablack|ultra black|heavy|light|extralight|extra light|ultralight|ultra light|thin|hairline|variablefont|wght|wdth|opsz)\b/gi, '')
-                    // Remove macOS suffixes like "HB" (Harfbuzz variants)
-                    .replace(/\bHB\b$/i, '')
-                    .replace(/\s{2,}/g, ' ')
-                    .trim();
-                return cleaned || raw.trim();
-            }
-
-            function computeLocalDirSig(dirs) {
-                const parts = [];
-                for (const d of dirs) {
-                    if (!d || !fs.existsSync(d)) {
-                        parts.push(`${d}:missing`);
-                        continue;
-                    }
-                    try {
-                        const st = fs.statSync(d);
-                        const entries = fs.readdirSync(d);
-                        parts.push(`${d}:${Math.round(st.mtimeMs)}:${entries.length}:${entries.join(',')}`);
-                    } catch (_) {
-                        parts.push(`${d}:err`);
-                    }
-                }
-                return parts.join('|');
-            }
-
-            // ── 扫描单个目录 ──
-            function scanDir(dirPath, isSystemFont = false) {
-                const results = [];
-                if (!dirPath || !fs.existsSync(dirPath)) return results;
-                try {
-                    let directoryMetadata={};try{directoryMetadata=JSON.parse(fs.readFileSync(path.join(dirPath,'font-metadata.json'),'utf8'));}catch(_){}
-                    const items = fs.readdirSync(dirPath, { withFileTypes: true });
-                    for (const item of items) {
-                        if (item.name.startsWith('.')) continue;
-                        const fullPath = path.join(dirPath, item.name);
-                        if (item.isDirectory()) {
-                            const familyName = item.name.replace(/_/g, ' ');
-                            try {
-                                const files = fs.readdirSync(fullPath);
-                                let importedMetadata = {};
-                                try { importedMetadata = JSON.parse(fs.readFileSync(path.join(fullPath, 'font-metadata.json'), 'utf8')); } catch (_) {}
-
-                                for (const fontFile of files) {
-                                    const ext = path.extname(fontFile).toLowerCase();
-                                    if (!fontExts.has(ext)) {
-                                        const child=path.join(fullPath,fontFile);
-                                        try{if(fs.lstatSync(child).isDirectory())results.push(...scanDir(child,isSystemFont));}catch(_){}
-                                        continue;
-                                    }
-                                    const inferred = inferWeightAndStyle(fontFile);
-                                    const parsedMeta = require('./services/fontMetadata').readFontMetadata(path.join(fullPath, fontFile)) || {};
-                                    const imported = importedMetadata[fontFile] || {};
-                                    const resolvedWeight = imported.weight
-                                        || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
-                                    const resolvedStyle = imported.style
-                                        || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
-                                    const rawFamily = imported.family || parsedMeta.family || familyName;
-                                    const normalizedFamily = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || familyName;
-                                    results.push({
-                                        family: normalizedFamily,
-                                        path: path.join(fullPath, fontFile),
-                                        weight: resolvedWeight,
-                                        style: resolvedStyle,
-                                        system: isSystemFont,
-                                    });
-                                }
-                            } catch { /* skip unreadable dirs */ }
-                        } else if (item.isFile() && fontExts.has(path.extname(item.name).toLowerCase())) {
-                            const inferred = inferWeightAndStyle(item.name);
-                            const parsedMeta = require('./services/fontMetadata').readFontMetadata(fullPath) || {};
-                            const imported = directoryMetadata[item.name] || {};
-                            const details = { ...parsedMeta, ...imported };
-                            const rawFamily = details.family || cleanFamilyNameFromFile(item.name).replace(/_/g, ' ');
-                            const familyName = cleanFamilyNameFromFile(rawFamily).replace(/_/g, ' ') || rawFamily;
-                            const resolvedWeight = imported.weight
-                                || ((inferred.hasExplicit && (!parsedMeta.weight || parsedMeta.weight === '400')) ? inferred.weight : (parsedMeta.weight || inferred.weight));
-                            const resolvedStyle = imported.style
-                                || ((inferred.style === 'italic' && (!parsedMeta.style || parsedMeta.style === 'normal')) ? 'italic' : (parsedMeta.style || inferred.style));
-                            results.push({
-                                family: familyName,
-                                path: fullPath,
-                                weight: resolvedWeight,
-                                style: resolvedStyle,
-                                system: isSystemFont,
-                            });
-                        }
-                    }
-                } catch (err) {
-                    log(`[Fonts] Error scanning ${dirPath}: ${err.message}`);
-                }
-                return results;
-            }
-
-            // ── 1. 项目内置字体 (assets/fonts + fonts-local) ──
-            const fontsDir = app.isPackaged
-                ? path.join(process.resourcesPath, 'assets', 'fonts')
-                : path.join(__dirname, '..', 'assets', 'fonts');
-            const localDirs = [path.join(path.dirname(process.execPath),'Fonts'), fontsDir];
-            if (!app.isPackaged) localDirs.push(path.join(__dirname, '..', 'fonts-local'));
-
-            const currentLocalSig = computeLocalDirSig(localDirs);
-            if (!_cachedLocalFonts || _cachedLocalFontsSig !== currentLocalSig || options?.forceRescanLocal) {
-                const localScanned = [];
-                for (const dir of localDirs) {
-                    localScanned.push(...scanDir(dir, false));
-                }
-                _cachedLocalFonts = localScanned;
-                _cachedLocalFontsSig = currentLocalSig;
-            }
-
-            // ── 2. 系统字体目录（缓存避免反复扫描 Windows 字体）──
-            if (!_cachedSystemFonts || options?.forceRescanSystem) {
-                const systemDirs = [];
-                if (process.platform === 'darwin') {
-                    systemDirs.push('/Library/Fonts');
-                    systemDirs.push(path.join(os.homedir(), 'Library', 'Fonts'));
-                    systemDirs.push('/System/Library/Fonts');
-                    systemDirs.push('/System/Library/Fonts/Supplemental');
-                } else if (process.platform === 'win32') {
-                    const winFonts = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts');
-                    systemDirs.push(winFonts);
-                    const userFonts = path.join(os.homedir(), 'AppData', 'Local', 'Microsoft', 'Windows', 'Fonts');
-                    systemDirs.push(userFonts);
-                } else {
-                    systemDirs.push('/usr/share/fonts');
-                    systemDirs.push('/usr/local/share/fonts');
-                    systemDirs.push(path.join(os.homedir(), '.fonts'));
-                    systemDirs.push(path.join(os.homedir(), '.local', 'share', 'fonts'));
-                }
-
-                const sysScanned = [];
-                for (const dir of systemDirs) {
-                    sysScanned.push(...scanDir(dir, true));
-                }
-                _cachedSystemFonts = sysScanned;
-                log(`[Fonts] scanned ${_cachedLocalFonts.length + _cachedSystemFonts.length} font files (${systemDirs.length} system dirs + assets)`);
-            }
-
-            return [..._cachedLocalFonts, ..._cachedSystemFonts];
-        } catch (err) {
-            log(`[Fonts] scanning error: ${err.message}`);
-            return [];
-        }
-    });
+    handleTrusted('scan-fonts', async (event, options = {}) => scanFontsCatalog(options));
 
     // ==================== IPC 处理 - 缓存管理 ====================
     handleTrusted('get-cache-info', async () => {

@@ -14,7 +14,13 @@ const path = require('path');
 const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const ReelsSubtitleProcessor = require('../src/reels-subtitle-processor.js');
-const { REELS_BUILTIN_PRESETS, REELS_BUILTIN_OVERLAY_GROUP_PRESETS } = require('../src/reels-presets-init.js');
+const {
+    REELS_BUILTIN_PRESETS,
+    REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
+    REELS_PRESET_ID_MAP,
+    REELS_OVERLAY_PRESET_ID_MAP,
+    resolveBuiltinPreset,
+} = require('../src/reels-presets-init.js');
 
 const CANVAS_EXCLUSIVE_ANIMATIONS = new Set([
     'metronome',
@@ -501,19 +507,20 @@ function resolveSingleFontFamily(fontFamilyRaw, taskId = null) {
 
     const winFontAliases = {
         arial: ['arial.ttf', 'arialbd.ttf', 'arimo-regular.ttf', 'arimo-bold.ttf'],
-        arialblack: ['ariblk.ttf', 'arialbd.ttf', 'arimo-bold.ttf'],
+        arialblack: ['ariblk.ttf', 'archivoblack-regular.ttf'],
         helvetica: ['arial.ttf', 'arimo-regular.ttf'],
         sansserif: ['arial.ttf', 'arimo-regular.ttf', 'dejavusans.ttf'],
-        systemui: ['segoeui.ttf', 'arial.ttf', 'arimo-regular.ttf'],
-        segoeui: ['segoeui.ttf', 'segoeuib.ttf', 'arimo-regular.ttf'],
-        comicsansms: ['comic.ttf', 'comicbd.ttf', 'arimo-regular.ttf'],
-        impact: ['impact.ttf'],
-        timesnewroman: ['times.ttf', 'timesbd.ttf'],
+        systemui: ['segoeui.ttf', 'firasans-regular.ttf'],
+        segoeui: ['segoeui.ttf', 'segoeuib.ttf', 'firasans-regular.ttf'],
+        comicsansms: ['comic.ttf', 'comicbd.ttf', 'comicrelief-regular.ttf'],
+        balsamiqsans: ['balsamiqsans-regular.ttf', 'comicrelief-regular.ttf'],
+        impact: ['impact.ttf', 'anton-regular.ttf'],
+        timesnewroman: ['times.ttf', 'timesbd.ttf', 'gelasio-variablefont_wght.ttf'],
         couriernew: ['cour.ttf', 'courbd.ttf'],
         verdana: ['verdana.ttf', 'verdanab.ttf'],
         tahoma: ['tahoma.ttf', 'tahomabd.ttf'],
         trebuchetms: ['trebuc.ttf', 'trebucbd.ttf'],
-        georgia: ['georgia.ttf', 'georgiab.ttf'],
+        georgia: ['georgia.ttf', 'georgiab.ttf', 'gelasio-variablefont_wght.ttf'],
         microsoftyahei: ['msyh.ttc', 'msyhbd.ttc'],
         simhei: ['simhei.ttf'],
     };
@@ -567,14 +574,34 @@ function resolveSingleFontFamily(fontFamilyRaw, taskId = null) {
         }
     }
 
-    // Offline fallback for default Arial / Helvetica / sans-serif using bundled Arimo font
-    if (matchedFiles.length === 0 && ['arial', 'helvetica', 'sans', 'sansserif'].includes(requestedKey)) {
-        const arimoFiles = bundledFiles.filter(f => /arimo/i.test(path.basename(f)));
-        if (arimoFiles.length > 0) {
-            return {
-                fontFamily: requestedFamily,
-                fontFiles: arimoFiles,
-            };
+    // Offline fallback for Windows/macOS preset fonts on headless Linux using bundled metric/visual equivalents
+    if (matchedFiles.length === 0) {
+        const bundledFallbackMap = {
+            arial: { dirRe: /^arimo$/i, assFamily: 'Arimo' },
+            helvetica: { dirRe: /^arimo$/i, assFamily: 'Arimo' },
+            sans: { dirRe: /^arimo$/i, assFamily: 'Arimo' },
+            sansserif: { dirRe: /^arimo$/i, assFamily: 'Arimo' },
+            segoeui: { dirRe: /^fira_sans$/i, assFamily: 'Fira Sans' },
+            systemui: { dirRe: /^fira_sans$/i, assFamily: 'Fira Sans' },
+            comicsansms: { dirRe: /^comic_relief$/i, assFamily: 'Comic Relief' },
+            balsamiqsans: { dirRe: /^comic_relief$/i, assFamily: 'Comic Relief' },
+            impact: { dirRe: /^anton$/i, assFamily: 'Anton' },
+            arialblack: { dirRe: /^archivo_black$/i, assFamily: 'Archivo Black' },
+            georgia: { dirRe: /^gelasio$/i, assFamily: 'Gelasio' },
+            timesnewroman: { dirRe: /^gelasio$/i, assFamily: 'Gelasio' },
+            serif: { dirRe: /^gelasio$/i, assFamily: 'Gelasio' },
+            notosanssc: { dirRe: /^noto\s*sans$/i, assFamily: 'Noto Sans' },
+        };
+        const fb = bundledFallbackMap[requestedKey];
+        if (fb) {
+            const fbFiles = bundledFiles.filter(f => fb.dirRe.test(path.basename(path.dirname(f))) || fb.dirRe.test(path.basename(f)));
+            if (fbFiles.length > 0) {
+                return {
+                    fontFamily: requestedFamily,
+                    assFontFamily: fb.assFamily,
+                    fontFiles: fbFiles,
+                };
+            }
         }
     }
 
@@ -748,7 +775,20 @@ function resolveTaskEngine(task, subConfig = {}, overlays = [], cliArgs = {}, ta
         subConfig.active_line_focus_enabled === true ||
         subConfig.scrolling_mode === true ||
         subConfig.fullpage_typewriter === true ||
-        Boolean(subConfig.mixed_layout)
+        Boolean(subConfig.mixed_layout && subConfig.mixed_layout !== 'none') ||
+        Boolean(subConfig.block_typography_mode && subConfig.block_typography_mode !== 'none') ||
+        Boolean(subConfig.box_brush_style && subConfig.box_brush_style !== 'none' && subConfig.box_brush_style !== 'rect') ||
+        subConfig.highlight_scale_enabled === true ||
+        subConfig.highlight_push_apart === true ||
+        subConfig.balanced_two_line_wrap === true ||
+        subConfig.stroke_expand_enabled === true ||
+        subConfig.effect_controls_enabled === true ||
+        subConfig.speed_trail_enabled === true ||
+        subConfig.ambient_glow_enabled === true ||
+        subConfig.ambient_lighting_enabled === true ||
+        subConfig.bg_gradient_enabled === true ||
+        hasGradientColor(subConfig.color_shadow) ||
+        subConfig.use_box === true
     ) {
         wysiwygReasons.push('canvas_layout_mode');
     }
@@ -761,7 +801,7 @@ function resolveTaskEngine(task, subConfig = {}, overlays = [], cliArgs = {}, ta
                 break;
             }
             const ovType = String(ov.type || '').toLowerCase();
-            if (ovType === 'scroll' || ovType === 'flipper') {
+            if (ovType === 'scroll' || ovType === 'flipper' || ovType === 'textcard') {
                 wysiwygReasons.push(`overlay_type=${ovType}`);
                 break;
             }
@@ -998,8 +1038,16 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         ? task.preset.trim()
         : ((typeof rawSub.preset === 'string' && rawSub.preset.trim()) ? rawSub.preset.trim() : null);
     let presetStyle = {};
+    let presetOverlays = null;
     if (presetName) {
-        if (!REELS_BUILTIN_PRESETS || !REELS_BUILTIN_PRESETS[presetName]) {
+        const resolved = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(presetName) : null;
+        if (resolved && resolved.kind === 'subtitle') {
+            presetStyle = { ...resolved.preset };
+        } else if (resolved && resolved.kind === 'overlay') {
+            presetOverlays = JSON.parse(JSON.stringify(resolved.overlays));
+        } else if (REELS_BUILTIN_PRESETS && REELS_BUILTIN_PRESETS[presetName]) {
+            presetStyle = { ...REELS_BUILTIN_PRESETS[presetName] };
+        } else {
             throw new CLIError(
                 'PRESET_NOT_FOUND',
                 `Builtin subtitle preset '${presetName}' not found`,
@@ -1007,19 +1055,23 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
                 taskId
             );
         }
-        presetStyle = { ...REELS_BUILTIN_PRESETS[presetName] };
     }
     const subConfig = { ...presetStyle, ...rawSub };
 
-    // Resolve overlays (direct task.overlays or task.overlay_group_preset)
+    // Resolve overlays (direct task.overlays or task.overlay_group_preset or overlay preset ID)
     let overlays = [];
     if (Array.isArray(task.overlays)) {
         overlays = task.overlays;
     } else if (typeof task.overlay_group_preset === 'string' && task.overlay_group_preset.trim()) {
         const ogName = task.overlay_group_preset.trim();
-        if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS && Array.isArray(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName])) {
+        const resolvedOg = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(ogName) : null;
+        if (resolvedOg && resolvedOg.kind === 'overlay') {
+            overlays = JSON.parse(JSON.stringify(resolvedOg.overlays));
+        } else if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS && Array.isArray(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName])) {
             overlays = JSON.parse(JSON.stringify(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName]));
         }
+    } else if (presetOverlays) {
+        overlays = presetOverlays;
     }
 
     // Resolve rendering engine ('ass' | 'wysiwyg') per §3.1
@@ -1117,7 +1169,7 @@ function buildTaskASS(plan) {
 
     const styleObj = {
         ...sub,
-        font_family: fontInfo.fontFamily,
+        font_family: fontInfo.assFontFamily || fontInfo.fontFamily,
         fontsize: scaledFontSize,
         bold: sub.bold !== false,
         italic: Boolean(sub.italic),
@@ -1126,6 +1178,9 @@ function buildTaskASS(plan) {
         color_high: colorHigh,
         karaoke_highlight: karaokeHighlight,
         use_stroke: sub.use_stroke !== false,
+        use_box: Boolean(sub.use_box),
+        color_bg: sub.color_bg || '#000000',
+        opacity_bg: sub.opacity_bg !== undefined ? Number(sub.opacity_bg) : 150,
         border_width: scaledBorderW,
         shadow_blur: scaledShadowBlur,
         letter_spacing: scaledSpacing,
@@ -2091,6 +2146,7 @@ module.exports = {
     CANVAS_EXCLUSIVE_ANIMATIONS,
     ASS_SUPPORTED_ANIMATIONS,
     parseArgs,
+    resolveFontFamily,
     resolveTaskEngine,
     validateTaskFile,
     buildTaskASS,

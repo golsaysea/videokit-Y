@@ -535,3 +535,70 @@ test('A19: Native Web Edition (web-bridge.js + videokit-web-server.cjs) RPC, upl
         fs.rmSync(tmpDir, { recursive: true, force: true });
     }
 });
+
+test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routing, font fallbacks, and real Electron WYSIWYG worker render', () => {
+    const { validateTaskFile, resolveFontFamily } = require('../bin/videokit-cli.cjs');
+    const {
+        REELS_PRESET_ID_MAP,
+        REELS_OVERLAY_PRESET_ID_MAP,
+        resolveBuiltinPreset,
+    } = require('../src/reels-presets-init.js');
+
+    // 1. All 100 subtitle/scroll preset IDs + 14 overlay preset IDs = 114 total must resolve
+    const subIds = Object.keys(REELS_PRESET_ID_MAP);
+    const ovIds = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
+    assert.equal(subIds.length, 100, 'Expected 100 subtitle/scroll preset IDs');
+    assert.equal(ovIds.length, 14, 'Expected 14 overlay preset IDs');
+    for (const id of [...subIds, ...ovIds]) {
+        const resolved = resolveBuiltinPreset(id);
+        assert.ok(resolved, `Preset ID ${id} must resolve`);
+    }
+
+    // 2. Font resolution for Windows/macOS preset fonts
+    for (const fam of ['Comic Sans MS', 'Balsamiq Sans', 'Segoe UI', 'Impact', 'Arial Black', 'Georgia', 'Times New Roman', 'Noto Sans SC']) {
+        const info = resolveFontFamily(fam);
+        assert.ok(info && Array.isArray(info.fontFiles) && info.fontFiles.length > 0, `Font ${fam} should resolve to font files`);
+    }
+
+    // 3. Validate preset IDs and Canvas-exclusive engine routing + real Electron WYSIWYG render
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a20-'));
+    try {
+        for (const presetId of ['se-01', 'se-12', 'sub-03', 'sub-25', 'sub-27', 'sub-35', 'sub-36', 'sub-39', 'sub-40', 'sub-53', 'sub-55', 'scroll-blessed-grace', 'scroll-lyrics-pink', 'ov-01']) {
+            const p = path.join(tmpDir, `task-${presetId}.json`);
+            fs.writeFileSync(p, JSON.stringify({
+                id: `check-${presetId}`,
+                engine: 'auto',
+                preset: presetId,
+                width: 720,
+                height: 1280,
+                bgPath: path.join(demoDir, 'heaven-0001.png'),
+                segments: [{ start: 0.0, end: 1.0, text: 'Amen blessed grace' }],
+            }));
+            const plan = validateTaskFile(p, {});
+            assert.equal(plan.engine, 'wysiwyg', `Preset ${presetId} should route to wysiwyg in auto mode`);
+        }
+
+        // 4. Real Electron --headless-wysiwyg-worker render (no ass-fallback)
+        const realTaskPath = path.join(tmpDir, 'real-wysiwyg.json');
+        const realOutMp4 = path.join(tmpDir, 'real-wysiwyg.mp4');
+        fs.writeFileSync(realTaskPath, JSON.stringify({
+            id: 'real-wysiwyg-01',
+            engine: 'wysiwyg',
+            preset: 'sub-55',
+            width: 720,
+            height: 1280,
+            fps: 24,
+            duration: 0.5,
+            quality: 'low',
+            bgPath: path.join(demoDir, 'heaven-0001.png'),
+            segments: [
+                { start: 0.0, end: 0.5, text: 'Merry Christmas' },
+            ],
+        }));
+        const res = runCliProcess(['reels', '--task', realTaskPath, '--output', realOutMp4, '--quiet']);
+        assert.equal(res.status, 0, `Real Electron WYSIWYG render failed: ${res.stderr}`);
+        assert.ok(fs.existsSync(realOutMp4) && fs.statSync(realOutMp4).size > 1000, 'Real WYSIWYG output MP4 should exist and be non-empty');
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});

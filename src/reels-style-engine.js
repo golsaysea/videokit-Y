@@ -100,6 +100,10 @@ const DEFAULT_SUBTITLE_STYLE = {
     scrolling_mode: false,
     scrolling_visible_lines: 3,
     scrolling_opacity_context: 0.3,
+    scrolling_title_text: '',
+    scrolling_title_color: '#FF2323',
+    scrolling_title_fontsize: 72,
+    scrolling_title_y: 0.22,
     rolling_rainbow_colors: '#FF3824,#FF8800,#FFD600,#2AD648,#00C2D1,#246BFF,#9B4DFF',
 
     // ── Shadow ──

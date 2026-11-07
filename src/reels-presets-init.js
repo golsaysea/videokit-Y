@@ -2220,6 +2220,73 @@ const REELS_BUILTIN_PRESETS = {
         anim_in_duration: 0,
         anim_out_type: "none",
         anim_out_duration: 0,
+    },
+
+    // ── StyleEngine 经典与底框系列 (se-01 ~ se-31 & 滚动字幕) ──
+    "焦糖橙_黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#9D4512", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#F5D678", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "深海蓝_黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#0E4B7E", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#F6D371", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "暗夜青_青高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#033045", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#00BFFF", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "明亮紫_黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#9D70A8", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#EFE174", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "奶油底_藏青高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#EAD3B3", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#213555", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "浅丁香_藏青高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#B0B6CE", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#2A3A5A", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "砖红_金黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#B34A4D", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#FFD700", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "亮蓝_明黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#008CDE", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#FFEB3B", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "深紫_粉红高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#350B4D", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#FF80AB", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "棕褐_奶黄高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#8C3B0E", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#FFF59D", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "暗蓝灰_薄荷高亮": { karaoke_highlight: true, use_box: true, box_adaptive_width: true, color_bg: "#1D3B4C", opacity_bg: 255, color_text: "#FFFFFF", color_high: "#A7FFEB", use_stroke: false, shadow_blur: 0, box_radius: 2, box_padding_x: 16, box_padding_y: 10, font_weight: 900, line_spacing: 1.2 },
+    "逐个大小出字-55": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 72, color_text: "#FFFFFF", color_high: "#fff701", use_box: false, use_stroke: true, border_width: 6, color_outline: "#3E2723", opacity_outline: 255, shadow_blur: 0, dynamic_box: true, color_high_bg: "#c61e00", opacity_high_bg: 255, dynamic_radius: 8, line_spacing: 1.12, font_weight: 900 },
+    "逐个大小出字-45": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 45, color_text: "#FFFFFF", color_high: "#fbff00", use_box: false, use_stroke: true, border_width: 6, color_outline: "#0A192F", opacity_outline: 255, dynamic_box: false, shadow_blur: 0, line_spacing: 1.12, font_weight: 900 },
+    "深蓝大底框+红色动画": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 45, color_text: "#FFFFFF", color_high: "#ffffff", use_box: true, box_adaptive_width: false, color_bg: "#1A2238", opacity_bg: 165, box_radius: 26, box_padding_x: 37, box_padding_y: 15, use_stroke: false, dynamic_box: true, color_high_bg: "#c61e00", opacity_high_bg: 255, dynamic_radius: 7, line_spacing: 1.56, font_weight: 900 },
+    "深褐底框+红色动画": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 55, color_text: "#FFFFFF", color_high: "#ffffff", use_box: true, box_adaptive_width: true, color_bg: "#2C1E16", opacity_bg: 128, box_radius: 25, box_padding_x: 21, box_padding_y: 6, use_stroke: false, dynamic_box: true, color_high_bg: "#c61e00", opacity_high_bg: 255, dynamic_radius: 9, line_spacing: 1.51, font_weight: 900 },
+    "逐个出字+红色动画": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 58, color_text: "#FFFFFF", color_high: "#f0f000", use_box: false, use_stroke: true, border_width: 6, color_outline: "#1B1229", opacity_outline: 255, dynamic_box: true, color_high_bg: "#cc0003", opacity_high_bg: 255, dynamic_radius: 8, line_spacing: 1.12, font_weight: 900 },
+    "极简纯文+电光青高亮": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 56, color_text: "#F0F0F0", color_high: "#00FFFF", use_box: false, use_stroke: true, border_width: 3, color_outline: "#022B3A", opacity_outline: 255, shadow_blur: 8, color_shadow: "#022B3A", opacity_shadow: 204, shadow_offset_x: 3, shadow_offset_y: 3, dynamic_box: false, line_spacing: 1.2, font_weight: 900 },
+    "重金大字+强对比排版": { karaoke_highlight: true, font_family: "Impact", fontsize: 68, color_text: "#FFFFFF", color_high: "#FFD700", use_box: false, use_stroke: true, border_width: 8, color_outline: "#2A241D", opacity_outline: 255, dynamic_box: false, line_spacing: 1.1, font_weight: 900 },
+    "蓝底白字+动感回弹": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 48, color_text: "#FFFFFF", color_high: "#FFFFFF", use_box: true, box_adaptive_width: true, color_bg: "#1E90FF", opacity_bg: 216, box_radius: 8, box_padding_x: 15, box_padding_y: 6, use_stroke: false, dynamic_box: true, color_high_bg: "#FF0050", opacity_high_bg: 255, dynamic_radius: 8, line_spacing: 1.4, font_weight: 900 },
+    "逐个出字大小-爆贴": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 72, color_text: "#FFFFFF", color_high: "#fff701", use_box: false, use_stroke: true, border_width: 6, color_outline: "#2D1B4E", opacity_outline: 255, dynamic_box: true, color_high_bg: "#c61e00", opacity_high_bg: 255, dynamic_radius: 8, line_spacing: 1.27, font_weight: 900 },
+    "黑边_粉红高亮": { karaoke_highlight: true, font_family: "Impact", fontsize: 68, color_text: "#FFFFFF", color_high: "#FF69B4", use_box: false, use_stroke: true, border_width: 8, color_outline: "#000000", opacity_outline: 255, shadow_blur: 0, line_spacing: 1.1, font_weight: 900, text_transform: "uppercase" },
+    "黑边_薄荷高亮": { karaoke_highlight: true, font_family: "Impact", fontsize: 68, color_text: "#FFFFFF", color_high: "#00FA9A", use_box: false, use_stroke: true, border_width: 8, color_outline: "#000000", opacity_outline: 255, shadow_blur: 0, line_spacing: 1.1, font_weight: 900, text_transform: "uppercase" },
+    "黑边_电蓝高亮": { karaoke_highlight: true, font_family: "Impact", fontsize: 68, color_text: "#FFFFFF", color_high: "#4169E1", use_box: false, use_stroke: true, border_width: 8, color_outline: "#000000", opacity_outline: 255, shadow_blur: 0, line_spacing: 1.1, font_weight: 900, text_transform: "uppercase" },
+    "滚动歌词_粉高亮": { scrolling_mode: true, scrolling_visible_lines: 3, scrolling_opacity_context: 0.25, karaoke_highlight: true, font_family: "Impact", fontsize: 68, color_text: "#FFFFFF", color_high: "#FF69B4", use_box: false, use_stroke: true, border_width: 8, color_outline: "#000000", opacity_outline: 255, shadow_blur: 0, line_spacing: 1.1, font_weight: 900, text_transform: "uppercase" },
+    "白底框_紫字高亮": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 60, color_text: "#000000", color_high: "#8A2BE2", use_box: true, box_adaptive_width: true, color_bg: "#FFFFFF", opacity_bg: 255, box_radius: 4, box_padding_x: 20, box_padding_y: 10, use_stroke: false, shadow_blur: 0, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "黑底框_粉字高亮": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 60, color_text: "#FFFFFF", color_high: "#FF69B4", use_box: true, box_adaptive_width: true, color_bg: "#333333", opacity_bg: 255, box_radius: 4, box_padding_x: 20, box_padding_y: 10, use_stroke: false, shadow_blur: 0, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "软阴影_青字高亮": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 65, color_text: "#FFFFFF", color_high: "#00FFFF", use_box: false, use_stroke: false, shadow_blur: 12, color_shadow: "#000000", opacity_shadow: 200, shadow_offset_x: 0, shadow_offset_y: 4, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "硬阴影_黄字高亮": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 65, color_text: "#FFFFFF", color_high: "#FFD700", use_box: false, use_stroke: false, shadow_blur: 0, color_shadow: "#000000", opacity_shadow: 255, shadow_offset_x: 6, shadow_offset_y: 6, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "紫色动态底框": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 60, color_text: "#FFFFFF", color_high: "#FFFFFF", use_box: false, use_stroke: false, shadow_blur: 4, color_shadow: "#000000", opacity_shadow: 150, shadow_offset_x: 2, shadow_offset_y: 2, dynamic_box: true, color_high_bg: "#7B68EE", opacity_high_bg: 255, dynamic_radius: 8, line_spacing: 1.2, font_weight: 900 },
+    "荧光绿底框_黑字": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 60, color_text: "#000000", color_high: "#000000", use_box: true, box_adaptive_width: true, color_bg: "#ADFF2F", opacity_bg: 255, box_radius: 6, box_padding_x: 20, box_padding_y: 10, use_stroke: false, shadow_blur: 0, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "纯白发光字": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 65, color_text: "#FFFFFF", color_high: "#FFFFFF", use_box: false, use_stroke: false, shadow_blur: 15, color_shadow: "#FFFFFF", opacity_shadow: 200, shadow_offset_x: 0, shadow_offset_y: 0, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "粉红发光字": { karaoke_highlight: true, font_family: "Segoe UI", fontsize: 65, color_text: "#FF69B4", color_high: "#FF69B4", use_box: false, use_stroke: false, shadow_blur: 15, color_shadow: "#FF69B4", opacity_shadow: 200, shadow_offset_x: 0, shadow_offset_y: 0, line_spacing: 1.2, font_weight: 900, text_transform: "uppercase" },
+    "scroll-blessed-grace": {
+        scrolling_mode: true,
+        scrolling_visible_lines: 5,
+        scrolling_opacity_context: 0.45,
+        scrolling_title_text: "OUR FATHER",
+        scrolling_title_color: "#FF2323",
+        scrolling_title_fontsize: 72,
+        scrolling_title_y: 0.22,
+        karaoke_highlight: true,
+        highlight_enabled: true,
+        font_family: "Montserrat",
+        font_weight: 800,
+        fontsize: 56,
+        bold: true,
+        color_text: "#FFFFFF",
+        color_high: "#FFD700",
+        use_box: false,
+        use_stroke: true,
+        border_width: 6,
+        color_outline: "#000000",
+        opacity_outline: 255,
+        shadow_blur: 6,
+        color_shadow: "#000000",
+        opacity_shadow: 220,
+        shadow_offset_x: 0,
+        shadow_offset_y: 3,
+        pos_x: 0.5,
+        pos_y: 0.56,
+        wrap_width_percent: 84,
+        line_spacing: 1.25,
+        anim_in_type: "none",
+        anim_out_type: "none"
     }
 };
 
@@ -3180,6 +3247,152 @@ function initBuiltinOverlayGroupPresets() {
     }
 }
 
+const REELS_PRESET_ID_MAP = {
+    "se-01": "焦糖橙_黄高亮",
+    "se-02": "深海蓝_黄高亮",
+    "se-03": "暗夜青_青高亮",
+    "se-04": "明亮紫_黄高亮",
+    "se-05": "奶油底_藏青高亮",
+    "se-06": "浅丁香_藏青高亮",
+    "se-07": "砖红_金黄高亮",
+    "se-08": "亮蓝_明黄高亮",
+    "se-09": "深紫_粉红高亮",
+    "se-10": "棕褐_奶黄高亮",
+    "se-11": "暗蓝灰_薄荷高亮",
+    "se-12": "逐个大小出字-55",
+    "se-13": "逐个大小出字-45",
+    "se-14": "深蓝大底框+红色动画",
+    "se-15": "深褐底框+红色动画",
+    "se-16": "逐个出字+红色动画",
+    "se-17": "极简纯文+电光青高亮",
+    "se-18": "重金大字+强对比排版",
+    "se-19": "蓝底白字+动感回弹",
+    "se-20": "逐个出字大小-爆贴",
+    "se-21": "黑边_粉红高亮",
+    "se-22": "黑边_薄荷高亮",
+    "se-23": "黑边_电蓝高亮",
+    "se-24": "白底框_紫字高亮",
+    "se-25": "黑底框_粉字高亮",
+    "se-26": "软阴影_青字高亮",
+    "se-27": "硬阴影_黄字高亮",
+    "se-28": "紫色动态底框",
+    "se-29": "荧光绿底框_黑字",
+    "se-30": "纯白发光字",
+    "se-31": "粉红发光字",
+    "sub-01": "默认白字",
+    "sub-02": "黄字黑边 (经典)",
+    "sub-03": "金色霓虹环境光",
+    "sub-04": "卡拉OK高亮",
+    "sub-05": "节奏逐词",
+    "sub-06": "闪光高亮",
+    "sub-07": "打字机模式",
+    "sub-08": "粉色气泡",
+    "sub-09": "逐字放大",
+    "sub-10": "珊瑚红逐词上滑 (爆款)",
+    "sub-11": "远景打字推进 (爆款)",
+    "sub-12": "双行焦点放大 (爆款)",
+    "sub-13": "逐词弹出(随机大小)",
+    "sub-14": "逐词弹出(随机回弹)",
+    "sub-15": "黄线框高亮_逐词弹出",
+    "sub-16": "单词聚焦_自适应色块",
+    "sub-17": "Hormozi 风格字幕",
+    "sub-18": "上滑入场",
+    "sub-19": "左滑入场",
+    "sub-20": "黑底白字 (新闻)",
+    "sub-21": "阴影沉浸式",
+    "sub-22": "圣光降临",
+    "sub-23": "悬浮漂移",
+    "sub-24": "逐行出现",
+    "sub-25": "渐变蓝色框",
+    "sub-26": "霓虹蓝粉渐变框",
+    "sub-27": "霓虹多层描边",
+    "sub-28": "红色警报",
+    "sub-29": "全屏打字机_金黄光标",
+    "sub-30": "随机分散气泡卡片",
+    "sub-31": "随机单词定位",
+    "sub-32": "硬阴影_黄白斜体",
+    "sub-33": "撞色黄底框高亮",
+    "sub-34": "红橙渐变_硬阴影",
+    "sub-35": "霓虹双色发光",
+    "sub-36": "风驰幻影_白斜体",
+    "sub-37": "红底条逐行擦除 (爆款)",
+    "sub-38": "参考_黄绿辉光逐词叠排",
+    "sub-39": "参考_红黑描边粗斜体弹入",
+    "sub-40": "📰 复古报纸剪报出字 (爆款同款)",
+    "sub-41": "📰 复古报纸剪报整屏 (多行累积)",
+    "sub-42": "🗞️ 怀旧泛黄古董报刊",
+    "sub-43": "📜 奶油手撕宣纸贴字",
+    "sub-44": "🏷️ 手撕牛皮纸白边贴",
+    "sub-45": "✂️ 杂志拼贴斜切剪报",
+    "sub-46": "📓 手账方格便签纸底",
+    "sub-47": "✨ 圣经烫金羊皮书页",
+    "sub-48": "🔖 报刊红底白边剪报",
+    "sub-49": "🎬 暗夜胶片磨砂贴纸",
+    "sub-50": "🌟 鎏金半高文字底条",
+    "sub-51": "🌸 莫兰迪玫瑰手绘底条",
+    "sub-52": "🖍️ 荧光马克笔手绘底条",
+    "sub-53": "🟢 绿字放大推开_双行爆款 (成品04同款)",
+    "sub-54": "🎄 圣诞红绿金_双行推开爆款",
+    "sub-55": "🍬 圣诞拐杖糖斜纹带_手写笔出字",
+    "sub-56": "🎅 圣诞红丝绒烫金_冬青装饰带",
+    "sub-57": "❄️ 圣诞松林覆雪带_暖金发光字",
+    "sub-58": "🍪 圣诞姜饼糖霜签_复古剪报字",
+    "sub-59": "✨ 极简底线扫描显字 (I AM BLESSED同款)",
+    "sub-60": "💎 三词叠排_中词放大_电光青 (IF JESUS同款)",
+    "sub-61": "🌈 四行滚词_彩虹渐变跟读 (成品01同款)",
+    "sub-62": "✨ 单词粉青渐变_手写斜体 (Lord Jesus同款)",
+    "sub-63": "动态混排 · 自动轮换",
+    "sub-64": "动态混排 · 首尾大字",
+    "sub-65": "动态混排 · 中间强调",
+    "sub-66": "动态混排 · 大小拼接",
+    "sub-67": "动态混排 · 阶梯错位",
+    "scroll-blessed-grace": "scroll-blessed-grace",
+    "scroll-lyrics-pink": "滚动歌词_粉高亮",
+};
+
+const REELS_OVERLAY_PRESET_ID_MAP = {
+    "ov-01": "01-金黄横幅+白卡祈祷文",
+    "ov-02": "03-行内紧贴连体卡片(三段式)",
+    "ov-03": "04-西文深褐字(白发光)",
+    "ov-04": "05-手写圆体白字(深蓝发光)",
+    "ov-05": "06-经典衬线深褐字(无底)",
+    "ov-06": "07-纯白经典衬线(无底)",
+    "ov-07": "08-橙标白字(夜间无底)",
+    "ov-08": "09-深褐玻璃卡片(经典衬线)",
+    "ov-09": "10-黄标+行内白底深褐正文(葡语)",
+    "ov-10": "11-红标标题+深褐正文(无底)",
+    "ov-11": "12-绿标标题+深绿正文(无底)",
+    "ov-12": "13-白底半透大卡片(深褐字)",
+    "ov-13": "02-暗色蒙版左栏祈祷文",
+    "ov-14": "03-红字白框+深褐边祈祷清单",
+};
+
+function resolveBuiltinPreset(idOrName) {
+    const key = String(idOrName || '').trim();
+    if (!key) return null;
+    if (REELS_BUILTIN_PRESETS[key]) {
+        return { kind: 'subtitle', id: key, name: key, preset: REELS_BUILTIN_PRESETS[key] };
+    }
+    const mappedSubName = REELS_PRESET_ID_MAP[key] || REELS_PRESET_ID_MAP[key.toLowerCase()];
+    if (mappedSubName && REELS_BUILTIN_PRESETS[mappedSubName]) {
+        return { kind: 'subtitle', id: key, name: mappedSubName, preset: REELS_BUILTIN_PRESETS[mappedSubName] };
+    }
+    if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS[key]) {
+        return { kind: 'overlay', id: key, name: key, overlays: REELS_BUILTIN_OVERLAY_GROUP_PRESETS[key] };
+    }
+    const mappedOvName = REELS_OVERLAY_PRESET_ID_MAP[key] || REELS_OVERLAY_PRESET_ID_MAP[key.toLowerCase()];
+    if (mappedOvName && REELS_BUILTIN_OVERLAY_GROUP_PRESETS[mappedOvName]) {
+        return { kind: 'overlay', id: key, name: mappedOvName, overlays: REELS_BUILTIN_OVERLAY_GROUP_PRESETS[mappedOvName] };
+    }
+    return null;
+}
+
+if (typeof window !== 'undefined') {
+    window.REELS_PRESET_ID_MAP = REELS_PRESET_ID_MAP;
+    window.REELS_OVERLAY_PRESET_ID_MAP = REELS_OVERLAY_PRESET_ID_MAP;
+    window.resolveBuiltinPreset = resolveBuiltinPreset;
+}
+
 // 自动初始化
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('DOMContentLoaded', () => {
@@ -3191,5 +3404,8 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         REELS_BUILTIN_PRESETS,
         REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
+        REELS_PRESET_ID_MAP,
+        REELS_OVERLAY_PRESET_ID_MAP,
+        resolveBuiltinPreset,
     };
 }

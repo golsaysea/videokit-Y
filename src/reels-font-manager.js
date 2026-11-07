@@ -341,7 +341,8 @@ class ReelsFontManager {
                                 this._recordVariant(fontInfo.family, fontInfo.weight || '400', fontInfo.style || 'normal');
                             }
                         } else {
-                            if (!this._registeredEmbeddedPaths.has(fontInfo.path)) {
+                            const regKey = `${fontInfo.family}|${fontInfo.weight || ''}|${fontInfo.style || ''}|${fontInfo.path}`;
+                            if (!this._registeredEmbeddedPaths.has(regKey)) {
                                 await this._registerLocalFont(fontInfo);
                                 addedLocal = true;
                             }
@@ -460,7 +461,8 @@ class ReelsFontManager {
      */
     async _registerLocalFont(fontInfo) {
         if (!fontInfo.path || !fontInfo.family) return;
-        if (this._registeredEmbeddedPaths.has(fontInfo.path)) {
+        const regKey = `${fontInfo.family}|${fontInfo.weight || ''}|${fontInfo.style || ''}|${fontInfo.path}`;
+        if (this._registeredEmbeddedPaths.has(regKey)) {
             if (!this._allowedFonts.includes(fontInfo.family)) {
                 this._allowedFonts.push(fontInfo.family);
             }
@@ -479,7 +481,7 @@ class ReelsFontManager {
             document.fonts.add(fontFace);
             if(!this._embeddedFontFaces.has(fontInfo.family))this._embeddedFontFaces.set(fontInfo.family,[]);
             this._embeddedFontFaces.get(fontInfo.family).push(fontFace);
-            this._registeredEmbeddedPaths.add(fontInfo.path);
+            this._registeredEmbeddedPaths.add(regKey);
 
             if (!this._allowedFonts.includes(fontInfo.family)) {
                 this._allowedFonts.push(fontInfo.family);

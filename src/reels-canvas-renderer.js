@@ -802,6 +802,31 @@ class ReelsCanvasRenderer {
                 this.renderSubtitle(targetStyle, targetSeg, renderTime, videoW, videoH, true);
                 ctx.restore();
             }
+
+            if (s.scrolling_title_text) {
+                const titleStyle = { ...s };
+                titleStyle.scrolling_mode = false;
+                titleStyle.karaoke_highlight = false;
+                titleStyle.highlight_enabled = false;
+                titleStyle.use_box = false;
+                titleStyle.dynamic_box = false;
+                titleStyle.anim_in_type = 'none';
+                titleStyle.anim_out_type = 'none';
+                titleStyle.color_text = s.scrolling_title_color || '#FF2323';
+                titleStyle.color_high = s.scrolling_title_color || '#FF2323';
+                titleStyle.fontsize = s.scrolling_title_fontsize || Math.round((s.fontsize || 56) * 1.28);
+                titleStyle.pos_y = s.scrolling_title_y ?? 0.22;
+                titleStyle.opacity_text_global = 1.0;
+                const titleSeg = {
+                    text: String(s.scrolling_title_text),
+                    start: 0,
+                    end: 99999,
+                    words: []
+                };
+                ctx.save();
+                this.renderSubtitle(titleStyle, titleSeg, currentTime, videoW, videoH, true);
+                ctx.restore();
+            }
             return;
         }
 
