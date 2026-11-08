@@ -17,8 +17,10 @@ const ReelsSubtitleProcessor = require('../src/reels-subtitle-processor.js');
 const {
     REELS_BUILTIN_PRESETS,
     REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
+    REELS_BUILTIN_SCROLL_STYLE_PRESETS,
     REELS_PRESET_ID_MAP,
     REELS_OVERLAY_PRESET_ID_MAP,
+    REELS_SCROLL_PRESET_ID_MAP,
     resolveBuiltinPreset,
 } = require('../src/reels-presets-init.js');
 
@@ -591,6 +593,10 @@ function resolveSingleFontFamily(fontFamilyRaw, taskId = null) {
             timesnewroman: { dirRe: /^gelasio$/i, assFamily: 'Gelasio' },
             serif: { dirRe: /^gelasio$/i, assFamily: 'Gelasio' },
             notosanssc: { dirRe: /^noto\s*sans$/i, assFamily: 'Noto Sans' },
+            lxgwwenkai: { dirRe: /^kalam$/i, assFamily: 'Kalam' },
+            patrickhand: { dirRe: /^handlee$/i, assFamily: 'Handlee' },
+            encodesanscondensed: { dirRe: /^asap_condensed$/i, assFamily: 'Asap Condensed' },
+            jost: { dirRe: /^josefin\s*sans$/i, assFamily: 'Josefin Sans' },
         };
         const fb = bundledFallbackMap[requestedKey];
         if (fb) {
@@ -1039,12 +1045,14 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         : ((typeof rawSub.preset === 'string' && rawSub.preset.trim()) ? rawSub.preset.trim() : null);
     let presetStyle = {};
     let presetOverlays = null;
+    let isOverlayOrScrollPrimaryPreset = false;
     if (presetName) {
         const resolved = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(presetName) : null;
         if (resolved && resolved.kind === 'subtitle') {
             presetStyle = { ...resolved.preset };
-        } else if (resolved && resolved.kind === 'overlay') {
+        } else if (resolved && (resolved.kind === 'overlay' || resolved.kind === 'scroll_style')) {
             presetOverlays = JSON.parse(JSON.stringify(resolved.overlays));
+            isOverlayOrScrollPrimaryPreset = true;
         } else if (REELS_BUILTIN_PRESETS && REELS_BUILTIN_PRESETS[presetName]) {
             presetStyle = { ...REELS_BUILTIN_PRESETS[presetName] };
         } else {
@@ -1058,21 +1066,77 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
     }
     const subConfig = { ...presetStyle, ...rawSub };
 
-    // Resolve overlays (direct task.overlays or task.overlay_group_preset or overlay preset ID)
+    // Resolve overlays (direct task.overlays or task.overlay_group_preset or task.scroll_preset or overlay/scroll preset ID)
     let overlays = [];
+    const ogPresetField = (typeof task.overlay_group_preset === 'string' && task.overlay_group_preset.trim())
+        ? task.overlay_group_preset.trim()
+        : ((typeof task.scroll_preset === 'string' && task.scroll_preset.trim()) ? task.scroll_preset.trim() : '');
     if (Array.isArray(task.overlays)) {
-        overlays = task.overlays;
-    } else if (typeof task.overlay_group_preset === 'string' && task.overlay_group_preset.trim()) {
-        const ogName = task.overlay_group_preset.trim();
-        const resolvedOg = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(ogName) : null;
-        if (resolvedOg && resolvedOg.kind === 'overlay') {
+        overlays = JSON.parse(JSON.stringify(task.overlays));
+    } else if (ogPresetField) {
+        const resolvedOg = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(ogPresetField) : null;
+        if (resolvedOg && (resolvedOg.kind === 'overlay' || resolvedOg.kind === 'scroll_style')) {
             overlays = JSON.parse(JSON.stringify(resolvedOg.overlays));
-        } else if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS && Array.isArray(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName])) {
-            overlays = JSON.parse(JSON.stringify(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogName]));
+        } else if (REELS_BUILTIN_OVERLAY_GROUP_PRESETS && Array.isArray(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogPresetField])) {
+            overlays = JSON.parse(JSON.stringify(REELS_BUILTIN_OVERLAY_GROUP_PRESETS[ogPresetField]));
+        } else {
+            throw new CLIError(
+                'PRESET_NOT_FOUND',
+                `Builtin overlay/scroll preset '${ogPresetField}' not found`,
+                EXIT_CODES.VALIDATION_ERROR,
+                taskId
+            );
         }
     } else if (presetOverlays) {
         overlays = presetOverlays;
     }
+
+    // Resolve per-overlay scroll preset IDs (e.g. overlays: [{ type: 'scroll', preset: 'sc-01', ... }])
+    // and populate scroll content from task.scroll_text / task.body_text / segments if not explicitly given
+    const defaultScrollBody = (typeof task.scroll_text === 'string' && task.scroll_text.trim())
+        ? task.scroll_text.trim()
+        : ((typeof task.body_text === 'string' && task.body_text.trim())
+            ? task.body_text.trim()
+            : segments.map(s => s.text).join('\n'));
+    const defaultScrollTitle = (typeof task.scroll_title === 'string' && task.scroll_title.trim())
+        ? task.scroll_title.trim()
+        : ((typeof task.title_text === 'string' && task.title_text.trim()) ? task.title_text.trim() : '');
+
+    overlays = overlays.map((ov, idx) => {
+        if (!ov || typeof ov !== 'object') return ov;
+        const ovType = String(ov.type || '').toLowerCase();
+        const ovPresetKey = String(ov.preset || ov.style_preset || ov.scroll_style_preset_id || '').trim();
+        let mergedOv = { ...ov };
+        if ((ovType === 'scroll' || !ovType) && ovPresetKey) {
+            const resolvedSc = typeof resolveBuiltinPreset === 'function' ? resolveBuiltinPreset(ovPresetKey) : null;
+            if (!resolvedSc || resolvedSc.kind !== 'scroll_style') {
+                throw new CLIError(
+                    'PRESET_NOT_FOUND',
+                    `Builtin scroll style preset '${ovPresetKey}' not found`,
+                    EXIT_CODES.VALIDATION_ERROR,
+                    taskId
+                );
+            }
+            const baseStyle = JSON.parse(JSON.stringify(resolvedSc.style));
+            delete baseStyle.preset_id;
+            delete baseStyle.category;
+            delete mergedOv.preset;
+            delete mergedOv.style_preset;
+            mergedOv = { ...baseStyle, ...mergedOv, type: 'scroll', scroll_style_preset_id: resolvedSc.id };
+        }
+        if (String(mergedOv.type || '').toLowerCase() === 'scroll') {
+            if (!mergedOv.id) mergedOv.id = `ov_scroll_${idx + 1}`;
+            const rawContent = typeof mergedOv.content === 'string' ? mergedOv.content.trim() : '';
+            if (!rawContent || rawContent === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字') {
+                mergedOv.content = defaultScrollBody;
+            }
+            if (!mergedOv.scroll_title && defaultScrollTitle) {
+                mergedOv.scroll_title = defaultScrollTitle;
+            }
+            resolveFontFamily(mergedOv.font_family || 'Kalam', taskId);
+        }
+        return mergedOv;
+    });
 
     // Resolve rendering engine ('ass' | 'wysiwyg') per §3.1
     const { engine, engineReason } = resolveTaskEngine(task, subConfig, overlays, cliArgs, taskId);
@@ -1098,6 +1162,21 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         }
     }
     targetDuration = Math.round(targetDuration * 1000) / 1000;
+
+    // Ensure scroll overlays default their end time to targetDuration when not explicitly bounded
+    for (const ov of overlays) {
+        if (ov && String(ov.type || '').toLowerCase() === 'scroll') {
+            if (ov.start === undefined || ov.start === null) ov.start = 0;
+            if (ov.end === undefined || ov.end === null || ov.scroll_end_auto === true) {
+                ov.end = targetDuration;
+            }
+        }
+    }
+
+    const hasExplicitSubStyle = Object.keys(rawSub).filter(k => k !== 'preset').length > 0;
+    const showSubtitle = task.show_subtitle !== undefined
+        ? Boolean(task.show_subtitle)
+        : !(isOverlayOrScrollPrimaryPreset && !hasExplicitSubStyle);
 
     // Resolve output path
     // Priority: CLI --output > CLI --output-dir > task.output > ./out/<id>.mp4
@@ -1134,6 +1213,7 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         srtPath,
         segments,
         subtitle: subConfig,
+        showSubtitle,
         preset: presetName,
         overlays,
         engine,
@@ -1409,6 +1489,7 @@ function runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir) {
                 ...plan.subtitle,
                 font_family: plan.fontInfo.fontFamily,
             },
+            showSubtitle: plan.showSubtitle !== false,
             segments: segmentsWithWords,
             overlays: plan.overlays || [],
             backgroundPath: plan.bgPath || '',

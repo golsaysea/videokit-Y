@@ -807,6 +807,22 @@ class ReelsOverlayPanel {
                         </label>
                     </div>
 
+                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-34） -->
+                    <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.28);">
+                        <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
+                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-34)</span>
+                            <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开可视化滚动字幕样式预览库">🎨 样式库预览</button>
+                        </div>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <select id="rop-scroll-style-preset-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;">
+                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-34) —</option>
+                            </select>
+                            <button type="button" id="rop-scroll-style-preset-apply" class="rop-btn" style="padding:3px 8px;font-size:11px;white-space:nowrap;background:rgba(56,189,248,0.18);color:#e0f2fe;border:1px solid rgba(56,189,248,0.35);border-radius:4px;cursor:pointer;" title="应用所选滚动字幕样式">应用</button>
+                            <button type="button" id="rop-scroll-style-preset-save" class="rop-btn" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(34,197,94,0.16);color:#dcfce7;border:1px solid rgba(34,197,94,0.35);border-radius:4px;cursor:pointer;" title="将当前滚动字幕样式保存为自定义预设">保存</button>
+                            <button type="button" id="rop-scroll-style-preset-del" class="rop-btn" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(239,68,68,0.14);color:#fecaca;border:1px solid rgba(239,68,68,0.3);border-radius:4px;cursor:pointer;" title="删除所选的自定义滚动字幕样式">删除</button>
+                        </div>
+                    </div>
+
                     <!-- 🎨 滚动字幕背景主题快速选择（始终置顶可见：支持整块大背景画板 & 逐行底衬 & 直接调节长宽与滚动循环） -->
                     <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:linear-gradient(135deg, rgba(220,38,38,0.10), rgba(21,128,61,0.10), rgba(245,158,11,0.10));border:1px solid rgba(251,191,36,0.28);">
                         <div style="font-size:11px;font-weight:700;color:#fde68a;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
@@ -2909,6 +2925,39 @@ class ReelsOverlayPanel {
                 this._setScrollBgSizeField('height', 0, this._selectedOv);
             }
         });
+
+        // 🎨 滚动字幕样式预设选择器 & 可视化预览面板绑定
+        this._refreshScrollStylePresetSelect();
+        const scrollStyleSel = this.container.querySelector('#rop-scroll-style-preset-select');
+        const scrollStyleApplyBtn = this.container.querySelector('#rop-scroll-style-preset-apply');
+        const scrollStylePickerBtn = this.container.querySelector('#rop-scroll-style-picker-btn');
+        const scrollStyleSaveBtn = this.container.querySelector('#rop-scroll-style-preset-save');
+        const scrollStyleDelBtn = this.container.querySelector('#rop-scroll-style-preset-del');
+        if (scrollStyleSel) {
+            scrollStyleSel.addEventListener('change', () => {
+                if (scrollStyleSel.value) {
+                    this._applyScrollStylePresetByKey(scrollStyleSel.value);
+                }
+            });
+        }
+        if (scrollStyleApplyBtn) {
+            scrollStyleApplyBtn.addEventListener('click', () => {
+                const key = scrollStyleSel?.value || '';
+                if (key) this._applyScrollStylePresetByKey(key);
+            });
+        }
+        if (scrollStylePickerBtn) {
+            scrollStylePickerBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._openScrollStylePresetPicker(scrollStylePickerBtn);
+            });
+        }
+        if (scrollStyleSaveBtn) {
+            scrollStyleSaveBtn.addEventListener('click', () => this._saveCustomScrollStylePreset());
+        }
+        if (scrollStyleDelBtn) {
+            scrollStyleDelBtn.addEventListener('click', () => this._deleteCustomScrollStylePreset());
+        }
 
         // ✨ 点缀装饰图层快捷预设按钮与尺寸按钮
         const applyDecorStylePreset = (styleId) => {
@@ -5867,6 +5916,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-cursor-char', ov.scroll_tw_cursor_char || '|');
             this._val('rop-scroll-tw-cursor-color', ov.scroll_tw_cursor_color || '#FFD700');
             this._syncScrollTypewriterCursorImageUI();
+            this._refreshScrollStylePresetSelect(ov.scroll_style_preset_id || ov.preset_id || '');
         }
 
         this._val('rop-anim-in', ov.anim_in_type || 'none');
@@ -6904,10 +6954,11 @@ class ReelsOverlayPanel {
             'scroll_speed', 'scroll_end_y_auto', 'scroll_end_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
             // 出字效果（朗诵写出/打字机）
             'scroll_typewriter_enabled', 'scroll_tw_start', 'scroll_tw_end', 'scroll_tw_hide_unread', 'scroll_tw_active_scale_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
-            'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
+            'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_keep_read_color', 'scroll_tw_active_scale',
             'scroll_tw_cursor_enabled', 'scroll_tw_cursor_kind', 'scroll_tw_cursor_char', 'scroll_tw_cursor_color',
             'scroll_tw_cursor_scale', 'scroll_tw_cursor_offset_x', 'scroll_tw_cursor_offset_y', 'scroll_tw_cursor_angle',
             'scroll_tw_cursor_image', 'scroll_tw_cursor_anchor_x', 'scroll_tw_cursor_anchor_y',
+            'scroll_style_preset_id',
             // 羽化
             'feather_top', 'feather_bottom', 'feather_top_offset', 'feather_bottom_offset',
             'feather_left', 'feather_right', 'feather_left_offset', 'feather_right_offset',
@@ -6959,6 +7010,437 @@ class ReelsOverlayPanel {
         } finally {
             this._isApplyingAllScrolls = false;
         }
+    }
+
+    _getCustomScrollStylePresets() {
+        try {
+            const raw = localStorage.getItem('reels_scroll_style_presets');
+            const parsed = raw ? JSON.parse(raw) : {};
+            return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    }
+
+    _setCustomScrollStylePresets(data) {
+        try {
+            localStorage.setItem('reels_scroll_style_presets', JSON.stringify(data || {}));
+        } catch (_) {}
+    }
+
+    _refreshScrollStylePresetSelect(selectedKey = '') {
+        const sel = this.container?.querySelector('#rop-scroll-style-preset-select');
+        if (!sel) return;
+        const prevVal = selectedKey || sel.value || '';
+        sel.innerHTML = '';
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '— 选择滚动字幕样式 (sc-01 ~ sc-34) —';
+        sel.appendChild(placeholder);
+
+        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
+        const groups = new Map();
+        for (const [name, style] of Object.entries(builtins)) {
+            if (!style || typeof style !== 'object') continue;
+            const cat = style.category || '经典描边滚动';
+            if (!groups.has(cat)) groups.set(cat, []);
+            groups.get(cat).push({ id: style.preset_id || name, name, style });
+        }
+        for (const [catName, list] of groups.entries()) {
+            const og = document.createElement('optgroup');
+            og.label = `📂 ${catName} (${list.length})`;
+            for (const item of list) {
+                const opt = document.createElement('option');
+                opt.value = item.id;
+                opt.textContent = `[${item.id}] ${item.name}`;
+                og.appendChild(opt);
+            }
+            sel.appendChild(og);
+        }
+
+        const customPresets = this._getCustomScrollStylePresets();
+        const customKeys = Object.keys(customPresets);
+        if (customKeys.length > 0) {
+            const ogCustom = document.createElement('optgroup');
+            ogCustom.label = `⭐ 自定义保存样式 (${customKeys.length})`;
+            for (const cName of customKeys) {
+                const opt = document.createElement('option');
+                opt.value = `custom:${cName}`;
+                opt.textContent = `⭐ ${cName}`;
+                ogCustom.appendChild(opt);
+            }
+            sel.appendChild(ogCustom);
+        }
+
+        if (prevVal) {
+            const matchedOpt = Array.from(sel.options).find(o => o.value === prevVal || o.textContent.includes(prevVal));
+            if (matchedOpt) sel.value = matchedOpt.value;
+        }
+    }
+
+    _resolveScrollStylePreset(key) {
+        const k = String(key || '').trim();
+        if (!k) return null;
+        if (k.startsWith('custom:')) {
+            const cName = k.slice('custom:'.length);
+            const customPresets = this._getCustomScrollStylePresets();
+            if (customPresets[cName]) {
+                return { id: k, name: cName, category: '自定义保存样式', style: customPresets[cName], isCustom: true };
+            }
+        }
+        if (typeof window.resolveBuiltinPreset === 'function') {
+            const resolved = window.resolveBuiltinPreset(k);
+            if (resolved && resolved.kind === 'scroll_style' && resolved.style) {
+                return {
+                    id: resolved.id || resolved.style.preset_id || k,
+                    name: resolved.name || k,
+                    category: resolved.category || resolved.style.category || '经典描边滚动',
+                    style: resolved.style,
+                    isCustom: false,
+                };
+            }
+        }
+        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
+        if (builtins[k]) {
+            const sc = builtins[k];
+            return { id: sc.preset_id || k, name: k, category: sc.category || '经典描边滚动', style: sc, isCustom: false };
+        }
+        const idMap = window.REELS_SCROLL_PRESET_ID_MAP || {};
+        const mappedName = idMap[k] || idMap[k.toLowerCase()];
+        if (mappedName && builtins[mappedName]) {
+            const sc = builtins[mappedName];
+            return { id: sc.preset_id || k.toLowerCase(), name: mappedName, category: sc.category || '经典描边滚动', style: sc, isCustom: false };
+        }
+        const customPresets = this._getCustomScrollStylePresets();
+        if (customPresets[k]) {
+            return { id: `custom:${k}`, name: k, category: '自定义保存样式', style: customPresets[k], isCustom: true };
+        }
+        return null;
+    }
+
+    _applyScrollStylePresetByKey(key) {
+        const ov = this._selectedOv;
+        if (!ov || ov.type !== 'scroll') return false;
+        const resolved = this._resolveScrollStylePreset(key);
+        if (!resolved || !resolved.style) return false;
+
+        const preserved = {
+            id: ov.id,
+            type: 'scroll',
+            content: ov.content,
+            scroll_title: ov.scroll_title,
+            scroll_styled_ranges: ov.scroll_styled_ranges,
+            scroll_title_styled_ranges: ov.scroll_title_styled_ranges,
+            start: ov.start,
+            end: ov.end,
+            scroll_end_auto: ov.scroll_end_auto,
+            _taskSegments: ov._taskSegments,
+        };
+
+        const styleCopy = JSON.parse(JSON.stringify(resolved.style));
+        delete styleCopy.id;
+        delete styleCopy.preset_id;
+        delete styleCopy.category;
+        delete styleCopy.content;
+        delete styleCopy.scroll_title;
+        delete styleCopy.scroll_styled_ranges;
+        delete styleCopy.scroll_title_styled_ranges;
+        delete styleCopy.start;
+        delete styleCopy.end;
+        delete styleCopy.scroll_end_auto;
+
+        Object.assign(ov, styleCopy, preserved);
+        ov.scroll_style_preset_id = resolved.id;
+
+        if (ov.scroll_end_y_auto) {
+            const motion = window.ReelsOverlay?.measureScrollMotion?.(ov);
+            if (motion && Number.isFinite(motion.endY)) {
+                ov.scroll_to_y = Math.round(motion.endY * 10) / 10;
+            }
+        }
+
+        this._syncFromOverlay(ov);
+        this._refreshScrollStylePresetSelect(resolved.id);
+        this._syncOverlayStyleToScopeTasks(ov);
+        this._requestRender();
+        if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+            this.videoCanvas.onOverlayChange(ov);
+        }
+        return true;
+    }
+
+    _saveCustomScrollStylePreset() {
+        const ov = this._selectedOv;
+        if (!ov || ov.type !== 'scroll') return;
+        const defaultName = ov.name && ov.name !== '滚动字幕' ? ov.name : '我的滚动样式';
+        const name = (typeof window.prompt === 'function')
+            ? window.prompt('请输入要保存的滚动字幕样式名称：', defaultName)
+            : defaultName;
+        const trimmed = String(name || '').trim();
+        if (!trimmed) return;
+
+        const styleObj = this._extractScrollStyle(ov);
+        delete styleObj.start;
+        delete styleObj.end;
+        delete styleObj.scroll_end_auto;
+        delete styleObj.content;
+        delete styleObj.scroll_title;
+
+        const customPresets = this._getCustomScrollStylePresets();
+        customPresets[trimmed] = styleObj;
+        this._setCustomScrollStylePresets(customPresets);
+        const selKey = `custom:${trimmed}`;
+        ov.scroll_style_preset_id = selKey;
+        this._refreshScrollStylePresetSelect(selKey);
+    }
+
+    _deleteCustomScrollStylePreset() {
+        const sel = this.container?.querySelector('#rop-scroll-style-preset-select');
+        const val = sel?.value || '';
+        if (!val.startsWith('custom:')) {
+            if (typeof window.alert === 'function') {
+                window.alert('内置滚动字幕样式 (sc-01 ~ sc-34) 不可删除，请选择“⭐ 自定义保存样式”后再删除。');
+            }
+            return;
+        }
+        const cName = val.slice('custom:'.length);
+        const customPresets = this._getCustomScrollStylePresets();
+        if (!customPresets[cName]) return;
+        delete customPresets[cName];
+        this._setCustomScrollStylePresets(customPresets);
+        this._refreshScrollStylePresetSelect('');
+    }
+
+    _openScrollStylePresetPicker(anchorEl) {
+        const existing = document.getElementById('rop-scroll-style-picker-popover');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const popover = document.createElement('div');
+        popover.id = 'rop-scroll-style-picker-popover';
+        popover.style.cssText = [
+            'position:fixed',
+            'z-index:10050',
+            'width:440px',
+            'max-width:94vw',
+            'max-height:80vh',
+            'display:flex',
+            'flex-direction:column',
+            'background:#111827',
+            'border:1px solid rgba(56,189,248,0.45)',
+            'border-radius:10px',
+            'box-shadow:0 16px 42px rgba(0,0,0,0.72)',
+            'color:#f8fafc',
+            'overflow:hidden',
+            'font-family:system-ui,-apple-system,sans-serif',
+        ].join(';');
+
+        const rect = anchorEl?.getBoundingClientRect?.() || { left: 100, bottom: 100, top: 80 };
+        const topPos = Math.min(window.innerHeight - 520, Math.max(16, rect.bottom + 6));
+        const leftPos = Math.min(window.innerWidth - 456, Math.max(16, rect.left - 180));
+        popover.style.top = `${Math.max(16, topPos)}px`;
+        popover.style.left = `${Math.max(16, leftPos)}px`;
+
+        const header = document.createElement('div');
+        header.style.cssText = 'padding:10px 12px;background:#1e293b;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;gap:8px;';
+        header.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;font-weight:700;color:#7dd3fc;">🎨 滚动字幕样式库 (支持 CLI 编号 sc-01 ~ sc-34)</span>
+                <button type="button" id="rop-scroll-picker-close" style="background:none;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:0 4px;">✕</button>
+            </div>
+            <input type="text" id="rop-scroll-picker-search" placeholder="🔍 搜索编号 (如 sc-01)、分类、字体或样式特征..." style="width:100%;box-sizing:border-box;padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:#0f172a;color:#f8fafc;outline:none;">
+        `;
+        popover.appendChild(header);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px 12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;';
+        popover.appendChild(body);
+
+        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
+        const customPresets = this._getCustomScrollStylePresets();
+        const allItems = [];
+        for (const [name, style] of Object.entries(builtins)) {
+            if (!style || typeof style !== 'object') continue;
+            allItems.push({
+                key: style.preset_id || name,
+                id: style.preset_id || name,
+                name,
+                category: style.category || '经典描边滚动',
+                style,
+            });
+        }
+        for (const [cName, style] of Object.entries(customPresets)) {
+            if (!style || typeof style !== 'object') continue;
+            allItems.push({
+                key: `custom:${cName}`,
+                id: '自定义',
+                name: cName,
+                category: '⭐ 自定义保存样式',
+                style,
+            });
+        }
+
+        const currentActiveKey = this._selectedOv?.scroll_style_preset_id || '';
+
+        const renderList = (filterText = '') => {
+            body.innerHTML = '';
+            const q = String(filterText || '').trim().toLowerCase();
+            const grouped = new Map();
+            for (const item of allItems) {
+                const hay = `${item.id} ${item.name} ${item.category} ${item.style.font_family || ''}`.toLowerCase();
+                if (q && !hay.includes(q)) continue;
+                if (!grouped.has(item.category)) grouped.set(item.category, []);
+                grouped.get(item.category).push(item);
+            }
+
+            if (grouped.size === 0) {
+                body.innerHTML = `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px;">未找到匹配的滚动字幕样式</div>`;
+                return;
+            }
+
+            for (const [cat, list] of grouped.entries()) {
+                const sec = document.createElement('div');
+                const catTitle = document.createElement('div');
+                catTitle.style.cssText = 'font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(147,197,253,0.2);';
+                catTitle.textContent = `📂 ${cat} (${list.length})`;
+                sec.appendChild(catTitle);
+
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:7px;';
+
+                for (const item of list) {
+                    const st = item.style;
+                    const card = document.createElement('div');
+                    const isSelected = currentActiveKey === item.key;
+                    card.style.cssText = [
+                        'padding:7px 8px',
+                        'border-radius:7px',
+                        `border:1px solid ${isSelected ? '#38bdf8' : 'rgba(255,255,255,0.12)'}`,
+                        `background:${isSelected ? 'rgba(56,189,248,0.16)' : 'rgba(255,255,255,0.04)'}`,
+                        'cursor:pointer',
+                        'display:flex',
+                        'flex-direction:column',
+                        'gap:5px',
+                        'transition:all 0.15s ease',
+                    ].join(';');
+
+                    const previewBox = document.createElement('div');
+                    let boxBg = 'rgba(15,23,42,0.85)';
+                    let boxBorder = '1px solid rgba(255,255,255,0.08)';
+                    let boxRadius = '6px';
+                    if (st.scroll_body_bg_enabled) {
+                        if (st.scroll_body_bg_style === 'xmas_candy_ribbon') {
+                            boxBg = 'linear-gradient(135deg, #88131b, #b91c1c)';
+                            boxBorder = '1px dashed #fca5a5';
+                        } else if (st.scroll_body_bg_style === 'newspaper_cutout') {
+                            boxBg = '#f3efe6';
+                            boxBorder = '1px solid #cbbba0';
+                        } else if (st.scroll_body_bg_style === 'newspaper_sepia') {
+                            boxBg = '#eadbc2';
+                            boxBorder = '1px solid #bfa376';
+                        } else if (st.scroll_body_bg_style === 'xmas_pine_snow') {
+                            boxBg = 'linear-gradient(135deg, #064e3b, #14532d)';
+                            boxBorder = '1px solid #86efac';
+                        } else if (String(st.scroll_body_bg_color || '').toUpperCase() === '#FFFFFF') {
+                            boxBg = 'rgba(255,255,255,0.42)';
+                            boxBorder = '1px solid rgba(255,255,255,0.5)';
+                        } else {
+                            boxBg = 'rgba(0,0,0,0.65)';
+                            boxBorder = '1px solid rgba(255,255,255,0.18)';
+                        }
+                        if (Number(st.scroll_body_bg_radius) >= 30) boxRadius = '14px';
+                    }
+                    previewBox.style.cssText = `min-height:44px;padding:5px 8px;border-radius:${boxRadius};background:${boxBg};border:${boxBorder};display:flex;flex-direction:column;justify-content:center;align-items:${st.text_align === 'left' ? 'flex-start' : 'center'};overflow:hidden;`;
+
+                    if (st.scroll_title_font_family) {
+                        const titleEl = document.createElement('div');
+                        titleEl.textContent = 'PRAYER TITLE';
+                        titleEl.style.cssText = [
+                            `font-family:"${st.scroll_title_font_family}",sans-serif`,
+                            'font-size:11px',
+                            'font-weight:700',
+                            `color:${st.scroll_title_color || '#F50000'}`,
+                            `-webkit-text-stroke:${Math.min(2.2, (Number(st.scroll_title_stroke_width) || 0) * 0.22)}px ${st.scroll_title_stroke_color || '#FFFFFF'}`,
+                            'paint-order:stroke fill',
+                            'line-height:1.1',
+                            'margin-bottom:2px',
+                        ].join(';');
+                        previewBox.appendChild(titleEl);
+                    }
+
+                    const sampleLine = document.createElement('div');
+                    sampleLine.textContent = st.scroll_uppercase ? 'SCROLL SUBTITLE' : 'Scroll Subtitle 滚动';
+                    const rawColor = String(st.color || '#FFFFFF').trim();
+                    const isGrad = rawColor.includes(',');
+                    const strokeW = Math.min(3.2, Math.max(0, (Number(st.stroke_width) || 0) * 0.28));
+                    sampleLine.style.cssText = [
+                        `font-family:"${st.font_family || 'Kalam'}",sans-serif`,
+                        'font-size:15px',
+                        `font-weight:${st.bold ? '700' : (st.font_weight || 400)}`,
+                        `font-style:${st.italic ? 'italic' : 'normal'}`,
+                        isGrad
+                            ? `background:linear-gradient(90deg, ${rawColor});-webkit-background-clip:text;-webkit-text-fill-color:transparent;`
+                            : `color:${rawColor};`,
+                        strokeW > 0
+                            ? `-webkit-text-stroke:${strokeW}px ${st.stroke_color || '#000000'};paint-order:stroke fill;`
+                            : '',
+                        'line-height:1.2',
+                        'white-space:nowrap',
+                    ].join(';');
+                    previewBox.appendChild(sampleLine);
+                    card.appendChild(previewBox);
+
+                    const metaRow = document.createElement('div');
+                    metaRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px;';
+                    const idBadge = document.createElement('span');
+                    idBadge.style.cssText = 'font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.2);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35);flex-shrink:0;';
+                    idBadge.textContent = item.id;
+                    const fontBadge = document.createElement('span');
+                    fontBadge.style.cssText = 'font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+                    fontBadge.textContent = `${st.font_family || 'Kalam'} · ${st.fontsize || 89}px`;
+                    metaRow.appendChild(idBadge);
+                    metaRow.appendChild(fontBadge);
+                    card.appendChild(metaRow);
+
+                    const nameEl = document.createElement('div');
+                    nameEl.style.cssText = 'font-size:11px;font-weight:600;color:#e2e8f0;line-height:1.25;';
+                    nameEl.textContent = item.name;
+                    card.appendChild(nameEl);
+
+                    card.addEventListener('click', () => {
+                        this._applyScrollStylePresetByKey(item.key);
+                        popover.remove();
+                    });
+                    grid.appendChild(card);
+                }
+
+                sec.appendChild(grid);
+                body.appendChild(sec);
+            }
+        };
+
+        renderList('');
+        document.body.appendChild(popover);
+
+        const searchInput = popover.querySelector('#rop-scroll-picker-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => renderList(searchInput.value));
+            setTimeout(() => searchInput.focus(), 20);
+        }
+        const closeBtn = popover.querySelector('#rop-scroll-picker-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => popover.remove());
+        }
+        const onDocClick = (e) => {
+            if (!popover.contains(e.target) && e.target !== anchorEl) {
+                popover.remove();
+                document.removeEventListener('mousedown', onDocClick);
+            }
+        };
+        setTimeout(() => document.addEventListener('mousedown', onDocClick), 10);
     }
 
     // 根据【样式作用】下拉选择（当前队列 / 所有队列 / 仅当前任务）返回目标任务列表

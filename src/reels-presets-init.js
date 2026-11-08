@@ -3367,6 +3367,422 @@ const REELS_OVERLAY_PRESET_ID_MAP = {
     "ov-14": "03-红字白框+深褐边祈祷清单",
 };
 
+function _buildScrollPreset(presetId, category, overrides = {}) {
+    return {
+        preset_id: presetId,
+        category,
+        type: 'scroll',
+        x: 40,
+        y: 400,
+        w: 1000,
+        h: 1120,
+        rotation: 0,
+        opacity: 255,
+        font_family: 'Kalam',
+        fontsize: 89,
+        font_weight: 400,
+        bold: false,
+        italic: false,
+        color: '#FFFFFF',
+        gradient_direction: 'horizontal',
+        scroll_gradient_direction: 'horizontal',
+        text_align: 'center',
+        text_direction: 'auto',
+        text_width: 900,
+        line_spacing: 6,
+        scroll_letter_spacing: 0,
+        scroll_uppercase: false,
+        use_stroke: true,
+        stroke_color: '#000000',
+        stroke_width: 10,
+        shadow_enabled: false,
+        shadow_color: '#000000',
+        shadow_blur: 4,
+        scroll_shadow_x: 2,
+        scroll_shadow_y: 2,
+        scroll_body_bg_enabled: false,
+        scroll_body_bg_style: 'solid',
+        scroll_body_bg_mode: 'block',
+        scroll_body_bg_color: '#000000',
+        scroll_body_bg_opacity: 60,
+        scroll_body_bg_radius: 12,
+        scroll_body_bg_pad_h: 0,
+        scroll_body_bg_pad_top: 0,
+        scroll_body_bg_pad_bottom: 0,
+        bg_enabled: false,
+        bg_style: 'solid',
+        bg_color: '#000000',
+        bg_opacity: 191,
+        bg_radius: 12,
+        bg_border_enabled: false,
+        bg_blur_enabled: false,
+        scroll_title_fixed: true,
+        scroll_title_independent: false,
+        scroll_title_font_family: '',
+        scroll_title_fontsize: 56,
+        scroll_title_font_weight: 700,
+        scroll_title_bold: true,
+        scroll_title_color: '#FFFFFF',
+        scroll_title_gradient_direction: 'horizontal',
+        scroll_title_uppercase: true,
+        scroll_title_letter_spacing: 0,
+        scroll_title_align: 'center',
+        scroll_title_line_spacing: 6,
+        scroll_title_text_width: 900,
+        scroll_title_gap: 20,
+        scroll_title_stroke_color: '#000000',
+        scroll_title_stroke_width: 0,
+        scroll_title_shadow_enabled: false,
+        scroll_title_bg_enabled: false,
+        scroll_title_bg_style: 'solid',
+        scroll_title_bg_mode: 'block',
+        scroll_title_bg_color: '#000000',
+        scroll_title_bg_opacity: 60,
+        scroll_title_bg_radius: 12,
+        scroll_title_deco_enabled: false,
+        scroll_x_anchor: 'center',
+        scroll_from_x: 540,
+        scroll_from_y: 960,
+        scroll_to_x: 540,
+        scroll_to_y: -200,
+        scroll_speed: 0.8,
+        scroll_end_y_auto: true,
+        scroll_end_auto: true,
+        scroll_auto_stop: true,
+        scroll_auto_stop_lead: 0,
+        scroll_static: false,
+        scroll_auto_fit: false,
+        scroll_min_fontsize: 16,
+        feather_top: 80,
+        feather_bottom: 80,
+        scroll_typewriter_enabled: false,
+        scroll_tw_speech_sync: true,
+        scroll_tw_reveal_type: 'char',
+        scroll_tw_hide_unread: false,
+        scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: false,
+        scroll_tw_active_color: '#FFD700',
+        scroll_tw_keep_read_color: false,
+        scroll_tw_active_scale_enabled: false,
+        scroll_tw_active_scale: 100,
+        scroll_tw_cursor_enabled: false,
+        scroll_tw_cursor_kind: 'quill',
+        scroll_tw_cursor_scale: 1.1,
+        scroll_tw_cursor_angle: -8,
+        scroll_tw_cursor_offset_x: 0,
+        scroll_tw_cursor_offset_y: 0,
+        ...overrides,
+    };
+}
+
+const REELS_BUILTIN_SCROLL_STYLE_PRESETS = {
+    // ── 一、经典描边滚动 (sc-01 ~ sc-10) ──
+    "手写白字粗黑边滚动": _buildScrollPreset("sc-01", "经典描边滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 10,
+    }),
+    "手写白字细黑边滚动": _buildScrollPreset("sc-02", "经典描边滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 4,
+    }),
+    "手写白字砖红边滚动": _buildScrollPreset("sc-03", "经典描边滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#A93D3D", stroke_width: 10,
+    }),
+    "手写红字白边滚动": _buildScrollPreset("sc-04", "经典描边滚动", {
+        font_family: "Kalam", fontsize: 90, font_weight: 700, bold: true,
+        color: "#FF0000", stroke_color: "#FFFFFF", stroke_width: 6.5,
+        scroll_from_y: 1101, feather_top: 300,
+    }),
+    "文楷粗白字黑边滚动": _buildScrollPreset("sc-05", "经典描边滚动", {
+        font_family: "LXGW WenKai", fontsize: 90, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 6.5,
+        scroll_from_y: 1101, feather_top: 300,
+    }),
+    "马克笔明黄黑边滚动": _buildScrollPreset("sc-06", "经典描边滚动", {
+        font_family: "Permanent Marker", fontsize: 90, font_weight: 400, bold: false,
+        color: "#FFDD00", stroke_color: "#000000", stroke_width: 6.5,
+        scroll_from_y: 1101, feather_top: 300,
+    }),
+    "圆润手写白字中黑边滚动": _buildScrollPreset("sc-07", "经典描边滚动", {
+        font_family: "Patrick Hand", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 5.5,
+    }),
+    "圆润手写白字重黑边滚动": _buildScrollPreset("sc-08", "经典描边滚动", {
+        font_family: "Patrick Hand", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 10,
+    }),
+    "极简无衬线白字细边滚动": _buildScrollPreset("sc-09", "经典描边滚动", {
+        font_family: "Arial", fontsize: 40, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 2,
+        scroll_uppercase: true,
+    }),
+    "极简无衬线玫红细边滚动": _buildScrollPreset("sc-10", "经典描边滚动", {
+        font_family: "Arial", fontsize: 40, font_weight: 400, bold: false,
+        color: "#FF2A85", stroke_color: "#000000", stroke_width: 2,
+        scroll_uppercase: true,
+    }),
+
+    // ── 二、渐变流光滚动 (sc-11 ~ sc-12) ──
+    "手写粉橙渐变粗黑边滚动": _buildScrollPreset("sc-11", "渐变流光滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FF2A85,#FF9F21", gradient_direction: "horizontal", scroll_gradient_direction: "horizontal",
+        stroke_color: "#000000", stroke_width: 10,
+    }),
+    "手写烈焰红金渐变粗黑边滚动": _buildScrollPreset("sc-12", "渐变流光滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#F12711,#F5AF19", gradient_direction: "horizontal", scroll_gradient_direction: "horizontal",
+        stroke_color: "#000000", stroke_width: 10,
+    }),
+
+    // ── 三、半透底框滚动 (sc-13 ~ sc-22) ──
+    "手写金橙三色渐变+黑半透圆角底框": _buildScrollPreset("sc-13", "半透底框滚动", {
+        font_family: "Kalam", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FFE259,#FFA751,#FF6B35", gradient_direction: "horizontal", scroll_gradient_direction: "horizontal",
+        stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "无衬线粉橙渐变+黑半透圆角底框": _buildScrollPreset("sc-14", "半透底框滚动", {
+        font_family: "Arial", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FF2A85,#FF9F21", gradient_direction: "horizontal", scroll_gradient_direction: "horizontal",
+        stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "手写暖黄粗黑边+黑半透圆角底框": _buildScrollPreset("sc-15", "半透底框滚动", {
+        font_family: "Kalam", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FFE259", stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "圆润手写纯白粗边+黑半透圆角底框": _buildScrollPreset("sc-16", "半透底框滚动", {
+        font_family: "Patrick Hand", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FCFCFC", stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "纤细手写暖黄粗边+白半透圆角底框": _buildScrollPreset("sc-17", "半透底框滚动", {
+        font_family: "Handlee", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FFE259", stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "窄体无衬线金黄粗边+白半透圆角底框": _buildScrollPreset("sc-18", "半透底框滚动", {
+        font_family: "Encode Sans Condensed", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FFD500", stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "圆润手写金黄粗边+白半透圆角底框": _buildScrollPreset("sc-19", "半透底框滚动", {
+        font_family: "Patrick Hand", fontsize: 85, font_weight: 400, bold: false,
+        color: "#FFD500", stroke_color: "#000000", stroke_width: 10, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 42,
+        scroll_body_bg_pad_h: 3, scroll_body_bg_pad_top: 38, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "圆润手写纯白细边+白半透大圆角底框": _buildScrollPreset("sc-20", "半透底框滚动", {
+        font_family: "Patrick Hand", fontsize: 81, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 4.5, scroll_letter_spacing: -1,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 60, scroll_body_bg_radius: 62,
+        scroll_body_bg_pad_h: 27, scroll_body_bg_pad_top: 48, scroll_body_bg_pad_bottom: 13,
+        feather_top: 200,
+    }),
+    "现代几何粗白字黑边+白半透底框": _buildScrollPreset("sc-21", "半透底框滚动", {
+        font_family: "Jost", fontsize: 93, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 9,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 58, scroll_body_bg_radius: 15,
+        scroll_body_bg_pad_h: 16, scroll_body_bg_pad_top: 5, scroll_body_bg_pad_bottom: 1,
+        scroll_from_y: 1180, scroll_auto_stop_lead: 2.5,
+    }),
+    "手写左对齐白字深褐边+白微透底框": _buildScrollPreset("sc-22", "半透底框滚动", {
+        font_family: "Kalam", fontsize: 97, font_weight: 400, bold: false,
+        text_align: "left", color: "#FFFFFF", stroke_color: "#601610", stroke_width: 11,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "block",
+        scroll_body_bg_color: "#FFFFFF", scroll_body_bg_opacity: 28, scroll_body_bg_radius: 11,
+        scroll_body_bg_pad_h: 25, scroll_body_bg_pad_top: 7, scroll_body_bg_pad_bottom: 10,
+        scroll_from_y: 1180, scroll_auto_stop_lead: 2.5,
+    }),
+
+    // ── 四、固定标题+正文滚动 (sc-23 ~ sc-24) ──
+    "红字白边固定标题+手写粗白字黑边滚动": _buildScrollPreset("sc-23", "固定标题+正文滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 5,
+        scroll_title_fixed: true, scroll_title_font_family: "Anton", scroll_title_fontsize: 90,
+        scroll_title_font_weight: 400, scroll_title_bold: false, scroll_title_color: "#F50000",
+        scroll_title_stroke_color: "#FFFFFF", scroll_title_stroke_width: 7.5,
+    }),
+    "红字白边固定标题+紧缩黑体白字大行距滚动": _buildScrollPreset("sc-24", "固定标题+正文滚动", {
+        font_family: "Anton", fontsize: 77, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 5,
+        line_spacing: 28, text_width: 850,
+        scroll_title_fixed: true, scroll_title_font_family: "Anton", scroll_title_fontsize: 90,
+        scroll_title_font_weight: 400, scroll_title_bold: false, scroll_title_color: "#F50000",
+        scroll_title_stroke_color: "#FFFFFF", scroll_title_stroke_width: 7.5,
+    }),
+
+    // ── 五、贴字底衬与节日画板滚动 (sc-25 ~ sc-29) ──
+    "圣诞拐杖糖连体底带+手写暖白暗红边滚动": _buildScrollPreset("sc-25", "贴字底衬与节日画板滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFDF9", stroke_color: "#4A0404", stroke_width: 1.8,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "xmas_candy_ribbon", scroll_body_bg_mode: "inline-joined",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 100, scroll_body_bg_radius: 16,
+        scroll_body_bg_pad_h: 24, scroll_body_bg_pad_top: 11, scroll_body_bg_pad_bottom: 11,
+    }),
+    "圣诞拐杖糖连体底带+手写暗红边打字机出字": _buildScrollPreset("sc-26", "贴字底衬与节日画板滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFDF9", stroke_color: "#4A0404", stroke_width: 1.8,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "xmas_candy_ribbon", scroll_body_bg_mode: "inline-joined",
+        scroll_body_bg_color: "#000000", scroll_body_bg_opacity: 100, scroll_body_bg_radius: 16,
+        scroll_body_bg_pad_h: 24, scroll_body_bg_pad_top: 11, scroll_body_bg_pad_bottom: 11,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "char",
+        scroll_tw_hide_unread: true, scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FDE047",
+        scroll_tw_cursor_enabled: true, scroll_tw_cursor_kind: "candy_cane",
+        scroll_tw_cursor_scale: 1.25, scroll_tw_cursor_angle: -6,
+    }),
+    "复古旧报纸剪报连体贴条+衬线斜体逐词出字": _buildScrollPreset("sc-27", "贴字底衬与节日画板滚动", {
+        font_family: "Playfair Display", fontsize: 82, font_weight: 700, bold: true, italic: true,
+        color: "#3B2220", stroke_color: "#F4F0E8", stroke_width: 1.5,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "newspaper_cutout", scroll_body_bg_mode: "inline-joined",
+        scroll_body_bg_color: "#F4F0E8", scroll_body_bg_opacity: 100, scroll_body_bg_radius: 16,
+        scroll_body_bg_pad_h: 24, scroll_body_bg_pad_top: 12, scroll_body_bg_pad_bottom: 12,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "word",
+        scroll_tw_hide_unread: true, scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: false, scroll_tw_cursor_enabled: false,
+    }),
+    "怀旧泛黄报刊连体贴条+衬线斜体逐词出字": _buildScrollPreset("sc-28", "贴字底衬与节日画板滚动", {
+        font_family: "Playfair Display", fontsize: 82, font_weight: 700, bold: true, italic: true,
+        color: "#3E2616", stroke_color: "#EFE4CC", stroke_width: 1.5,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "newspaper_sepia", scroll_body_bg_mode: "inline-joined",
+        scroll_body_bg_color: "#EFE4CC", scroll_body_bg_opacity: 100, scroll_body_bg_radius: 16,
+        scroll_body_bg_pad_h: 24, scroll_body_bg_pad_top: 12, scroll_body_bg_pad_bottom: 12,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "word",
+        scroll_tw_hide_unread: true, scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: false, scroll_tw_cursor_enabled: false,
+    }),
+    "圣诞松林覆雪连体底带+圣诞树笔尖写出": _buildScrollPreset("sc-29", "贴字底衬与节日画板滚动", {
+        font_family: "Playfair Display", fontsize: 82, font_weight: 700, bold: true, italic: true,
+        color: "#FFFDF9", stroke_color: "#052E16", stroke_width: 2,
+        scroll_body_bg_enabled: true, scroll_body_bg_style: "xmas_pine_snow", scroll_body_bg_mode: "inline-joined",
+        scroll_body_bg_color: "#052E16", scroll_body_bg_opacity: 100, scroll_body_bg_radius: 16,
+        scroll_body_bg_pad_h: 24, scroll_body_bg_pad_top: 12, scroll_body_bg_pad_bottom: 12,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "char",
+        scroll_tw_hide_unread: true, scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FDE047",
+        scroll_tw_cursor_enabled: true, scroll_tw_cursor_kind: "christmas_tree",
+        scroll_tw_cursor_scale: 1.25, scroll_tw_cursor_angle: 0,
+    }),
+
+    // ── 六、朗诵跟读与打字机出字滚动 (sc-30 ~ sc-34) ──
+    "红标固定标题+手写白字逐词金黄跟读高亮": _buildScrollPreset("sc-30", "朗诵跟读与打字机出字滚动", {
+        font_family: "Kalam", fontsize: 85, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 5,
+        scroll_title_fixed: true, scroll_title_font_family: "Anton", scroll_title_fontsize: 84,
+        scroll_title_font_weight: 400, scroll_title_bold: false, scroll_title_color: "#F50000",
+        scroll_title_stroke_color: "#FFFFFF", scroll_title_stroke_width: 7.5,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "word",
+        scroll_tw_hide_unread: false, scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FFD700",
+        scroll_tw_cursor_enabled: false,
+    }),
+    "金标暗红边标题+手写暖白暗红边逐词金黄跟读": _buildScrollPreset("sc-31", "朗诵跟读与打字机出字滚动", {
+        font_family: "Kalam", fontsize: 85, font_weight: 700, bold: true,
+        color: "#FFFDF9", stroke_color: "#4A0404", stroke_width: 2,
+        scroll_title_fixed: true, scroll_title_font_family: "Anton", scroll_title_fontsize: 71,
+        scroll_title_font_weight: 400, scroll_title_bold: false, scroll_title_color: "#FFD700",
+        scroll_title_stroke_color: "#4A0404", scroll_title_stroke_width: 2,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "word",
+        scroll_tw_hide_unread: false, scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FFD700",
+        scroll_tw_cursor_enabled: false,
+    }),
+    "手写白字粗黑边+逐字金黄跟读高亮": _buildScrollPreset("sc-32", "朗诵跟读与打字机出字滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 400, bold: false,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 10,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "char",
+        scroll_tw_hide_unread: false, scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FFD700",
+        scroll_tw_cursor_enabled: false,
+    }),
+    "手写白字黑边+复古羽毛笔逐字朗诵写出": _buildScrollPreset("sc-33", "朗诵跟读与打字机出字滚动", {
+        font_family: "Kalam", fontsize: 89, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#000000", stroke_width: 6,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "char",
+        scroll_tw_hide_unread: true, scroll_tw_unrevealed_opacity: 0,
+        scroll_tw_active_highlight: true, scroll_tw_active_color: "#FFD700",
+        scroll_tw_cursor_enabled: true, scroll_tw_cursor_kind: "quill",
+        scroll_tw_cursor_scale: 1.15, scroll_tw_cursor_angle: -8,
+    }),
+    "粗白字黑边+彩虹渐变逐词累积跟读": _buildScrollPreset("sc-34", "朗诵跟读与打字机出字滚动", {
+        font_family: "Kalam", fontsize: 85, font_weight: 700, bold: true,
+        color: "#FFFFFF", stroke_color: "#0D0B18", stroke_width: 5,
+        shadow_enabled: true, shadow_color: "#000000", shadow_blur: 8, scroll_shadow_x: 0, scroll_shadow_y: 4,
+        scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "word",
+        scroll_tw_hide_unread: false, scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: true,
+        scroll_tw_active_color: "#FF3824,#FF8800,#FFD600,#2AD648,#00C2D1,#246BFF,#9B4DFF",
+        scroll_tw_keep_read_color: true,
+        scroll_tw_cursor_enabled: false,
+    }),
+};
+
+const REELS_SCROLL_PRESET_ID_MAP = {
+    "sc-01": "手写白字粗黑边滚动",
+    "sc-02": "手写白字细黑边滚动",
+    "sc-03": "手写白字砖红边滚动",
+    "sc-04": "手写红字白边滚动",
+    "sc-05": "文楷粗白字黑边滚动",
+    "sc-06": "马克笔明黄黑边滚动",
+    "sc-07": "圆润手写白字中黑边滚动",
+    "sc-08": "圆润手写白字重黑边滚动",
+    "sc-09": "极简无衬线白字细边滚动",
+    "sc-10": "极简无衬线玫红细边滚动",
+    "sc-11": "手写粉橙渐变粗黑边滚动",
+    "sc-12": "手写烈焰红金渐变粗黑边滚动",
+    "sc-13": "手写金橙三色渐变+黑半透圆角底框",
+    "sc-14": "无衬线粉橙渐变+黑半透圆角底框",
+    "sc-15": "手写暖黄粗黑边+黑半透圆角底框",
+    "sc-16": "圆润手写纯白粗边+黑半透圆角底框",
+    "sc-17": "纤细手写暖黄粗边+白半透圆角底框",
+    "sc-18": "窄体无衬线金黄粗边+白半透圆角底框",
+    "sc-19": "圆润手写金黄粗边+白半透圆角底框",
+    "sc-20": "圆润手写纯白细边+白半透大圆角底框",
+    "sc-21": "现代几何粗白字黑边+白半透底框",
+    "sc-22": "手写左对齐白字深褐边+白微透底框",
+    "sc-23": "红字白边固定标题+手写粗白字黑边滚动",
+    "sc-24": "红字白边固定标题+紧缩黑体白字大行距滚动",
+    "sc-25": "圣诞拐杖糖连体底带+手写暖白暗红边滚动",
+    "sc-26": "圣诞拐杖糖连体底带+手写暗红边打字机出字",
+    "sc-27": "复古旧报纸剪报连体贴条+衬线斜体逐词出字",
+    "sc-28": "怀旧泛黄报刊连体贴条+衬线斜体逐词出字",
+    "sc-29": "圣诞松林覆雪连体底带+圣诞树笔尖写出",
+    "sc-30": "红标固定标题+手写白字逐词金黄跟读高亮",
+    "sc-31": "金标暗红边标题+手写暖白暗红边逐词金黄跟读",
+    "sc-32": "手写白字粗黑边+逐字金黄跟读高亮",
+    "sc-33": "手写白字黑边+复古羽毛笔逐字朗诵写出",
+    "sc-34": "粗白字黑边+彩虹渐变逐词累积跟读",
+};
+for (const [scId, scName] of Object.entries({ ...REELS_SCROLL_PRESET_ID_MAP })) {
+    const num = scId.replace(/^sc-/, '');
+    REELS_SCROLL_PRESET_ID_MAP[`scroll-${num}`] = scName;
+}
+
 function resolveBuiltinPreset(idOrName) {
     const key = String(idOrName || '').trim();
     if (!key) return null;
@@ -3384,12 +3800,37 @@ function resolveBuiltinPreset(idOrName) {
     if (mappedOvName && REELS_BUILTIN_OVERLAY_GROUP_PRESETS[mappedOvName]) {
         return { kind: 'overlay', id: key, name: mappedOvName, overlays: REELS_BUILTIN_OVERLAY_GROUP_PRESETS[mappedOvName] };
     }
+    if (REELS_BUILTIN_SCROLL_STYLE_PRESETS[key]) {
+        const sc = REELS_BUILTIN_SCROLL_STYLE_PRESETS[key];
+        return {
+            kind: 'scroll_style',
+            id: sc.preset_id || key,
+            name: key,
+            category: sc.category || '经典描边滚动',
+            style: sc,
+            overlays: [{ ...sc, type: 'scroll' }],
+        };
+    }
+    const mappedScrollName = REELS_SCROLL_PRESET_ID_MAP[key] || REELS_SCROLL_PRESET_ID_MAP[key.toLowerCase()];
+    if (mappedScrollName && REELS_BUILTIN_SCROLL_STYLE_PRESETS[mappedScrollName]) {
+        const sc = REELS_BUILTIN_SCROLL_STYLE_PRESETS[mappedScrollName];
+        return {
+            kind: 'scroll_style',
+            id: sc.preset_id || key.toLowerCase(),
+            name: mappedScrollName,
+            category: sc.category || '经典描边滚动',
+            style: sc,
+            overlays: [{ ...sc, type: 'scroll' }],
+        };
+    }
     return null;
 }
 
 if (typeof window !== 'undefined') {
     window.REELS_PRESET_ID_MAP = REELS_PRESET_ID_MAP;
     window.REELS_OVERLAY_PRESET_ID_MAP = REELS_OVERLAY_PRESET_ID_MAP;
+    window.REELS_BUILTIN_SCROLL_STYLE_PRESETS = REELS_BUILTIN_SCROLL_STYLE_PRESETS;
+    window.REELS_SCROLL_PRESET_ID_MAP = REELS_SCROLL_PRESET_ID_MAP;
     window.resolveBuiltinPreset = resolveBuiltinPreset;
 }
 
@@ -3404,8 +3845,10 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         REELS_BUILTIN_PRESETS,
         REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
+        REELS_BUILTIN_SCROLL_STYLE_PRESETS,
         REELS_PRESET_ID_MAP,
         REELS_OVERLAY_PRESET_ID_MAP,
+        REELS_SCROLL_PRESET_ID_MAP,
         resolveBuiltinPreset,
     };
 }

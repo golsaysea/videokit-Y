@@ -541,21 +541,26 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
     const {
         REELS_PRESET_ID_MAP,
         REELS_OVERLAY_PRESET_ID_MAP,
+        REELS_BUILTIN_SCROLL_STYLE_PRESETS,
+        REELS_SCROLL_PRESET_ID_MAP,
         resolveBuiltinPreset,
     } = require('../src/reels-presets-init.js');
 
-    // 1. All 100 subtitle/scroll preset IDs + 14 overlay preset IDs = 114 total must resolve
+    // 1. All 100 subtitle/scroll preset IDs + 14 overlay preset IDs + 68 scroll style IDs (sc-01..sc-34 & scroll-01..scroll-34) must resolve
     const subIds = Object.keys(REELS_PRESET_ID_MAP);
     const ovIds = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
+    const scIds = Object.keys(REELS_SCROLL_PRESET_ID_MAP);
     assert.equal(subIds.length, 100, 'Expected 100 subtitle/scroll preset IDs');
     assert.equal(ovIds.length, 14, 'Expected 14 overlay preset IDs');
-    for (const id of [...subIds, ...ovIds]) {
+    assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 34, 'Expected 34 builtin scroll style presets');
+    assert.equal(scIds.length, 68, 'Expected 68 scroll style ID mappings (sc-01..sc-34 and scroll-01..scroll-34)');
+    for (const id of [...subIds, ...ovIds, ...scIds]) {
         const resolved = resolveBuiltinPreset(id);
         assert.ok(resolved, `Preset ID ${id} must resolve`);
     }
 
-    // 2. Font resolution for Windows/macOS preset fonts
-    for (const fam of ['Comic Sans MS', 'Balsamiq Sans', 'Segoe UI', 'Impact', 'Arial Black', 'Georgia', 'Times New Roman', 'Noto Sans SC']) {
+    // 2. Font resolution for Windows/macOS and scroll preset fonts
+    for (const fam of ['Comic Sans MS', 'Balsamiq Sans', 'Segoe UI', 'Impact', 'Arial Black', 'Georgia', 'Times New Roman', 'Noto Sans SC', 'Kalam', 'LXGW WenKai', 'Permanent Marker', 'Patrick Hand', 'Handlee', 'Encode Sans Condensed', 'Jost', 'Anton', 'Playfair Display']) {
         const info = resolveFontFamily(fam);
         assert.ok(info && Array.isArray(info.fontFiles) && info.fontFiles.length > 0, `Font ${fam} should resolve to font files`);
     }
@@ -563,7 +568,7 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
     // 3. Validate preset IDs and Canvas-exclusive engine routing + real Electron WYSIWYG render
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a20-'));
     try {
-        for (const presetId of ['se-01', 'se-12', 'sub-03', 'sub-25', 'sub-27', 'sub-35', 'sub-36', 'sub-39', 'sub-40', 'sub-53', 'sub-55', 'scroll-blessed-grace', 'scroll-lyrics-pink', 'ov-01']) {
+        for (const presetId of ['se-01', 'se-12', 'sub-03', 'sub-25', 'sub-27', 'sub-35', 'sub-36', 'sub-39', 'sub-40', 'sub-53', 'sub-55', 'scroll-blessed-grace', 'scroll-lyrics-pink', 'ov-01', 'sc-01', 'sc-13', 'sc-25', 'sc-26', 'sc-30', 'sc-34', 'scroll-15']) {
             const p = path.join(tmpDir, `task-${presetId}.json`);
             fs.writeFileSync(p, JSON.stringify({
                 id: `check-${presetId}`,
@@ -571,11 +576,19 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
                 preset: presetId,
                 width: 720,
                 height: 1280,
+                scroll_title: 'MORNING PRAYER',
                 bgPath: path.join(demoDir, 'heaven-0001.png'),
                 segments: [{ start: 0.0, end: 1.0, text: 'Amen blessed grace' }],
             }));
             const plan = validateTaskFile(p, {});
             assert.equal(plan.engine, 'wysiwyg', `Preset ${presetId} should route to wysiwyg in auto mode`);
+            if (presetId.startsWith('sc-') || presetId.startsWith('scroll-15')) {
+                assert.equal(plan.showSubtitle, false, `Scroll preset ${presetId} should disable duplicate T-subtitle by default`);
+                assert.equal(plan.overlays.length, 1);
+                assert.equal(plan.overlays[0].type, 'scroll');
+                assert.equal(plan.overlays[0].content, 'Amen blessed grace');
+                assert.equal(plan.overlays[0].scroll_title, 'MORNING PRAYER');
+            }
         }
 
         // 4. Real Electron --headless-wysiwyg-worker render (no ass-fallback)
