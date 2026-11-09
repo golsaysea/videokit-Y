@@ -3159,6 +3159,7 @@ function _readStyleFromUI() {
         fullpage_typewriter_body_y: num('reels-fullpage-typewriter-body-y', 60),
         fullpage_typewriter_body_cursor: chk('reels-fullpage-typewriter-body-cursor'),
         fullpage_typewriter_speech_sync: chk('reels-fullpage-typewriter-speech-sync'),
+        subtitle_cursor_enabled: chk('reels-subtitle-cursor-enabled'),
         fullpage_typewriter_cursor_image: val('reels-fullpage-typewriter-cursor-image'),
         fullpage_typewriter_cursor_image_anchor_x: num('reels-fullpage-typewriter-cursor-image-anchor-x',50),
         fullpage_typewriter_cursor_image_anchor_y: num('reels-fullpage-typewriter-cursor-image-anchor-y',50),
@@ -3639,7 +3640,8 @@ function _writeStyleToUI(style) {
     const scrollOpts = document.getElementById('reels-scrolling-options');
     if (scrollOpts) scrollOpts.style.display = style.scrolling_mode ? '' : 'none';
 
-    // Fullpage Typewriter
+    // Fullpage Typewriter & Standard T-Subtitle Writing Cursor
+    setChk('reels-subtitle-cursor-enabled', Boolean(style.subtitle_cursor_enabled));
     setChk('reels-fullpage-typewriter', style.fullpage_typewriter);
     set('reels-fullpage-typewriter-reveal-type', style.fullpage_typewriter_reveal_type || 'char');
     setChk('reels-fullpage-typewriter-auto-page', style.fullpage_typewriter_auto_page !== false);
@@ -3703,7 +3705,7 @@ function _writeStyleToUI(style) {
     set('reels-fullpage-typewriter-first-line-color', style.fullpage_typewriter_first_line_color || '#FFFFFF');
     setChk('reels-fullpage-typewriter-first-line-color-enable', !!style.fullpage_typewriter_first_line_color);
     const twOpts = document.getElementById('reels-fullpage-typewriter-options');
-    if (twOpts) twOpts.style.display = style.fullpage_typewriter ? '' : 'none';
+    if (twOpts) twOpts.style.display = (style.fullpage_typewriter || style.subtitle_cursor_enabled) ? '' : 'none';
 
     // Scatter Pop
     set('reels-scatter-max-words', style.scatter_max_words ?? 3);
@@ -3852,7 +3854,52 @@ window.reelsApplyTextBackingPreset = function(styleId) {
             use_stroke: true, color_outline: '#0C4A6E', border_width: 3.5, opacity_outline: 255,
             color_bg: '#0EA5E9', opacity_bg: 245, box_padding_x: 18, box_padding_y: 8, box_radius: 8,
             box_connected: false
+        },
+        vet_stars_stripes_ribbon: {
+            font_family: 'Playfair Display', bold: true, italic: true,
+            color_text: '#FFFDF5', color_high: '#FBBF24', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: true, color_outline: '#09152B', border_width: 2.5, opacity_outline: 245,
+            color_bg: '#0A1931', opacity_bg: 255, box_padding_x: 26, box_padding_y: 12, box_radius: 12,
+            box_connected: false
+        },
+        vet_honor_medal_banner: {
+            font_family: 'Playfair Display', bold: true, italic: true,
+            color_text: '#FEF08A', color_high: '#FFFFFF', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: true, color_outline: '#050D1A', border_width: 2.5, opacity_outline: 245,
+            color_bg: '#09152B', opacity_bg: 255, box_padding_x: 26, box_padding_y: 12, box_radius: 10,
+            box_connected: false
+        },
+        vet_dogtag_steel: {
+            font_family: 'Montserrat', bold: true, italic: false,
+            color_text: '#0F172A', color_high: '#B91C1C', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: true, color_outline: '#F8FAFC', border_width: 2.0, opacity_outline: 240,
+            color_bg: '#CBD5E1', opacity_bg: 255, box_padding_x: 24, box_padding_y: 12, box_radius: 12,
+            box_connected: false
+        },
+        vet_poppy_parchment: {
+            font_family: 'Playfair Display', bold: true, italic: true,
+            color_text: '#2B1810', color_high: '#B91C1C', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: true, color_outline: '#FFFDF9', border_width: 1.5, opacity_outline: 235,
+            color_bg: '#FBF7EF', opacity_bg: 255, box_padding_x: 24, box_padding_y: 12, box_radius: 12,
+            box_connected: true
         }
+    };
+
+    const BACKING_CURSOR_MAP = {
+        vet_stars_stripes_ribbon: 'us_flag_shield',
+        vet_honor_medal_banner: 'purple_heart_medal',
+        vet_dogtag_steel: 'military_dog_tag',
+        vet_poppy_parchment: 'veteran_poppy',
+        xmas_candy_ribbon: 'candy_cane',
+        xmas_velvet_gold: 'santa_feather',
+        xmas_pine_snow: 'christmas_tree',
+        xmas_gingerbread_tag: 'holly_berry',
+        xmas_frost_ice: 'snowflake_wand',
+        newspaper_cutout: 'quill',
+        newspaper_sepia: 'fountain_pen',
+        torn_cream_paper: 'quill',
+        gold_parchment: 'feather_gold',
+        bottom_rose_brush: 'rose',
     };
 
     const profile = BACKING_PROFILES[styleId] || BACKING_PROFILES.newspaper_cutout;
@@ -3872,6 +3919,14 @@ window.reelsApplyTextBackingPreset = function(styleId) {
         curStyle.tw_unrevealed_opacity = 0;
         curStyle.hide_until_spoken = true;
         curStyle.unread_opacity = 0;
+    }
+
+    const syncCursorEl = document.getElementById('reels-backing-quick-cursor');
+    if (syncCursorEl && syncCursorEl.checked && BACKING_CURSOR_MAP[styleId]) {
+        curStyle.subtitle_cursor_enabled = true;
+        curStyle.fullpage_typewriter_cursor = true;
+        curStyle.fullpage_typewriter_cursor_kind = BACKING_CURSOR_MAP[styleId];
+        curStyle.fullpage_typewriter_cursor_scale = BACKING_CURSOR_MAP[styleId] === 'rose' ? 0.85 : 1.15;
     }
 
     _writeStyleToUI(curStyle);
@@ -4414,7 +4469,7 @@ function _reelsUpdatePreviewInternal() {
                     bodyDuration, mediaDurations: _reelsState._mediaDurations,
                 }) || ov;
                 if (ov.type === 'scroll' && Number.isFinite(Number(renderOv.end))) {
-                    ov.end = renderOv.end;
+                    ov._scrollResolvedEndTime = Number(renderOv.end);
                 }
                 if (_reelsState._scrollPreviewEnd && ov.type === 'scroll') ovTime = Number(renderOv.end) || ovTime;
                 ReelsOverlay.drawOverlay(ctx, renderOv, ovTime, w, h);
@@ -6922,10 +6977,10 @@ function _applyPreviewLoopMode() {
     const hasCvVideo = !!(task && task.contentVideoPath && cvVideo && cvVideo.src);
 
     if (audio) audio.loop = enabled && hasAudio;
-    if (video) video.loop = enabled && hasVideo;
-    if (cvVideo) cvVideo.loop = enabled && hasCvVideo;
-    if (bgm) bgm.loop = enabled;
-    if (_reelsState.previewFadeVideo) _reelsState.previewFadeVideo.loop = enabled;
+    if (video) video.loop = hasVideo && (enabled || hasAudio || _getPreviewDuration() > (_getVideoDuration(task) || 0) + 0.1);
+    if (cvVideo) cvVideo.loop = hasCvVideo && (enabled || hasAudio || _getPreviewDuration() > (_getContentVideoDuration(task) || 0) + 0.1);
+    if (bgm) bgm.loop = true;
+    if (_reelsState.previewFadeVideo) _reelsState.previewFadeVideo.loop = true;
 }
 
 function reelsOnPreviewLoopModeChange() {
@@ -7890,7 +7945,10 @@ function _syncBackgroundVideoToMaster() {
                     cvDur = Math.max(0.1, contentVideoEl.duration - trimStart);
                 }
                 const target = (masterTime % cvDur) + trimStart;
-                if (!contentVideoEl.seeking && Math.abs((contentVideoEl.currentTime || 0) - target) > 0.25) {
+                const cvCur = contentVideoEl.currentTime || 0;
+                const cvLinearDiff = Math.abs(cvCur - target);
+                const cvDiff = cvDur > 0 ? Math.min(cvLinearDiff, Math.abs(cvDur - cvLinearDiff)) : cvLinearDiff;
+                if (!contentVideoEl.seeking && cvDiff > 0.35) {
                     try { contentVideoEl.currentTime = target; } catch (e) { }
                 }
                 const isPlaying = _isPreviewMediaPlaying(master) || !!_reelsState.mockPlaying;
@@ -7916,7 +7974,10 @@ function _syncBackgroundVideoToMaster() {
     const vDur = _getVideoDuration(task);
     if (vDur > 0) {
         const target = masterTime % vDur;
-        if (!video.seeking && Math.abs((video.currentTime || 0) - target) > 0.25) {
+        const vCur = video.currentTime || 0;
+        const vLinearDiff = Math.abs(vCur - target);
+        const vDiff = Math.min(vLinearDiff, Math.abs(vDur - vLinearDiff));
+        if (!video.seeking && vDiff > 0.35) {
             try { video.currentTime = target; } catch (e) { }
         }
         // 某些容器在 ended 后会暂停，手动拉起继续播，保证背景持续循环。
@@ -7930,7 +7991,10 @@ function _syncBackgroundVideoToMaster() {
             if (fadeVideo) {
                 const fadeDur = Math.min(cfg.duration, Math.max(0.1, vDur * 0.45));
                 const fadeTarget = (target + fadeDur) % vDur;
-                if (!fadeVideo.seeking && Math.abs((fadeVideo.currentTime || 0) - fadeTarget) > 0.2) {
+                const fCur = fadeVideo.currentTime || 0;
+                const fLinearDiff = Math.abs(fCur - fadeTarget);
+                const fDiff = Math.min(fLinearDiff, Math.abs(vDur - fLinearDiff));
+                if (!fadeVideo.seeking && fDiff > 0.3) {
                     try { fadeVideo.currentTime = fadeTarget; } catch (e) { }
                 }
                 if (audio && !audio.paused && fadeVideo.paused) {
@@ -11530,7 +11594,12 @@ function reelsOpenSubtitlePresetPicker(anchorEl) {
             else if (typeof reelsLoadPreset === 'function') reelsLoadPreset();
         }
         const span = anchorEl.querySelector('span');
-        if (span) span.textContent = selectedVal || '-- 改全部样式 --';
+        if (span) {
+            const disp = (selectedVal && typeof window.formatSubtitlePresetDisplayName === 'function')
+                ? window.formatSubtitlePresetDisplayName(selectedVal)
+                : selectedVal;
+            span.textContent = disp || '-- 改全部样式 --';
+        }
     });
 }
 window.reelsOpenSubtitlePresetPicker = reelsOpenSubtitlePresetPicker;
@@ -11570,13 +11639,15 @@ function reelsOpenSubtitlePresetLibrary() {
         const style = presetsMap[name] || {};
         const custom = g.category.startsWith('💾');
         const title = String(name).replace(/</g,'&lt;');
+        const code = typeof window.getSubtitlePresetCode === 'function' ? window.getSubtitlePresetCode(name) : '';
+        const codeBadge = code ? `<span class="rsp-code-badge" style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;font-family:monospace;font-size:11px;font-weight:700;background:rgba(56,189,248,0.18);color:#7dd3fc;border:1px solid rgba(56,189,248,0.38);">${String(code).replace(/</g,'&lt;')}</span>` : '';
         const animated = (style.anim_in_type && style.anim_in_type !== 'none') || style.box_wipe_enabled || style.dynamic_box || style.karaoke_highlight || style.word_pop;
         const previewIndex = previewStyles.push(window.ReelsStyleEngine?.mergeStyle?.(style) || style) - 1;
         // 画布显示时缩小，但渲染仍使用成片的 1080×1920 坐标系，保证预设
         // 内保存的像素字号、X/Y 坐标与最终导出完全一致。
-        return `<article class="rsp-card" data-animated="${animated ? 'true' : 'false'}" data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-name="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><canvas class="rsp-preview-canvas" width="360" height="640" data-preview-index="${previewIndex}" aria-label="${title} 的字幕效果预览"></canvas><div class="rsp-name">${title}</div><div class="rsp-group">${String(g.category).replace(/</g,'&lt;')}${animated ? ' · 悬浮播放' : ''}</div><button class="rsp-use">选用</button>${custom ? '<button class="rsp-move-group">分组</button><button class="rsp-delete">删除</button>' : ''}</article>`;
+        return `<article class="rsp-card" data-animated="${animated ? 'true' : 'false'}" data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-code="${String(code).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-name="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><canvas class="rsp-preview-canvas" width="360" height="640" data-preview-index="${previewIndex}" aria-label="${title} 的字幕效果预览"></canvas><div class="rsp-name">${codeBadge}${title}</div><div class="rsp-group">${code ? `[${String(code).replace(/</g,'&lt;')}] · ` : ''}${String(g.category).replace(/</g,'&lt;')}${animated ? ' · 悬浮播放' : ''}</div><button class="rsp-use">选用</button>${custom ? '<button class="rsp-move-group">分组</button><button class="rsp-delete">删除</button>' : ''}</article>`;
     })).join('');
-    modal.innerHTML = `<div class="rsp-shell"><header><h2>动态字幕预设库</h2><div style="display:flex;align-items:center;gap:10px;"><button class="rsp-clear-mine" ${myPresetNames.length ? '' : 'disabled'} title="只删除“我的预设”分组，不影响内置预设、模板同步或覆层预设">清空我的预设</button><button class="rsp-close">✕</button></div></header><div class="rsp-main"><aside><button data-group="all" class="active">全部预设</button>${groups}</aside><section><div class="rsp-grid">${cards || '<p>暂无预设</p>'}</div></section></div></div>`;
+    modal.innerHTML = `<div class="rsp-shell"><header><h2>动态字幕预设库 (支持编号 sub-01 ~ sub-75 / se-01 ~ se-31)</h2><div style="display:flex;align-items:center;gap:10px;"><input type="text" class="rsp-search-input" placeholder="🔍 搜索编号或名称 (如 sub-68 / 72 / 星条旗)..." style="width:240px;padding:6px 10px;border-radius:6px;border:1px solid rgba(125,211,252,0.4);background:rgba(15,23,42,0.85);color:#f8fafc;font-size:12px;outline:none;"><button class="rsp-clear-mine" ${myPresetNames.length ? '' : 'disabled'} title="只删除“我的预设”分组，不影响内置预设、模板同步或覆层预设">清空我的预设</button><button class="rsp-close">✕</button></div></header><div class="rsp-main"><aside><button data-group="all" class="active">全部预设</button>${groups}</aside><section><div class="rsp-grid">${cards || '<p>暂无预设</p>'}</div></section></div></div>`;
     document.body.appendChild(modal);
     // 卡片预览与导出/编辑面板使用同一个 Canvas 渲染器。悬浮时从 0 秒
     // 重新播放，因而展示的是每套预设本身的入场、逐词、卡拉 OK 等真实效果。
@@ -11682,7 +11753,27 @@ function reelsOpenSubtitlePresetLibrary() {
         });
     });
     reelsObservePresetFonts(modal, '.rsp-preview-canvas', canvas => previewStyles[Number(canvas.dataset.previewIndex)]?.font_family, canvas => canvas._subtitlePresetDraw?.());
-    modal.querySelectorAll('aside button').forEach(btn => btn.onclick = () => { modal.querySelectorAll('aside button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); const group = btn.dataset.group; modal.querySelectorAll('.rsp-card').forEach(card => card.style.display = group === 'all' || card.dataset.group === group ? '' : 'none'); });
+    let activeGroupFilter = 'all';
+    const applyLibraryFilters = () => {
+        const q = (modal.querySelector('.rsp-search-input')?.value || '').trim().toLowerCase();
+        modal.querySelectorAll('.rsp-card').forEach(card => {
+            const matchGroup = activeGroupFilter === 'all' || card.dataset.group === activeGroupFilter;
+            const nameStr = (card.dataset.name || '').toLowerCase();
+            const codeStr = (card.dataset.code || '').toLowerCase();
+            const matchQuery = !q || nameStr.includes(q) || codeStr.includes(q);
+            card.style.display = (matchGroup && matchQuery) ? '' : 'none';
+        });
+    };
+    modal.querySelectorAll('aside button').forEach(btn => btn.onclick = () => {
+        modal.querySelectorAll('aside button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeGroupFilter = btn.dataset.group;
+        applyLibraryFilters();
+    });
+    const libSearchInput = modal.querySelector('.rsp-search-input');
+    if (libSearchInput) {
+        libSearchInput.addEventListener('input', applyLibraryFilters);
+    }
     modal.querySelector('.rsp-close').onclick = () => { stopPreviewFrames(); modal.remove(); };
     modal.querySelector('.rsp-clear-mine').onclick = () => {
         if (!myPresetNames.length) return;
@@ -11716,7 +11807,10 @@ function reelsOpenSubtitlePresetLibrary() {
         }
         const span = document.querySelector('#reels-preset-select-trigger span');
         if (span) {
-            span.textContent = selectedVal || '-- 改全部样式 --';
+            const disp = (selectedVal && typeof window.formatSubtitlePresetDisplayName === 'function')
+                ? window.formatSubtitlePresetDisplayName(selectedVal)
+                : selectedVal;
+            span.textContent = disp || '-- 改全部样式 --';
         }
         stopPreviewFrames();
         modal.remove();
@@ -17682,23 +17776,62 @@ window.reelsSetBgOffsetUI = function(axis, value) {
     window.reelsSaveBgConfigUI();
 };
 
-window.reelsSetSpeechWritingTip = function(kind) {
+window.reelsSetSpeechWritingTip = function(kind, standardSubtitleMode = false) {
     const set = (id, value, check = false) => { const el=document.getElementById(id); if(el) {if(check)el.checked=value;else el.value=value;} };
-    set('reels-fullpage-typewriter', true, true);
-    set('reels-fullpage-typewriter-cursor', true, true);
-    set('reels-fullpage-typewriter-speech-sync', true, true);
-    set('reels-fullpage-typewriter-reveal-type', 'char');
-    set('reels-fullpage-typewriter-cursor-kind', kind);
-    set('reels-fullpage-typewriter-cursor-scale', kind === 'rose' ? .75 : 1.4);
-    set('reels-fullpage-typewriter-cursor-offset-x', 0);
-    set('reels-fullpage-typewriter-cursor-offset-y', 0);
-    set('reels-fullpage-typewriter-cursor-angle', 0);
-    set('reels-scrolling-mode', false, true);
-    set('reels-tw-unrevealed-opacity', 0);
-    set('reels-tw-unrevealed-opacity-range', 0);
+    const subCursorEl = document.getElementById('reels-subtitle-cursor-enabled');
+    const fpTwEl = document.getElementById('reels-fullpage-typewriter');
+    const useStandardTSubtitle = Boolean(standardSubtitleMode || (subCursorEl && subCursorEl.checked && (!fpTwEl || !fpTwEl.checked)));
+    if (useStandardTSubtitle) {
+        set('reels-subtitle-cursor-enabled', true, true);
+        set('reels-fullpage-typewriter-cursor', true, true);
+        set('reels-fullpage-typewriter-cursor-kind', kind);
+        set('reels-fullpage-typewriter-cursor-scale', kind === 'rose' ? 0.85 : 1.15);
+        set('reels-fullpage-typewriter-cursor-offset-x', 0);
+        set('reels-fullpage-typewriter-cursor-offset-y', 0);
+        set('reels-fullpage-typewriter-cursor-angle', 0);
+        // Ensure emerging word/char reveal is enabled together with the icon
+        const animInEl = document.getElementById('reels-anim-in-type');
+        if (animInEl && animInEl.value !== 'typewriter' && animInEl.value !== 'zoom_typewriter') {
+            animInEl.value = 'typewriter';
+        }
+        set('reels-typewriter-reveal-type', 'word');
+        set('reels-hide-until-spoken', true, true);
+        set('reels-unread-opacity', 0);
+        set('reels-unread-opacity-range', 0);
+        set('reels-tw-unrevealed-opacity', 0);
+        set('reels-tw-unrevealed-opacity-range', 0);
+    } else {
+        set('reels-fullpage-typewriter', true, true);
+        set('reels-fullpage-typewriter-cursor', true, true);
+        set('reels-fullpage-typewriter-speech-sync', true, true);
+        set('reels-fullpage-typewriter-reveal-type', 'char');
+        set('reels-fullpage-typewriter-cursor-kind', kind);
+        set('reels-fullpage-typewriter-cursor-scale', kind === 'rose' ? .75 : 1.4);
+        set('reels-fullpage-typewriter-cursor-offset-x', 0);
+        set('reels-fullpage-typewriter-cursor-offset-y', 0);
+        set('reels-fullpage-typewriter-cursor-angle', 0);
+        set('reels-scrolling-mode', false, true);
+        set('reels-tw-unrevealed-opacity', 0);
+        set('reels-tw-unrevealed-opacity-range', 0);
+    }
     const options=document.getElementById('reels-fullpage-typewriter-options');if(options)options.style.display='';
     const control=document.getElementById('reels-fullpage-typewriter-cursor-kind');
     if(control)control.dispatchEvent(new Event('change', {bubbles:true}));
+    if (typeof _persistSubtitleStyleByScope === 'function') {
+        _persistSubtitleStyleByScope(_readStyleFromUI());
+    }
+    reelsRefreshSpeechWritingPreview();
+};
+window.reelsDisableSubtitleCursor = function() {
+    const subCursorEl = document.getElementById('reels-subtitle-cursor-enabled');
+    if (subCursorEl) subCursorEl.checked = false;
+    const fpCursorEl = document.getElementById('reels-fullpage-typewriter-cursor');
+    if (fpCursorEl && !document.getElementById('reels-fullpage-typewriter')?.checked) {
+        fpCursorEl.checked = false;
+    }
+    if (typeof _persistSubtitleStyleByScope === 'function') {
+        _persistSubtitleStyleByScope(_readStyleFromUI());
+    }
     reelsRefreshSpeechWritingPreview();
 };
 window.reelsRefreshSpeechWritingPreview = function() {

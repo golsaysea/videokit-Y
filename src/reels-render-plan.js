@@ -405,7 +405,11 @@
             const path = timeline.sources[clip.sourceId]?.path || '';
             task.bgPath = path || task.bgPath;
             task.videoPath = path || task.videoPath;
-            task.timelineBackgroundTrim = { in_t: clip.inT, out_t: clip.outT, start_t: clip.startT };
+            if (clip._extra?.manualTrim === true) {
+                task.timelineBackgroundTrim = { in_t: clip.inT, out_t: clip.outT, start_t: clip.startT };
+            } else {
+                delete task.timelineBackgroundTrim;
+            }
         }
         if (voice.length === 1) task.audioPath = timeline.sources[voice[0].sourceId]?.path || task.audioPath;
         if (bgm.length === 1) {
@@ -518,7 +522,9 @@
                 const index = nonInsertOverlays.length - 1 - revIdx;
                 const start = Math.max(0, finite(ov.start, 0));
                 let end = finite(ov.end, 5);
-                if (end >= 9999) end = totalDuration;
+                if (end >= 9999 || (ov.type === 'scroll' && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length))) {
+                    end = totalDuration;
+                }
                 let label = ov.name;
                 if (!label) {
                     if (ov.type === 'textcard') {
@@ -702,11 +708,15 @@
             const newInT = options.inT !== undefined ? options.inT : (editorClip.inT !== undefined ? editorClip.inT : clip.inT);
             for (const item of linked) {
                 item.inT = Math.max(0, Math.min(item.outT - 0.05, newInT));
+                item._extra = item._extra || {};
+                item._extra.manualTrim = true;
             }
         } else if (options.editMode === 'cut_out') {
             const newOutT = options.outT !== undefined ? options.outT : (editorClip.outT !== undefined ? editorClip.outT : clip.outT);
             for (const item of linked) {
                 item.outT = Math.max(item.inT + 0.05, newOutT);
+                item._extra = item._extra || {};
+                item._extra.manualTrim = true;
             }
         } else if (options.editMode === 'trim_start') {
             const localOffset = options.trimOffset != null
@@ -719,6 +729,8 @@
                     const baseIn = (options.origInT != null ? options.origInT : item.inT);
                     item.inT = Math.min(item.outT - 0.05, baseIn + localOffset * item.speed);
                     item.startT = newStart;
+                    item._extra = item._extra || {};
+                    item._extra.manualTrim = true;
                 }
                 const newDurationAfter = clip.effectiveDuration;
                 const delta = newDurationAfter - oldDuration;
@@ -733,6 +745,8 @@
             for (const item of linked) {
                 const desiredDuration = Math.max(0.05, (newStart + newDuration) - item.startT);
                 item.outT = Math.max(item.inT + 0.05, item.inT + desiredDuration * item.speed);
+                item._extra = item._extra || {};
+                item._extra.manualTrim = true;
             }
             const delta = newDuration - oldDuration;
             if (delta && isSequencedBackground) {
@@ -744,6 +758,8 @@
             for (const item of linked) {
                 item.startT = Math.max(0, item.startT + delta);
                 item.outT = item.inT + newDuration * item.speed;
+                item._extra = item._extra || {};
+                item._extra.manualTrim = true;
             }
         }
 
@@ -907,12 +923,23 @@
             const tierDelta = tierOf(a.overlay) - tierOf(b.overlay);
             if (tierDelta !== 0) return tierDelta;
             return rank.get(a.key) - rank.get(b.key);
-        }).map((entry, index) => ({
-            ...entry.overlay,
-            // 保留旧覆层已有 z 字段，同时给所有合成项一个统一且稳定的层级。
-            z_index: 100 + index,
-            _compositeOrderKey: entry.key,
-        }));
+        }).map((entry, index) => {
+            const clone = {
+                ...entry.overlay,
+                // 保留旧覆层已有 z 字段，同时给所有合成项一个统一且稳定的层级。
+                z_index: 100 + index,
+                _compositeOrderKey: entry.key,
+            };
+            if (entry.overlay && typeof entry.overlay === 'object') {
+                Object.defineProperty(clone, '_sourceOverlay', {
+                    value: entry.overlay._sourceOverlay || entry.overlay,
+                    writable: true,
+                    configurable: true,
+                    enumerable: false,
+                });
+            }
+            return clone;
+        });
     }
 
     function moveCompositedOverlay(task, first, second) {

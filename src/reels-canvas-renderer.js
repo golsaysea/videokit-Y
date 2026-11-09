@@ -2211,6 +2211,10 @@ class ReelsCanvasRenderer {
             && borderW >= 3 && !isTypewriter && !isExtendedCharAnim && !isUnderlineSweepScanning
         );
         const deferredFillPasses = [];
+        const subtitleCursorEnabled = Boolean(s.subtitle_cursor_enabled && !style?._ambient_text_final_pass);
+        let subCursorX = null;
+        let subCursorY = null;
+        let subCursorSize = fontSize;
 
         for (let i = 0; i < visibleLines.length; i++) {
             const line = visibleLines[i];
@@ -2838,6 +2842,36 @@ class ReelsCanvasRenderer {
                 // Bullet restore
                 if (isBullet && lineAlpha < 0.999 && isWordActive) ctx.restore();
 
+                // Track standard T-subtitle emerging word/char cursor tip position
+                if (subtitleCursorEnabled && isWordActive && wordOpacity > 0.01) {
+                    if (typewriterPartial) {
+                        const revW = this._measureTextWithSpacing(ctx, typewriterPartial.revealed, letterSpacing) * lineScale;
+                        subCursorX = textDirection === 'rtl' ? (drawX + wordW * lineScale - revW) : (drawX + revW);
+                        subCursorY = wordY;
+                        subCursorSize = fontSize * lineScale;
+                    } else if (zoomTwActivePop) {
+                        const revW = this._measureTextWithSpacing(ctx, (zoomTwActivePop.prefix || '') + (zoomTwActivePop.activeChar || ''), letterSpacing) * lineScale;
+                        subCursorX = textDirection === 'rtl' ? (drawX + wordW * lineScale - revW) : (drawX + revW);
+                        subCursorY = wordY;
+                        subCursorSize = fontSize * lineScale;
+                    } else if (currentTime != null) {
+                        if (currentTime >= wordStart) {
+                            const wp = (wordEnd > wordStart && currentTime < wordEnd)
+                                ? Math.max(0.18, Math.min(1, (currentTime - wordStart) / (wordEnd - wordStart)))
+                                : 1;
+                            subCursorX = textDirection === 'rtl'
+                                ? (drawX + wordW * lineScale * (1 - wp))
+                                : (drawX + wordW * lineScale * wp);
+                            subCursorY = wordY;
+                            subCursorSize = fontSize * lineScale;
+                        }
+                    } else if (isHighlight || subCursorX === null) {
+                        subCursorX = textDirection === 'rtl' ? drawX : (drawX + wordW * lineScale);
+                        subCursorY = wordY;
+                        subCursorSize = fontSize * lineScale;
+                    }
+                }
+
                 // Underline
                 if (((isHighlight && useUnderline) || (useUnderline && s.underline_all)) && isWordActive) {
                     ctx.save();
@@ -2861,6 +2895,35 @@ class ReelsCanvasRenderer {
         if (deferredFillPasses.length > 0) {
             for (const runFillPass of deferredFillPasses) {
                 runFillPass();
+            }
+        }
+
+        // ── Standard T-Subtitle Emerging Word/Char Writing Tip Icon (🇺🇸 星条盾 / 🎖️ 紫心勋章 / 🪶 羽毛笔等) ──
+        if (subtitleCursorEnabled && subCursorX !== null && subCursorY !== null) {
+            const tipKind = s.fullpage_typewriter_cursor_kind || 'us_flag_shield';
+            const imageTip = isImageOrVectorWritingTip(tipKind);
+            const scale = Math.max(0.2, Math.min(4, Number(s.fullpage_typewriter_cursor_scale) || 1));
+            const offX = Number(s.fullpage_typewriter_cursor_offset_x) || 0;
+            const offY = Number(s.fullpage_typewriter_cursor_offset_y) || 0;
+            const angle = Number(s.fullpage_typewriter_cursor_angle) || 0;
+            if (imageTip) {
+                const drawTip = tipKind === 'image'
+                    ? (c, k, x, y, sz, ang) => this._drawWritingCursorImage(c, s, x, y, sz, ang, currentTime ?? 0)
+                    : drawSpeechWritingTip;
+                drawTip(
+                    ctx,
+                    tipKind,
+                    subCursorX + offX,
+                    subCursorY + subCursorSize * 0.9 + offY,
+                    subCursorSize * scale,
+                    angle
+                );
+            } else if (currentTime == null || Math.floor(currentTime * 2) % 2 === 0) {
+                ctx.save();
+                ctx.fillStyle = s.fullpage_typewriter_cursor_color || '#FFD700';
+                ctx.font = fontStr;
+                ctx.fillText(s.fullpage_typewriter_cursor_char || '|', subCursorX + offX, subCursorY + offY);
+                ctx.restore();
             }
         }
 

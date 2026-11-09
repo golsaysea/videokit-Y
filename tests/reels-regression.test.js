@@ -2982,6 +2982,377 @@ test('Scroll feather slider+manual negative input UI and Batch Table in-place sc
     assert.equal(remainingScrolls[0].scroll_styled_ranges, null, 'Stale styled ranges must be cleared when scroll content changes');
 });
 
+test('Facebook Reel 1147901021035006 prayer bookmark card + peace dove rose + line-by-line gold highlight & underline preset and controls', () => {
+    const sandbox = loadBrowserScript('src/reels-overlay.js', {
+        window: { addEventListener() {} },
+    });
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+    const ReelsOverlay = sandbox.window.ReelsOverlay;
+    const resolveBuiltinPreset = sandbox.window.resolveBuiltinPreset;
+
+    // 1. Verify presets sc-39, sc-40, sc-41 and ov-15 resolve properly
+    const sc39 = resolveBuiltinPreset('sc-39');
+    assert.ok(sc39 && sc39.kind === 'scroll_style' && sc39.style, 'sc-39 preset must resolve');
+    assert.equal(sc39.style.bg_style, 'prayer_bookmark_green');
+    assert.equal(sc39.style.bg_edge_feather, 38);
+    assert.equal(sc39.style.bg_bookmark_enabled, true);
+    assert.equal(sc39.style.bg_top_mascot, 'peace_dove_rose');
+    assert.equal(sc39.style.scroll_tw_reveal_type, 'line');
+    assert.equal(sc39.style.scroll_tw_underline_enabled, true);
+    assert.equal(sc39.style.scroll_focus_flow_enabled, true);
+
+    const sc40 = resolveBuiltinPreset('sc-40');
+    assert.ok(sc40 && sc40.kind === 'scroll_style' && sc40.style.bg_style === 'prayer_bookmark_brown', 'sc-40 preset must resolve');
+    const sc41 = resolveBuiltinPreset('sc-41');
+    assert.ok(sc41 && sc41.kind === 'scroll_style' && sc41.style.bg_style === 'prayer_bookmark_navy', 'sc-41 preset must resolve');
+
+    const ov15 = resolveBuiltinPreset('ov-15');
+    assert.ok(ov15 && ov15.kind === 'overlay' && Array.isArray(ov15.overlays), 'ov-15 overlay group preset must resolve');
+    const scrollInOv15 = ov15.overlays.find(o => o.type === 'scroll');
+    assert.ok(scrollInOv15, 'ov-15 must contain a scroll overlay');
+    assert.equal(scrollInOv15.bg_top_mascot, 'peace_dove_rose');
+    assert.equal(scrollInOv15.scroll_tw_reveal_type, 'line');
+    assert.equal(scrollInOv15.scroll_tw_underline_enabled, true);
+
+    // 2. Verify Canvas rendering of _drawScrollOverlay with sc-39 style
+    const fillCalls = [];
+    const strokeCalls = [];
+    const mockCtx = {
+        canvas: { width: 1080, height: 1920 },
+        font: '700 44px "Playfair Display"',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        save() {},
+        restore() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        rect() {},
+        clip() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        setLineDash() {},
+        fill() { fillCalls.push(this.fillStyle); },
+        stroke() { strokeCalls.push({ style: this.strokeStyle, width: this.lineWidth }); },
+        fillRect() { fillCalls.push(this.fillStyle); },
+        strokeRect() {},
+        clearRect() {},
+        drawImage() {},
+        fillText(text, x, y) { fillCalls.push({ text, x, y, fillStyle: this.fillStyle }); },
+        strokeText() {},
+        measureText(text) { return { width: String(text || '').length * 22 }; },
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+    };
+
+    const ov = ReelsOverlay.createScrollOverlay({
+        ...sc39.style,
+        content: 'Before you scroll away\nlet me pray for you\nHeavenly Father\nGive this person peace\nAmen',
+        start: 0,
+        end: 10,
+        feather_top: 0,
+        feather_bottom: 0,
+    });
+    ReelsOverlay.drawOverlay(mockCtx, ov, 3.5, 1080, 1920);
+
+    const textFills = fillCalls.filter(c => c && typeof c === 'object' && typeof c.text === 'string');
+    assert.ok(textFills.length >= 5, 'Should render multiple prayer lines');
+    assert.ok(
+        textFills.some(t => String(t.fillStyle).toUpperCase() === '#E2CC85'),
+        'Active focus-zone line must be highlighted in gold (#E2CC85)'
+    );
+    assert.ok(
+        strokeCalls.some(s => String(s.style).toUpperCase() === '#D9C27E'),
+        'Following horizontal gold underline (#D9C27E) must be stroked beneath the active line'
+    );
+
+    // 3. Verify UI controls in src/reels-overlay-panel.js
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    for (const id of [
+        'rop-scroll-tw-line-track-mode',
+        'rop-scroll-tw-underline-enabled',
+        'rop-scroll-tw-underline-color',
+        'rop-scroll-tw-underline-style',
+        'rop-scroll-tw-underline-width-mode',
+        'rop-scroll-tw-underline-width-ratio',
+        'rop-scroll-tw-underline-thickness',
+        'rop-scroll-tw-underline-offset-y',
+        'rop-scroll-tw-underline-opacity',
+        'rop-scroll-focus-flow-enabled',
+        'rop-scroll-focus-start-pct',
+        'rop-scroll-focus-end-pct',
+        'rop-scroll-bg-edge-feather',
+        'rop-scroll-bg-bookmark-enabled',
+        'rop-scroll-bg-bookmark-style',
+        'rop-scroll-bg-bookmark-pos',
+        'rop-scroll-bg-bookmark-color',
+        'rop-scroll-bg-bookmark-width',
+        'rop-scroll-bg-bookmark-height',
+        'rop-scroll-bg-bookmark-inset',
+        'rop-scroll-bg-top-mascot',
+        'rop-scroll-bg-top-mascot-scale',
+        'rop-scroll-bg-top-mascot-offset-x',
+        'rop-scroll-bg-top-mascot-offset-y',
+        'rop-scroll-bg-top-mascot-speed',
+    ]) {
+        assert.ok(panelSrc.includes(`id="${id}"`), `UI control #${id} must exist in src/reels-overlay-panel.js`);
+    }
+});
+
+test('Designer card backgrounds + 12 top-left corner badges, standard T-subtitle US flag/medal emerging cursor icons, and numbered T-subtitle presets', () => {
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: { addEventListener() {} },
+    });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    sandbox.ReelsOverlay = sandbox.window.ReelsOverlay;
+    sandbox.ReelsBrushEngine = sandbox.window.ReelsBrushEngine;
+    loadBrowserScript('src/reels-style-engine.js', sandbox);
+    sandbox.ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+
+    const ReelsOverlay = sandbox.window.ReelsOverlay;
+    const ReelsBrushEngine = sandbox.window.ReelsBrushEngine;
+    const ReelsCanvasRenderer = sandbox.window.ReelsCanvasRenderer;
+    const resolveBuiltinPreset = sandbox.window.resolveBuiltinPreset;
+    const getSubtitlePresetCode = sandbox.window.getSubtitlePresetCode;
+    const formatSubtitlePresetDisplayName = sandbox.window.formatSubtitlePresetDisplayName;
+
+    // 1. Verify 6 new designer card background styles & scroll presets sc-42 ~ sc-47
+    for (const [scId, bgStyle, bmStyle] of [
+        ['sc-42', 'prayer_bookmark_burgundy', 'rose_emblem'],
+        ['sc-43', 'veteran_shield_card', 'us_star_shield'],
+        ['sc-44', 'vintage_wax_parchment', 'gold_wax_seal'],
+        ['sc-45', 'royal_olive_emerald', 'olive_wreath_tag'],
+        ['sc-46', 'editorial_quote_obsidian', 'quote_mark_badge'],
+        ['sc-47', 'sacred_ivory_crown', 'royal_crown_tag'],
+    ]) {
+        assert.ok(ReelsBrushEngine.CARD_BACKGROUND_STYLES[bgStyle], `CARD_BACKGROUND_STYLES must include ${bgStyle}`);
+        const resolved = resolveBuiltinPreset(scId);
+        assert.ok(resolved && resolved.kind === 'scroll_style', `${scId} must resolve as scroll_style preset`);
+        assert.equal(resolved.style.bg_style, bgStyle);
+        assert.equal(resolved.style.bg_bookmark_style, bmStyle);
+    }
+
+    // Render all 12 corner badge styles via drawOverlay without error
+    const mockCtx = {
+        canvas: { width: 1080, height: 1920 },
+        font: '700 44px Georgia',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        save() {},
+        restore() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        rect() {},
+        clip() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        setLineDash() {},
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        strokeRect() {},
+        clearRect() {},
+        drawImage() {},
+        fillText() {},
+        strokeText() {},
+        measureText(t) { return { width: String(t || '').length * 20 }; },
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+    };
+
+    for (const badgeStyle of [
+        'swallowtail', 'cross_tag', 'rounded_tab',
+        'us_star_shield', 'gold_wax_seal', 'rose_emblem',
+        'olive_wreath_tag', 'folded_dog_ear', 'royal_crown_tag',
+        'heart_prayer_tag', 'poppy_honor_tag', 'quote_mark_badge',
+    ]) {
+        const ov = ReelsOverlay.createScrollOverlay({
+            content: 'Honor and Gratitude\nThank you Veterans',
+            bg_enabled: true,
+            bg_style: 'veteran_shield_card',
+            bg_bookmark_enabled: true,
+            bg_bookmark_style: badgeStyle,
+            start: 0,
+            end: 8,
+        });
+        ReelsOverlay.drawOverlay(mockCtx, ov, 2.0, 1080, 1920);
+    }
+
+    // 2. Verify standard T-subtitle emerging word cursor icon (subtitle_cursor_enabled + us_flag_shield) & sub-72 ~ sub-75
+    for (const subId of ['sub-68', 'sub-69', 'sub-70', 'sub-71', 'sub-72', 'sub-73', 'sub-74', 'sub-75']) {
+        const p = resolveBuiltinPreset(subId);
+        assert.ok(p && p.kind === 'subtitle' && p.preset, `${subId} must resolve as a built-in subtitle preset`);
+        assert.equal(p.preset.subtitle_cursor_enabled, true, `${subId} must enable subtitle_cursor_enabled`);
+    }
+
+    let tipRotateCalled = false;
+    const subCtx = {
+        ...mockCtx,
+        rotate(rad) { if (typeof rad === 'number') tipRotateCalled = true; },
+    };
+    const subCanvas = { width: 1080, height: 1920, getContext: () => subCtx };
+    const renderer = new ReelsCanvasRenderer(subCanvas);
+    const sub72 = resolveBuiltinPreset('sub-72').preset;
+    renderer.renderSubtitle(
+        sub72,
+        {
+            start: 0,
+            end: 3,
+            text: 'Honor our veterans today',
+            words: [
+                { word: 'Honor', start: 0, end: 0.7 },
+                { word: 'our', start: 0.7, end: 1.4 },
+                { word: 'veterans', start: 1.4, end: 2.2 },
+                { word: 'today', start: 2.2, end: 3.0 },
+            ],
+        },
+        1.6,
+        1080,
+        1920
+    );
+    assert.ok(tipRotateCalled, 'Standard T-subtitle renderSubtitle must draw the US flag shield writing tip icon when subtitle_cursor_enabled is true');
+
+    // 3. Verify T-subtitle preset numbering helpers (getSubtitlePresetCode & formatSubtitlePresetDisplayName)
+    assert.equal(getSubtitlePresetCode('默认白字'), 'sub-01');
+    assert.equal(getSubtitlePresetCode('🇺🇸 星条旗荣耀绶带_星盾出字 (退伍军人节)'), 'sub-68');
+    assert.equal(getSubtitlePresetCode('🇺🇸 星条旗金盾跟读出字_T字幕双行款'), 'sub-72');
+    assert.equal(getSubtitlePresetCode('焦糖橙_黄高亮'), 'se-01');
+    assert.equal(
+        formatSubtitlePresetDisplayName('🇺🇸 星条旗金盾跟读出字_T字幕双行款'),
+        '[sub-72] 🇺🇸 星条旗金盾跟读出字_T字幕双行款'
+    );
+});
+
+test('Playback 10s stop & render stutter fixes: feather canvas pooling, scroll auto-end preservation, circular loop sync, and xfade duration probing', () => {
+    let createdCanvasCount = 0;
+    const mockGrad = { addColorStop() {} };
+    const makeCtx = () => ({
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        font: '40px sans-serif',
+        save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {},
+        quadraticCurveTo() {}, bezierCurveTo() {}, arc() {}, arcTo() {}, ellipse() {},
+        rect() {}, clip() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {},
+        clearRect() {}, drawImage() {}, translate() {}, rotate() {}, scale() {},
+        setTransform() {}, setLineDash() {}, fillText() {}, strokeText() {},
+        measureText(str) { return { width: String(str || '').length * 18, actualBoundingBoxAscent: 30, actualBoundingBoxDescent: 8 }; },
+        createLinearGradient() { return mockGrad; },
+        createRadialGradient() { return mockGrad; },
+    });
+
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        document: {
+            head: { appendChild() {}, querySelector: () => null },
+            body: { appendChild() {} },
+            fonts: { check: () => true },
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            createElement: (tag) => {
+                if (tag === 'canvas') createdCanvasCount++;
+                return {
+                    width: 1080,
+                    height: 1920,
+                    style: {},
+                    dataset: {},
+                    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+                    appendChild() {},
+                    addEventListener() {},
+                    setAttribute() {},
+                    getContext: () => makeCtx(),
+                };
+            },
+        },
+    });
+    Object.assign(sandbox, sandbox.window);
+    for (const rel of [
+        'src/reels-text-direction.js',
+        'src/reels-rich-text.js',
+        'src/reels-scroll-timing.js',
+        'src/reels-timeline.js',
+        'src/reels-render-plan.js',
+        'src/reels-overlay.js',
+    ]) {
+        loadBrowserScript(rel, sandbox);
+        Object.assign(sandbox, sandbox.window);
+    }
+
+    const { ReelsOverlay, ReelsScrollTiming, ReelsRenderPlan } = sandbox.window;
+    const baseOv = ReelsOverlay.createScrollOverlay({
+        content: 'Line one\nLine two\nLine three\nLine four',
+        feather_bottom: 80,
+    });
+    assert.equal(baseOv.scroll_end_auto, true, 'Newly created scroll overlay with default end must have scroll_end_auto=true');
+
+    const task = {
+        audioPath: 'C:/audio/voice_45s.mp3',
+        bgPath: 'C:/video/bg_10s.mp4',
+        overlays: [baseOv],
+        segments: [{ start: 0, end: 45, text: 'hello' }],
+    };
+    const mediaDurations = {
+        'C:/audio/voice_45s.mp3': 45,
+        'C:/video/bg_10s.mp4': 10,
+    };
+
+    // Simulate 60 frames of preview/export where each frame passes a shallow clone via renderingOverlay + spread
+    createdCanvasCount = 0;
+    const mainCtx = makeCtx();
+    for (let f = 0; f < 60; f++) {
+        const effective = ReelsScrollTiming.renderingOverlay(baseOv, task, { bodyDuration: 45, mediaDurations });
+        const frameClone = { ...effective, _exporting: true };
+        ReelsOverlay.drawOverlay(mainCtx, frameClone, f * 0.5, 1080, 1920);
+    }
+    assert.equal(createdCanvasCount, 1, 'Scroll feather offscreen canvas must be pooled and allocated only once across 60 cloned-overlay frames');
+    assert.equal(baseOv.end, 10, 'Live scroll overlay end must not be mutated during frame rendering');
+
+    // Verify getEditorTracks projects auto-end scroll overlay to full task duration (45s), not 10s
+    const tracks = ReelsRenderPlan.getEditorTracks(task, { duration: 45 });
+    const scrollTrack = tracks.find(t => t.type === 'overlay' && t._overlayType === 'scroll');
+    assert.ok(scrollTrack && scrollTrack.clips.length === 1, 'Scroll overlay track should exist');
+    assert.equal(scrollTrack.clips[0].end, 45, 'Auto-end scroll overlay clip on timeline must span full 45s task duration instead of stopping at 10s');
+
+    // Verify syncLegacyFields does not lock timelineBackgroundTrim unless manually trimmed
+    ReelsRenderPlan.syncLegacyFields(task);
+    assert.equal(task.timelineBackgroundTrim, undefined, 'Auto-generated background timeline clip must not set task.timelineBackgroundTrim');
+
+    // Verify Preview V2 sets loop attribute on background/content/bgm media and uses circular loop distance
+    const previewV2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
+    assert.match(previewV2Src, /data-role="bg-video"[^>]*\bloop\b/, 'V2 bg-video element must have loop attribute');
+    assert.match(previewV2Src, /function setMediaTime\(media,\s*target,\s*loopDuration\s*=\s*0\)/, 'setMediaTime must accept loopDuration for circular wrap-around distance');
+    assert.ok(!previewV2Src.includes('ov.end = measured.end'), 'Preview V2 must not overwrite ov.end with measured.end');
+
+    // Verify ffmpeg-rawvideo probes nb_frames & uses + 0.5s tolerance for loopFade
+    const rawVideoSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'), 'utf8');
+    assert.match(rawVideoSrc, /nb_frames,avg_frame_rate,r_frame_rate/, 'getMediaDuration must probe nb_frames and frame rate to prevent tpad freeze');
+    assert.match(rawVideoSrc, /targetDuration\s*>\s*scaledBgDuration\s*\+\s*0\.5/, 'useDirectLoopFade must require targetDuration > scaledBgDuration + 0.5');
+});
+
+
+
+
 
 
 

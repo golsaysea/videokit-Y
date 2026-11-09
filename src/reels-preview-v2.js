@@ -293,13 +293,13 @@
                         <canvas data-role="canvas"></canvas>
                         <div class="rpv2-empty" data-role="empty">请选择一个 Reels 任务</div>
                     </div>
-                    <video class="rpv2-media" data-role="bg-video" playsinline preload="auto"></video>
-                    <video class="rpv2-media" data-role="bg-fade-video" playsinline preload="auto"></video>
-                    <video class="rpv2-media" data-role="content-video" playsinline preload="auto"></video>
+                    <video class="rpv2-media" data-role="bg-video" playsinline preload="auto" loop></video>
+                    <video class="rpv2-media" data-role="bg-fade-video" playsinline preload="auto" loop></video>
+                    <video class="rpv2-media" data-role="content-video" playsinline preload="auto" loop></video>
                     <video class="rpv2-media" data-role="hook-video" playsinline preload="auto" muted></video>
                     <video class="rpv2-media" data-role="cover-video" playsinline preload="auto" muted></video>
                     <audio class="rpv2-media" data-role="audio" preload="auto"></audio>
-                    <audio class="rpv2-media" data-role="bgm-audio" preload="auto"></audio>
+                    <audio class="rpv2-media" data-role="bgm-audio" preload="auto" loop></audio>
                 </div>
                 <div class="rpv2-controls">
                     <span class="rpv2-pill" data-role="title">V2 预览</span>
@@ -375,6 +375,7 @@
         root.querySelector('[data-role="seek"]').addEventListener('pointerdown', () => { state.dragSeek = true; });
         root.querySelector('[data-role="seek"]').addEventListener('pointerup', () => { state.dragSeek = false; });
         root.querySelector('[data-role="loop"]').addEventListener('change', syncLoopFlags);
+        syncLoopFlags();
         setupPanZoomHandlers();
         setupFitObserver();
 
@@ -1131,6 +1132,7 @@
 
     function playMedia() {
         const task = getTask();
+        syncLoopFlags();
         applyAudioVolumes(task);
         applyPlaybackRates(task);
         if (state.audioCtx && state.audioCtx.state === 'suspended') {
@@ -1248,17 +1250,17 @@
         }
         if (!isMultiBg && state.bgVideo.src && bgDur > 0) {
             const bgTime = mainTime / getBgDurationScale(task);
-            setMediaTime(state.bgVideo, isLoopEnabled() ? loopMediaTime(bgTime, bgDur, atTimelineEnd) : clamp(bgTime, 0, bgDur));
+            setMediaTime(state.bgVideo, loopMediaTime(bgTime, bgDur, atTimelineEnd), bgDur);
         }
         if (state.bgmAudio.src && bgmDur > 0) {
             const bgmStart = Math.max(0, numberOr(task && task.bgmStart, 0));
-            setMediaTime(state.bgmAudio, loopMediaTime(bgmStart + mainTime, bgmDur, atTimelineEnd));
+            setMediaTime(state.bgmAudio, loopMediaTime(bgmStart + mainTime, bgmDur, atTimelineEnd), bgmDur);
         }
         if (state.contentVideo.src && contentDur > 0) {
             const trimStart = parseFloat((task || {}).contentVideoTrimStart) || 0;
             const trimEnd = parseFloat((task || {}).contentVideoTrimEnd) || 0;
             const usableDur = trimEnd > trimStart ? trimEnd - trimStart : Math.max(0.01, contentDur - trimStart);
-            setMediaTime(state.contentVideo, trimStart + loopMediaTime(mainTime, usableDur, atTimelineEnd));
+            setMediaTime(state.contentVideo, trimStart + loopMediaTime(mainTime, usableDur, atTimelineEnd), usableDur);
         }
         if (state.hookVideo.src && hookDurRaw > 0) {
             const trimStart = numberOr(task && task.hookTrimStart, 0);
@@ -1271,9 +1273,14 @@
         }
     }
 
-    function setMediaTime(media, target) {
-        if (!media || !media.src || !Number.isFinite(target)) return;
-        if (Math.abs((media.currentTime || 0) - target) > 0.25) {
+    function setMediaTime(media, target, loopDuration = 0) {
+        if (!media || !media.src || !Number.isFinite(target) || media.seeking) return;
+        const cur = media.currentTime || 0;
+        let diff = Math.abs(cur - target);
+        if (loopDuration > 0) {
+            diff = Math.min(diff, Math.abs(loopDuration - diff));
+        }
+        if (diff > 0.35) {
             try { media.currentTime = target; } catch (_) {}
         }
     }
@@ -1290,20 +1297,20 @@
         const hasAudioClock = !!(state.audio.src && !state.audio.paused);
         const bgIsClock = !isMultiBg && !hasAudioClock && state.bgVideo.src && !state.bgVideo.paused;
         const contentIsClock = !hasAudioClock && !bgIsClock && state.contentVideo.src && !state.contentVideo.paused;
-        if (!isMultiBg && hasAudioClock && state.bgVideo.src && bgDur > 0) {
+        if (!isMultiBg && state.bgVideo.src && bgDur > 0) {
             const bgTime = mainTime / getBgDurationScale(task);
-            const target = isLoopEnabled() ? positiveModulo(bgTime, bgDur) : clamp(bgTime, 0, bgDur);
-            setMediaTime(state.bgVideo, target);
+            const target = positiveModulo(bgTime, bgDur);
+            setMediaTime(state.bgVideo, target, bgDur);
         }
         if (state.bgmAudio.src && bgmDur > 0) {
             const bgmStart = Math.max(0, numberOr(task && task.bgmStart, 0));
-            setMediaTime(state.bgmAudio, positiveModulo(bgmStart + mainTime, bgmDur));
+            setMediaTime(state.bgmAudio, positiveModulo(bgmStart + mainTime, bgmDur), bgmDur);
         }
         if (!contentIsClock && state.contentVideo.src && contentDur > 0) {
             const trimStart = parseFloat((task || {}).contentVideoTrimStart) || 0;
             const trimEnd = parseFloat((task || {}).contentVideoTrimEnd) || 0;
             const usableDur = trimEnd > trimStart ? trimEnd - trimStart : Math.max(0.01, contentDur - trimStart);
-            setMediaTime(state.contentVideo, trimStart + positiveModulo(mainTime, usableDur));
+            setMediaTime(state.contentVideo, trimStart + positiveModulo(mainTime, usableDur), usableDur);
         }
         syncPhasePlayback(phase, task);
     }
@@ -1676,8 +1683,8 @@
             }
             video.playbackRate = playbackRate;
             const dur = mediaDuration(video);
-            const target = dur > 0 ? Math.min(clip.localTime, Math.max(0, dur - 0.03)) : clip.localTime;
-            setMediaTime(video, target);
+            const target = dur > 0 ? (clip.localTime >= dur ? positiveModulo(clip.localTime, dur) : clip.localTime) : clip.localTime;
+            setMediaTime(video, target, dur);
             setPreviewVideoGain(video, gain);
             if (shouldPlay && video.paused) video.play().catch(() => {});
             if (!shouldPlay && !video.paused) video.pause();
@@ -1855,7 +1862,7 @@
                     window.ReelsOverlay.drawOverlay(measureCtx, measured, time, w, h);
                     ov._scrollBodyFirstLineY = measured._scrollBodyFirstLineY;
                     ov._scrollBodyCurX = measured._scrollBodyCurX;
-                    if (Number.isFinite(Number(measured.end))) ov.end = measured.end;
+                    if (Number.isFinite(Number(measured.end))) ov._scrollResolvedEndTime = Number(measured.end);
                 } catch (err) { console.warn('[PreviewV2] scroll anchor failed', err); }
             }
         }
@@ -2230,7 +2237,8 @@
 
         const custom = getEffectiveCustomDuration(task);
         if (custom > 0) return custom + offset;
-        const audioDur = mediaDuration(state.audio);
+        const cachedAudioDur = (task.audioPath && window._reelsState?._mediaDurations?.[task.audioPath]) || 0;
+        const audioDur = mediaDuration(state.audio) || (Number.isFinite(Number(cachedAudioDur)) && Number(cachedAudioDur) > 0 ? Number(cachedAudioDur) : 0);
         const audioScale = getAudioDurationScale(task);
         if (audioDur > 0) return (audioDur * Math.max(0.01, audioScale)) + offset;
         const cvDur = mediaDuration(state.contentVideo);
@@ -2244,7 +2252,7 @@
         const isMultiBg = isMultiBackgroundTask(task);
         const multiDur = isMultiBg ? getMultiBackgroundDuration(task) : 0;
         const subDur = subtitleDuration(task);
-        return Math.max(isMultiBg ? 0 : bgDur * getBgDurationScale(task), multiDur, subDur, state.bgImage ? 5 : 0, state.contentImage ? 5 : 0) + offset;
+        return Math.max(isMultiBg ? 0 : bgDur * getBgDurationScale(task), multiDur, subDur, numberOr(task.duration, 0), state.bgImage ? 5 : 0, state.contentImage ? 5 : 0) + offset;
     }
 
     function getEffectiveCustomDuration(task) {
@@ -2284,11 +2292,11 @@
 
     function syncLoopFlags() {
         const loop = isLoopEnabled();
-        state.bgVideo.loop = loop;
-        state.bgFadeVideo.loop = loop;
+        state.bgVideo.loop = true;
+        state.bgFadeVideo.loop = true;
         state.audio.loop = loop;
-        state.bgmAudio.loop = loop;
-        state.contentVideo.loop = loop;
+        state.bgmAudio.loop = true;
+        state.contentVideo.loop = true;
         state.hookVideo.loop = false;
         state.coverVideo.loop = loop;
     }
@@ -2646,7 +2654,7 @@
         if (!segments.length) return null;
         const total = segments[segments.length - 1].end;
         const atEnd = isAtTimelineEnd(getTimelineOffset(task) + (timeSec || 0));
-        const loopTime = isLoopEnabled() && total > 0
+        const loopTime = total > 0
             ? loopMediaTime(timeSec || 0, total, atEnd)
             : Math.min(timeSec || 0, Math.max(0, total - 0.001));
         const current = segments.find(seg => loopTime >= seg.start && loopTime < seg.end) || segments[segments.length - 1];

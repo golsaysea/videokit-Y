@@ -164,6 +164,7 @@ const DEFAULT_SUBTITLE_STYLE = {
     fullpage_typewriter_reveal_type: 'char',
     fullpage_typewriter_align: 'center',
     fullpage_typewriter_cursor: true,
+    subtitle_cursor_enabled: false,
     fullpage_typewriter_keep_background: true,
     fullpage_typewriter_title_font_follow: true,
     fullpage_typewriter_title_stroke_independent: false,
@@ -2169,6 +2170,16 @@ const BUILTIN_PRESETS = {
 
 // Category mapping for collapsible preset picker
 const PRESET_CATEGORIES = {
+    '🇺🇸 美国退伍军人节 & 星条旗出字': [
+        '🇺🇸 星条旗荣耀绶带_星盾出字 (退伍军人节)',
+        '🎖️ 老兵金章礼服带_勋章跟读 (退伍军人节)',
+        '🏷️ 美军金属狗牌铭牌_钢印逐词 (退伍军人节)',
+        '🌺 纪念虞美人花信纸_敬礼跟读 (退伍军人节)',
+        '🇺🇸 星条旗金盾跟读出字_T字幕双行款',
+        '🎖️ 紫心勋章跟读出字_T字幕纯享款',
+        '🦅 白头海雕金章出字_T字幕荣耀款',
+        '🌺 虞美人花跟读出字_T字幕纪念款',
+    ],
     '🎄 圣诞节限定特辑': ['🎄 圣诞红绿金_双行推开爆款','🍬 圣诞拐杖糖斜纹带_手写笔出字','🎅 圣诞红丝绒烫金_冬青装饰带','❄️ 圣诞松林覆雪带_暖金发光字','🍪 圣诞姜饼糖霜签_复古剪报字'],
     '📰 报纸剪报 & 文字底衬': ['📰 复古报纸剪报出字 (爆款同款)','📰 复古报纸剪报整屏 (多行累积)','🗞️ 怀旧泛黄古董报刊','📜 奶油手撕宣纸贴字','🏷️ 手撕牛皮纸白边贴','✂️ 杂志拼贴斜切剪报','📓 手账方格便签纸底','✨ 圣经烫金羊皮书页','🔖 报刊红底白边剪报','🎬 暗夜胶片磨砂贴纸','🌟 鎏金半高文字底条','🌸 莫兰迪玫瑰手绘底条','🖍️ 荧光马克笔手绘底条','🍬 圣诞拐杖糖斜纹带_手写笔出字','🎅 圣诞红丝绒烫金_冬青装饰带','❄️ 圣诞松林覆雪带_暖金发光字','🍪 圣诞姜饼糖霜签_复古剪报字'],
     '🔤 动态混排': ['✨ 单词粉青渐变_手写斜体 (Lord Jesus同款)','🌈 四行滚词_彩虹渐变跟读 (成品01同款)','💎 三词叠排_中词放大_电光青 (IF JESUS同款)','动态混排 · 自动轮换','动态混排 · 首尾大字','动态混排 · 中间强调','动态混排 · 大小拼接','动态混排 · 阶梯错位'],

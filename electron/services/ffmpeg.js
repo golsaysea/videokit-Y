@@ -198,18 +198,38 @@ async function getDuration(filePath) {
             const { stdout } = await runCommand('ffprobe', [
                 '-v', 'error',
                 '-select_streams', 'v:0',
-                '-show_entries', 'stream=duration:format=duration',
+                '-show_entries', 'stream=duration,nb_frames,avg_frame_rate,r_frame_rate:format=duration',
                 '-of', 'json',
                 filePath
             ], { timeout: PROBE_TIMEOUT });
             const parsed = JSON.parse(stdout || '{}');
-            const streamDur = parseFloat(parsed?.streams?.[0]?.duration);
+            const stream = parsed?.streams?.[0] || {};
+            const streamDur = parseFloat(stream.duration);
             const formatDur = parseFloat(parsed?.format?.duration);
+            const nbFrames = parseInt(stream.nb_frames, 10);
+            const parseRate = (rateStr) => {
+                if (!rateStr || typeof rateStr !== 'string') return 0;
+                const parts = rateStr.split('/');
+                const num = parseFloat(parts[0]);
+                const den = parts.length > 1 ? parseFloat(parts[1]) : 1;
+                return (Number.isFinite(num) && Number.isFinite(den) && den > 0) ? (num / den) : 0;
+            };
+            const avgFps = parseRate(stream.avg_frame_rate);
+            const rFps = parseRate(stream.r_frame_rate);
+            const effectiveFps = (avgFps > 0 && rFps > 0 && Math.abs(avgFps - rFps) < 1.5)
+                ? avgFps
+                : (avgFps > 0 ? avgFps : rFps);
+            const framesDur = (Number.isFinite(nbFrames) && nbFrames > 0 && effectiveFps > 0)
+                ? (nbFrames / effectiveFps)
+                : 0;
             if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
-                return Math.min(streamDur, formatDur);
+                const baseDur = Math.min(streamDur, formatDur);
+                return framesDur > 0.2 ? Math.min(baseDur, framesDur) : baseDur;
             }
-            if (Number.isFinite(streamDur) && streamDur > 0) return streamDur;
-            if (Number.isFinite(formatDur) && formatDur > 0) return formatDur;
+            const candidates = [streamDur, formatDur, framesDur].filter(d => Number.isFinite(d) && d > 0.2);
+            if (candidates.length > 0) {
+                return Math.min(...candidates);
+            }
         } catch (e) {
             console.warn(`[getDuration] 视频流时长探测失败，回退常规探测: ${e.message}`);
         }

@@ -312,9 +312,9 @@ async function handleWebBridgeRpc(method, params = {}) {
         case 'getAppVersion': {
             try {
                 const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
-                return pkg.version || '4.5.4';
+                return pkg.version || '4.5.5';
             } catch {
-                return '4.5.4';
+                return '4.5.5';
             }
         }
 
@@ -678,6 +678,10 @@ async function handleWebBridgeRpc(method, params = {}) {
                 audioPath: p.voicePath || undefined,
                 bgmPath: p.bgmPath || undefined,
                 segments: Array.isArray(p.segments) ? p.segments : [],
+                preset: p.preset || undefined,
+                scroll_preset: p.scroll_preset || undefined,
+                overlay_group_preset: p.overlay_group_preset || undefined,
+                show_subtitle: p.showSubtitle !== undefined ? Boolean(p.showSubtitle) : undefined,
                 subtitle: p.style || {},
                 overlays: Array.isArray(p.overlays) ? p.overlays : [],
                 output: outPath,
@@ -728,7 +732,7 @@ function createWebServer(options = {}) {
             sendJson(res, 200, {
                 status: 'ok',
                 mode: 'web-bridge',
-                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.4',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.5',
                 auth_required: Boolean(activeToken),
             });
             return;
@@ -739,6 +743,18 @@ function createWebServer(options = {}) {
                 sendJson(res, 401, { ok: false, error: 'Unauthorized', code: 'UNAUTHORIZED' });
                 return;
             }
+        }
+
+        if (pathname === '/api/presets' && req.method === 'GET') {
+            const presetsMod = require('../src/reels-presets-init.js');
+            sendJson(res, 200, {
+                status: 'ok',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.5',
+                subtitle_presets: presetsMod.REELS_PRESET_ID_MAP || {},
+                scroll_presets: Object.fromEntries(Object.entries(presetsMod.REELS_SCROLL_PRESET_ID_MAP || {}).filter(([k]) => k.startsWith('sc-'))),
+                overlay_presets: presetsMod.REELS_OVERLAY_PRESET_ID_MAP || {},
+            });
+            return;
         }
 
         if (pathname === '/api/web-bridge/media' && req.method === 'GET') {

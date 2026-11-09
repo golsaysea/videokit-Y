@@ -813,15 +813,15 @@ class ReelsOverlayPanel {
                         </label>
                     </div>
 
-                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-38） -->
+                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-47） -->
                     <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.28);">
                         <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-38)</span>
+                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-47)</span>
                             <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开可视化滚动字幕样式预览库">🎨 样式库预览</button>
                         </div>
                         <div style="display:flex;gap:4px;align-items:center;">
                             <select id="rop-scroll-style-preset-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;">
-                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-38) —</option>
+                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-47) —</option>
                             </select>
                             <button type="button" id="rop-scroll-style-preset-apply" class="rop-btn" style="padding:3px 8px;font-size:11px;white-space:nowrap;background:rgba(56,189,248,0.18);color:#e0f2fe;border:1px solid rgba(56,189,248,0.35);border-radius:4px;cursor:pointer;" title="应用所选滚动字幕样式">应用</button>
                             <button type="button" id="rop-scroll-style-preset-save" class="rop-btn" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(34,197,94,0.16);color:#dcfce7;border:1px solid rgba(34,197,94,0.35);border-radius:4px;cursor:pointer;" title="将当前滚动字幕样式保存为自定义预设">保存</button>
@@ -832,10 +832,19 @@ class ReelsOverlayPanel {
                     <!-- 🎨 滚动字幕背景主题快速选择（始终置顶可见：支持整块大背景画板 & 逐行底衬 & 直接调节长宽与滚动循环） -->
                     <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:linear-gradient(135deg, rgba(220,38,38,0.10), rgba(21,128,61,0.10), rgba(245,158,11,0.10));border:1px solid rgba(251,191,36,0.28);">
                         <div style="font-size:11px;font-weight:700;color:#fde68a;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🖼️ 整块大背景画板 / 边框 (报纸 / 圣诞 / 🇺🇸退伍军人节)</span>
+                            <span>🖼️ 设计师卡片背景 + 左上角小图标角标 (祈祷书签 / 星条金盾 / 火漆章 / 报纸 / 圣诞)</span>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭大背景</button>
                         </div>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_green" style="flex:1 1 100%;padding:5px 8px;font-size:11px;background:linear-gradient(135deg,#12322E,#1B4641);color:#FFE28A;font-weight:700;border:1px solid #E2B95B;border-radius:5px;cursor:pointer;">🕊️ [sc-39] 祈祷书签松绿卡 + 左上金书签 + 顶部白鸽玫瑰 (爆款同款)</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_brown" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2C1E18,#3A2820);color:#F7D788;font-weight:700;border:1px solid #D9AC42;border-radius:5px;cursor:pointer;">✝️ [sc-40] 祈祷深褐卡+十字书签</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_navy" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#122238,#1B314E);color:#FFE082;font-weight:700;border:1px solid #E5B94E;border-radius:5px;cursor:pointer;">🌌 [sc-41] 祈祷深蓝卡+白鸽橄榄</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_burgundy" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#3A121C,#591C2B);color:#FFE4E6;font-weight:700;border:1px solid #E8C374;border-radius:5px;cursor:pointer;">🌹 [sc-42] 酒红丝绒卡+左上玫瑰章</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="veteran_shield_card" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0E1E38,#1E3A8A);color:#FEF08A;font-weight:700;border:1px solid #FBBF24;border-radius:5px;cursor:pointer;">🇺🇸 [sc-43] 海军深蓝卡+左上星条金盾</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vintage_wax_parchment" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2E2318,#453424);color:#FDE68A;font-weight:700;border:1px solid #D9A74A;border-radius:5px;cursor:pointer;">🏵️ [sc-44] 胡桃古籍卡+左上火漆金章</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="royal_olive_emerald" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#123326,#1B4D39);color:#ECFDF5;font-weight:700;border:1px solid #DEC075;border-radius:5px;cursor:pointer;">🌿 [sc-45] 翡翠金线卡+左上橄榄桂冠</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="editorial_quote_obsidian" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#16181F,#262936);color:#F8FAFC;font-weight:700;border:1px solid #E5C165;border-radius:5px;cursor:pointer;">❝ [sc-46] 曜石黑金线卡+左上双引号标</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="sacred_ivory_crown" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2B1A24,#442839);color:#FEF3C7;font-weight:700;border:1px solid #F0D580;border-radius:5px;cursor:pointer;">👑 [sc-47] 皇家紫檀卡+左上皇冠金标</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="newspaper_page" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#f3efe6,#dfd7c6);color:#2b1b18;font-weight:700;border:1px solid #cbbba0;border-radius:5px;cursor:pointer;">📰 旧报纸整版</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="newspaper_sepia_page" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#eadbc2,#d4be98);color:#3b2313;font-weight:700;border:1px solid #bfa376;border-radius:5px;cursor:pointer;">🗞️ 泛黄报刊板</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="torn_parchment_board" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#f7f1e3,#e6d4a7);color:#422810;font-weight:700;border:1px solid #c59b27;border-radius:5px;cursor:pointer;">📜 烫金羊皮卷</button>
@@ -851,6 +860,26 @@ class ReelsOverlayPanel {
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_honor_medal_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#09152b,#172554);color:#fde68a;font-weight:700;border:1px solid #f59e0b;border-radius:5px;cursor:pointer;">🎖️ 老兵金章礼服板</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_dogtag_steel_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#475569,#1e293b);color:#f8fafc;font-weight:700;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer;">🏷️ 美军钢印铭牌板</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_poppy_memorial_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#fcf8f2,#ede3d2);color:#991b1b;font-weight:700;border:1px solid #dc2626;border-radius:5px;cursor:pointer;">🌺 纪念虞美人花板</button>
+                        </div>
+                        <div style="margin-bottom:6px;padding:5px 6px;border-radius:5px;background:rgba(234,179,8,0.09);border:1px dashed rgba(250,204,21,0.32);">
+                            <div style="font-size:10px;font-weight:700;color:#fde047;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
+                                <span>🔖 左上角小图标角标设计 (可任意搭配上方卡片背景)</span>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="off" style="padding:1px 5px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:3px;cursor:pointer;">无角标</button>
+                            </div>
+                            <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="swallowtail" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(217,172,66,0.22);color:#fef08a;border:1px solid rgba(234,179,8,0.45);border-radius:4px;cursor:pointer;">🔖 燕尾金书签</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="us_star_shield" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(30,58,138,0.45);color:#fffdf5;border:1px solid rgba(251,191,36,0.55);border-radius:4px;cursor:pointer;">🇺🇸 星条金盾标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="gold_wax_seal" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(180,83,9,0.35);color:#fde68a;border:1px solid rgba(245,158,11,0.5);border-radius:4px;cursor:pointer;">🏵️ 火漆金章标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="rose_emblem" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(159,18,57,0.38);color:#ffe4e6;border:1px solid rgba(251,113,133,0.5);border-radius:4px;cursor:pointer;">🌹 玫瑰金章标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="olive_wreath_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(21,128,61,0.32);color:#dcfce7;border:1px solid rgba(134,239,172,0.45);border-radius:4px;cursor:pointer;">🌿 橄榄桂冠标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="royal_crown_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(161,98,7,0.35);color:#fef3c7;border:1px solid rgba(253,224,71,0.5);border-radius:4px;cursor:pointer;">👑 皇冠鎏金标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="folded_dog_ear" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(202,138,4,0.28);color:#fef9c3;border:1px solid rgba(250,204,21,0.45);border-radius:4px;cursor:pointer;">📄 立体折角页</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="cross_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(120,53,15,0.42);color:#fde68a;border:1px solid rgba(217,119,6,0.5);border-radius:4px;cursor:pointer;">✝️ 十字圣经标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="heart_prayer_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(190,18,60,0.35);color:#ffe4e6;border:1px solid rgba(244,63,94,0.45);border-radius:4px;cursor:pointer;">💛 爱心圣光标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="poppy_honor_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(185,28,28,0.38);color:#fee2e2;border:1px solid rgba(248,113,113,0.5);border-radius:4px;cursor:pointer;">🌺 虞美人章标</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="quote_mark_badge" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(51,65,85,0.55);color:#f8fafc;border:1px solid rgba(226,232,240,0.45);border-radius:4px;cursor:pointer;">❝ 杂志双引号</button>
+                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="rounded_tab" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(148,163,184,0.22);color:#e2e8f0;border:1px solid rgba(148,163,184,0.4);border-radius:4px;cursor:pointer;">🏷️ 圆角金挂牌</button>
+                            </div>
                         </div>
                         <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 6px;align-items:center;font-size:11px;margin-bottom:5px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,0.22);">
                             <span style="color:#fde68a;white-space:nowrap;" title="往左拉变窄、往右拉变宽；点“自动”恢复自适应宽度">画板宽度</span>
@@ -1150,6 +1179,7 @@ class ReelsOverlayPanel {
 
                         <div id="rop-scroll-tw-details" class="rop-grid" style="grid-column:span 2;display:none;">
                         <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="prayer_dove_green" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #E5B94E;background:linear-gradient(90deg,#153935,#1E4E48);color:#FFE28A;cursor:pointer;">🕊️ 祈祷书签绿卡+白鸽玫瑰+逐行金线跟读 (爆款同款)</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #C8BFA8;background:#F3EFE6;color:#3B2220;cursor:pointer;">📰 复古旧报纸剪报贴字出字 (爆款同款)</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_stars_stripes" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #FBBF24;background:linear-gradient(90deg,#0A1931,#B91C1C);color:#FFFDF5;cursor:pointer;">🇺🇸 星条旗绶带+星盾笔出字</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_honor_medal" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #F59E0B;background:#0B172A;color:#FDE68A;cursor:pointer;">🎖️ 老兵金章带+紫心勋章出字</button>
@@ -1178,6 +1208,7 @@ class ReelsOverlayPanel {
                         <select id="rop-scroll-tw-reveal-type" class="rop-select">
                             <option value="char">逐字写出 (字母/单字，如手写)</option>
                             <option value="word">逐词出现/跟读 (按单词高亮)</option>
+                            <option value="line">📏 逐行跟读高亮 (整行变色+跟随下划线·爆款同款)</option>
                             <option value="sentence">逐句出现 (按句子)</option>
                         </select>
 
@@ -1218,6 +1249,50 @@ class ReelsOverlayPanel {
                         <div class="rop-slider-combo">
                             <input type="range" id="rop-scroll-tw-active-scale" class="rop-range" min="80" max="220" step="5" value="125">
                             <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-active-scale" min="80" max="220" step="5" value="125">
+                        </div>
+
+                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">📏 逐行跟读下划线 & 焦点阅读区 (爆款同款)</div>
+                        <label title="选择整行高亮与下划线跟随的推进方式：焦点区=哪一行滚到卡片黄金阅读区就点亮哪一行；语音/时间=按配音或时间进度逐行点亮">跟读定位</label>
+                        <select id="rop-scroll-tw-line-track-mode" class="rop-select">
+                            <option value="focus_zone">🎯 随卡片焦点阅读区逐行点亮 (爆款同款)</option>
+                            <option value="speech_or_progress">🎙️ 随语音/时间进度逐行点亮</option>
+                        </select>
+                        <label title="开启后在当前高亮行下方绘制一条跟随移动的金色下划线">跟随下划线</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-tw-underline-enabled" title="开启当前朗读行底部跟随下划线">
+                            <input type="color" id="rop-scroll-tw-underline-color" class="rop-color" value="#E2B95B" style="flex:1;" title="下划线颜色">
+                        </div>
+                        <label>下划线样式</label>
+                        <select id="rop-scroll-tw-underline-style" class="rop-select">
+                            <option value="solid">✨ 圆头实线金线 (爆款同款)</option>
+                            <option value="gradient">🌟 两端柔光渐变金线</option>
+                            <option value="double">🏛️ 古典双金线</option>
+                            <option value="dashed">➖ 虚线</option>
+                        </select>
+                        <label>下划线宽模式</label>
+                        <select id="rop-scroll-tw-underline-width-mode" class="rop-select">
+                            <option value="card_ratio">📐 按卡片固定比例宽度 (爆款同款)</option>
+                            <option value="line_text">🔤 跟随当前行文字宽度</option>
+                        </select>
+                        <label title="下划线长度占文本/卡片宽度的百分比">下划线宽%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-underline-width-ratio" class="rop-range" min="20" max="100" step="1" value="68">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-width-ratio" min="10" max="120" step="1" value="68">
+                        </div>
+                        <label title="下划线线条粗细(像素)">下划线粗细</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-underline-thickness" class="rop-range" min="1" max="16" step="0.5" value="3.5">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-thickness" min="0.5" max="30" step="0.5" value="3.5">
+                        </div>
+                        <label title="下划线距离当前行文字底部的垂直偏移(像素)">下划线距字Y</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-underline-offset-y" class="rop-range" min="-20" max="60" step="1" value="10">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-offset-y" min="-60" max="120" step="1" value="10">
+                        </div>
+                        <label title="下划线不透明度百分比">下划线透明%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-tw-underline-opacity" class="rop-range" min="0" max="100" step="1" value="95">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-opacity" min="0" max="100" step="1" value="95">
                         </div>
 
                         <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">跟随笔尖 / 光标</div>
@@ -1364,6 +1439,22 @@ class ReelsOverlayPanel {
                             <span style="font-size:11px;color:var(--text-muted);">自动缩小确保全部显示</span>
                         </div>
                         <label>最小字号</label><input type="number" id="rop-scroll-min-fontsize" class="rop-input" min="8" max="200" value="16">
+                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🎯 首尾行焦点区起停 (爆款同款)</div>
+                        <label title="开启后，0秒开场时第1行直接居中停在黄金焦点线（上方留白），结束时最后1行停在焦点线（下方留白），还原爆款祈祷书签滚动节奏">焦点区起停</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-focus-flow-enabled">
+                            <span style="font-size:11px;color:#fde68a;">首行居中起步 · 末行居中停住</span>
+                        </div>
+                        <label title="0秒开始时第1行所在的卡片高度百分比位置 (推荐 40%~48%)">首行起点%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-focus-start-pct" class="rop-range" min="10" max="85" step="1" value="42">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-start-pct" min="5" max="95" step="1" value="42">
+                        </div>
+                        <label title="滚动结束时最后1行停留的卡片高度百分比位置 (推荐 48%~58%)">末行终点%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-focus-end-pct" class="rop-range" min="15" max="90" step="1" value="54">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-end-pct" min="10" max="95" step="1" value="54">
+                        </div>
                     </div>
 
                     <!-- ⑤ 羽化 -->
@@ -1442,6 +1533,17 @@ class ReelsOverlayPanel {
                         <label>背景画板</label>
                         <select id="rop-scroll-bg-style" class="rop-select">
                             <option value="solid">⬛ 纯色圆角底板 (默认)</option>
+                            <optgroup label="🕊️ 设计师羽化卡片 + 左上角小图标角标 (爆款系列)">
+                                <option value="prayer_bookmark_green">🕊️ 祈祷书签松石绿卡 (上下柔边渐变+金书签+白鸽玫瑰·爆款同款)</option>
+                                <option value="prayer_bookmark_brown">🔖 祈祷书签复古深褐卡 (古典圣经褐底+上下柔边+十字金书签)</option>
+                                <option value="prayer_bookmark_navy">🌌 祈祷书签静谧深蓝卡 (深夜祈祷蓝底+上下柔边+金书签)</option>
+                                <option value="prayer_bookmark_burgundy">🍷 皇家酒红玫瑰金章卡 (丝绒勃艮第红底+上下柔边+左上玫瑰金章角标)</option>
+                                <option value="veteran_shield_card">🇺🇸 星条旗金盾荣耀深蓝卡 (海军深蓝柔边底+金内边+左上星条金盾角标)</option>
+                                <option value="vintage_wax_parchment">🏵️ 复古火漆金章胡桃木卡 (胡桃暖棕柔边底+左上立体复古火漆金章角标)</option>
+                                <option value="royal_olive_emerald">🌿 橄榄枝桂冠翡翠金线卡 (深祖母绿柔边底+金细边+左上橄榄桂冠角标)</option>
+                                <option value="editorial_quote_obsidian">❝ 曜石黑杂志引号金线卡 (高级曜石黑柔边底+双侧金线+左上双引号金标)</option>
+                                <option value="sacred_ivory_crown">👑 圣洁皇冠鎏金紫檀卡 (皇家紫檀柔边底+金内边+左上皇冠鎏金角标)</option>
+                            </optgroup>
                             <optgroup label="📰 报纸 / 复古纸张整版背景板">
                                 <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏纹+报头双线+手撕边)</option>
                                 <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+古典双线内框)</option>
@@ -1492,6 +1594,81 @@ class ReelsOverlayPanel {
                         <div style="display:flex;align-items:center;gap:6px;">
                             <input type="checkbox" id="rop-scroll-bg-fullscreen">
                             <span style="font-size:11px;color:var(--text-muted);">背景铺满整个画面</span>
+                        </div>
+                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🔖 卡片上下柔边 & 顶部书签角标 & 白鸽挂饰 (爆款同款)</div>
+                        <label title="让卡片背景上下边缘自然渐隐融合到画面中，左右边缘保持利落齐整 (0=不柔边，推荐 32~48)">卡片上下柔边</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-edge-feather" class="rop-range" min="0" max="200" step="2" value="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-edge-feather" min="0" max="400" step="2" value="0">
+                        </div>
+                        <label title="在卡片顶部边缘悬挂一枚立体金色燕尾书签丝带">顶部书签角标</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="rop-scroll-bg-bookmark-enabled">
+                            <input type="color" id="rop-scroll-bg-bookmark-color" class="rop-color" value="#D9AC42" style="flex:1;" title="书签颜色">
+                        </div>
+                        <label>书签样式</label>
+                        <select id="rop-scroll-bg-bookmark-style" class="rop-select">
+                            <option value="swallowtail">🔖 燕尾丝带书签 (爆款同款)</option>
+                            <option value="us_star_shield">🇺🇸 星条旗金盾角标 (美国星条盾牌)</option>
+                            <option value="gold_wax_seal">🏵️ 复古火漆金章角标 (立体火漆印章)</option>
+                            <option value="rose_emblem">🌹 玫瑰金章丝带角标 (盛放红玫瑰章)</option>
+                            <option value="olive_wreath_tag">🌿 橄榄枝桂冠金章角标 (和平桂冠章)</option>
+                            <option value="royal_crown_tag">👑 皇冠鎏金铭牌角标 (皇家三尖皇冠)</option>
+                            <option value="folded_dog_ear">📄 折角书页立体金角 (书页3D折角)</option>
+                            <option value="cross_tag">✝️ 十字压纹书签 (古典圣经十字)</option>
+                            <option value="heart_prayer_tag">💛 爱心圣光丝带角标 (祈祷红心章)</option>
+                            <option value="poppy_honor_tag">🌺 虞美人荣光丝带角标 (纪念虞美人花)</option>
+                            <option value="quote_mark_badge">❝ 杂志双引号金标 (高级语录角标)</option>
+                            <option value="rounded_tab">🏷️ 圆角挂牌书签 (简约圆弧金牌)</option>
+                        </select>
+                        <label>书签位置</label>
+                        <select id="rop-scroll-bg-bookmark-pos" class="rop-select">
+                            <option value="top-left">↖️ 左上角 (爆款同款)</option>
+                            <option value="top-center">⬆️ 顶部居中</option>
+                            <option value="top-right">↗️ 右上角</option>
+                        </select>
+                        <label title="书签丝带宽度(像素)">书签宽度</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-bookmark-width" class="rop-range" min="16" max="120" step="1" value="38">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-width" min="10" max="240" step="1" value="38">
+                        </div>
+                        <label title="书签丝带下垂长度(像素)">书签长度</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-bookmark-height" class="rop-range" min="24" max="200" step="1" value="58">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-height" min="16" max="360" step="1" value="58">
+                        </div>
+                        <label title="书签距离卡片左/右侧边缘的内缩距离(像素)">书签边距</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-bookmark-inset" class="rop-range" min="0" max="300" step="2" value="52">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-inset" min="0" max="600" step="2" value="52">
+                        </div>
+                        <label title="在卡片正上方悬浮绘制动态吉祥物/神圣挂饰（如爆款振翅白鸽衔红玫瑰）">卡片顶部挂饰</label>
+                        <select id="rop-scroll-bg-top-mascot" class="rop-select">
+                            <option value="none">🚫 无顶部挂饰</option>
+                            <option value="peace_dove_rose">🕊️ 振翅白鸽衔红玫瑰 (爆款同款)</option>
+                            <option value="peace_dove_olive">🌿 振翅白鸽衔橄榄枝</option>
+                            <option value="golden_cross_rays">✝️ 圣光十字架光芒</option>
+                            <option value="praying_hands_halo">🙏 祈祷之手圣光环</option>
+                        </select>
+                        <label title="顶部挂饰缩放比例%">挂饰大小%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-top-mascot-scale" class="rop-range" min="40" max="220" step="5" value="100">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-scale" min="20" max="400" step="5" value="100">
+                        </div>
+                        <label title="顶部挂饰水平位置微调(像素)">挂饰偏移X</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-top-mascot-offset-x" class="rop-range" min="-400" max="400" step="2" value="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-x" min="-800" max="800" step="2" value="0">
+                        </div>
+                        <label title="顶部挂饰距离卡片上边缘的垂直位置(负数在卡片上方，正数在卡片内部)">挂饰偏移Y</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-top-mascot-offset-y" class="rop-range" min="-320" max="260" step="2" value="-68">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-y" min="-800" max="800" step="2" value="-68">
+                        </div>
+                        <label title="白鸽振翅/光芒律动的动画速度 (0%=静止，100%=标准速度)">挂饰动画速%</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-bg-top-mascot-speed" class="rop-range" min="0" max="250" step="5" value="100">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-speed" min="0" max="500" step="5" value="100">
                         </div>
                         <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">卡片边框</div>
                         <label>开启边框</label><input type="checkbox" id="rop-scroll-bg-border-enabled">
@@ -2815,6 +2992,17 @@ class ReelsOverlayPanel {
                 this._syncToOverlay();
             });
         }
+        const DESIGNER_BOOKMARK_CARD_META = {
+            prayer_bookmark_green:    { scKey: 'sc-39', bgCol: '#153935', bmStyle: 'swallowtail',      bmCol: '#D9AC42', mascot: 'peace_dove_rose' },
+            prayer_bookmark_brown:    { scKey: 'sc-40', bgCol: '#2C1E18', bmStyle: 'cross_tag',        bmCol: '#E5C165', mascot: 'golden_cross_rays' },
+            prayer_bookmark_navy:     { scKey: 'sc-41', bgCol: '#122238', bmStyle: 'swallowtail',      bmCol: '#E2C779', mascot: 'peace_dove_olive' },
+            prayer_bookmark_burgundy: { scKey: 'sc-42', bgCol: '#3A121C', bmStyle: 'rose_emblem',      bmCol: '#E8C374', mascot: 'peace_dove_rose' },
+            veteran_shield_card:      { scKey: 'sc-43', bgCol: '#0E1E38', bmStyle: 'us_star_shield',   bmCol: '#E5B94E', mascot: 'peace_dove_olive' },
+            vintage_wax_parchment:    { scKey: 'sc-44', bgCol: '#2E2318', bmStyle: 'gold_wax_seal',    bmCol: '#D9A74A', mascot: 'golden_cross_rays' },
+            royal_olive_emerald:      { scKey: 'sc-45', bgCol: '#123326', bmStyle: 'olive_wreath_tag', bmCol: '#DEC075', mascot: 'peace_dove_olive' },
+            editorial_quote_obsidian: { scKey: 'sc-46', bgCol: '#16181F', bmStyle: 'quote_mark_badge', bmCol: '#E5C165', mascot: 'none' },
+            sacred_ivory_crown:       { scKey: 'sc-47', bgCol: '#2B1A24', bmStyle: 'royal_crown_tag',  bmCol: '#F0D580', mascot: 'praying_hands_halo' },
+        };
         const scrollCardBgStyleEl = this.container.querySelector('#rop-scroll-bg-style');
         if (scrollCardBgStyleEl) {
             scrollCardBgStyleEl.addEventListener('change', () => {
@@ -2822,21 +3010,104 @@ class ReelsOverlayPanel {
                 if (st !== 'solid') {
                     this._val('rop-scroll-bg-enabled', true);
                     if (Number(this._get('rop-scroll-bg-opacity') || 0) < 85) {
-                        this._val('rop-scroll-bg-opacity', 96);
+                        this._val('rop-scroll-bg-opacity', 92);
                     }
                     if (Number(this._get('rop-scroll-bg-pad-left') || 0) < 20) this._val('rop-scroll-bg-pad-left', 28);
                     if (Number(this._get('rop-scroll-bg-pad-right') || 0) < 20) this._val('rop-scroll-bg-pad-right', 28);
+                    if (DESIGNER_BOOKMARK_CARD_META[st]) {
+                        const meta = DESIGNER_BOOKMARK_CARD_META[st];
+                        this._val('rop-scroll-bg-color', meta.bgCol);
+                        if (Number(this._get('rop-scroll-bg-edge-feather') || 0) <= 0) {
+                            this._val('rop-scroll-bg-edge-feather', 38);
+                        }
+                        this._val('rop-scroll-bg-bookmark-enabled', true);
+                        this._val('rop-scroll-bg-bookmark-style', meta.bmStyle);
+                        this._val('rop-scroll-bg-bookmark-color', meta.bmCol);
+                        if ((this._get('rop-scroll-bg-top-mascot') || 'none') === 'none' && meta.mascot !== 'none') {
+                            this._val('rop-scroll-bg-top-mascot', meta.mascot);
+                        }
+                    }
                 }
                 this._syncToOverlay();
             });
         }
-        // 一键切换滚动字幕整块大背景画板（旧报纸整版 / 羊皮卷 / 圣诞贺卡画板）
+        // 一键切换左上角小图标角标设计
+        this.container.querySelectorAll('.rop-scroll-corner-badge-quick').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const badgeStyle = btn.dataset.badgeStyle || 'off';
+                if (badgeStyle === 'off') {
+                    this._val('rop-scroll-bg-bookmark-enabled', false);
+                } else {
+                    this._val('rop-scroll-bg-enabled', true);
+                    this._val('rop-scroll-bg-bookmark-enabled', true);
+                    this._val('rop-scroll-bg-bookmark-style', badgeStyle);
+                    this._val('rop-scroll-bg-bookmark-pos', 'top-left');
+                    if (Number(this._get('rop-scroll-bg-bookmark-width') || 0) < 32) this._val('rop-scroll-bg-bookmark-width', 40);
+                    if (Number(this._get('rop-scroll-bg-bookmark-height') || 0) < 44) this._val('rop-scroll-bg-bookmark-height', 62);
+                }
+                this._syncToOverlay();
+            });
+        });
+        // 一键切换滚动字幕整块大背景画板（设计师祈祷书签卡 / 旧报纸整版 / 羊皮卷 / 圣诞贺卡画板）
         this.container.querySelectorAll('.rop-scroll-card-bg-preset').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const preset = btn.dataset.bgPreset || 'off';
                 if (preset === 'off') {
                     this._val('rop-scroll-bg-enabled', false);
+                    this._val('rop-scroll-bg-bookmark-enabled', false);
+                    this._val('rop-scroll-bg-top-mascot', 'none');
+                    this._syncToOverlay();
+                    return;
+                }
+                if (DESIGNER_BOOKMARK_CARD_META[preset]) {
+                    const meta = DESIGNER_BOOKMARK_CARD_META[preset];
+                    if (this._applyScrollStylePresetByKey(meta.scKey)) {
+                        return;
+                    }
+                    this._val('rop-scroll-bg-enabled', true);
+                    this._val('rop-scroll-bg-style', preset);
+                    this._val('rop-scroll-bg-color', meta.bgCol);
+                    this._val('rop-scroll-bg-opacity', 92);
+                    this._val('rop-scroll-bg-opacity-quick', 92);
+                    this._val('rop-scroll-bg-opacity-quick-num', 92);
+                    this._val('rop-scroll-bg-scroll-follow', false);
+                    this._val('rop-scroll-bg-scroll-follow-quick', false);
+                    this._val('rop-scroll-bg-body-only', false);
+                    this._val('rop-scroll-bg-body-only-quick', false);
+                    this._val('rop-scroll-bg-edge-feather', 38);
+                    this._val('rop-scroll-bg-bookmark-enabled', true);
+                    this._val('rop-scroll-bg-bookmark-style', meta.bmStyle);
+                    this._val('rop-scroll-bg-bookmark-pos', 'top-left');
+                    this._val('rop-scroll-bg-bookmark-color', meta.bmCol);
+                    this._val('rop-scroll-bg-bookmark-width', 40);
+                    this._val('rop-scroll-bg-bookmark-height', 62);
+                    this._val('rop-scroll-bg-bookmark-inset', 48);
+                    this._val('rop-scroll-bg-top-mascot', meta.mascot);
+                    this._val('rop-scroll-bg-top-mascot-scale', 100);
+                    this._val('rop-scroll-bg-top-mascot-offset-x', 0);
+                    this._val('rop-scroll-bg-top-mascot-offset-y', -68);
+                    this._val('rop-scroll-bg-top-mascot-speed', 100);
+                    this._val('rop-scroll-tw-enabled', true);
+                    this._val('rop-scroll-tw-reveal-type', 'line');
+                    this._val('rop-scroll-tw-line-track-mode', 'focus_zone');
+                    this._val('rop-scroll-tw-hide-unread', false);
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#E5B94E');
+                    this._val('rop-scroll-tw-underline-enabled', true);
+                    this._val('rop-scroll-tw-underline-color', '#E2B95B');
+                    this._val('rop-scroll-tw-underline-style', 'solid');
+                    this._val('rop-scroll-tw-underline-width-mode', 'card_ratio');
+                    this._val('rop-scroll-tw-underline-width-ratio', 68);
+                    this._val('rop-scroll-tw-underline-thickness', 3.5);
+                    this._val('rop-scroll-tw-underline-offset-y', 10);
+                    this._val('rop-scroll-tw-underline-opacity', 95);
+                    this._val('rop-scroll-tw-cursor-enabled', false);
+                    this._val('rop-scroll-focus-flow-enabled', true);
+                    this._val('rop-scroll-focus-start-pct', 42);
+                    this._val('rop-scroll-focus-end-pct', 54);
                     this._syncToOverlay();
                     return;
                 }
@@ -3185,7 +3456,70 @@ class ReelsOverlayPanel {
                 const preset = btn.dataset.preset;
                 this._val('rop-scroll-tw-enabled', true);
                 this._val('rop-scroll-tw-speech-sync', true);
-                if (preset === 'newspaper' || preset === 'newspaper_sepia' || preset === 'torn_paper') {
+                if (preset === 'prayer_dove_green') {
+                    if (this._applyScrollStylePresetByKey('sc-39')) {
+                        return;
+                    }
+                    this._val('rop-scroll-font', 'Playfair Display');
+                    this._val('rop-scroll-bold', true);
+                    this._val('rop-scroll-weight', '700');
+                    this._val('rop-scroll-uppercase', false);
+                    this._val('rop-scroll-color', '#FFFFFF');
+                    this._val('rop-scroll-stroke-color', '#0B1F1D');
+                    this._val('rop-scroll-stroke-width', 0);
+                    this._val('rop-scroll-shadow', true);
+                    this._val('rop-scroll-shadow-color', '#071715');
+                    this._val('rop-scroll-shadow-blur', 4);
+                    this._val('rop-scroll-shadow-x', 0);
+                    this._val('rop-scroll-shadow-y', 2);
+                    this._val('rop-scroll-body-bg-enabled', false);
+                    this._val('rop-scroll-bg-enabled', true);
+                    this._val('rop-scroll-bg-style', 'prayer_bookmark_green');
+                    this._val('rop-scroll-bg-color', '#153935');
+                    this._val('rop-scroll-bg-opacity', 92);
+                    this._val('rop-scroll-bg-opacity-quick', 92);
+                    this._val('rop-scroll-bg-opacity-quick-num', 92);
+                    this._val('rop-scroll-bg-scroll-follow', false);
+                    this._val('rop-scroll-bg-scroll-follow-quick', false);
+                    this._val('rop-scroll-bg-body-only', false);
+                    this._val('rop-scroll-bg-body-only-quick', false);
+                    this._val('rop-scroll-bg-edge-feather', 38);
+                    this._val('rop-scroll-bg-bookmark-enabled', true);
+                    this._val('rop-scroll-bg-bookmark-style', 'swallowtail');
+                    this._val('rop-scroll-bg-bookmark-pos', 'top-left');
+                    this._val('rop-scroll-bg-bookmark-color', '#D9AC42');
+                    this._val('rop-scroll-bg-bookmark-width', 38);
+                    this._val('rop-scroll-bg-bookmark-height', 58);
+                    this._val('rop-scroll-bg-bookmark-inset', 52);
+                    this._val('rop-scroll-bg-top-mascot', 'peace_dove_rose');
+                    this._val('rop-scroll-bg-top-mascot-scale', 100);
+                    this._val('rop-scroll-bg-top-mascot-offset-x', 0);
+                    this._val('rop-scroll-bg-top-mascot-offset-y', -68);
+                    this._val('rop-scroll-bg-top-mascot-speed', 100);
+                    this._val('rop-scroll-tw-reveal-type', 'line');
+                    this._val('rop-scroll-tw-line-track-mode', 'focus_zone');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 100);
+                    this._val('rop-scroll-tw-hide-unread', false);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#E5B94E');
+                    this._val('rop-scroll-tw-keep-read-color', false);
+                    this._val('rop-scroll-tw-active-scale-enabled', false);
+                    this._val('rop-scroll-tw-underline-enabled', true);
+                    this._val('rop-scroll-tw-underline-color', '#E2B95B');
+                    this._val('rop-scroll-tw-underline-style', 'solid');
+                    this._val('rop-scroll-tw-underline-width-mode', 'card_ratio');
+                    this._val('rop-scroll-tw-underline-width-ratio', 68);
+                    this._val('rop-scroll-tw-underline-thickness', 3.5);
+                    this._val('rop-scroll-tw-underline-offset-y', 10);
+                    this._val('rop-scroll-tw-underline-opacity', 95);
+                    this._val('rop-scroll-tw-cursor-enabled', false);
+                    this._val('rop-scroll-focus-flow-enabled', true);
+                    this._val('rop-scroll-focus-start-pct', 42);
+                    this._val('rop-scroll-focus-end-pct', 54);
+                    if (this._selectedOv) {
+                        this._selectedOv.italic = true;
+                    }
+                } else if (preset === 'newspaper' || preset === 'newspaper_sepia' || preset === 'torn_paper') {
                     const bgStyle = preset === 'newspaper' ? 'newspaper_cutout' : (preset === 'newspaper_sepia' ? 'newspaper_sepia' : 'torn_cream_paper');
                     const inkColor = preset === 'newspaper' ? '#3B2220' : (preset === 'newspaper_sepia' ? '#3E2616' : '#2C221E');
                     const haloColor = preset === 'newspaper' ? '#F4F0E8' : (preset === 'newspaper_sepia' ? '#EFE4CC' : '#FAF6EE');
@@ -4510,6 +4844,7 @@ class ReelsOverlayPanel {
                 'shadow_offset_x', 'shadow_offset_y',
                 'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
                 'scroll_speed', 'scroll_end_y_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+                'scroll_focus_flow_enabled', 'scroll_focus_start_pct', 'scroll_focus_end_pct',
                 'scroll_title_fontsize', 'scroll_title_font_family', 'scroll_title_font_weight',
                 'scroll_title_bold', 'scroll_title_color', 'scroll_title_gradient_direction', 'scroll_title_align', 'scroll_title_gap', 'scroll_title_fixed',
                 'scroll_title_independent', 'scroll_title_x', 'scroll_title_y',
@@ -4519,6 +4854,9 @@ class ReelsOverlayPanel {
                 'bg_enabled', 'bg_style', 'bg_color', 'bg_opacity', 'bg_radius',
                 'bg_scroll_follow', 'bg_body_only', 'bg_width', 'bg_height', 'bg_offset_x', 'bg_offset_y',
                 'bg_padding_top', 'bg_padding_bottom', 'bg_padding_left', 'bg_padding_right', 'bg_fullscreen',
+                'bg_edge_feather', 'bg_bookmark_enabled', 'bg_bookmark_style', 'bg_bookmark_pos',
+                'bg_bookmark_color', 'bg_bookmark_width', 'bg_bookmark_height', 'bg_bookmark_inset',
+                'bg_top_mascot', 'bg_top_mascot_scale', 'bg_top_mascot_offset_x', 'bg_top_mascot_offset_y', 'bg_top_mascot_speed',
                 'bg_border_enabled', 'bg_border_sides', 'bg_border_color', 'bg_border_width', 'bg_border_style', 'bg_border_opacity',
                 'scroll_body_bg_enabled', 'scroll_body_bg_style', 'scroll_body_bg_mode', 'scroll_body_bg_color',
                 'scroll_body_bg_opacity', 'scroll_body_bg_radius', 'scroll_body_bg_pad_h', 'scroll_body_bg_pad_top', 'scroll_body_bg_pad_bottom',
@@ -4526,7 +4864,10 @@ class ReelsOverlayPanel {
                 'scroll_title_bg_opacity', 'scroll_title_bg_radius', 'scroll_title_bg_pad_h', 'scroll_title_bg_pad_top', 'scroll_title_bg_pad_bottom',
                 'scroll_uppercase', 'scroll_letter_spacing', 'scroll_title_uppercase', 'scroll_title_letter_spacing',
                 'scroll_typewriter_enabled', 'scroll_tw_start', 'scroll_tw_end', 'scroll_tw_hide_unread', 'scroll_tw_active_scale_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
-                'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
+                'scroll_tw_line_track_mode', 'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
+                'scroll_tw_underline_enabled', 'scroll_tw_underline_color', 'scroll_tw_underline_thickness',
+                'scroll_tw_underline_style', 'scroll_tw_underline_width_mode', 'scroll_tw_underline_width_ratio',
+                'scroll_tw_underline_offset_y', 'scroll_tw_underline_opacity',
                 'scroll_tw_cursor_enabled', 'scroll_tw_cursor_kind', 'scroll_tw_cursor_image',
                 'scroll_tw_cursor_anchor_x', 'scroll_tw_cursor_anchor_y',
                 'scroll_tw_cursor_scale', 'scroll_tw_cursor_offset_x', 'scroll_tw_cursor_offset_y',
@@ -4705,7 +5046,7 @@ class ReelsOverlayPanel {
         if (!ReelsOverlay) return;
         const ov = ReelsOverlay.createScrollOverlay({
             content: '滚动字幕示例\n第二行\n第三行\n第四行\n第五行',
-            start: 0, end: 10,
+            start: 0, end: 9999, scroll_end_auto: true,
         });
         if (this.videoCanvas) this.videoCanvas.addOverlay(ov);
         this._refreshList();
@@ -6117,6 +6458,9 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-static', ov.scroll_static === true);
             this._val('rop-scroll-auto-fit', ov.scroll_auto_fit === true);
             this._val('rop-scroll-min-fontsize', ov.scroll_min_fontsize ?? 16);
+            this._val('rop-scroll-focus-flow-enabled', ov.scroll_focus_flow_enabled === true);
+            this._val('rop-scroll-focus-start-pct', ov.scroll_focus_start_pct ?? 42);
+            this._val('rop-scroll-focus-end-pct', ov.scroll_focus_end_pct ?? 54);
             // 卡片背景
             this._val('rop-scroll-bg-enabled', ov.bg_enabled || false);
             this._val('rop-scroll-bg-style', ov.bg_style || 'solid');
@@ -6139,6 +6483,19 @@ class ReelsOverlayPanel {
             this._setScrollBgSizeField('width', ov.bg_width ?? 0, ov);
             this._setScrollBgSizeField('height', ov.bg_height ?? 0, ov);
             this._val('rop-scroll-bg-fullscreen', ov.bg_fullscreen || false);
+            this._val('rop-scroll-bg-edge-feather', ov.bg_edge_feather ?? 0);
+            this._val('rop-scroll-bg-bookmark-enabled', ov.bg_bookmark_enabled === true);
+            this._val('rop-scroll-bg-bookmark-style', ov.bg_bookmark_style || 'swallowtail');
+            this._val('rop-scroll-bg-bookmark-pos', ov.bg_bookmark_pos || 'top-left');
+            this._val('rop-scroll-bg-bookmark-color', ov.bg_bookmark_color || '#D9AC42');
+            this._val('rop-scroll-bg-bookmark-width', ov.bg_bookmark_width ?? 38);
+            this._val('rop-scroll-bg-bookmark-height', ov.bg_bookmark_height ?? 58);
+            this._val('rop-scroll-bg-bookmark-inset', ov.bg_bookmark_inset ?? 52);
+            this._val('rop-scroll-bg-top-mascot', ov.bg_top_mascot || 'none');
+            this._val('rop-scroll-bg-top-mascot-scale', ov.bg_top_mascot_scale ?? 100);
+            this._val('rop-scroll-bg-top-mascot-offset-x', ov.bg_top_mascot_offset_x ?? 0);
+            this._val('rop-scroll-bg-top-mascot-offset-y', ov.bg_top_mascot_offset_y ?? -68);
+            this._val('rop-scroll-bg-top-mascot-speed', ov.bg_top_mascot_speed ?? 100);
             // 卡片边框
             this._val('rop-scroll-bg-border-enabled', ov.bg_border_enabled || false);
             this._val('rop-scroll-bg-border-sides', ov.bg_border_sides || 'all');
@@ -6155,6 +6512,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-end', ov.scroll_tw_end ?? '');
             this._val('rop-scroll-tw-speech-sync', ov.scroll_tw_speech_sync !== false);
             this._val('rop-scroll-tw-reveal-type', ov.scroll_tw_reveal_type || 'char');
+            this._val('rop-scroll-tw-line-track-mode', ov.scroll_tw_line_track_mode || 'focus_zone');
             const scrollUnreadOp = ov.scroll_tw_unrevealed_opacity ?? 0;
             const scrollHideUnread = ov.scroll_tw_hide_unread !== undefined
                 ? Boolean(ov.scroll_tw_hide_unread)
@@ -6170,6 +6528,14 @@ class ReelsOverlayPanel {
                 : (Number(ov.scroll_tw_active_scale || 100) !== 100);
             this._val('rop-scroll-tw-active-scale-enabled', scrollActiveScaleEnabled);
             this._val('rop-scroll-tw-active-scale', scrollActiveScaleVal === 100 && !scrollActiveScaleEnabled ? 125 : scrollActiveScaleVal);
+            this._val('rop-scroll-tw-underline-enabled', ov.scroll_tw_underline_enabled === true);
+            this._val('rop-scroll-tw-underline-color', ov.scroll_tw_underline_color || '#E2B95B');
+            this._val('rop-scroll-tw-underline-style', ov.scroll_tw_underline_style || 'solid');
+            this._val('rop-scroll-tw-underline-width-mode', ov.scroll_tw_underline_width_mode || 'card_ratio');
+            this._val('rop-scroll-tw-underline-width-ratio', ov.scroll_tw_underline_width_ratio ?? 68);
+            this._val('rop-scroll-tw-underline-thickness', ov.scroll_tw_underline_thickness ?? 3.5);
+            this._val('rop-scroll-tw-underline-offset-y', ov.scroll_tw_underline_offset_y ?? 10);
+            this._val('rop-scroll-tw-underline-opacity', ov.scroll_tw_underline_opacity ?? 95);
             this._val('rop-scroll-tw-cursor-enabled', ov.scroll_tw_cursor_enabled !== false);
             this._val('rop-scroll-tw-cursor-kind', ov.scroll_tw_cursor_kind || 'quill');
             this._val('rop-scroll-tw-cursor-image', ov.scroll_tw_cursor_image || '');
@@ -6762,6 +7128,9 @@ class ReelsOverlayPanel {
             ov.scroll_static = this._get('rop-scroll-static');
             ov.scroll_auto_fit = this._get('rop-scroll-auto-fit');
             ov.scroll_min_fontsize = this._get('rop-scroll-min-fontsize');
+            ov.scroll_focus_flow_enabled = !!this._get('rop-scroll-focus-flow-enabled');
+            ov.scroll_focus_start_pct = Number(this._get('rop-scroll-focus-start-pct') ?? 42);
+            ov.scroll_focus_end_pct = Number(this._get('rop-scroll-focus-end-pct') ?? 54);
             // 卡片背景
             ov.bg_enabled = this._get('rop-scroll-bg-enabled');
             ov.bg_style = this._get('rop-scroll-bg-style') || 'solid';
@@ -6779,6 +7148,19 @@ class ReelsOverlayPanel {
             ov.bg_offset_y = Number(this._get('rop-scroll-bg-offset-y')) || 0;
             ov.bg_radius = this._get('rop-scroll-bg-radius');
             ov.bg_fullscreen = this._get('rop-scroll-bg-fullscreen');
+            ov.bg_edge_feather = Math.max(0, Number(this._get('rop-scroll-bg-edge-feather') ?? 0));
+            ov.bg_bookmark_enabled = !!this._get('rop-scroll-bg-bookmark-enabled');
+            ov.bg_bookmark_style = this._get('rop-scroll-bg-bookmark-style') || 'swallowtail';
+            ov.bg_bookmark_pos = this._get('rop-scroll-bg-bookmark-pos') || 'top-left';
+            ov.bg_bookmark_color = this._get('rop-scroll-bg-bookmark-color') || '#D9AC42';
+            ov.bg_bookmark_width = Math.max(10, Number(this._get('rop-scroll-bg-bookmark-width') ?? 38));
+            ov.bg_bookmark_height = Math.max(16, Number(this._get('rop-scroll-bg-bookmark-height') ?? 58));
+            ov.bg_bookmark_inset = Math.max(0, Number(this._get('rop-scroll-bg-bookmark-inset') ?? 52));
+            ov.bg_top_mascot = this._get('rop-scroll-bg-top-mascot') || 'none';
+            ov.bg_top_mascot_scale = Math.max(20, Number(this._get('rop-scroll-bg-top-mascot-scale') ?? 100));
+            ov.bg_top_mascot_offset_x = Number(this._get('rop-scroll-bg-top-mascot-offset-x') ?? 0);
+            ov.bg_top_mascot_offset_y = Number(this._get('rop-scroll-bg-top-mascot-offset-y') ?? -68);
+            ov.bg_top_mascot_speed = Math.max(0, Number(this._get('rop-scroll-bg-top-mascot-speed') ?? 100));
             // 同步顶部快捷栏显示
             const _syncBgOpPct = Math.round((ov.bg_opacity ?? 191) / 255 * 100);
             this._val('rop-scroll-bg-opacity-quick', _syncBgOpPct);
@@ -6817,6 +7199,7 @@ class ReelsOverlayPanel {
                 : 100;
             ov.scroll_tw_speech_sync = !!this._get('rop-scroll-tw-speech-sync');
             ov.scroll_tw_reveal_type = this._get('rop-scroll-tw-reveal-type') || 'char';
+            ov.scroll_tw_line_track_mode = this._get('rop-scroll-tw-line-track-mode') || 'focus_zone';
             ov.scroll_tw_active_highlight = !!this._get('rop-scroll-tw-active-highlight');
             ov.scroll_tw_active_color = this._get('rop-scroll-tw-active-color') || '#FFD700';
             ov.scroll_tw_keep_read_color = !!this._get('rop-scroll-tw-keep-read-color');
@@ -6824,6 +7207,14 @@ class ReelsOverlayPanel {
             ov.scroll_tw_active_scale = ov.scroll_tw_active_scale_enabled
                 ? Number(this._get('rop-scroll-tw-active-scale') || 125)
                 : 100;
+            ov.scroll_tw_underline_enabled = !!this._get('rop-scroll-tw-underline-enabled');
+            ov.scroll_tw_underline_color = this._get('rop-scroll-tw-underline-color') || '#E2B95B';
+            ov.scroll_tw_underline_style = this._get('rop-scroll-tw-underline-style') || 'solid';
+            ov.scroll_tw_underline_width_mode = this._get('rop-scroll-tw-underline-width-mode') || 'card_ratio';
+            ov.scroll_tw_underline_width_ratio = Number(this._get('rop-scroll-tw-underline-width-ratio') ?? 68);
+            ov.scroll_tw_underline_thickness = Number(this._get('rop-scroll-tw-underline-thickness') ?? 3.5);
+            ov.scroll_tw_underline_offset_y = Number(this._get('rop-scroll-tw-underline-offset-y') ?? 10);
+            ov.scroll_tw_underline_opacity = Number(this._get('rop-scroll-tw-underline-opacity') ?? 95);
             ov.scroll_tw_cursor_enabled = !!this._get('rop-scroll-tw-cursor-enabled');
             ov.scroll_tw_cursor_kind = this._get('rop-scroll-tw-cursor-kind') || 'quill';
             ov.scroll_tw_cursor_image = this._get('rop-scroll-tw-cursor-image') || ov.scroll_tw_cursor_image || '';
@@ -7219,9 +7610,13 @@ class ReelsOverlayPanel {
             'scroll_x_anchor', 'scroll_from_x', 'scroll_from_y', 'scroll_to_x', 'scroll_to_y',
             'scroll_offset_x', 'scroll_offset_y',
             'scroll_speed', 'scroll_end_y_auto', 'scroll_end_auto', 'scroll_auto_stop', 'scroll_auto_stop_lead', 'scroll_static', 'scroll_auto_fit', 'scroll_min_fontsize',
+            'scroll_focus_flow_enabled', 'scroll_focus_start_pct', 'scroll_focus_end_pct',
             // 出字效果（朗诵写出/打字机）
             'scroll_typewriter_enabled', 'scroll_tw_start', 'scroll_tw_end', 'scroll_tw_hide_unread', 'scroll_tw_active_scale_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
-            'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_keep_read_color', 'scroll_tw_active_scale',
+            'scroll_tw_line_track_mode', 'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_keep_read_color', 'scroll_tw_active_scale',
+            'scroll_tw_underline_enabled', 'scroll_tw_underline_color', 'scroll_tw_underline_thickness',
+            'scroll_tw_underline_style', 'scroll_tw_underline_width_mode', 'scroll_tw_underline_width_ratio',
+            'scroll_tw_underline_offset_y', 'scroll_tw_underline_opacity',
             'scroll_tw_cursor_enabled', 'scroll_tw_cursor_kind', 'scroll_tw_cursor_char', 'scroll_tw_cursor_color',
             'scroll_tw_cursor_scale', 'scroll_tw_cursor_offset_x', 'scroll_tw_cursor_offset_y', 'scroll_tw_cursor_angle',
             'scroll_tw_cursor_image', 'scroll_tw_cursor_anchor_x', 'scroll_tw_cursor_anchor_y',
@@ -7234,6 +7629,9 @@ class ReelsOverlayPanel {
             'bg_enabled', 'bg_style', 'bg_color', 'bg_opacity', 'bg_radius',
             'bg_scroll_follow', 'bg_body_only', 'bg_width', 'bg_height', 'bg_offset_x', 'bg_offset_y',
             'bg_padding_top', 'bg_padding_bottom', 'bg_padding_left', 'bg_padding_right', 'bg_fullscreen',
+            'bg_edge_feather', 'bg_bookmark_enabled', 'bg_bookmark_style', 'bg_bookmark_pos',
+            'bg_bookmark_color', 'bg_bookmark_width', 'bg_bookmark_height', 'bg_bookmark_inset',
+            'bg_top_mascot', 'bg_top_mascot_scale', 'bg_top_mascot_offset_x', 'bg_top_mascot_offset_y', 'bg_top_mascot_speed',
             // 卡片边框
             'bg_border_enabled', 'bg_border_sides', 'bg_border_color', 'bg_border_width', 'bg_border_style', 'bg_border_opacity',
             // 磨砂模糊
@@ -7303,7 +7701,7 @@ class ReelsOverlayPanel {
 
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = '— 选择滚动字幕样式 (sc-01 ~ sc-34) —';
+        placeholder.textContent = '— 选择滚动字幕样式 (sc-01 ~ sc-41) —';
         sel.appendChild(placeholder);
 
         const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
@@ -7467,7 +7865,7 @@ class ReelsOverlayPanel {
         const val = sel?.value || '';
         if (!val.startsWith('custom:')) {
             if (typeof window.alert === 'function') {
-                window.alert('内置滚动字幕样式 (sc-01 ~ sc-34) 不可删除，请选择“⭐ 自定义保存样式”后再删除。');
+                window.alert('内置滚动字幕样式 (sc-01 ~ sc-41) 不可删除，请选择“⭐ 自定义保存样式”后再删除。');
             }
             return;
         }
@@ -7515,10 +7913,10 @@ class ReelsOverlayPanel {
         header.style.cssText = 'padding:10px 12px;background:#1e293b;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;gap:8px;';
         header.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:13px;font-weight:700;color:#7dd3fc;">🎨 滚动字幕样式库 (支持 CLI 编号 sc-01 ~ sc-34)</span>
+                <span style="font-size:13px;font-weight:700;color:#7dd3fc;">🎨 滚动字幕样式库 (支持 CLI 编号 sc-01 ~ sc-41)</span>
                 <button type="button" id="rop-scroll-picker-close" style="background:none;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:0 4px;">✕</button>
             </div>
-            <input type="text" id="rop-scroll-picker-search" placeholder="🔍 搜索编号 (如 sc-01)、分类、字体或样式特征..." style="width:100%;box-sizing:border-box;padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:#0f172a;color:#f8fafc;outline:none;">
+            <input type="text" id="rop-scroll-picker-search" placeholder="🔍 搜索编号 (如 sc-39)、分类、字体或样式特征..." style="width:100%;box-sizing:border-box;padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:#0f172a;color:#f8fafc;outline:none;">
         `;
         popover.appendChild(header);
 
@@ -7631,6 +8029,17 @@ class ReelsOverlayPanel {
                             boxBorder = '1px solid rgba(255,255,255,0.18)';
                         }
                         if (Number(st.scroll_body_bg_radius) >= 30) boxRadius = '14px';
+                    } else if (st.bg_enabled) {
+                        if (st.bg_style === 'prayer_bookmark_green') {
+                            boxBg = 'linear-gradient(180deg, rgba(21,57,53,0.45) 0%, #153935 22%, #153935 78%, rgba(21,57,53,0.45) 100%)';
+                            boxBorder = '1px solid rgba(226,185,91,0.55)';
+                        } else if (st.bg_style === 'prayer_bookmark_brown') {
+                            boxBg = 'linear-gradient(180deg, rgba(44,30,24,0.45) 0%, #2C1E18 22%, #2C1E18 78%, rgba(44,30,24,0.45) 100%)';
+                            boxBorder = '1px solid rgba(217,172,66,0.55)';
+                        } else if (st.bg_style === 'prayer_bookmark_navy') {
+                            boxBg = 'linear-gradient(180deg, rgba(18,34,56,0.45) 0%, #122238 22%, #122238 78%, rgba(18,34,56,0.45) 100%)';
+                            boxBorder = '1px solid rgba(229,185,78,0.55)';
+                        }
                     }
                     previewBox.style.cssText = `min-height:44px;padding:5px 8px;border-radius:${boxRadius};background:${boxBg};border:${boxBorder};display:flex;flex-direction:column;justify-content:center;align-items:${st.text_align === 'left' ? 'flex-start' : 'center'};overflow:hidden;`;
 
@@ -7651,8 +8060,8 @@ class ReelsOverlayPanel {
                     }
 
                     const sampleLine = document.createElement('div');
-                    sampleLine.textContent = st.scroll_uppercase ? 'SCROLL SUBTITLE' : 'Scroll Subtitle 滚动';
-                    const rawColor = String(st.color || '#FFFFFF').trim();
+                    sampleLine.textContent = st.scroll_uppercase ? 'SCROLL SUBTITLE' : (st.scroll_tw_underline_enabled ? '🕊️ Heavenly Father' : 'Scroll Subtitle 滚动');
+                    const rawColor = String((st.scroll_tw_underline_enabled && st.scroll_tw_active_highlight && st.scroll_tw_active_color) ? st.scroll_tw_active_color : (st.color || '#FFFFFF')).trim();
                     const isGrad = rawColor.includes(',');
                     const strokeW = Math.min(3.2, Math.max(0, (Number(st.stroke_width) || 0) * 0.28));
                     sampleLine.style.cssText = [
@@ -7670,6 +8079,11 @@ class ReelsOverlayPanel {
                         'white-space:nowrap',
                     ].join(';');
                     previewBox.appendChild(sampleLine);
+                    if (st.scroll_tw_underline_enabled) {
+                        const ulEl = document.createElement('div');
+                        ulEl.style.cssText = `width:72%;height:2.5px;border-radius:2px;background:${st.scroll_tw_underline_color || '#E2B95B'};margin-top:2px;`;
+                        previewBox.appendChild(ulEl);
+                    }
                     card.appendChild(previewBox);
 
                     const metaRow = document.createElement('div');
@@ -9296,6 +9710,7 @@ class ReelsOverlayPanel {
                     && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                     clone.end = 9999;
                 }
+                if (clone.type === 'scroll') { clone.scroll_end_auto = true; if (!clone.display_ranges?.length) clone.end = 9999; }
                 oldOverlays.push(clone);
                 newlyAdded.push(clone);
             }
@@ -9388,6 +9803,18 @@ class ReelsOverlayPanel {
             if (clone.type === 'scroll' && clone.scroll_auto_stop === true
                 && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                 clone.end = 9999;
+            }
+            if (clone.type === 'scroll') {
+                const target = oldScrolls[replacedScrollCount++];
+                if (target) {
+                    clone.end = target.end;
+                    clone.scroll_end_auto = target.scroll_end_auto;
+                    if (Array.isArray(target.display_ranges)) clone.display_ranges = cleanSerialize(target.display_ranges);
+                    else delete clone.display_ranges;
+                } else {
+                    clone.scroll_end_auto = true;
+                    if (!clone.display_ranges?.length) clone.end = 9999;
+                }
             }
             if (!clone.fixed_text) {
                 if (textMode === 'clear') {
@@ -10671,6 +11098,7 @@ class ReelsOverlayPanel {
                 && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                 clone.end = 9999;
             }
+            if (clone.type === 'scroll') { clone.scroll_end_auto = true; if (!clone.display_ranges?.length) clone.end = 9999; }
 
                 mgr.overlays.push(clone);
                 newlyAdded.push(clone);
@@ -10795,6 +11223,7 @@ class ReelsOverlayPanel {
                 && !(Array.isArray(clone.display_ranges) && clone.display_ranges.length)) {
                 clone.end = 9999;
             }
+            if (clone.type === 'scroll') { clone.scroll_end_auto = true; if (!clone.display_ranges?.length) clone.end = 9999; }
             
             if (clone.fixed_text) {
                 // 固定文案永远原样保留

@@ -44,6 +44,12 @@
         const resolved = duration(task, context);
         if (!resolved) return overlay;
         const clone = { ...overlay, end: resolved };
+        Object.defineProperty(clone, '_sourceOverlay', {
+            value: overlay._sourceOverlay || overlay,
+            writable: true,
+            configurable: true,
+            enumerable: false,
+        });
         const segs = overlay._taskSegments || (task && Array.isArray(task.segments) ? task.segments : null);
         if (segs) {
             Object.defineProperty(clone, '_taskSegments', {

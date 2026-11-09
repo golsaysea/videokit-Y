@@ -88,9 +88,9 @@ function getPackageVersion() {
     try {
         const pkgPath = path.resolve(__dirname, '..', 'package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        return pkg.version || '4.5.4';
+        return pkg.version || '4.5.5';
     } catch {
-        return '4.5.4';
+        return '4.5.5';
     }
 }
 
@@ -781,6 +781,7 @@ function resolveTaskEngine(task, subConfig = {}, overlays = [], cliArgs = {}, ta
         subConfig.active_line_focus_enabled === true ||
         subConfig.scrolling_mode === true ||
         subConfig.fullpage_typewriter === true ||
+        subConfig.subtitle_cursor_enabled === true ||
         Boolean(subConfig.mixed_layout && subConfig.mixed_layout !== 'none') ||
         Boolean(subConfig.block_typography_mode && subConfig.block_typography_mode !== 'none') ||
         Boolean(subConfig.box_brush_style && subConfig.box_brush_style !== 'none' && subConfig.box_brush_style !== 'rect') ||
@@ -1167,8 +1168,9 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
     for (const ov of overlays) {
         if (ov && String(ov.type || '').toLowerCase() === 'scroll') {
             if (ov.start === undefined || ov.start === null) ov.start = 0;
-            if (ov.end === undefined || ov.end === null || ov.scroll_end_auto === true) {
+            if (ov.end === undefined || ov.end === null || Number(ov.end) >= 9999 || ov.scroll_end_auto === true) {
                 ov.end = targetDuration;
+                ov.scroll_end_auto = true;
             }
         }
     }
@@ -2156,6 +2158,17 @@ async function runCli(argv = process.argv.slice(2)) {
 
         if (!args.subcommand) {
             throw new CLIError('INVALID_ARGS', 'Missing subcommand (expected: reels, validate, or tts)', EXIT_CODES.VALIDATION_ERROR);
+        }
+
+        if (args.subcommand === 'presets') {
+            emitStdoutJson({
+                status: 'ok',
+                version: getPackageVersion(),
+                subtitle_presets: REELS_PRESET_ID_MAP,
+                scroll_presets: Object.fromEntries(Object.entries(REELS_SCROLL_PRESET_ID_MAP).filter(([k]) => k.startsWith('sc-'))),
+                overlay_presets: REELS_OVERLAY_PRESET_ID_MAP,
+            });
+            return EXIT_CODES.OK;
         }
 
         if (args.subcommand === 'validate') {

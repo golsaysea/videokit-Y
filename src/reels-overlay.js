@@ -973,6 +973,9 @@ function createScrollOverlay(opts = {}) {
         opacity: opts.opacity ?? 255,
         start: opts.start ?? 0,
         end: opts.end ?? 10,
+        scroll_end_auto: opts.scroll_end_auto !== undefined
+            ? Boolean(opts.scroll_end_auto)
+            : (opts.end === undefined || Number(opts.end) >= 9999),
         // ── 标题 ──
         scroll_title: opts.scroll_title ?? '',
         scroll_title_fontsize: opts.scroll_title_fontsize ?? 56,
@@ -1071,6 +1074,21 @@ function createScrollOverlay(opts = {}) {
         bg_body_only: opts.bg_body_only ?? false,           // 仅包裹正文滚动区（不含顶部固定标题）
         bg_scroll_follow: opts.bg_scroll_follow !== false,  // 报纸/背景纹理随字幕向上循环滚动（默认开启）
         bg_fullscreen: opts.bg_fullscreen ?? false,
+        bg_edge_feather: opts.bg_edge_feather ?? 0,         // 卡片背景自身上下边缘柔化羽化像素 (0=关闭, 如 38=祈祷绿卡柔边)
+        // 卡片左上/顶部书签丝带角标 (Bookmark Ribbon)
+        bg_bookmark_enabled: opts.bg_bookmark_enabled ?? false,
+        bg_bookmark_style: opts.bg_bookmark_style || 'swallowtail', // 'swallowtail' | 'cross_tag' | 'rounded_tab'
+        bg_bookmark_pos: opts.bg_bookmark_pos || 'top-left',        // 'top-left' | 'top-center' | 'top-right'
+        bg_bookmark_color: opts.bg_bookmark_color || '#DEC075',
+        bg_bookmark_width: opts.bg_bookmark_width ?? 46,
+        bg_bookmark_height: opts.bg_bookmark_height ?? 88,
+        bg_bookmark_inset: opts.bg_bookmark_inset ?? 42,
+        // 卡片顶部动态挂饰 (和平白鸽衔玫瑰 / 橄榄枝 / 圣光十字架 / 祈祷双手)
+        bg_top_mascot: opts.bg_top_mascot || 'none', // 'none' | 'peace_dove_rose' | 'peace_dove_olive' | 'golden_cross_rays' | 'praying_hands_halo'
+        bg_top_mascot_scale: opts.bg_top_mascot_scale ?? 100,       // 50~200 (%)
+        bg_top_mascot_offset_x: opts.bg_top_mascot_offset_x ?? 0,
+        bg_top_mascot_offset_y: opts.bg_top_mascot_offset_y ?? 0,
+        bg_top_mascot_speed: opts.bg_top_mascot_speed ?? 100,       // 0~250 (%)
         // 卡片边框
         bg_border_enabled: opts.bg_border_enabled ?? false,
         bg_border_color: opts.bg_border_color || '#FFD700',
@@ -1133,6 +1151,19 @@ function createScrollOverlay(opts = {}) {
         scroll_tw_cursor_angle: opts.scroll_tw_cursor_angle ?? -8,
         scroll_tw_cursor_char: opts.scroll_tw_cursor_char || '|',
         scroll_tw_cursor_color: opts.scroll_tw_cursor_color || '#FFD700',
+        // ── 逐行跟读下划线 & 焦点阅读区控制 (爆款祈祷书签卡同款) ──
+        scroll_tw_underline_enabled: opts.scroll_tw_underline_enabled ?? false,
+        scroll_tw_underline_color: opts.scroll_tw_underline_color || '#D9C27E',
+        scroll_tw_underline_thickness: opts.scroll_tw_underline_thickness ?? 2.5,
+        scroll_tw_underline_style: opts.scroll_tw_underline_style || 'solid', // 'solid' | 'gradient' | 'double' | 'dashed'
+        scroll_tw_underline_width_mode: opts.scroll_tw_underline_width_mode || 'card_ratio', // 'card_ratio' | 'line_text'
+        scroll_tw_underline_width_ratio: opts.scroll_tw_underline_width_ratio ?? 84, // 20~100 (%)
+        scroll_tw_underline_offset_y: opts.scroll_tw_underline_offset_y ?? 14, // 基线下方偏移 px
+        scroll_tw_underline_opacity: opts.scroll_tw_underline_opacity ?? 92, // 0~100 (%)
+        scroll_tw_line_track_mode: opts.scroll_tw_line_track_mode || 'speech_or_progress', // 'speech_or_progress' | 'focus_zone'
+        scroll_focus_flow_enabled: opts.scroll_focus_flow_enabled ?? false, // 首行从卡片中部焦点区起滚、末行停在焦点区
+        scroll_focus_start_pct: opts.scroll_focus_start_pct ?? 42, // 首行起滚高度位置 (占正文区高度 %)
+        scroll_focus_end_pct: opts.scroll_focus_end_pct ?? 54,     // 末行停止高度位置 (占正文区高度 %)
         // 动画
         transition_preset: opts.transition_preset || 'none',
         transition_duration: opts.transition_duration || 0.35,
@@ -4334,6 +4365,893 @@ function measureScrollMotion(overlay) {
     } finally { ctx.restore(); }
 }
 
+function _parseHexOrRgbColor(colorStr, fallback = [21, 57, 53]) {
+    const s = String(colorStr || '').trim();
+    const hex = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(s);
+    if (hex) {
+        return [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)];
+    }
+    const shortHex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i.exec(s);
+    if (shortHex) {
+        return [
+            parseInt(shortHex[1] + shortHex[1], 16),
+            parseInt(shortHex[2] + shortHex[2], 16),
+            parseInt(shortHex[3] + shortHex[3], 16),
+        ];
+    }
+    const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(s);
+    if (rgb) {
+        return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+    }
+    return fallback;
+}
+
+/**
+ * 绘制上下边缘柔和羽化的祈祷卡片背景 (左右边缘保持利落垂直裁切，上下边缘平滑渐变融于画面，可选内嵌烫金细线边饰)
+ */
+function _drawFeatheredPrayerCardBackground(ctx, rx, ry, rw, rh, rad = 0, opts = {}) {
+    if (!ctx || rw <= 2 || rh <= 2) return;
+    const [r, g, b] = _parseHexOrRgbColor(opts.color || '#153935', [21, 57, 53]);
+    const opacity = opts.opacity != null ? Math.max(0, Math.min(1, Number(opts.opacity))) : 0.84;
+    if (opacity <= 0.001) return;
+    const edgeFeatherPx = Math.max(0, parseFloat(opts.edgeFeatherPx ?? 38) || 0);
+    const fRatio = Math.max(0, Math.min(0.45, edgeFeatherPx / Math.max(1, rh)));
+    const cornerRad = Math.max(0, Math.min(rad, rw / 2, rh / 2));
+
+    ctx.save();
+    ctx.globalAlpha = opacity * ctx.globalAlpha;
+
+    const grad = ctx.createLinearGradient(rx, ry, rx, ry + rh);
+    if (fRatio > 0.002) {
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+        grad.addColorStop(fRatio * 0.45, `rgba(${r}, ${g}, ${b}, 0.58)`);
+        grad.addColorStop(fRatio, `rgba(${r}, ${g}, ${b}, 1)`);
+        grad.addColorStop(Math.max(fRatio, 1 - fRatio), `rgba(${r}, ${g}, ${b}, 1)`);
+        grad.addColorStop(Math.min(1, 1 - fRatio * 0.45), `rgba(${r}, ${g}, ${b}, 0.58)`);
+        grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+    } else {
+        grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, 1)`);
+        grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 1)`);
+    }
+
+    ctx.fillStyle = grad;
+    _roundRect(ctx, rx, ry, rw, rh, cornerRad);
+    ctx.fill();
+
+    // Optional subtle designer side hairline / inner accent lines that also feather vertically
+    if (opts.innerAccentColor) {
+        const [ar, ag, ab] = _parseHexOrRgbColor(opts.innerAccentColor, [222, 192, 117]);
+        const lineGrad = ctx.createLinearGradient(rx, ry, rx, ry + rh);
+        const lineAlpha = opts.innerAccentAlpha != null ? opts.innerAccentAlpha : 0.42;
+        if (fRatio > 0.002) {
+            lineGrad.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, 0)`);
+            lineGrad.addColorStop(Math.min(0.48, fRatio * 1.15), `rgba(${ar}, ${ag}, ${ab}, ${lineAlpha})`);
+            lineGrad.addColorStop(Math.max(0.52, 1 - fRatio * 1.15), `rgba(${ar}, ${ag}, ${ab}, ${lineAlpha})`);
+            lineGrad.addColorStop(1, `rgba(${ar}, ${ag}, ${ab}, 0)`);
+        } else {
+            lineGrad.addColorStop(0, `rgba(${ar}, ${ag}, ${ab}, ${lineAlpha})`);
+            lineGrad.addColorStop(1, `rgba(${ar}, ${ag}, ${ab}, ${lineAlpha})`);
+        }
+        const inset = Math.max(8, Math.min(22, rw * 0.022));
+        ctx.strokeStyle = lineGrad;
+        ctx.lineWidth = 1.35;
+        ctx.beginPath();
+        ctx.moveTo(rx + inset, ry + edgeFeatherPx * 0.25);
+        ctx.lineTo(rx + inset, ry + rh - edgeFeatherPx * 0.25);
+        ctx.moveTo(rx + rw - inset, ry + edgeFeatherPx * 0.25);
+        ctx.lineTo(rx + rw - inset, ry + rh - edgeFeatherPx * 0.25);
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+/**
+ * 绘制五角星辅助函数
+ */
+function _drawBookmarkFiveStar(ctx, cx, cy, outerR, innerR) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+        const rad = (i % 2 === 0) ? outerR : innerR;
+        const angle = -Math.PI / 2 + (i * Math.PI) / 5;
+        const px = cx + Math.cos(angle) * rad;
+        const py = cy + Math.sin(angle) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+}
+
+/**
+ * 绘制卡片顶部书签丝带与设计师左上角小图标角标
+ * 支持: swallowtail / cross_tag / rounded_tab / us_star_shield / gold_wax_seal /
+ *       rose_emblem / olive_wreath_tag / folded_dog_ear / royal_crown_tag /
+ *       heart_prayer_tag / poppy_honor_tag / quote_mark_badge
+ */
+function _drawScrollCardBookmarkRibbon(ctx, rx, ry, rw, rh, edgeFeatherPx = 0, opts = {}) {
+    if (!ctx || rw <= 20 || rh <= 20) return;
+    const bmW = Math.max(16, Math.min(rw * 0.35, parseFloat(opts.width ?? 46) || 46));
+    const bmH = Math.max(24, Math.min(rh * 0.45, parseFloat(opts.height ?? 88) || 88));
+    const inset = Math.max(0, Math.min(rw - bmW, parseFloat(opts.inset ?? 42) || 42));
+    const pos = opts.pos || 'top-left';
+    let bx = rx + inset;
+    if (pos === 'top-right') bx = rx + rw - inset - bmW;
+    else if (pos === 'top-center') bx = rx + (rw - bmW) * 0.5;
+    const by = ry;
+    const style = opts.style || 'swallowtail';
+    const [r, g, b] = _parseHexOrRgbColor(opts.color || '#DEC075', [222, 192, 117]);
+    const rLight = Math.min(255, Math.round(r * 1.08));
+    const gLight = Math.min(255, Math.round(g * 1.07));
+    const bLight = Math.min(255, Math.round(b * 1.06));
+    const rDark = Math.max(0, Math.round(r * 0.84));
+    const gDark = Math.max(0, Math.round(g * 0.80));
+    const bDark = Math.max(0, Math.round(b * 0.68));
+
+    const topFadePx = Math.min(bmH * 0.52, Math.max(0, (parseFloat(edgeFeatherPx) || 0) * 0.65));
+    const topFadeRatio = Math.max(0, Math.min(0.55, topFadePx / Math.max(1, bmH)));
+
+    ctx.save();
+    if (opts.opacity != null) {
+        ctx.globalAlpha *= Math.max(0, Math.min(1, Number(opts.opacity)));
+    }
+
+    // ── Special Case 1: 3D Folded Page Corner (📄 折角书页立体金角) ──
+    if (style === 'folded_dog_ear') {
+        const foldSize = Math.max(28, Math.min(rw * 0.22, rh * 0.22, Math.max(bmW, bmH * 0.72)));
+        const isRight = (pos === 'top-right');
+        const cornerX = isRight ? (rx + rw) : rx;
+        const cornerY = ry + Math.max(0, topFadePx * 0.35);
+        const dir = isRight ? -1 : 1;
+
+        // Cast shadow under the flap
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(cornerX, cornerY + foldSize);
+        ctx.lineTo(cornerX + dir * foldSize, cornerY);
+        ctx.lineTo(cornerX + dir * (foldSize * 0.92), cornerY + foldSize * 1.08);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        // Metallic gold folded triangle flap
+        const flapGrad = ctx.createLinearGradient(
+            cornerX, cornerY,
+            cornerX + dir * foldSize, cornerY + foldSize
+        );
+        flapGrad.addColorStop(0, `rgb(${rLight}, ${gLight}, ${bLight})`);
+        flapGrad.addColorStop(0.55, `rgb(${r}, ${g}, ${b})`);
+        flapGrad.addColorStop(1, `rgb(${rDark}, ${gDark}, ${bDark})`);
+
+        ctx.fillStyle = flapGrad;
+        ctx.beginPath();
+        ctx.moveTo(cornerX, cornerY + foldSize);
+        ctx.lineTo(cornerX + dir * foldSize, cornerY);
+        ctx.lineTo(cornerX + dir * foldSize, cornerY + foldSize);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 250, 230, 0.65)';
+        ctx.lineWidth = 1.3;
+        ctx.stroke();
+        ctx.restore();
+        return;
+    }
+
+    // ── Special Case 2: US Flag Star Shield Badge (🇺🇸 星条旗金盾角标) ──
+    if (style === 'us_star_shield') {
+        const shW = Math.max(30, bmW * 1.08);
+        const shH = Math.max(38, bmH * 0.88);
+        const sx = bx + (bmW - shW) * 0.5;
+        const sy = by + Math.max(4, topFadePx * 0.35);
+        const cx = sx + shW * 0.5;
+
+        const buildShieldPath = (insetPx = 0) => {
+            const x0 = sx + insetPx;
+            const y0 = sy + insetPx;
+            const w0 = Math.max(8, shW - insetPx * 2);
+            const h0 = Math.max(10, shH - insetPx * 2);
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x0 + w0, y0);
+            ctx.lineTo(x0 + w0, y0 + h0 * 0.54);
+            ctx.quadraticCurveTo(x0 + w0 * 0.92, y0 + h0 * 0.84, x0 + w0 * 0.5, y0 + h0);
+            ctx.quadraticCurveTo(x0 + w0 * 0.08, y0 + h0 * 0.84, x0, y0 + h0 * 0.54);
+            ctx.closePath();
+        };
+
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.38)';
+        ctx.shadowBlur = 7;
+        ctx.shadowOffsetY = 3;
+        buildShieldPath(0);
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        ctx.save();
+        buildShieldPath(Math.max(2.2, shW * 0.065));
+        ctx.clip();
+
+        // Bottom vertical red & white stripes
+        const stripeTop = sy + shH * 0.40;
+        const stripeCount = 5;
+        const stripeW = shW / stripeCount;
+        for (let i = 0; i < stripeCount; i++) {
+            ctx.fillStyle = (i % 2 === 0) ? '#B91C1C' : '#F8FAFC';
+            ctx.fillRect(sx + i * stripeW, stripeTop, stripeW + 0.8, shH);
+        }
+        // Top navy chief
+        ctx.fillStyle = '#0F2547';
+        ctx.fillRect(sx, sy, shW, shH * 0.42);
+        // Gold divider line
+        ctx.fillStyle = `rgb(${rLight}, ${gLight}, ${bLight})`;
+        ctx.fillRect(sx, sy + shH * 0.40, shW, Math.max(1.5, shH * 0.03));
+
+        // 3 Stars in navy chief
+        ctx.fillStyle = '#FFFDF5';
+        const starR = Math.max(2.6, shW * 0.095);
+        [-0.26, 0, 0.26].forEach((off, idx) => {
+            _drawBookmarkFiveStar(ctx, cx + shW * off, sy + shH * (idx === 1 ? 0.21 : 0.24), starR, starR * 0.44);
+            ctx.fill();
+        });
+        ctx.restore();
+
+        // Metallic gold shield border
+        buildShieldPath(1);
+        ctx.strokeStyle = `rgb(${rLight}, ${gLight}, ${bLight})`;
+        ctx.lineWidth = Math.max(1.8, shW * 0.05);
+        ctx.stroke();
+        ctx.restore();
+        return;
+    }
+
+    // ── Special Case 3: Vintage Gold Wax Seal (🏵️ 复古火漆金章角标) ──
+    if (style === 'gold_wax_seal') {
+        const cx = bx + bmW * 0.5;
+        const sealR = Math.max(15, bmW * 0.52);
+        const cy = by + Math.max(sealR + 4, topFadePx * 0.45 + sealR * 0.9);
+
+        // Two short V-ribbon tails beneath the seal
+        ctx.fillStyle = '#7F1D1D';
+        ctx.beginPath();
+        ctx.moveTo(cx - sealR * 0.55, cy);
+        ctx.lineTo(cx - sealR * 0.85, cy + sealR * 1.45);
+        ctx.lineTo(cx - sealR * 0.35, cy + sealR * 1.18);
+        ctx.lineTo(cx - sealR * 0.1, cy + sealR * 1.48);
+        ctx.lineTo(cx + sealR * 0.55, cy);
+        ctx.closePath();
+        ctx.fill();
+
+        // Scalloped outer wax rim
+        const lobes = 16;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetY = 3;
+        ctx.beginPath();
+        for (let i = 0; i <= lobes * 4; i++) {
+            const ang = (i / (lobes * 4)) * Math.PI * 2;
+            const wave = Math.sin(ang * lobes) * (sealR * 0.075);
+            const rr = sealR + wave;
+            const px = cx + Math.cos(ang) * rr;
+            const py = cy + Math.sin(ang) * rr;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        const waxGrad = ctx.createRadialGradient(cx - sealR * 0.25, cy - sealR * 0.25, sealR * 0.1, cx, cy, sealR);
+        waxGrad.addColorStop(0, `rgb(${rLight}, ${gLight}, ${bLight})`);
+        waxGrad.addColorStop(0.65, `rgb(${r}, ${g}, ${b})`);
+        waxGrad.addColorStop(1, `rgb(${rDark}, ${gDark}, ${bDark})`);
+        ctx.fillStyle = waxGrad;
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        // Inner stamped ring & star
+        ctx.strokeStyle = `rgba(${Math.max(0, rDark - 35)}, ${Math.max(0, gDark - 35)}, ${Math.max(0, bDark - 35)}, 0.72)`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, sealR * 0.68, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = 'rgba(255, 250, 232, 0.88)';
+        _drawBookmarkFiveStar(ctx, cx, cy, sealR * 0.42, sealR * 0.19);
+        ctx.fill();
+        ctx.restore();
+        return;
+    }
+
+    // ── Standard Ribbon Body (swallowtail / rounded_tab / emblem tags) ──
+    const bmGrad = ctx.createLinearGradient(bx, by, bx, by + bmH);
+    if (topFadeRatio > 0.01) {
+        bmGrad.addColorStop(0, `rgba(${rLight}, ${gLight}, ${bLight}, 0)`);
+        bmGrad.addColorStop(topFadeRatio * 0.5, `rgba(${rLight}, ${gLight}, ${bLight}, 0.68)`);
+        bmGrad.addColorStop(topFadeRatio, `rgba(${rLight}, ${gLight}, ${bLight}, 1)`);
+    } else {
+        bmGrad.addColorStop(0, `rgba(${rLight}, ${gLight}, ${bLight}, 1)`);
+    }
+    bmGrad.addColorStop(0.68, `rgba(${r}, ${g}, ${b}, 1)`);
+    bmGrad.addColorStop(1, `rgba(${rDark}, ${gDark}, ${bDark}, 1)`);
+
+    const notchH = Math.min(bmH * 0.32, bmW * 0.52);
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + bmW, by);
+    if (style === 'rounded_tab' || style === 'quote_mark_badge') {
+        ctx.lineTo(bx + bmW, by + bmH - notchH * 0.85);
+        ctx.quadraticCurveTo(bx + bmW * 0.5, by + bmH + notchH * 0.35, bx, by + bmH - notchH * 0.85);
+    } else {
+        // swallowtail & emblem ribbon styles
+        ctx.lineTo(bx + bmW, by + bmH);
+        ctx.lineTo(bx + bmW * 0.5, by + bmH - notchH);
+        ctx.lineTo(bx, by + bmH);
+    }
+    ctx.closePath();
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle = bmGrad;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    // Subtle metallic ribbon side stitch lines
+    const stitchTop = by + Math.max(4, topFadePx * 0.85);
+    const stitchBot = by + bmH - notchH * 0.55;
+    if (stitchBot > stitchTop + 6) {
+        ctx.strokeStyle = `rgba(255, 250, 230, 0.38)`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(bx + 3.5, stitchTop);
+        ctx.lineTo(bx + 3.5, stitchBot);
+        ctx.moveTo(bx + bmW - 3.5, stitchTop);
+        ctx.lineTo(bx + bmW - 3.5, stitchBot);
+        ctx.stroke();
+    }
+
+    const cx = bx + bmW * 0.5;
+    const cy = by + Math.max(bmW * 0.45, (bmH - notchH * 0.45) * 0.52);
+    const iconR = Math.min(bmW * 0.30, bmH * 0.20);
+
+    if (style === 'cross_tag') {
+        const arm = Math.min(bmW * 0.24, bmH * 0.16);
+        ctx.strokeStyle = 'rgba(65, 42, 12, 0.72)';
+        ctx.lineWidth = Math.max(2, bmW * 0.075);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - arm * 1.15);
+        ctx.lineTo(cx, cy + arm * 1.35);
+        ctx.moveTo(cx - arm * 0.85, cy - arm * 0.25);
+        ctx.lineTo(cx + arm * 0.85, cy - arm * 0.25);
+        ctx.stroke();
+    } else if (style === 'rose_emblem') {
+        // 🌹 Blooming Rose & Emerald Leaves on the gold ribbon
+        ctx.fillStyle = '#15803D';
+        ctx.beginPath();
+        ctx.ellipse(cx - iconR * 0.7, cy + iconR * 0.45, iconR * 0.55, iconR * 0.26, -0.5, 0, Math.PI * 2);
+        ctx.ellipse(cx + iconR * 0.7, cy + iconR * 0.45, iconR * 0.55, iconR * 0.26, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Outer crimson petals
+        ctx.fillStyle = '#BE123C';
+        for (let i = 0; i < 5; i++) {
+            const a = (i * Math.PI * 2) / 5;
+            ctx.beginPath();
+            ctx.arc(cx + Math.cos(a) * iconR * 0.35, cy + Math.sin(a) * iconR * 0.35, iconR * 0.58, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        // Inner bright rose swirl
+        ctx.fillStyle = '#FB7185';
+        ctx.beginPath();
+        ctx.arc(cx, cy, iconR * 0.52, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFF1F2';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, iconR * 0.28, 0.2, Math.PI * 1.65);
+        ctx.stroke();
+    } else if (style === 'olive_wreath_tag') {
+        // 🌿 Golden/Dark-brown Olive Laurel Wreath Emblem
+        ctx.strokeStyle = 'rgba(55, 38, 10, 0.78)';
+        ctx.fillStyle = 'rgba(55, 38, 10, 0.78)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, iconR * 0.85, Math.PI * 0.2, Math.PI * 0.8);
+        ctx.stroke();
+        [-1, 1].forEach((side) => {
+            for (let i = 0; i < 3; i++) {
+                const ly = cy + (1 - i) * iconR * 0.42;
+                const lx = cx + side * iconR * (0.68 - i * 0.08);
+                ctx.beginPath();
+                ctx.ellipse(lx, ly, iconR * 0.36, iconR * 0.16, side * -0.55, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+    } else if (style === 'royal_crown_tag') {
+        // 👑 3-Point Royal Crown Emblem
+        const cw = iconR * 1.55;
+        const ch = iconR * 1.15;
+        ctx.fillStyle = 'rgba(62, 39, 10, 0.80)';
+        ctx.beginPath();
+        ctx.moveTo(cx - cw * 0.5, cy + ch * 0.45);
+        ctx.lineTo(cx - cw * 0.58, cy - ch * 0.35);
+        ctx.lineTo(cx - cw * 0.2, cy + ch * 0.05);
+        ctx.lineTo(cx, cy - ch * 0.55);
+        ctx.lineTo(cx + cw * 0.2, cy + ch * 0.05);
+        ctx.lineTo(cx + cw * 0.58, cy - ch * 0.35);
+        ctx.lineTo(cx + cw * 0.5, cy + ch * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#FFFBEB';
+        [-0.58, 0, 0.58].forEach((ox, idx) => {
+            ctx.beginPath();
+            ctx.arc(cx + cw * ox, cy - ch * (idx === 1 ? 0.58 : 0.38), Math.max(1.6, iconR * 0.16), 0, Math.PI * 2);
+            ctx.fill();
+        });
+    } else if (style === 'heart_prayer_tag') {
+        // 💛 Glowing Sacred Heart Emblem
+        const hr = iconR * 0.88;
+        ctx.fillStyle = '#E11D48';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + hr * 0.85);
+        ctx.bezierCurveTo(cx - hr * 1.2, cy + hr * 0.15, cx - hr * 0.95, cy - hr * 0.85, cx, cy - hr * 0.3);
+        ctx.bezierCurveTo(cx + hr * 0.95, cy - hr * 0.85, cx + hr * 1.2, cy + hr * 0.15, cx, cy + hr * 0.85);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 251, 235, 0.82)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+    } else if (style === 'poppy_honor_tag') {
+        // 🌺 Red Remembrance Poppy Flower Emblem
+        ctx.fillStyle = '#DC2626';
+        for (let i = 0; i < 4; i++) {
+            const a = (i * Math.PI) / 2 + Math.PI / 4;
+            ctx.beginPath();
+            ctx.arc(cx + Math.cos(a) * iconR * 0.38, cy + Math.sin(a) * iconR * 0.38, iconR * 0.58, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.fillStyle = '#1E293B';
+        ctx.beginPath();
+        ctx.arc(cx, cy, iconR * 0.34, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FDE047';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+    } else if (style === 'quote_mark_badge') {
+        // ❝ Editorial Double Quote Emblem
+        ctx.fillStyle = 'rgba(45, 30, 10, 0.82)';
+        ctx.font = `900 ${Math.round(Math.max(18, bmW * 0.68))}px Georgia, "Times New Roman", serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('“', cx, cy + iconR * 0.25);
+    }
+
+    ctx.restore();
+}
+
+/**
+ * 绘制卡片正上方动态吉祥挂饰 (🕊️ 振翅和平白鸽衔红玫瑰 / 🕊️ 白鸽衔橄榄枝 / ✝️ 圣光十字架 / 🙏 祈祷金环)
+ */
+function _drawScrollCardTopMascot(ctx, rx, ry, rw, rh, currentTime = 0, opts = {}) {
+    const mascot = opts.mascot || 'none';
+    if (!ctx || mascot === 'none') return;
+    const rawScale = Number.isFinite(Number(opts.scale)) ? Number(opts.scale) : 1;
+    const scale = Math.max(0.35, Math.min(2.5, rawScale));
+    const speed = Number.isFinite(Number(opts.speed)) ? Math.max(0, Math.min(3, Number(opts.speed))) : 1;
+    const offX = Number(opts.offsetX) || 0;
+    const offY = Number(opts.offsetY) || 0;
+    const t = Math.max(0, Number(currentTime) || 0) * speed;
+
+    const baseCx = rx + rw * 0.5 + offX;
+    const baseCy = ry - 148 * scale + offY;
+
+    ctx.save();
+    if (mascot === 'peace_dove_rose' || mascot === 'peace_dove_olive') {
+        const bobY = Math.sin(t * 3.8) * 7.5 * scale;
+        const pitch = Math.sin(t * 3.8 - 0.4) * 0.032;
+        const flap = Math.sin(t * 13.5); // -1 (downstroke) .. +1 (upstroke)
+        const s = 1.32 * scale;
+
+        ctx.translate(baseCx, baseCy + bobY);
+        ctx.scale(s, s);
+        ctx.rotate(pitch);
+
+        // 0. Soft heavenly aura behind the dove
+        const aura = ctx.createRadialGradient(0, -12, 4, 0, -12, 92);
+        aura.addColorStop(0, 'rgba(255, 255, 255, 0.24)');
+        aura.addColorStop(0.55, 'rgba(255, 250, 235, 0.08)');
+        aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(0, -12, 92, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 1. Far Wing (background wing on upper-right)
+        ctx.save();
+        ctx.translate(8, -14);
+        ctx.rotate(-0.28 - flap * 0.48);
+        ctx.scale(1, 0.82 + 0.22 * Math.sin(t * 13.5 + 0.6));
+        const farWingGrad = ctx.createLinearGradient(0, -68, 45, 10);
+        farWingGrad.addColorStop(0, '#FFFFFF');
+        farWingGrad.addColorStop(0.65, '#E2E8F0');
+        farWingGrad.addColorStop(1, '#CBD5E1');
+        ctx.fillStyle = farWingGrad;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(-4, 4);
+        ctx.bezierCurveTo(2, -32, 24, -64, 54, -70);
+        // Sculpted primary feather tips along far wing trailing edge
+        const farTips = [
+            [58, -56, 44, -46],
+            [52, -40, 38, -32],
+            [45, -26, 32, -20],
+            [36, -12, 24, -8],
+            [24, -2, 8, 6],
+        ];
+        for (const [cx1, cy1, ex, ey] of farTips) {
+            ctx.quadraticCurveTo(cx1, cy1, ex, ey);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // 2. Fanned White Tail Feathers (extending lower-right)
+        ctx.save();
+        ctx.translate(30, 14);
+        ctx.rotate(0.12 - flap * 0.06);
+        for (let ti = -2; ti <= 2; ti++) {
+            ctx.save();
+            ctx.rotate(ti * 0.13);
+            ctx.fillStyle = ti % 2 === 0 ? '#FFFFFF' : '#F1F5F9';
+            ctx.strokeStyle = 'rgba(203, 213, 225, 0.7)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.quadraticCurveTo(22, -5, 42, -3);
+            ctx.quadraticCurveTo(46, 0, 42, 4);
+            ctx.quadraticCurveTo(22, 5, 0, 2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+        }
+        ctx.restore();
+
+        // 3. Tucked Coral Feet under body
+        ctx.save();
+        ctx.strokeStyle = '#D97757';
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(6, 20);
+        ctx.lineTo(14, 28);
+        ctx.lineTo(19, 27);
+        ctx.moveTo(12, 20);
+        ctx.lineTo(20, 27);
+        ctx.stroke();
+        ctx.restore();
+
+        // 4. Dove Body, Plump Breast, Neck & Head (facing left-forward)
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+        const bodyGrad = ctx.createLinearGradient(-32, -26, 20, 26);
+        bodyGrad.addColorStop(0, '#FFFFFF');
+        bodyGrad.addColorStop(0.6, '#F8FAFC');
+        bodyGrad.addColorStop(1, '#DCE4EE');
+        ctx.fillStyle = bodyGrad;
+        ctx.strokeStyle = 'rgba(203, 213, 225, 0.65)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        // Start at crown of head
+        ctx.moveTo(-25, -28);
+        // Back of neck & back to tail base
+        ctx.bezierCurveTo(-14, -28, -8, -14, 8, -10);
+        ctx.bezierCurveTo(22, -6, 32, 4, 36, 14);
+        // Underbelly & plump chest curve
+        ctx.bezierCurveTo(22, 24, 4, 26, -12, 20);
+        ctx.bezierCurveTo(-28, 14, -34, 0, -30, -12);
+        // Forehead & head contour
+        ctx.bezierCurveTo(-36, -18, -34, -28, -25, -28);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // 5. Golden-Ivory Beak & Soulful Eye
+        ctx.save();
+        ctx.fillStyle = '#F6AD55';
+        ctx.strokeStyle = '#C05621';
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(-33, -18);
+        ctx.lineTo(-46, -14);
+        ctx.lineTo(-33, -12);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye + white glint
+        ctx.fillStyle = '#1E293B';
+        ctx.beginPath();
+        ctx.arc(-27.5, -19.5, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(-28.3, -20.3, 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // 6. Held Red Rose or Olive Branch (held at beak/chest, gently swaying)
+        ctx.save();
+        const stemSway = Math.sin(t * 3.8 + 0.9) * 0.055;
+        ctx.translate(-38, -12);
+        ctx.rotate(stemSway);
+
+        if (mascot === 'peace_dove_rose') {
+            // Curved green rose stem extending from upper-left bloom down-right past the dove's chest
+            ctx.strokeStyle = '#276749';
+            ctx.lineWidth = 3.2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-14, 2);
+            ctx.bezierCurveTo(4, 10, 26, 26, 52, 50);
+            ctx.stroke();
+
+            // Highlight on stem
+            ctx.strokeStyle = '#48BB78';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(-12, 2);
+            ctx.bezierCurveTo(6, 10, 26, 25, 50, 48);
+            ctx.stroke();
+
+            // Two lush green rose leaves along the stem
+            const drawRoseLeaf = (lx, ly, ang, lScale) => {
+                ctx.save();
+                ctx.translate(lx, ly);
+                ctx.rotate(ang);
+                ctx.scale(lScale, lScale);
+                ctx.fillStyle = '#2F855A';
+                ctx.strokeStyle = '#1C4532';
+                ctx.lineWidth = 1.1;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(8, -9, 22, -8, 28, 0);
+                ctx.bezierCurveTo(22, 8, 8, 9, 0, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.strokeStyle = '#68D391';
+                ctx.lineWidth = 0.9;
+                ctx.beginPath();
+                ctx.moveTo(2, 0);
+                ctx.lineTo(22, 0);
+                ctx.stroke();
+                ctx.restore();
+            };
+            drawRoseLeaf(12, 16, 0.25, 0.95);
+            drawRoseLeaf(26, 29, 1.15, 0.88);
+            drawRoseLeaf(34, 34, -0.2, 0.78);
+
+            // Green calyx sepals behind rose bloom
+            ctx.fillStyle = '#276749';
+            ctx.beginPath();
+            ctx.moveTo(-12, 2);
+            ctx.lineTo(-6, -8);
+            ctx.lineTo(-16, -3);
+            ctx.lineTo(-8, 9);
+            ctx.closePath();
+            ctx.fill();
+
+            // Layered Crimson-Red Rose Blossom at (-18, 0)
+            ctx.save();
+            ctx.translate(-18, 0);
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetY = 2;
+
+            // Outer deep crimson petals
+            const outerPetals = [
+                [-4, -7, 9.5, '#9B1C1C'],
+                [5, -5, 8.5, '#B91C1C'],
+                [6, 5, 8.8, '#9B1C1C'],
+                [-4, 7, 9.2, '#7F1D1D'],
+                [-10, 0, 9.5, '#B91C1C'],
+            ];
+            for (const [px, py, pr, col] of outerPetals) {
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.arc(px, py, pr, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.shadowColor = 'transparent';
+
+            // Middle ruby petals
+            const midPetals = [
+                [-5, -3, 6.8, '#DC2626'],
+                [2, -2, 6.2, '#EF4444'],
+                [1, 4, 6.5, '#DC2626'],
+                [-6, 3, 6.5, '#E53E3E'],
+            ];
+            for (const [px, py, pr, col] of midPetals) {
+                ctx.fillStyle = col;
+                ctx.beginPath();
+                ctx.arc(px, py, pr, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Inner velvety spiral bud & highlight
+            ctx.fillStyle = '#F56565';
+            ctx.beginPath();
+            ctx.arc(-2.5, 0, 4.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#FEB2B2';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.arc(-2.5, -0.5, 2.6, -0.4, Math.PI * 1.35);
+            ctx.stroke();
+            ctx.restore();
+        } else {
+            // peace_dove_olive: curved olive branch
+            ctx.strokeStyle = '#5F6F3A';
+            ctx.lineWidth = 2.6;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-24, -6);
+            ctx.bezierCurveTo(-4, 4, 18, 18, 42, 38);
+            ctx.stroke();
+            const leaves = [
+                [-18, -3, -0.8], [-12, 1, 0.9],
+                [-4, 5, -0.6], [4, 10, 1.1],
+                [14, 15, -0.5], [22, 22, 1.2],
+                [30, 27, -0.4],
+            ];
+            for (const [lx, ly, ang] of leaves) {
+                ctx.save();
+                ctx.translate(lx, ly);
+                ctx.rotate(ang);
+                ctx.fillStyle = '#65A30D';
+                ctx.strokeStyle = '#365314';
+                ctx.lineWidth = 0.9;
+                ctx.beginPath();
+                ctx.ellipse(7, 0, 8, 3.2, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        ctx.restore();
+
+        // 7. Near Wing (foreground sweeping feathered wing)
+        ctx.save();
+        ctx.translate(-2, -8);
+        ctx.rotate(-0.12 - flap * 0.58);
+        ctx.scale(1, 0.86 + 0.24 * Math.cos(t * 13.5));
+        ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 3;
+
+        const nearWingGrad = ctx.createLinearGradient(-10, -76, 36, 12);
+        nearWingGrad.addColorStop(0, '#FFFFFF');
+        nearWingGrad.addColorStop(0.7, '#F8FAFC');
+        nearWingGrad.addColorStop(1, '#E2E8F0');
+        ctx.fillStyle = nearWingGrad;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.7)';
+        ctx.lineWidth = 1.2;
+
+        ctx.beginPath();
+        ctx.moveTo(-8, 4);
+        ctx.bezierCurveTo(-12, -32, 6, -68, 36, -78);
+        const nearTips = [
+            [44, -64, 30, -52],
+            [42, -46, 28, -36],
+            [38, -30, 24, -22],
+            [32, -16, 18, -10],
+            [24, -4, 10, 2],
+            [14, 4, -4, 6],
+        ];
+        for (const [cx1, cy1, ex, ey] of nearTips) {
+            ctx.quadraticCurveTo(cx1, cy1, ex, ey);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Subtle inner secondary feather layering lines
+        ctx.shadowColor = 'transparent';
+        ctx.strokeStyle = 'rgba(203, 213, 225, 0.75)';
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.moveTo(2, -18);
+        ctx.quadraticCurveTo(16, -34, 28, -52);
+        ctx.moveTo(4, -10);
+        ctx.quadraticCurveTo(16, -22, 26, -36);
+        ctx.moveTo(4, -2);
+        ctx.quadraticCurveTo(14, -10, 22, -22);
+        ctx.stroke();
+        ctx.restore();
+    } else if (mascot === 'golden_cross_rays') {
+        const s = 1.2 * scale;
+        const pulse = 0.92 + 0.08 * Math.sin(t * 3.2);
+        ctx.translate(baseCx, baseCy + 18 * scale);
+        ctx.scale(s, s);
+
+        // Rotating / pulsing golden light rays
+        ctx.save();
+        ctx.rotate(t * 0.25);
+        for (let i = 0; i < 12; i++) {
+            ctx.save();
+            ctx.rotate((i * Math.PI) / 6);
+            const rayGrad = ctx.createLinearGradient(0, 0, 0, -78 * pulse);
+            rayGrad.addColorStop(0, 'rgba(253, 224, 71, 0.55)');
+            rayGrad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+            ctx.fillStyle = rayGrad;
+            ctx.beginPath();
+            ctx.moveTo(-4, 0);
+            ctx.lineTo(4, 0);
+            ctx.lineTo(1, -78 * pulse);
+            ctx.lineTo(-1, -78 * pulse);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+        ctx.restore();
+
+        // 3D Metallic Gold Cross
+        ctx.shadowColor = 'rgba(245, 158, 11, 0.55)';
+        ctx.shadowBlur = 16;
+        const crossGrad = ctx.createLinearGradient(-28, -52, 28, 52);
+        crossGrad.addColorStop(0, '#FEF08A');
+        crossGrad.addColorStop(0.5, '#EAB308');
+        crossGrad.addColorStop(1, '#A16207');
+        ctx.fillStyle = crossGrad;
+        ctx.strokeStyle = '#FEF9C3';
+        ctx.lineWidth = 1.8;
+        _roundRect(ctx, -9, -52, 18, 104, 4);
+        ctx.fill();
+        ctx.stroke();
+        _roundRect(ctx, -34, -26, 68, 18, 4);
+        ctx.fill();
+        ctx.stroke();
+    } else if (mascot === 'praying_hands_halo') {
+        const s = 1.2 * scale;
+        const pulse = 0.95 + 0.05 * Math.sin(t * 3.5);
+        ctx.translate(baseCx, baseCy + 18 * scale);
+        ctx.scale(s * pulse, s * pulse);
+
+        // Glowing golden halo ring
+        ctx.shadowColor = 'rgba(250, 204, 21, 0.55)';
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = '#FACC15';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 48, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Praying hands silhouette in warm gold & ivory
+        const hGrad = ctx.createLinearGradient(0, -34, 0, 36);
+        hGrad.addColorStop(0, '#FEF9C3');
+        hGrad.addColorStop(0.6, '#FDE047');
+        hGrad.addColorStop(1, '#CA8A04');
+        ctx.fillStyle = hGrad;
+        ctx.beginPath();
+        ctx.moveTo(-2, -32);
+        ctx.bezierCurveTo(-12, -16, -20, 8, -14, 30);
+        ctx.lineTo(-2, 34);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(2, -32);
+        ctx.bezierCurveTo(12, -16, 20, 8, 14, 30);
+        ctx.lineTo(2, 34);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
 function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, canvasW, canvasH) {
     ctx.textBaseline = 'alphabetic';
     // 整体偏移：裁切区域 + 滚动坐标一起移动
@@ -4581,7 +5499,17 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     ctx.restore();
     const movingTitleH = (ov.scroll_title_fixed !== false && (ov.scroll_title || '').trim()) ? 0 : titleOccupiedH;
     const bodyBottomOffset = movingTitleH + fontSize + lastLineIndex * lineHeight + lastDescent;
-    if (ov.scroll_end_y_auto !== false) {
+    if (ov.scroll_focus_flow_enabled === true && lines.length > 0) {
+        // 焦点阅读区模式 (爆款祈祷书签卡同款)：
+        // 首行在开始时即位于正文区中部偏上焦点区 (默认 42%)，末行在结束时停在焦点区 (默认 54%)，
+        // 使得当前朗读高亮行与跟随下划线从第一秒到最后一秒始终保持在卡片黄金阅读视野内。
+        const bodyClipH = Math.max(80, bodyClipBotBase - bodyClipTopBase);
+        const startPct = Math.max(5, Math.min(90, parseFloat(ov.scroll_focus_start_pct ?? 42))) / 100;
+        const endPct = Math.max(5, Math.min(95, parseFloat(ov.scroll_focus_end_pct ?? 54))) / 100;
+        fromY = bodyClipTopBase + bodyClipH * startPct - fontSize * 0.5;
+        const targetLastLineTopY = bodyClipTopBase + bodyClipH * endPct - fontSize * 0.5;
+        effectiveToY = Math.min(fromY, targetLastLineTopY - lastLineIndex * lineHeight);
+    } else if (ov.scroll_end_y_auto !== false) {
         // Keep 0.4 line above the fully visible edge of the bottom feather.
         // Never reverse an upward scroll if a short text is already fully inside.
         const featherBottom = Math.max(0, Number(ov.feather_bottom) || 0) + Math.max(0, Number(ov.feather_bottom_offset) || 0);
@@ -4651,7 +5579,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         curY = effectiveFromY + (effectiveToY - effectiveFromY) * progress;
 
         // 当启用出字效果时，确保当前正在朗读/书写的行不会提前滚出顶部羽化区或滞留在底部羽化区外
-        if (ov.scroll_typewriter_enabled === true && lines.length > 0 && effectiveFromY >= effectiveToY) {
+        if (ov.scroll_typewriter_enabled === true && !ov.scroll_focus_flow_enabled && lines.length > 0 && effectiveFromY >= effectiveToY) {
             const _twSegmentsEarly = Array.isArray(ov._taskSegments)
                 ? ov._taskSegments
                 : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
@@ -4844,12 +5772,26 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     if (ov.bg_enabled) {
         const bgAlpha = (ov.bg_opacity ?? 191) / 255;
         const bgStyle = ov.bg_style || 'solid';
-        if (bgStyle !== 'solid' && typeof ReelsBrushEngine !== 'undefined' && ReelsBrushEngine.drawThemedCardBackground) {
+        const styleCfg = (typeof ReelsBrushEngine !== 'undefined' && ReelsBrushEngine.CARD_BACKGROUND_STYLES)
+            ? ReelsBrushEngine.CARD_BACKGROUND_STYLES[bgStyle]
+            : null;
+        const edgeFeatherPx = Math.max(0, parseFloat(ov.bg_edge_feather ?? (styleCfg?.edgeFeather || 0)) || 0);
+        const isPrayerBookmarkStyle = Boolean(styleCfg?.isPrayerBookmark);
+
+        if (isPrayerBookmarkStyle || (bgStyle === 'solid' && edgeFeatherPx > 0 && !ov.bg_fullscreen)) {
+            _drawFeatheredPrayerCardBackground(ctx, _cardX, _cardY, _cardW, _cardH, _cardRad, {
+                color: (ov.bg_color && ov.bg_color !== '#000000') ? ov.bg_color : (styleCfg?.baseColor || ov.bg_color || '#153935'),
+                opacity: bgAlpha,
+                edgeFeatherPx,
+                innerAccentColor: styleCfg?.innerAccentColor || null,
+            });
+        } else if (bgStyle !== 'solid' && typeof ReelsBrushEngine !== 'undefined' && ReelsBrushEngine.drawThemedCardBackground) {
             ReelsBrushEngine.drawThemedCardBackground(ctx, _cardX, _cardY, _cardW, _cardH, _cardRad, {
                 style: bgStyle,
                 color: ov.bg_color || '#000000',
                 opacity: bgAlpha,
                 scrollOffsetY: _bgScrollOffsetY,
+                edgeFeatherPx,
             });
         } else {
             ctx.save();
@@ -4859,6 +5801,33 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ctx.fill();
             ctx.restore();
         }
+
+        // ── 卡片顶部书签丝带角标 (Bookmark Ribbon) ──
+        const bookmarkEnabled = ov.bg_bookmark_enabled !== undefined && ov.bg_bookmark_enabled !== null
+            ? Boolean(ov.bg_bookmark_enabled)
+            : isPrayerBookmarkStyle;
+        if (bookmarkEnabled && !ov.bg_fullscreen) {
+            _drawScrollCardBookmarkRibbon(ctx, _cardX, _cardY, _cardW, _cardH, edgeFeatherPx, {
+                style: ov.bg_bookmark_style || styleCfg?.bookmarkStyle || 'swallowtail',
+                pos: ov.bg_bookmark_pos || 'top-left',
+                color: ov.bg_bookmark_color || styleCfg?.bookmarkColor || '#DEC075',
+                width: parseFloat(ov.bg_bookmark_width ?? 46),
+                height: parseFloat(ov.bg_bookmark_height ?? 88),
+                inset: parseFloat(ov.bg_bookmark_inset ?? 42),
+                opacity: Math.min(1, bgAlpha * 1.12),
+            });
+        }
+    }
+
+    // ── 卡片正上方动态吉祥挂饰 (和平白鸽衔红玫瑰 / 橄榄枝 / 圣光十字架 / 祈祷双手) ──
+    if (ov.bg_top_mascot && ov.bg_top_mascot !== 'none' && !ov.bg_fullscreen) {
+        _drawScrollCardTopMascot(ctx, _cardX, _cardY, _cardW, _cardH, currentTime, {
+            mascot: ov.bg_top_mascot,
+            scale: parseFloat(ov.bg_top_mascot_scale ?? 100) / 100,
+            offsetX: parseFloat(ov.bg_top_mascot_offset_x ?? 0),
+            offsetY: parseFloat(ov.bg_top_mascot_offset_y ?? 0),
+            speed: parseFloat(ov.bg_top_mascot_speed ?? 100) / 100,
+        });
     }
 
     // ── 卡片边框 ──
@@ -4982,8 +5951,33 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         };
     };
     const _acquireFeatherCanvas = (w, h) => {
-        if (!ov._featherCanvas) ov._featherCanvas = document.createElement('canvas');
-        const tmp = ov._featherCanvas;
+        const srcOv = (ov._sourceOverlay && typeof ov._sourceOverlay === 'object') ? ov._sourceOverlay : ov;
+        let tmp = srcOv._featherCanvas || ov._featherCanvas;
+        if (!tmp) {
+            if (! _drawScrollOverlay._featherPool) _drawScrollOverlay._featherPool = new Map();
+            const pool = _drawScrollOverlay._featherPool;
+            const poolKey = String(ov.id || '_default');
+            tmp = pool.get(poolKey);
+            if (!tmp) {
+                tmp = document.createElement('canvas');
+                if (pool.size >= 16) {
+                    const oldestKey = pool.keys().next().value;
+                    if (oldestKey !== undefined) pool.delete(oldestKey);
+                }
+                pool.set(poolKey, tmp);
+            }
+        }
+        ov._featherCanvas = tmp;
+        try {
+            Object.defineProperty(srcOv, '_featherCanvas', {
+                value: tmp,
+                writable: true,
+                configurable: true,
+                enumerable: false,
+            });
+        } catch (_) {
+            srcOv._featherCanvas = tmp;
+        }
         if (tmp.width !== w || tmp.height !== h) {
             tmp.width = w;
             tmp.height = h;
@@ -5223,7 +6217,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         const _twSegments = Array.isArray(ov._taskSegments)
             ? ov._taskSegments
             : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
-        const _twContext = { currentTime, start, end, effectiveDuration, segments: _twSegments };
+        const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: curY, segments: _twSegments };
         const _titleDeductedH = titleIndependent ? 0 : Math.min(Math.max(0, clipH - 80), titleBlockH + tGap);
         const bodyClipY = ov.bg_body_only
             ? bodyClipTopBase
@@ -5306,7 +6300,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         const _twSegments = Array.isArray(ov._taskSegments)
             ? ov._taskSegments
             : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
-        const _twContext = { currentTime, start, end, effectiveDuration, segments: _twSegments };
+        const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: ov._scrollBodyFirstLineY ?? curY, segments: _twSegments };
         const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
         const fullContentH = Math.max(lineHeight, bodyBottomOffset);
         const fWin = _resolveFeatherWindow(clipX, effClipY, clipW, effClipH, curY, fullContentH);
@@ -5895,7 +6889,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
 
     // Resolve the currently active word across both char and word reveal modes
     let activeWord = null;
-    if (revealType !== 'sentence' && wordGroups.length > 0) {
+    if (revealType !== 'sentence' && revealType !== 'line' && wordGroups.length > 0) {
         const firstWg = wordGroups[0];
         const lastWg = wordGroups[wordGroups.length - 1];
         if (currentTime < firstWg.start) {
@@ -5924,6 +6918,67 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                     }
                 }
             }
+        }
+    }
+
+    // Resolve the currently active line index (for 'line' reveal mode & following reading underline)
+    let activeLineIdx = -1;
+    const lineRanges = lineTokensList._lineTimeRanges || [];
+    const lineTrackMode = ov.scroll_tw_line_track_mode || 'speech_or_progress';
+    if (revealType === 'line' || ov.scroll_tw_underline_enabled) {
+        if (lineTrackMode === 'focus_zone' && Number.isFinite(Number(twContext?.bodyClipTop)) && Number.isFinite(Number(twContext?.bodyClipBot))) {
+            const clipTop = Number(twContext.bodyClipTop);
+            const clipBot = Number(twContext.bodyClipBot);
+            const clipH = Math.max(40, clipBot - clipTop);
+            const startPct = Math.max(5, Math.min(90, parseFloat(ov.scroll_focus_start_pct ?? 42))) / 100;
+            const endPct = Math.max(5, Math.min(95, parseFloat(ov.scroll_focus_end_pct ?? 54))) / 100;
+            const prog = Math.max(0, Math.min(1, Number(twContext?.progress ?? 0)));
+            const focusTargetY = clipTop + clipH * (startPct + (endPct - startPct) * prog);
+            const baseCanvasY = Number.isFinite(Number(twContext?.drawCurY)) ? Number(twContext.drawCurY) : drawY;
+            let bestDist = Infinity;
+            for (let li = 0; li < lines.length; li++) {
+                if (!(lines[li] || '').trim()) continue;
+                const lineCenterY = baseCanvasY + fontSize * 0.5 + li * lineHeight;
+                const d = Math.abs(lineCenterY - focusTargetY);
+                if (d < bestDist) {
+                    bestDist = d;
+                    activeLineIdx = li;
+                }
+            }
+        } else if (revealType !== 'line' && activeWord && Number.isFinite(activeWord.lineIdx)) {
+            activeLineIdx = activeWord.lineIdx;
+        } else if (lineRanges.length > 0) {
+            let firstValidIdx = -1;
+            let lastValidIdx = -1;
+            for (let li = 0; li < lineRanges.length; li++) {
+                if (lineRanges[li]) {
+                    if (firstValidIdx < 0) firstValidIdx = li;
+                    lastValidIdx = li;
+                }
+            }
+            if (firstValidIdx >= 0) {
+                if (currentTime <= lineRanges[firstValidIdx].start) {
+                    activeLineIdx = firstValidIdx;
+                } else if (currentTime >= lineRanges[lastValidIdx].end) {
+                    activeLineIdx = lastValidIdx;
+                } else {
+                    for (let li = firstValidIdx; li <= lastValidIdx; li++) {
+                        const lr = lineRanges[li];
+                        if (!lr) continue;
+                        if (currentTime >= lr.start && currentTime <= lr.end) {
+                            activeLineIdx = li;
+                            break;
+                        }
+                        if (currentTime >= lr.start) {
+                            activeLineIdx = li;
+                        }
+                    }
+                }
+            }
+        }
+        if (activeLineIdx < 0 && lines.length > 0) {
+            const prog = Math.max(0, Math.min(0.9999, Number(twContext?.progress ?? 0)));
+            activeLineIdx = Math.floor(prog * lines.length);
         }
     }
 
@@ -5964,7 +7019,21 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             let color = baseColor;
             let scale = 1.0;
 
-            if (revealType === 'sentence') {
+            if (revealType === 'line') {
+                if (li === activeLineIdx) {
+                    state = 'active';
+                    opacity = 1.0;
+                    if (activeHighlight && !/^\s+$/.test(tok.text)) color = activeColor;
+                    if (!/^\s+$/.test(tok.text)) scale = activeScale;
+                } else if (li < activeLineIdx) {
+                    state = 'read';
+                    opacity = 1.0;
+                    if (keepReadColor && activeHighlight && !/^\s+$/.test(tok.text)) color = activeColor;
+                } else {
+                    state = 'unread';
+                    opacity = unrevealedOpacity;
+                }
+            } else if (revealType === 'sentence') {
                 if (currentTime >= tok.end) {
                     state = 'read';
                     opacity = 1.0;
@@ -6177,6 +7246,77 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 }
             }
 
+            ctx.restore();
+        }
+    }
+
+    // ── 绘制逐行跟读水平下划线 (Following Reading Underline, 爆款祈祷书签卡同款) ──
+    if (ov.scroll_tw_underline_enabled && activeLineIdx >= 0 && activeLineIdx < preparedLines.length) {
+        const activePl = preparedLines[activeLineIdx];
+        if (activePl && activePl.line && activePl.line.trim().length > 0) {
+            const uColor = ov.scroll_tw_underline_color || '#D9C27E';
+            const uThick = Math.max(0.8, parseFloat(ov.scroll_tw_underline_thickness ?? 2.5) || 2.5);
+            const uStyle = ov.scroll_tw_underline_style || 'solid';
+            const uWidthMode = ov.scroll_tw_underline_width_mode || 'card_ratio';
+            const uWidthRatio = Math.max(15, Math.min(120, parseFloat(ov.scroll_tw_underline_width_ratio ?? 84) || 84)) / 100;
+            const uOffY = parseFloat(ov.scroll_tw_underline_offset_y ?? 14);
+            const uOp = Math.max(0, Math.min(1, parseFloat(ov.scroll_tw_underline_opacity ?? 92) / 100));
+
+            let uWidth, uStartX;
+            if (uWidthMode === 'line_text') {
+                uWidth = Math.max(28, activePl.lineW * uWidthRatio);
+                uStartX = activePl.lx + (activePl.lineW - uWidth) * 0.5;
+            } else {
+                // 'card_ratio': 固定占正文画板宽度比例 (如 84%)，视觉整齐大气
+                uWidth = Math.max(40, textW * Math.min(1.0, uWidthRatio));
+                if (align === 'left') uStartX = textX;
+                else if (align === 'right') uStartX = textX + textW - uWidth;
+                else uStartX = textX + (textW - uWidth) * 0.5;
+            }
+            const uEndX = uStartX + uWidth;
+            const uY = activePl.yc + uOffY;
+
+            ctx.save();
+            ctx.globalAlpha *= uOp;
+            ctx.lineWidth = uThick;
+            ctx.lineCap = 'round';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 1.5;
+
+            if (uStyle === 'dashed') {
+                ctx.setLineDash([uThick * 4, uThick * 2.5]);
+            } else {
+                ctx.setLineDash([]);
+            }
+
+            if (uStyle === 'gradient') {
+                const [ur, ug, ub] = _parseHexOrRgbColor(uColor, [217, 194, 126]);
+                const uGrad = ctx.createLinearGradient(uStartX, uY, uEndX, uY);
+                uGrad.addColorStop(0, `rgba(${ur}, ${ug}, ${ub}, 0)`);
+                uGrad.addColorStop(0.15, `rgba(${ur}, ${ug}, ${ub}, 1)`);
+                uGrad.addColorStop(0.85, `rgba(${ur}, ${ug}, ${ub}, 1)`);
+                uGrad.addColorStop(1, `rgba(${ur}, ${ug}, ${ub}, 0)`);
+                ctx.strokeStyle = uGrad;
+            } else {
+                ctx.strokeStyle = uColor;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(uStartX, uY);
+            ctx.lineTo(uEndX, uY);
+            ctx.stroke();
+
+            if (uStyle === 'double') {
+                const gap2 = Math.max(3, uThick * 1.6);
+                ctx.lineWidth = Math.max(1, uThick * 0.6);
+                ctx.beginPath();
+                ctx.moveTo(uStartX + uWidth * 0.06, uY + gap2);
+                ctx.lineTo(uEndX - uWidth * 0.06, uY + gap2);
+                ctx.stroke();
+            }
+
+            ctx.setLineDash([]);
             ctx.restore();
         }
     }
@@ -8061,6 +9201,100 @@ const ReelsBrushEngine = {
             baseColor: '#FAF5E8',
             tornEdge: false,
         },
+        prayer_bookmark_green: {
+            label: '🔖 祈祷书签松绿柔边卡 (深邃松绿底+上下柔化羽化边+左上烫金燕尾书签·爆款同款)',
+            tileStyle: null,
+            baseColor: '#153935',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#DEC075',
+        },
+        prayer_bookmark_brown: {
+            label: '📜 祈祷书签深褐圣经卡 (古典深棕底+上下柔化羽化边+左上烫金燕尾书签)',
+            tileStyle: null,
+            baseColor: '#2D1D14',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E5C165',
+        },
+        prayer_bookmark_navy: {
+            label: '🌌 祈祷书签夜空深蓝卡 (静谧午夜蓝底+上下柔化羽化边+左上烫金燕尾书签)',
+            tileStyle: null,
+            baseColor: '#10243E',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E2C779',
+            bookmarkStyle: 'swallowtail',
+        },
+        prayer_bookmark_burgundy: {
+            label: '🍷 皇家酒红玫瑰金章卡 (丝绒勃艮第红底+上下羽化柔边+左上玫瑰金章丝带角标)',
+            tileStyle: null,
+            baseColor: '#3A121C',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E8C374',
+            bookmarkStyle: 'rose_emblem',
+            innerAccentColor: '#E8C374',
+        },
+        veteran_shield_card: {
+            label: '🇺🇸 星条旗金盾荣耀深蓝卡 (海军深蓝羽化底+烫金内边线+左上美国星条金盾角标)',
+            tileStyle: null,
+            baseColor: '#0E1E38',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E5B94E',
+            bookmarkStyle: 'us_star_shield',
+            innerAccentColor: '#E5B94E',
+        },
+        vintage_wax_parchment: {
+            label: '🏵️ 复古火漆金章胡桃木卡 (古籍胡桃暖棕羽化底+左上立体复古火漆金章角标)',
+            tileStyle: null,
+            baseColor: '#2E2318',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#D9A74A',
+            bookmarkStyle: 'gold_wax_seal',
+            innerAccentColor: '#D9A74A',
+        },
+        royal_olive_emerald: {
+            label: '🌿 橄榄枝桂冠翡翠金线卡 (深祖母绿羽化底+烫金细边+左上橄榄枝桂冠金章角标)',
+            tileStyle: null,
+            baseColor: '#123326',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#DEC075',
+            bookmarkStyle: 'olive_wreath_tag',
+            innerAccentColor: '#DEC075',
+        },
+        editorial_quote_obsidian: {
+            label: '❝ 曜石黑杂志引号金线卡 (高级曜石黑羽化底+双侧金线+左上双引号金标)',
+            tileStyle: null,
+            baseColor: '#16181F',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E5C165',
+            bookmarkStyle: 'quote_mark_badge',
+            innerAccentColor: '#E5C165',
+        },
+        sacred_ivory_crown: {
+            label: '👑 圣洁皇冠鎏金紫檀卡 (皇家紫檀羽化底+烫金内边+左上皇冠鎏金铭牌角标)',
+            tileStyle: null,
+            baseColor: '#2B1A24',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#F0D580',
+            bookmarkStyle: 'royal_crown_tag',
+            innerAccentColor: '#F0D580',
+        },
     },
 
     _backingTileCache: {},
@@ -8311,6 +9545,9 @@ const ReelsBrushEngine = {
             vet_honor_medal_board: 'vet_honor_medal_banner',
             vet_dogtag_steel_board: 'vet_dogtag_steel',
             vet_poppy_memorial_board: 'vet_poppy_parchment',
+            prayer_bookmark_green: 'dark_film_matte',
+            prayer_bookmark_brown: 'gold_parchment',
+            prayer_bookmark_navy: 'dark_film_matte',
         };
         return map[style] || 'newspaper_cutout';
     },
@@ -8403,6 +9640,27 @@ const ReelsBrushEngine = {
         const cfg = this.CARD_BACKGROUND_STYLES[styleId] || this.CARD_BACKGROUND_STYLES.newspaper_page;
         const opacity = opts.opacity != null ? Math.max(0, Math.min(1, Number(opts.opacity))) : 1;
         if (opacity <= 0.001) return;
+
+        if (cfg.isPrayerBookmark) {
+            const ef = opts.edgeFeatherPx != null ? Number(opts.edgeFeatherPx) : (cfg.edgeFeather || 38);
+            _drawFeatheredPrayerCardBackground(ctx, rx, ry, rw, rh, rad, {
+                color: (opts.color && opts.color !== '#000000') ? opts.color : (cfg.baseColor || '#153935'),
+                opacity,
+                edgeFeatherPx: ef,
+            });
+            if (opts.drawBookmark !== false) {
+                _drawScrollCardBookmarkRibbon(ctx, rx, ry, rw, rh, ef, {
+                    style: 'swallowtail',
+                    pos: 'top-left',
+                    color: cfg.bookmarkColor || '#DEC075',
+                    width: 46,
+                    height: 88,
+                    inset: 42,
+                    opacity: Math.min(1, opacity * 1.12),
+                });
+            }
+            return;
+        }
 
         const rawScrollY = Number.isFinite(Number(opts.scrollOffsetY)) ? Number(opts.scrollOffsetY) : 0;
         const r = Math.max(0, Math.min(rad, rw / 2, rh / 2));

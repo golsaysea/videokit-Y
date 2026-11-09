@@ -5438,7 +5438,10 @@
                   <div style="margin: 6px 0 10px 0; padding: 8px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
                     <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
                       <span>📰 <b>文字底部 / 报纸剪报底衬快速选择</b>（点击即切换底衬样式并匹配配色；可通过上方 <b>左右长度(内距X) / 上下宽度(内距Y)</b> 自由调节长宽）：</span>
-                      <label class="checkbox-label" style="font-size: 11px;" title="勾选后，点击下方样式将同时开启逐词出字效果"><input type="checkbox" id="reels-backing-quick-typewriter" checked><span>同步开启逐词出字</span></label>
+                      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label class="checkbox-label" style="font-size: 11px;" title="勾选后，点击下方样式将同时开启逐词出字效果"><input type="checkbox" id="reels-backing-quick-typewriter" checked><span>同步开启逐词出字</span></label>
+                        <label class="checkbox-label" style="font-size: 11px; color:#fde68a;" title="勾选后，点击下方样式将自动配对对应的跟读笔尖/美国星条旗盾等小图标跟随出字"><input type="checkbox" id="reels-backing-quick-cursor" checked><span>同步配对跟读图标(🇺🇸星条旗/羽毛笔等)</span></label>
+                      </div>
                     </div>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px;">
                       <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; background:#F3EFE6; color:#3B2220; border:1px solid #C8BFA8; font-weight:700;" onclick="window.reelsApplyTextBackingPreset && window.reelsApplyTextBackingPreset('newspaper_cutout')">📰 复古旧报纸剪报 (同款)</button>
@@ -5462,6 +5465,26 @@
                       <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; background:#09152B; color:#FDE047; border:1px solid #F59E0B; font-weight:700;" onclick="window.reelsApplyTextBackingPreset && window.reelsApplyTextBackingPreset('vet_honor_medal_banner')">🎖️ 老兵金章横幅</button>
                       <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; background:#CBD5E1; color:#0F172A; border:1px solid #64748B; font-weight:700;" onclick="window.reelsApplyTextBackingPreset && window.reelsApplyTextBackingPreset('vet_dogtag_steel')">🏷️ 美军钢印铭牌条</button>
                       <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; background:#FBF7EF; color:#991B1B; border:1px solid #DC2626; font-weight:700;" onclick="window.reelsApplyTextBackingPreset && window.reelsApplyTextBackingPreset('vet_poppy_parchment')">🌺 纪念虞美人花条</button>
+                    </div>
+                    <!-- ✍️ T字幕出字效果 + 美国星条旗/勋章/羽毛笔跟读小图标快速选择 -->
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(251,191,36,0.28);">
+                      <div style="font-size: 11px; color: #fde68a; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                        <span>✍️ <b>选择【跟读小图标 + 出字效果】一起开启</b>（点击下方图标即可让美国星条旗/勋章/羽毛笔跟随 T 字幕逐词或逐字显现）：</span>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:10px; padding:2px 7px;" onclick="window.reelsDisableSubtitleCursor && window.reelsDisableSubtitleCursor()">🚫 关闭跟读图标</button>
+                      </div>
+                      <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#fbbf24; background:rgba(30,58,138,0.38); color:#fde68a; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('us_flag_shield', true)">🇺🇸 星条旗金盾+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#c084fc; background:rgba(88,28,135,0.32); color:#f3e8ff; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('purple_heart_medal', true)">🎖️ 紫心勋章+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#f59e0b; background:rgba(120,53,15,0.32); color:#fef08a; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('bald_eagle_crest', true)">🦅 白头海雕+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#ef4444; background:rgba(153,27,27,0.30); color:#fecaca; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('veteran_poppy', true)">🌺 虞美人花+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#94a3b8; background:rgba(51,65,85,0.38); color:#e2e8f0; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('military_dog_tag', true)">🏷️ 美军狗牌+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('quill', true)">🪶 羽毛笔+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('dove', true)">🕊️ 和平鸽+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('rose', true)">🌹 玫瑰花+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('fountain_pen', true)">🖋️ 钢笔尖+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#dc2626;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('candy_cane', true)">🍬 拐杖糖+出字</button>
+                        <button type="button" class="btn btn-secondary btn-small" style="font-size:11px; padding:3px 8px; border-color:#16a34a;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('christmas_tree', true)">🎄 圣诞树+出字</button>
+                      </div>
                     </div>
                   </div>
 
@@ -5724,14 +5747,19 @@
                         </div>
                       </details>
 
-                      <!-- 4.6 全屏打字机模式 -->
+                      <!-- 4.6 出字跟读图标 & 全屏打字机模式 -->
                       <details style="margin-bottom: 10px;">
-                        <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-color);">📽️ 全屏打字机模式</summary>
+                        <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-color);">✍️ 出字跟读图标 & 全屏打字机 (🇺🇸星条旗/羽毛笔/勋章)</summary>
                         <div style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; margin-top: 4px; border: 1px solid var(--border-color);">
+                          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px;color:#fde68a;font-weight:600;">
+                            <input type="checkbox" id="reels-subtitle-cursor-enabled" style="accent-color:var(--accent);"
+                              onchange="const o=document.getElementById('reels-fullpage-typewriter-options');const fp=document.getElementById('reels-fullpage-typewriter');if(o)o.style.display=(this.checked||(fp&&fp.checked))?'':'none';if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
+                            标准 T 字幕开启跟读小图标（美国星条旗盾 / 勋章 / 羽毛笔跟随出字，无需开启全屏打字机）
+                          </label>
                           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:8px;">
                             <input type="checkbox" id="reels-fullpage-typewriter" style="accent-color:var(--accent);"
-                              onchange="const o=document.getElementById('reels-fullpage-typewriter-options');if(o)o.style.display=this.checked?'':'none';if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
-                            启用全屏打字机（所有文案全屏渐入）
+                              onchange="const o=document.getElementById('reels-fullpage-typewriter-options');const sc=document.getElementById('reels-subtitle-cursor-enabled');if(o)o.style.display=(this.checked||(sc&&sc.checked))?'':'none';if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
+                            启用全屏打字机（所有文案整页全屏渐入）
                           </label>
                           <div id="reels-fullpage-typewriter-options" style="display:none;">
                             <button type="button" class="btn btn-secondary" onclick="reelsEnableSplitWriting()" style="margin-bottom:8px;">标题 / 正文分开出字</button>
@@ -8057,7 +8085,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.4</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.5</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"

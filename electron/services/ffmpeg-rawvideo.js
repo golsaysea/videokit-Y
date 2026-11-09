@@ -97,12 +97,20 @@ async function getMediaDuration(filePath) {
                 const rawJson = execFileSync(findFFprobe(), [
                     '-v', 'error',
                     '-select_streams', 'v:0',
-                    '-show_entries', 'stream=duration:format=duration',
+                    '-show_entries', 'stream=duration,nb_frames,avg_frame_rate,r_frame_rate:format=duration',
                     '-of', 'json',
                     filePath,
                 ], { timeout: 15000 }).toString().trim();
                 const parsed = JSON.parse(rawJson || '{}');
-                const streamDur = parseFloat(parsed?.streams?.[0]?.duration);
+                const _vStream = parsed?.streams?.[0] || {};
+                const streamDur = parseFloat(_vStream.duration);
+                const _nbFrames = parseInt(_vStream.nb_frames, 10);
+                const _parseFps = (s) => { if (!s || typeof s !== 'string') return 0; const p = s.split('/'); const n = parseFloat(p[0]), d = p.length > 1 ? parseFloat(p[1]) : 1; return (Number.isFinite(n) && Number.isFinite(d) && d > 0) ? (n / d) : 0; };
+                const _avgFps = _parseFps(_vStream.avg_frame_rate), _rFps = _parseFps(_vStream.r_frame_rate);
+                const _effFps = (_avgFps > 0 && _rFps > 0 && Math.abs(_avgFps - _rFps) < 1.5) ? _avgFps : (_avgFps > 0 ? _avgFps : _rFps);
+                const _framesDur = (Number.isFinite(_nbFrames) && _nbFrames > 0 && _effFps > 0) ? (_nbFrames / _effFps) : 0;
+                const _cands = [streamDur, parseFloat(parsed?.format?.duration), _framesDur].filter(d => Number.isFinite(d) && d > 0.2);
+                if (_cands.length > 0) return Math.min(..._cands);
                 const formatDur = parseFloat(parsed?.format?.duration);
                 if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
                     return Math.min(streamDur, formatDur);
@@ -968,7 +976,7 @@ async function prepareBg(opts) {
     const fadeEnabled = loopFade && bgDuration > 0;
     const fadeDur = Math.min(loopFadeDur || 1.0, bgDuration * 0.4);
 
-    if (fadeEnabled && bgDuration > 0 && duration > bgDuration) {
+    if (fadeEnabled && bgDuration > 0 && duration > bgDuration + 0.5) {
         const safeFps = Math.max(1, Number(fps) || 30);
         const step = Math.max(0.1, bgDuration - fadeDur - (2 / safeFps));
 
@@ -1024,11 +1032,11 @@ async function prepareBg(opts) {
             console.log(`[WYSIWYG-BG] xfade 循环: ${segCount}段, fadeDur=${fadeDur}s, bgTrim=${bgTrimDuration.toFixed(2)}s`);
             await runFFmpegSync(ffmpeg, args);
         } else {
-            const shouldLoop = duration > bgDuration + 0.1;
+            const shouldLoop = duration > bgDuration + 0.5;
             await extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor, shouldLoop);
         }
     } else {
-        const shouldLoop = duration > bgDuration + 0.1;
+        const shouldLoop = duration > bgDuration + 0.5;
         await extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor, shouldLoop);
     }
 
@@ -1582,7 +1590,7 @@ async function startSession(opts) {
         const safeFps = Math.max(1, Number(fps) || 30);
         const step = Math.max(0.1, scaledBgDuration - fadeDur - (2 / safeFps));
         const useDirectLoopFade = !isAlphaBgImage && opts.loopFade && scaledBgDuration > fadeDur + 0.05
-            && targetDuration > scaledBgDuration + 0.01;
+            && targetDuration > scaledBgDuration + 0.5;
         // 仅当目标合成时长明确超过背景视频时长（例如短背景循环配长语音，且未启用 xfade）时才开启 -stream_loop -1。
         // 单段口播/快剪素材（targetDuration <= scaledBgDuration + 0.5）不挂无限 -stream_loop -1：
         // 1) 挂了 -stream_loop -1 后输入 0 永远不会触发 EOF，导致下方 tpad=stop_mode=clone 完全失效；

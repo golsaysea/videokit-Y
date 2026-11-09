@@ -1,16 +1,29 @@
-# VideoKit 4.5.4
+# VideoKit 4.5.5
 
 更新仓库：golsaysea/videokit-Y。
 
 ## 下载
 
-- **Windows x64**：`VideoKit-Setup-4.5.4.exe` 安装版，或 `VideoKit-Setup-4.5.4.zip` 便携版。
-- **macOS Apple Silicon（M 系列）**：`VideoKit-4.5.4-macOS-arm64.dmg` / `.zip`。
-- **macOS Intel**：`VideoKit-4.5.4-macOS-x64.dmg` / `.zip`。
-- **Linux x64**：`VideoKit-4.5.4-Linux-x64.AppImage`、`VideoKit-4.5.4-Linux-x64.deb`、`VideoKit-4.5.4-Linux-x64.tar.gz`。
+- **Windows x64**：`VideoKit-Setup-4.5.5.exe` 安装版，或 `VideoKit-Setup-4.5.5.zip` 便携版。
+- **macOS Apple Silicon（M 系列）**：`VideoKit-4.5.5-macOS-arm64.dmg` / `.zip`。
+- **macOS Intel**：`VideoKit-4.5.5-macOS-x64.dmg` / `.zip`。
+- **Linux x64**：`VideoKit-4.5.5-Linux-x64.AppImage`、`VideoKit-4.5.5-Linux-x64.deb`、`VideoKit-4.5.5-Linux-x64.tar.gz`。
 - 同时发布 Windows、macOS、Linux 自动更新元数据和 SHA256 校验清单。
 
-## 本次更新（v4.5.4 滚动字幕羽化拉杆+正负数输入与批量表格滚动内容原位更新）
+## 本次更新（v4.5.5 修复渲染问题、新增字幕样式与兼容云端部署搭建）
+
+- **🎬 修复视频渲染卡顿与 10 秒停播问题**：
+  - **修复 10 秒后停止播放**：修复预览器 V2 中动态背景视频、内容视频与 BGM 默认未开启自动循环（`loop`）导致 10 秒背景素材在 `10.0s` 处定格停播的问题；修复滚动字幕默认 `end` 时间在预览测量或自动时间轴生成时被截断在 10 秒的问题，确保滚动字幕与背景视频自动铺满整条配音时长。
+  - **修复渲染与预览周期性卡顿**：为滚动字幕羽化（Feather）引入模块级离屏 Canvas 复用池，消除每帧重复创建全屏 `1080×1920` 离屏画布造成的显存抖动与 GC 掉帧；将背景视频循环同步改为环形取模距离（Circular Wrap-Around Distance），消除 10 秒循环交界处的解码器重复 Seek 抖动；优化 FFmpeg 导出时长探测（结合 `nb_frames` 与帧率），消除因素材容器虚标时长引发的 `tpad` 尾帧定格。
+- **✨ 新增爆款字幕样式、设计类左上角标卡片与 T 字幕出字图标（含编号记忆）**：
+  - 新增 **Facebook 爆款同款「🕊️ 祈祷书签绿卡+白鸽玫瑰+逐行金线跟读」** 字幕样式预设（`sc-39` / `ov-15`）及多款设计类左上角小图标卡片背景（`sc-39` ~ `sc-47`，支持 11 款画板底纹 + 12 款左上角精致书签/徽章角标 + 7 款卡顶动态吉祥物 + 逐行金黄高亮与同步底横线）。
+  - 标准 **T 字幕（1~3 行）** 面板新增 **「✍️ 逐词跟读出字图标」** 独立控制区与 4 款预设（`sub-72` ~ `sub-75`），无需开启整页打字机即可在普通 T 字幕上挂载 **🇺🇸 美国星条旗荣耀盾徽、🎖️ 紫心勋章、🦅 白头海雕、🏷️ 美军狗牌** 等跟随朗读词跳动的出字图标。
+  - **T 字幕预设全面支持编号显示与搜索**：下拉框与预设库卡片统一显示 `[sub-01]` ~ `[sub-75]`、`[se-01]` ~ `[se-42]` 固定编号，支持输入编号快速检索。
+- **☁️ 软件全面兼容云端部署搭建（Web 服务端 + Headless CLI 无头渲染）**：
+  - `videokit-cli` 与 `videokit-web-server` 原生兼容全部新增字幕预设编号（`sub-01` ~ `sub-75`、`se-01` ~ `se-42`、`sc-01` ~ `sc-47`、`ov-01` ~ `ov-15`）及带 `[编号]` 前缀的预设名调取，支持 `videokit-cli presets` 与 `GET /api/presets` 云端查询。
+  - 云端 Linux / Docker / Web 无头渲染（Xvfb / Chromium Headless Worker）同步搭载离屏画布池化与精确帧时长探测，保障云端批量合成流畅稳定。
+
+## 近期更新回顾（v4.5.4 & v4.5.3）
 
 - **☁️ 滚动字幕「羽化」交互与渲染升级**：
   - 8 项羽化参数（`上羽化`、`上羽化偏移`、`下羽化`、`下羽化偏移`、`左羽化`、`左羽化偏移`、`右羽化`、`右羽化偏移`）全面改为 **拉杆滑块 + 手动数字输入框 + `↺` 一键重置**，移除原输入框拖拽改值拦截。

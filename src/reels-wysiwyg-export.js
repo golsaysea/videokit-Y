@@ -719,11 +719,11 @@ async function reelsWysiwygExport(params) {
         !ov.disabled && ov.blend_mode && ov.blend_mode !== 'source-over'
     );
 
-    // ── 智能补偿：如果处于单视频且开启了循环渐变，但实际合成短于视频本身，抢回极速模式！ ──
+    // ── 智能补偿：如果处于单视频且开启了循环渐变，但实际合成短于视频本身（允许 0.5s 尾帧容差），抢回极速模式！ ──
     if (loopFade && backgroundPath && !_isImageFile(backgroundPath) && !isMultiClip) {
         let _probedBg = await window.electronAPI.getMediaDuration(backgroundPath);
         _probedBg = _probedBg * (_bgDurFactor || 1.0);
-        if (_probedBg > 0 && duration <= _probedBg) {
+        if (_probedBg > 0 && duration <= _probedBg + 0.5) {
             log(`🎯 [智能提速] 合成时长(${duration.toFixed(2)}s)无需底板(${_probedBg.toFixed(2)}s)循环！强制关闭渐变，唤醒极速贴合 ⚡️！`);
             loopFade = false; 
             // 只要不是多视频，就可以霸王硬上弓恢复极速直通路径！

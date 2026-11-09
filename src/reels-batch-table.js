@@ -8761,7 +8761,15 @@ function _buildPresetStyledItemHTML(name, presetsMap, isUserPreset = false) {
                 <button class="rbt-ssp-delete-btn" data-preset-name="${eName}" title="删除" style="background:none;border:none;cursor:pointer;font-size:12px;padding:2px 4px;color:#f87171;line-height:1;">🗑</button>
             </span>` : '';
 
-        return `<div class="rbt-sub-styled-item" data-val="${eName}" data-user-preset="${isUserPreset ? '1' : ''}" data-preview-font="${_escHtml(m.font_family || 'Arial')}" style="padding:5px 18px;cursor:pointer;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:6px;">
+        const presetCode = (typeof window !== 'undefined' && typeof window.getSubtitlePresetCode === 'function')
+            ? window.getSubtitlePresetCode(name)
+            : '';
+        const codeBadgeHtml = presetCode
+            ? `<span class="rbt-preset-code-badge" style="flex-shrink:0;font-size:10px;font-weight:700;font-family:monospace;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.16);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35);">${_escHtml(presetCode)}</span>`
+            : '';
+
+        return `<div class="rbt-sub-styled-item" data-val="${eName}" data-code="${_escHtml(presetCode)}" data-user-preset="${isUserPreset ? '1' : ''}" data-preview-font="${_escHtml(m.font_family || 'Arial')}" style="padding:5px 14px;cursor:pointer;border-bottom:1px solid #2a2a3e;display:flex;align-items:center;gap:6px;">
+            ${codeBadgeHtml}
             <span style="font-size:15px;font-weight:${fw};line-height:1.5;${bgCss}${fsStyle}${ffStyle}${ttStyle}${lsStyle}display:inline-block;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
                 ${htmlName}
                 ${isUserPreset ? `<span class="rbt-preset-font-sample" style="display:block;font-size:17px;line-height:1.4;${textFill}text-shadow:${ts};">Aa Bb Cc 123</span>` : ''}
@@ -8838,7 +8846,7 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
     // 搜索区
     const searchHtml = `
         <div style="padding:10px; border-bottom:1px solid #2a2a3e; background:rgba(0,0,0,0.2); position:sticky; top:0; z-index:10;">
-            <input type="text" id="rbt-ssp-search" placeholder="搜索预设..." style="width:100%; box-sizing:border-box; background:#000; border:1px solid #555; border-radius:4px; color:#eee; font-size:12px; padding:6px; outline:none;" autocomplete="off">
+            <input type="text" id="rbt-ssp-search" placeholder="搜索预设名称或编号 (如 sub-01 / 68 / se-01)..." style="width:100%; box-sizing:border-box; background:#000; border:1px solid #555; border-radius:4px; color:#eee; font-size:12px; padding:6px; outline:none;" autocomplete="off">
         </div>
     `;
 
@@ -8885,14 +8893,16 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
     const searchInput = popup.querySelector('#rbt-ssp-search');
     const listContainer = popup.querySelector('#rbt-ssp-list');
 
-    // 搜索逻辑（支持分类折叠）
+    // 搜索逻辑（支持分类折叠 & 编号搜索 sub-01 / 68 / se-01）
     setTimeout(() => searchInput.focus(), 30);
     searchInput.addEventListener('input', () => {
-        const q = searchInput.value.toLowerCase();
+        const q = searchInput.value.trim().toLowerCase();
         // Filter items
         listContainer.querySelectorAll('.rbt-sub-styled-item').forEach(el => {
             const val = (el.dataset.val || '').toLowerCase();
-            el.style.display = val.includes(q) ? 'block' : 'none';
+            const code = (el.dataset.code || '').toLowerCase();
+            const matched = !q || val.includes(q) || code.includes(q);
+            el.style.display = matched ? 'flex' : 'none';
         });
         // Show/hide empty categories
         listContainer.querySelectorAll('.rbt-ssp-category').forEach(details => {
