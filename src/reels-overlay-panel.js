@@ -1369,14 +1369,70 @@ class ReelsOverlayPanel {
                     <!-- ⑤ 羽化 -->
                     <div class="rop-group-title" style="margin-top:8px;">羽化</div>
                     <div class="rop-grid">
-                        <label>上羽化</label><input type="number" id="rop-scroll-feather-top" class="rop-input" min="0" max="500" step="10" value="80">
-                        <label>上羽化偏移</label><input type="number" id="rop-scroll-feather-top-offset" class="rop-input" min="0" max="500" step="10" value="0" title="在此距离内文字完全透明，不改变整体裁切区">
-                        <label>下羽化</label><input type="number" id="rop-scroll-feather-bottom" class="rop-input" min="0" max="500" step="10" value="80">
-                        <label>下羽化偏移</label><input type="number" id="rop-scroll-feather-bottom-offset" class="rop-input" min="0" max="500" step="10" value="0" title="在此距离内文字完全透明，不改变整体裁切区">
-                        <label>左羽化</label><input type="number" id="rop-scroll-feather-left" class="rop-input" min="0" max="500" step="10" value="0">
-                        <label>左羽化偏移</label><input type="number" id="rop-scroll-feather-left-offset" class="rop-input" min="0" max="500" step="10" value="0">
-                        <label>右羽化</label><input type="number" id="rop-scroll-feather-right" class="rop-input" min="0" max="500" step="10" value="0">
-                        <label>右羽化偏移</label><input type="number" id="rop-scroll-feather-right-offset" class="rop-input" min="0" max="500" step="10" value="0">
+                        <label title="贴合字幕边缘：在当前可见字幕上下左右边缘直接柔化，静止或短字幕也能立即见效；裁切框边缘：仅当字幕滚出橙色裁切框时才羽化">羽化基准</label>
+                        <select id="rop-scroll-feather-mode" class="rop-select">
+                            <option value="content">🎯 贴合字幕边缘 (推荐·立即见效)</option>
+                            <option value="clip">📐 仅在裁切框边缘羽化</option>
+                        </select>
+                        <label>快捷预设</label>
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="off" style="padding:2px 7px;font-size:11px;">🚫 关闭</button>
+                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="v80" style="padding:2px 7px;font-size:11px;">☁️ 上下柔化</button>
+                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="top120" style="padding:2px 7px;font-size:11px;">⬆️ 仅上羽化</button>
+                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="bot120" style="padding:2px 7px;font-size:11px;">⬇️ 仅下羽化</button>
+                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="all80" style="padding:2px 7px;font-size:11px;">🖼️ 四周柔边</button>
+                        </div>
+                        <label title="顶部边缘柔化渐变宽度；负数相当于向外偏移放行">上羽化</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-top" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top" min="-1000" max="1000" step="1" value="80">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-top" title="恢复默认">↺</button>
+                        </div>
+                        <label title="正数向内推迟羽化起点（压缩可见区），负数向外扩展顶部可见边界">上羽化偏移</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-top-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top-offset" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-top-offset" title="恢复默认">↺</button>
+                        </div>
+                        <label title="底部边缘柔化渐变宽度；负数相当于向外偏移放行">下羽化</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-bottom" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom" min="-1000" max="1000" step="1" value="80">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom" title="恢复默认">↺</button>
+                        </div>
+                        <label title="正数向内推迟羽化起点（提前隐去底部），负数向外扩展底部可见边界">下羽化偏移</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-bottom-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom-offset" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom-offset" title="恢复默认">↺</button>
+                        </div>
+                        <label title="左侧边缘柔化渐变宽度">左羽化</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-left" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-left" title="恢复默认">↺</button>
+                        </div>
+                        <label title="正数向内收缩左侧边界，负数向外扩展左侧边界">左羽化偏移</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-left-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left-offset" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-left-offset" title="恢复默认">↺</button>
+                        </div>
+                        <label title="右侧边缘柔化渐变宽度">右羽化</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-right" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-right" title="恢复默认">↺</button>
+                        </div>
+                        <label title="正数向内收缩右侧边界，负数向外扩展右侧边界">右羽化偏移</label>
+                        <div class="rop-slider-combo">
+                            <input type="range" id="rop-scroll-feather-right-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right-offset" min="-1000" max="1000" step="1" value="0">
+                            <button class="rop-reset-btn" data-target="rop-scroll-feather-right-offset" title="恢复默认">↺</button>
+                        </div>
+                        <div style="grid-column:1 / -1;font-size:11px;color:#8b95a5;line-height:1.35;">
+                            💡 支持直接拉动滑杆，或在右侧数字框直接输入正负数（正数向内裁切/柔化，负数向外放宽边界）。
+                        </div>
                     </div>
 
                     <!-- ⑥ 卡片背景 -->
@@ -2557,6 +2613,7 @@ class ReelsOverlayPanel {
             'rop-scroll-auto-stop-lead',
             'rop-scroll-static',
             'rop-scroll-auto-fit', 'rop-scroll-min-fontsize',
+            'rop-scroll-feather-mode',
             'rop-scroll-feather-top', 'rop-scroll-feather-bottom', 'rop-scroll-feather-top-offset', 'rop-scroll-feather-bottom-offset',
             'rop-scroll-feather-left', 'rop-scroll-feather-right', 'rop-scroll-feather-left-offset', 'rop-scroll-feather-right-offset',
             'rop-scroll-bg-enabled', 'rop-scroll-bg-style', 'rop-scroll-bg-color', 'rop-scroll-bg-opacity',
@@ -3548,9 +3605,48 @@ class ReelsOverlayPanel {
             if (!rangeEl) return;
             // Range → Number
             rangeEl.addEventListener('input', () => { numEl.value = rangeEl.value; this._syncToOverlay(); });
-            // Number → Range
-            numEl.addEventListener('input', () => { rangeEl.value = numEl.value; this._syncToOverlay(); });
-            numEl.addEventListener('change', () => { rangeEl.value = numEl.value; this._syncToOverlay(); });
+            // Number → Range (allow typing '-' or '+' for negative numbers without jumping slider mid-input)
+            numEl.addEventListener('input', () => {
+                const raw = String(numEl.value).trim();
+                if (raw === '' || raw === '-' || raw === '+' || raw === '-.' || raw === '+.') return;
+                const parsed = parseFloat(raw);
+                if (!Number.isFinite(parsed)) return;
+                rangeEl.value = parsed;
+                this._syncToOverlay();
+            });
+            numEl.addEventListener('change', () => {
+                const parsed = parseFloat(numEl.value);
+                const finalVal = Number.isFinite(parsed)
+                    ? parsed
+                    : (parseFloat(rangeEl.dataset.default ?? rangeEl.value) || 0);
+                numEl.value = finalVal;
+                rangeEl.value = finalVal;
+                this._syncToOverlay();
+            });
+        });
+
+        // 滚动字幕羽化快捷预设按钮
+        this.container.querySelectorAll('.rop-scroll-feather-preset').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const preset = btn.dataset.featherPreset || 'v80';
+                const setFeatherVals = (top, bottom, left = 0, right = 0) => {
+                    this._val('rop-scroll-feather-top', top);
+                    this._val('rop-scroll-feather-bottom', bottom);
+                    this._val('rop-scroll-feather-left', left);
+                    this._val('rop-scroll-feather-right', right);
+                    this._val('rop-scroll-feather-top-offset', 0);
+                    this._val('rop-scroll-feather-bottom-offset', 0);
+                    this._val('rop-scroll-feather-left-offset', 0);
+                    this._val('rop-scroll-feather-right-offset', 0);
+                };
+                if (preset === 'off') setFeatherVals(0, 0, 0, 0);
+                else if (preset === 'v80') setFeatherVals(80, 80, 0, 0);
+                else if (preset === 'top120') setFeatherVals(120, 0, 0, 0);
+                else if (preset === 'bot120') setFeatherVals(0, 120, 0, 0);
+                else if (preset === 'all80') setFeatherVals(80, 80, 60, 60);
+                this._syncToOverlay();
+            });
         });
 
         // Drag-to-scrub on number inputs (click+drag horizontally to adjust value)
@@ -4877,9 +4973,65 @@ class ReelsOverlayPanel {
     // 列表
     // ═══════════════════════════════════════════════
 
+    _sanitizeScrollOverlayList(list) {
+        if (!Array.isArray(list) || list.length === 0) return false;
+        const isDefaultScroll = (ov) => {
+            if (!ov || ov.type !== 'scroll') return false;
+            if (ov.bg_enabled || ov.scroll_body_bg_enabled || ov.scroll_title_bg_enabled) return false;
+            if (ov.bg_border_enabled || ov.bg_blur_enabled || ov.scroll_typewriter_enabled) return false;
+            if (ov.scroll_style_preset_id || ov.preset_style_id || ov.template_id) return false;
+            const font = String(ov.font_family || 'Arial').trim();
+            const size = Number(ov.fontsize ?? 40);
+            const color = String(ov.color || '#ffffff').trim().toLowerCase();
+            return font === 'Arial' && size === 40 && (color === '#ffffff' || color === '#fff');
+        };
+        const scrolls = list.filter(o => o && o.type === 'scroll');
+        let changed = false;
+        if (scrolls.length > 1) {
+            const styled = scrolls.filter(o => !isDefaultScroll(o));
+            const accidental = scrolls.filter(o => isDefaultScroll(o) && !o.fixed_text);
+            if (styled.length >= 1 && accidental.length >= 1) {
+                const primary = styled[0];
+                for (const dup of accidental) {
+                    const nextBody = String(dup.content || '').trim();
+                    const nextTitle = String(dup.scroll_title || '').trim();
+                    if (nextBody && nextBody !== '滚动字幕内容\n第二行内容\n第三行内容') {
+                        if (primary.content !== dup.content) primary.scroll_styled_ranges = null;
+                        primary.content = dup.content;
+                    }
+                    if (nextTitle) {
+                        if (primary.scroll_title !== dup.scroll_title) primary.scroll_title_styled_ranges = null;
+                        primary.scroll_title = dup.scroll_title;
+                    }
+                    const idx = list.indexOf(dup);
+                    if (idx !== -1) {
+                        list.splice(idx, 1);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        for (const ov of list) {
+            if (ov && ov.type === 'scroll' && ov.fixed_text) {
+                ov.fixed_text = false;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
     _refreshList() {
         const list = this.container.querySelector('#rop-overlay-list');
         if (!list || !this.videoCanvas) return;
+
+        if (Array.isArray(this.videoCanvas?.overlayMgr?.overlays)) {
+            this._sanitizeScrollOverlayList(this.videoCanvas.overlayMgr.overlays);
+        }
+        if (Array.isArray(window._reelsState?.tasks)) {
+            for (const t of window._reelsState.tasks) {
+                if (Array.isArray(t?.overlays)) this._sanitizeScrollOverlayList(t.overlays);
+            }
+        }
 
         const overlayAboveSubtitle = this.container.querySelector('#rop-overlay-above-subtitle');
         if (overlayAboveSubtitle) overlayAboveSubtitle.checked = this.videoCanvas.getOverlayAboveSubtitle?.() !== false;
@@ -5100,8 +5252,9 @@ class ReelsOverlayPanel {
             }
         }
 
-        // Show fixed_text toggle for text, textcard, and scroll overlays
-        const hasText = ov.type === 'text' || ov.type === 'textcard' || ov.type === 'scroll';
+        // Show fixed_text toggle only for text and textcard overlays (scroll overlays are always batch-editable)
+        if (ov.type === 'scroll') ov.fixed_text = false;
+        const hasText = ov.type === 'text' || ov.type === 'textcard';
         this.container.querySelector('#rop-fixed-text-group').style.display = hasText ? 'block' : 'none';
 
         // Image overlays: show scale, hide W/H. Others: show W/H, hide scale.
@@ -5230,7 +5383,19 @@ class ReelsOverlayPanel {
         const el = this.container.querySelector('#' + id);
         if (!el) return undefined;
         if (el.type === 'checkbox') return el.checked;
-        if (el.type === 'number' || el.type === 'range') return parseFloat(el.value) || 0;
+        if (el.type === 'range') {
+            const numReadout = this.container.querySelector(`.rop-num-readout[data-link="${id}"]`);
+            if (numReadout) {
+                const n = parseFloat(numReadout.value);
+                if (Number.isFinite(n)) return n;
+            }
+            const r = parseFloat(el.value);
+            return Number.isFinite(r) ? r : 0;
+        }
+        if (el.type === 'number') {
+            const n = parseFloat(el.value);
+            return Number.isFinite(n) ? n : 0;
+        }
         if (el.type === 'color') {
             if (el.dataset?.gradientValue) return el.dataset.gradientValue;
             if (el._ropHexInput && typeof el._ropHexInput.value === 'string' && el._ropHexInput.value.includes(',')) {
@@ -5431,6 +5596,8 @@ class ReelsOverlayPanel {
 
     _syncFromOverlay(ov) {
         if (!ov) return;
+        if (ov.type === 'scroll') ov.fixed_text = false;
+        this._val('rop-fixed-text', ov.type === 'scroll' ? false : Boolean(ov.fixed_text));
         if (ov.type === 'scroll' || ov.type === 'decor') {
             this._val('rop-x', Math.round(ov.x));
             this._val('rop-y', Math.round(ov.y));
@@ -5936,14 +6103,15 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-offset-x', ov.scroll_offset_x ?? 0);
             this._val('rop-scroll-offset-y', ov.scroll_offset_y ?? 0);
             // scroll_speed 已移除，速度由 距离÷时间 自动决定
-            this._val('rop-scroll-feather-top', Math.max(0, Number(ov.feather_top ?? 80) || 0));
-            this._val('rop-scroll-feather-bottom', Math.max(0, Number(ov.feather_bottom ?? 80) || 0));
-            this._val('rop-scroll-feather-top-offset', Math.max(0, Number(ov.feather_top_offset ?? 0) || 0));
-            this._val('rop-scroll-feather-bottom-offset', Math.max(0, Number(ov.feather_bottom_offset ?? 0) || 0));
-            this._val('rop-scroll-feather-left', Math.max(0, Number(ov.feather_left ?? 0) || 0));
-            this._val('rop-scroll-feather-right', Math.max(0, Number(ov.feather_right ?? 0) || 0));
-            this._val('rop-scroll-feather-left-offset', Math.max(0, Number(ov.feather_left_offset ?? 0) || 0));
-            this._val('rop-scroll-feather-right-offset', Math.max(0, Number(ov.feather_right_offset ?? 0) || 0));
+            this._val('rop-scroll-feather-mode', ov.feather_mode || 'content');
+            this._val('rop-scroll-feather-top', Number.isFinite(Number(ov.feather_top)) ? Number(ov.feather_top) : 80);
+            this._val('rop-scroll-feather-bottom', Number.isFinite(Number(ov.feather_bottom)) ? Number(ov.feather_bottom) : 80);
+            this._val('rop-scroll-feather-top-offset', Number.isFinite(Number(ov.feather_top_offset)) ? Number(ov.feather_top_offset) : 0);
+            this._val('rop-scroll-feather-bottom-offset', Number.isFinite(Number(ov.feather_bottom_offset)) ? Number(ov.feather_bottom_offset) : 0);
+            this._val('rop-scroll-feather-left', Number.isFinite(Number(ov.feather_left)) ? Number(ov.feather_left) : 0);
+            this._val('rop-scroll-feather-right', Number.isFinite(Number(ov.feather_right)) ? Number(ov.feather_right) : 0);
+            this._val('rop-scroll-feather-left-offset', Number.isFinite(Number(ov.feather_left_offset)) ? Number(ov.feather_left_offset) : 0);
+            this._val('rop-scroll-feather-right-offset', Number.isFinite(Number(ov.feather_right_offset)) ? Number(ov.feather_right_offset) : 0);
             this._val('rop-scroll-auto-stop', ov.scroll_auto_stop === true);
             this._val('rop-scroll-auto-stop-lead', ov.scroll_auto_stop_lead ?? 0);
             this._val('rop-scroll-static', ov.scroll_static === true);
@@ -6055,7 +6223,7 @@ class ReelsOverlayPanel {
         }
 
         // Fixed text flag
-        this._val('rop-fixed-text', ov.fixed_text || false);
+        this._val('rop-fixed-text', ov.type === 'scroll' ? false : (ov.fixed_text || false));
         
         // ⏱ 文字翻转器 (Dynamic Flipper) 同步
         const hasFlipper = ov.type === 'text' || ov.type === 'textcard';
@@ -6580,14 +6748,15 @@ class ReelsOverlayPanel {
             ov.scroll_offset_x = this._get('rop-scroll-offset-x') ?? 0;
             ov.scroll_offset_y = this._get('rop-scroll-offset-y') ?? 0;
             ov.scroll_speed = 1;  // 固定为1，速度由 距离÷时间 自动决定
-            ov.feather_top = Math.max(0, Number(this._get('rop-scroll-feather-top')) || 0);
-            ov.feather_bottom = Math.max(0, Number(this._get('rop-scroll-feather-bottom')) || 0);
-            ov.feather_top_offset = Math.max(0, Number(this._get('rop-scroll-feather-top-offset')) || 0);
-            ov.feather_bottom_offset = Math.max(0, Number(this._get('rop-scroll-feather-bottom-offset')) || 0);
-            ov.feather_left = Math.max(0, Number(this._get('rop-scroll-feather-left')) || 0);
-            ov.feather_right = Math.max(0, Number(this._get('rop-scroll-feather-right')) || 0);
-            ov.feather_left_offset = Math.max(0, Number(this._get('rop-scroll-feather-left-offset')) || 0);
-            ov.feather_right_offset = Math.max(0, Number(this._get('rop-scroll-feather-right-offset')) || 0);
+            ov.feather_mode = this._get('rop-scroll-feather-mode') || 'content';
+            ov.feather_top = Number(this._get('rop-scroll-feather-top')) || 0;
+            ov.feather_bottom = Number(this._get('rop-scroll-feather-bottom')) || 0;
+            ov.feather_top_offset = Number(this._get('rop-scroll-feather-top-offset')) || 0;
+            ov.feather_bottom_offset = Number(this._get('rop-scroll-feather-bottom-offset')) || 0;
+            ov.feather_left = Number(this._get('rop-scroll-feather-left')) || 0;
+            ov.feather_right = Number(this._get('rop-scroll-feather-right')) || 0;
+            ov.feather_left_offset = Number(this._get('rop-scroll-feather-left-offset')) || 0;
+            ov.feather_right_offset = Number(this._get('rop-scroll-feather-right-offset')) || 0;
             ov.scroll_auto_stop = this._get('rop-scroll-auto-stop');
             ov.scroll_auto_stop_lead = parseFloat(this._get('rop-scroll-auto-stop-lead')) || 0;
             ov.scroll_static = this._get('rop-scroll-static');
@@ -6705,7 +6874,7 @@ class ReelsOverlayPanel {
         ov.cta_loop_anim = this._get('rop-anim-loop') || 'none';
 
         // Fixed text and name flags
-        ov.fixed_text = this._get('rop-fixed-text');
+        ov.fixed_text = ov.type === 'scroll' ? false : this._get('rop-fixed-text');
         const endNameVal = this._get('rop-name');
         if (endNameVal !== undefined) ov.name = endNameVal || '';
 
@@ -7017,7 +7186,7 @@ class ReelsOverlayPanel {
     _extractScrollStyle(ov) {
         // Extract scroll overlay style properties (excludes text content)
         const keys = [
-            'name', 'fixed_text', 'disabled', 'start', 'end',
+            'name', 'disabled', 'start', 'end',
             'x', 'y', 'w', 'h', 'rotation', 'opacity',
             // 标题样式
             'scroll_title_fontsize', 'scroll_title_font_family', 'scroll_title_font_weight',
@@ -7058,6 +7227,7 @@ class ReelsOverlayPanel {
             'scroll_tw_cursor_image', 'scroll_tw_cursor_anchor_x', 'scroll_tw_cursor_anchor_y',
             'scroll_style_preset_id',
             // 羽化
+            'feather_mode',
             'feather_top', 'feather_bottom', 'feather_top_offset', 'feather_bottom_offset',
             'feather_left', 'feather_right', 'feather_left_offset', 'feather_right_offset',
             // 卡片背景
@@ -7071,10 +7241,7 @@ class ReelsOverlayPanel {
             // 动画
             'anim_in_type', 'anim_out_type', 'anim_in_duration', 'anim_out_duration', 'cta_loop_anim',
         ];
-        if (ov.fixed_text) {
-            keys.push('scroll_title', 'content', 'scroll_title_styled_ranges', 'scroll_styled_ranges');
-        }
-        const result = {};
+        const result = { fixed_text: false };
         for (const k of keys) {
             if (ov[k] !== undefined) result[k] = ov[k];
         }
@@ -7098,10 +7265,12 @@ class ReelsOverlayPanel {
             delete styleObj.scroll_end_auto;
 
             scopedTasks.forEach(task => {
+                if (Array.isArray(task?.overlays)) this._sanitizeScrollOverlayList(task.overlays);
                 const targetOv = this._findMatchingOverlayInTask(task, ov);
                 if (targetOv && targetOv !== ov) {
                     const styleCopy = JSON.parse(JSON.stringify(styleObj));
                     Object.assign(targetOv, styleCopy);
+                    targetOv.fixed_text = false;
                     // Styling must not reset a target task's own manual scroll timing.
                 }
             });

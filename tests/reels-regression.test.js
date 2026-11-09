@@ -2184,7 +2184,7 @@ test('Christmas writing pens, subtitle ribbon bands, ornaments, and presets are 
     assert.equal(typeof sandbox.window.ReelsOverlay.createDecorOverlay, 'function', 'ReelsOverlay.createDecorOverlay must exist');
     assert.equal(typeof sandbox.window.ReelsOverlay.applyDecorStylePreset, 'function', 'ReelsOverlay.applyDecorStylePreset must exist');
     const decorStyles = sandbox.window.ReelsOverlay.DECOR_OVERLAY_STYLES;
-    assert.equal(Object.keys(decorStyles).length, 30, 'DECOR_OVERLAY_STYLES must provide 30 built-in embellishment & grain styles');
+    assert.equal(Object.keys(decorStyles).length, 34, 'DECOR_OVERLAY_STYLES must provide 34 built-in embellishment & grain styles (including 4 Veterans Day styles)');
     for (const styleKey of Object.keys(decorStyles)) {
         const decorOv = sandbox.window.ReelsOverlay.createDecorOverlay({
             decor_style: styleKey,
@@ -2890,6 +2890,98 @@ test('Cloudflare Hub service parses Google Drive share links, relinks local medi
     assert.ok(batchTableSrc.includes('window.openCloudHubDialog = async function'), 'openCloudHubDialog must be defined in reels-batch-table.js');
     assert.ok(batchTableSrc.includes('settings/cloud-hub/download-project'), 'Cloud Hub dialog must wire up Google Drive project download');
 });
+
+test('Scroll feather slider+manual negative input UI and Batch Table in-place scroll content update without duplicate overlays', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    // 1. All 8 scroll feather controls must use .rop-slider-combo (range slider + .rop-num-readout manual input) and allow negative values
+    for (const fid of [
+        'rop-scroll-feather-top',
+        'rop-scroll-feather-top-offset',
+        'rop-scroll-feather-bottom',
+        'rop-scroll-feather-bottom-offset',
+        'rop-scroll-feather-left',
+        'rop-scroll-feather-left-offset',
+        'rop-scroll-feather-right',
+        'rop-scroll-feather-right-offset',
+    ]) {
+        assert.ok(
+            panelSrc.includes(`type="range" id="${fid}"`) && panelSrc.includes(`class="rop-num-readout" data-link="${fid}"`),
+            `Scroll feather control ${fid} must provide both a range slider and a manual number input box (.rop-num-readout)`
+        );
+    }
+    assert.ok(panelSrc.includes('id="rop-scroll-feather-mode"'), 'Scroll feather panel must include #rop-scroll-feather-mode selector');
+    assert.ok(panelSrc.includes('rop-scroll-feather-preset'), 'Scroll feather panel must include .rop-scroll-feather-preset quick buttons');
+
+    // 2. Verify negative feather and negative offset support in ReelsOverlay
+    const ovSandbox = loadBrowserScript('src/reels-overlay.js', {});
+    const ReelsOverlay = ovSandbox.window.ReelsOverlay;
+    const axisNeg = ReelsOverlay._computeScrollFeatherAxis(600, -50, -80, 100, -40);
+    assert.equal(axisNeg.sFeather, 80, 'Negative feather (-80) must preserve 80px feather width');
+    assert.equal(axisNeg.expandStart, 130, 'Negative offset (-50) + negative feather (-80) must compute 130px outward expansion');
+    assert.equal(axisNeg.expandEnd, 40, 'Negative end offset (-40) must compute 40px outward expansion');
+
+    // 3. Verify Batch Table updates existing locked/styled scroll overlay in-place and auto-heals accidental duplicate default scroll overlays
+    const btSandbox = loadBrowserScript('src/reels-task-derivation.js', {
+        window: { addEventListener() {}, ReelsOverlay },
+        localStorage: { getItem: () => null, setItem() {} },
+        document: {
+            addEventListener() {},
+            getElementById: () => null,
+            createElement: () => ({ style: {}, appendChild() {}, querySelector: () => null, querySelectorAll: () => [] }),
+            body: { appendChild() {} },
+        },
+    });
+    loadBrowserScript('src/reels-batch-table.js', btSandbox);
+
+    const taskWithPollutedDup = {
+        id: 'task_341',
+        overlays: [
+            {
+                id: 'ov_styled_vet',
+                type: 'scroll',
+                fixed_text: true, // accidentally locked by old decor/panel sync
+                font_family: 'Playfair Display',
+                fontsize: 52,
+                color: '#FFFDF9',
+                scroll_body_bg_enabled: true,
+                scroll_body_bg_style: 'vet_stars_stripes_ribbon',
+                content: 'Old Veterans Day script',
+                scroll_styled_ranges: [{ start: 0, end: 8, style: { color: '#FBBF24' } }],
+            },
+            {
+                id: 'ov_accidental_default',
+                type: 'scroll',
+                fixed_text: false,
+                font_family: 'Arial',
+                fontsize: 40,
+                color: '#ffffff',
+                content: 'Veterans Day is right around the corner!',
+            },
+        ],
+    };
+
+    btSandbox.window._applyOverlayFieldWithTarget(
+        taskWithPollutedDup,
+        'scroll_body',
+        'Behind our freedom is their sacrifice. Our hearts are full of gratitude.',
+        'ov_styled_vet',
+        0,
+        'scroll'
+    );
+
+    const remainingScrolls = taskWithPollutedDup.overlays.filter(o => o.type === 'scroll');
+    assert.equal(remainingScrolls.length, 1, 'Accidental duplicate default scroll overlay must be removed and no new scroll overlay added');
+    assert.equal(remainingScrolls[0].id, 'ov_styled_vet', 'Styled scroll overlay must be preserved');
+    assert.equal(remainingScrolls[0].fixed_text, false, 'Scroll overlay must be unlocked (fixed_text = false)');
+    assert.equal(remainingScrolls[0].scroll_body_bg_style, 'vet_stars_stripes_ribbon', 'Styled ribbon backing must remain intact');
+    assert.equal(
+        remainingScrolls[0].content,
+        'Behind our freedom is their sacrifice. Our hearts are full of gratitude.',
+        'Edited scroll_body from Batch Table must update the styled scroll overlay in-place'
+    );
+    assert.equal(remainingScrolls[0].scroll_styled_ranges, null, 'Stale styled ranges must be cleared when scroll content changes');
+});
+
 
 
 

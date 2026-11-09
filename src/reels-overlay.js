@@ -1081,8 +1081,15 @@ function createScrollOverlay(opts = {}) {
         bg_blur_enabled: opts.bg_blur_enabled ?? false,
         bg_blur_amount: opts.bg_blur_amount ?? 10,             // 模糊强度 px (1-30)
         // 羽化
+        feather_mode: opts.feather_mode || 'content',
         feather_top: opts.feather_top ?? 80,
         feather_bottom: opts.feather_bottom ?? 80,
+        feather_top_offset: opts.feather_top_offset ?? 0,
+        feather_bottom_offset: opts.feather_bottom_offset ?? 0,
+        feather_left: opts.feather_left ?? 0,
+        feather_right: opts.feather_right ?? 0,
+        feather_left_offset: opts.feather_left_offset ?? 0,
+        feather_right_offset: opts.feather_right_offset ?? 0,
         // 整体偏移（裁切区+滚动坐标一起移动）
         scroll_offset_x: opts.scroll_offset_x ?? 0,
         scroll_offset_y: opts.scroll_offset_y ?? 0,
@@ -4699,7 +4706,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 const fBotOff = Math.max(0, parseFloat(ov.feather_bottom_offset ?? 0));
                 const safeTopY = bodyClipTopBase + fTopOff + fTop * 0.55;
                 const safeBotY = bodyClipBotBase - fBotOff - fBot * 0.55 - lineHeight * 0.15;
-                if (safeBotY > safeTopY + lineHeight) {
+                if ((_isRealExportEarly || _isPlayingEarly) && safeBotY > safeTopY + lineHeight) {
                     const topGuardLine = Math.max(0, smoothActiveLine - 0.8);
                     const minCurYForSpeechNotCutTop = safeTopY - topGuardLine * lineHeight;
                     const botGuardLine = Math.min(lines.length, smoothActiveLine + 1.15);
@@ -4907,14 +4914,73 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         ctx.restore();
     }
 
-    const featherTop     = Math.max(0, parseFloat(ov.feather_top ?? 0) || 0);
-    const featherBottom  = Math.max(0, parseFloat(ov.feather_bottom ?? 0) || 0);
-    const featherTopOff  = Math.max(0, parseFloat(ov.feather_top_offset ?? 0) || 0);
-    const featherBotOff  = Math.max(0, parseFloat(ov.feather_bottom_offset ?? 0) || 0);
-    const featherLeft    = Math.max(0, parseFloat(ov.feather_left ?? 0) || 0);
-    const featherRight   = Math.max(0, parseFloat(ov.feather_right ?? 0) || 0);
-    const featherLeftOff = Math.max(0, parseFloat(ov.feather_left_offset ?? 0) || 0);
-    const featherRightOff = Math.max(0, parseFloat(ov.feather_right_offset ?? 0) || 0);
+    const rawFeatherTop      = parseFloat(ov.feather_top ?? 0) || 0;
+    const rawFeatherBottom   = parseFloat(ov.feather_bottom ?? 0) || 0;
+    const rawFeatherTopOff   = parseFloat(ov.feather_top_offset ?? 0) || 0;
+    const rawFeatherBotOff   = parseFloat(ov.feather_bottom_offset ?? 0) || 0;
+    const rawFeatherLeft     = parseFloat(ov.feather_left ?? 0) || 0;
+    const rawFeatherRight    = parseFloat(ov.feather_right ?? 0) || 0;
+    const rawFeatherLeftOff  = parseFloat(ov.feather_left_offset ?? 0) || 0;
+    const rawFeatherRightOff = parseFloat(ov.feather_right_offset ?? 0) || 0;
+
+    const featherTop      = Math.abs(rawFeatherTop);
+    const featherBottom   = Math.abs(rawFeatherBottom);
+    const featherTopOff   = rawFeatherTopOff + (rawFeatherTop < 0 ? rawFeatherTop : 0);
+    const featherBotOff   = rawFeatherBotOff + (rawFeatherBottom < 0 ? rawFeatherBottom : 0);
+    const featherLeft     = Math.abs(rawFeatherLeft);
+    const featherRight    = Math.abs(rawFeatherRight);
+    const featherLeftOff  = rawFeatherLeftOff + (rawFeatherLeft < 0 ? rawFeatherLeft : 0);
+    const featherRightOff = rawFeatherRightOff + (rawFeatherRight < 0 ? rawFeatherRight : 0);
+    const featherMode     = ov.feather_mode || 'content';
+    const _bodyPadHForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_h ?? 16)) : 6;
+    const _bodyPadTForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_top ?? 10)) : 6;
+    const _bodyPadBForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_bottom ?? 10)) : 6;
+    let _lastFeatherGuideRect = null;
+
+    const _resolveFeatherWindow = (baseX, baseY, baseW, baseH, blockStartY, blockContentH) => {
+        const expL = Math.max(0, -featherLeftOff);
+        const expR = Math.max(0, -featherRightOff);
+        const expT = Math.max(0, -featherTopOff);
+        const expB = Math.max(0, -featherBotOff);
+        const drawX = baseX - expL;
+        const drawY = baseY - expT;
+        const cW = Math.max(1, Math.ceil(baseW + expL + expR));
+        const cH = Math.max(1, Math.ceil(baseH + expT + expB));
+        const inLOff = Math.max(0, featherLeftOff);
+        const inROff = Math.max(0, featherRightOff);
+        const inTOff = Math.max(0, featherTopOff);
+        const inBOff = Math.max(0, featherBotOff);
+
+        const localBlockX = curX - drawX;
+        const localBlockY = blockStartY - drawY;
+        let gradY0 = 0;
+        let gradY1 = cH;
+        let gradX0 = 0;
+        let gradX1 = cW;
+        if (featherMode !== 'clip') {
+            gradY0 = Math.max(0, Math.min(cH - 16, localBlockY - _bodyPadTForFeather - expT));
+            gradY1 = Math.max(gradY0 + 16, Math.min(cH, localBlockY + blockContentH + _bodyPadBForFeather + expB));
+            gradX0 = Math.max(0, Math.min(cW - 16, localBlockX - _bodyPadHForFeather - expL));
+            gradX1 = Math.max(gradX0 + 16, Math.min(cW, localBlockX + textW + _bodyPadHForFeather + expR));
+        }
+        _lastFeatherGuideRect = {
+            x0: drawX + gradX0,
+            x1: drawX + gradX1,
+            y0: drawY + gradY0,
+            y1: drawY + gradY1,
+            inTOff,
+            inBOff,
+            inLOff,
+            inROff,
+        };
+        return {
+            drawX, drawY, cW, cH,
+            inLOff, inROff, inTOff, inBOff,
+            gradX0, gradX1, gradY0, gradY1,
+            spanX: Math.max(1, gradX1 - gradX0),
+            spanY: Math.max(1, gradY1 - gradY0),
+        };
+    };
     const _acquireFeatherCanvas = (w, h) => {
         if (!ov._featherCanvas) ov._featherCanvas = document.createElement('canvas');
         const tmp = ov._featherCanvas;
@@ -5171,25 +5237,27 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 bodyClipY, bodyClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
             );
             const ovProxy = Object.assign({}, ov, { _skipTitle: true, _skipBodyBlockBg: Boolean(_drewBodyBlockBg) });
-            const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff > 0 || featherBotOff > 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0;
+            const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
+            const bodyOnlyContentH = Math.max(lineHeight, bodyBottomOffset - movingTitleH);
+            const fWin = _resolveFeatherWindow(clipX, bodyClipY, clipW, bodyClipH, curY, bodyOnlyContentH);
             if (hasFeather) {
-                const cW = Math.ceil(clipW), cH = Math.ceil(bodyClipH);
+                const { drawX, drawY, cW, cH, inLOff, inROff, inTOff, inBOff, gradX0, gradX1, gradY0, gradY1, spanX, spanY } = fWin;
                 const { tmp, tc } = _acquireFeatherCanvas(cW, cH);
                 tc.font = fontStr;
-                const offX = curX - clipX;
-                const offY = curY - bodyClipY;
+                const offX = curX - drawX;
+                const offY = curY - drawY;
                 _drawScrollTextBlock(tc, ovProxy, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
 
                 // 渐变遮罩：固定标题只作用于正文裁切区，标题本身不参与羽化。
                 tc.globalCompositeOperation = 'destination-in';
-                const grad = tc.createLinearGradient(0, 0, 0, cH);
-                _applyScrollFeatherGradientStops(grad, cH, featherTopOff, featherTop, featherBottom, featherBotOff);
+                const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
+                _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
                 tc.fillStyle = grad;
                 tc.fillRect(0, 0, cW, cH);
                 
-                if (featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0) {
-                    const gradX = tc.createLinearGradient(0, 0, cW, 0);
-                    _applyScrollFeatherGradientStops(gradX, cW, featherLeftOff, featherLeft, featherRight, featherRightOff);
+                if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
+                    const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
+                    _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
                     tc.fillStyle = gradX;
                     tc.fillRect(0, 0, cW, cH);
                 }
@@ -5197,15 +5265,15 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
                     if (!_drewBodyBlockBg.clippedEmpty) {
                         ctx.save();
-                        const cx = Math.min(clipX, _drewBodyBlockBg.x);
-                        const cw = Math.max(clipX + clipW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
+                        const cx = Math.min(drawX, _drewBodyBlockBg.x);
+                        const cw = Math.max(drawX + cW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
                         _roundRect(ctx, cx, _drewBodyBlockBg.y, cw, _drewBodyBlockBg.h, _drewBodyBlockBg.r);
                         ctx.clip();
-                        ctx.drawImage(tmp, clipX, bodyClipY);
+                        ctx.drawImage(tmp, drawX, drawY);
                         ctx.restore();
                     }
                 } else {
-                    ctx.drawImage(tmp, clipX, bodyClipY);
+                    ctx.drawImage(tmp, drawX, drawY);
                 }
             } else {
                 ctx.save();
@@ -5219,7 +5287,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                     }
                 } else {
                     ctx.beginPath();
-                    ctx.rect(clipX, bodyClipY, clipW, bodyClipH);
+                    ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
                     ctx.clip();
                     _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
                 }
@@ -5239,25 +5307,27 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ? ov._taskSegments
             : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
         const _twContext = { currentTime, start, end, effectiveDuration, segments: _twSegments };
-        const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff > 0 || featherBotOff > 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0;
+        const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
+        const fullContentH = Math.max(lineHeight, bodyBottomOffset);
+        const fWin = _resolveFeatherWindow(clipX, effClipY, clipW, effClipH, curY, fullContentH);
         if (hasFeather) {
-            const cW = Math.ceil(clipW), cH = Math.ceil(effClipH);
+            const { drawX, drawY, cW, cH, inLOff, inROff, inTOff, inBOff, gradX0, gradX1, gradY0, gradY1, spanX, spanY } = fWin;
             const { tmp, tc } = _acquireFeatherCanvas(cW, cH);
             tc.font = fontStr;
 
-            const offX = curX - clipX;
-            const offY = curY - effClipY;
+            const offX = curX - drawX;
+            const offY = curY - drawY;
             _drawScrollTextBlock(tc, ovForBlock, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
 
             tc.globalCompositeOperation = 'destination-in';
-            const grad = tc.createLinearGradient(0, 0, 0, cH);
-            _applyScrollFeatherGradientStops(grad, cH, featherTopOff, featherTop, featherBottom, featherBotOff);
+            const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
+            _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
             tc.fillStyle = grad;
             tc.fillRect(0, 0, cW, cH);
             
-            if (featherLeft > 0 || featherRight > 0 || featherLeftOff > 0 || featherRightOff > 0) {
-                const gradX = tc.createLinearGradient(0, 0, cW, 0);
-                _applyScrollFeatherGradientStops(gradX, cW, featherLeftOff, featherLeft, featherRight, featherRightOff);
+            if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
+                const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
+                _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
                 tc.fillStyle = gradX;
                 tc.fillRect(0, 0, cW, cH);
             }
@@ -5265,15 +5335,15 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             if (_drewBodyBlockBg2 && typeof _drewBodyBlockBg2 === 'object') {
                 if (!_drewBodyBlockBg2.clippedEmpty) {
                     ctx.save();
-                    const cx = Math.min(clipX, _drewBodyBlockBg2.x);
-                    const cw = Math.max(clipX + clipW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
+                    const cx = Math.min(drawX, _drewBodyBlockBg2.x);
+                    const cw = Math.max(drawX + cW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
                     _roundRect(ctx, cx, _drewBodyBlockBg2.y, cw, _drewBodyBlockBg2.h, _drewBodyBlockBg2.r);
                     ctx.clip();
-                    ctx.drawImage(tmp, clipX, effClipY);
+                    ctx.drawImage(tmp, drawX, drawY);
                     ctx.restore();
                 }
             } else {
-                ctx.drawImage(tmp, clipX, effClipY);
+                ctx.drawImage(tmp, drawX, drawY);
             }
         } else {
             ctx.save();
@@ -5287,7 +5357,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 }
             } else {
                 ctx.beginPath();
-                ctx.rect(clipX, effClipY, clipW, effClipH);
+                ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
                 ctx.clip();
                 _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
             }
@@ -5297,51 +5367,56 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     // ── 预览辅助线 ──
     if (!ov._exporting) {
+        const gRect = _lastFeatherGuideRect || {
+            x0: clipX, x1: clipX + clipW, y0: clipY, y1: clipY + clipH,
+            inTOff: Math.max(0, featherTopOff), inBOff: Math.max(0, featherBotOff),
+            inLOff: Math.max(0, featherLeftOff), inROff: Math.max(0, featherRightOff),
+        };
         ctx.save();
         ctx.setLineDash([8, 4]);
         ctx.strokeStyle = '#FF6B35';
         ctx.lineWidth = 1.5;
         ctx.globalAlpha = 0.5;
         ctx.strokeRect(clipX, clipY, clipW, clipH);
-        if (featherTopOff > 0) {
-            ctx.strokeStyle = '#FF4444'; ctx.setLineDash([2, 2]); // Red dashed for total transparency zone
-            ctx.beginPath(); ctx.moveTo(clipX, clipY + featherTopOff);
-            ctx.lineTo(clipX + clipW, clipY + featherTopOff); ctx.stroke();
+        if (featherTopOff !== 0) {
+            ctx.strokeStyle = '#FF4444'; ctx.setLineDash([2, 2]);
+            ctx.beginPath(); ctx.moveTo(clipX, gRect.y0 + gRect.inTOff);
+            ctx.lineTo(clipX + clipW, gRect.y0 + gRect.inTOff); ctx.stroke();
         }
         if (featherTop > 0) {
             ctx.strokeStyle = '#FFD700'; ctx.setLineDash([4, 4]);
-            ctx.beginPath(); ctx.moveTo(clipX, clipY + featherTop + featherTopOff);
-            ctx.lineTo(clipX + clipW, clipY + featherTop + featherTopOff); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(clipX, gRect.y0 + gRect.inTOff + featherTop);
+            ctx.lineTo(clipX + clipW, gRect.y0 + gRect.inTOff + featherTop); ctx.stroke();
         }
-        if (featherBotOff > 0) {
+        if (featherBotOff !== 0) {
             ctx.strokeStyle = '#FF4444'; ctx.setLineDash([2, 2]);
-            ctx.beginPath(); ctx.moveTo(clipX, clipY + clipH - featherBotOff);
-            ctx.lineTo(clipX + clipW, clipY + clipH - featherBotOff); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(clipX, gRect.y1 - gRect.inBOff);
+            ctx.lineTo(clipX + clipW, gRect.y1 - gRect.inBOff); ctx.stroke();
         }
         if (featherBottom > 0) {
             ctx.strokeStyle = '#FFD700'; ctx.setLineDash([4, 4]);
-            ctx.beginPath(); ctx.moveTo(clipX, clipY + clipH - featherBottom - featherBotOff);
-            ctx.lineTo(clipX + clipW, clipY + clipH - featherBottom - featherBotOff); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(clipX, gRect.y1 - gRect.inBOff - featherBottom);
+            ctx.lineTo(clipX + clipW, gRect.y1 - gRect.inBOff - featherBottom); ctx.stroke();
         }
-        if (featherLeftOff > 0) {
+        if (featherLeftOff !== 0) {
             ctx.strokeStyle = '#FF4444'; ctx.setLineDash([2, 2]);
-            ctx.beginPath(); ctx.moveTo(clipX + featherLeftOff, clipY);
-            ctx.lineTo(clipX + featherLeftOff, clipY + clipH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(gRect.x0 + gRect.inLOff, clipY);
+            ctx.lineTo(gRect.x0 + gRect.inLOff, clipY + clipH); ctx.stroke();
         }
         if (featherLeft > 0) {
             ctx.strokeStyle = '#FFD700'; ctx.setLineDash([4, 4]);
-            ctx.beginPath(); ctx.moveTo(clipX + featherLeft + featherLeftOff, clipY);
-            ctx.lineTo(clipX + featherLeft + featherLeftOff, clipY + clipH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(gRect.x0 + gRect.inLOff + featherLeft, clipY);
+            ctx.lineTo(gRect.x0 + gRect.inLOff + featherLeft, clipY + clipH); ctx.stroke();
         }
-        if (featherRightOff > 0) {
+        if (featherRightOff !== 0) {
             ctx.strokeStyle = '#FF4444'; ctx.setLineDash([2, 2]);
-            ctx.beginPath(); ctx.moveTo(clipX + clipW - featherRightOff, clipY);
-            ctx.lineTo(clipX + clipW - featherRightOff, clipY + clipH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(gRect.x1 - gRect.inROff, clipY);
+            ctx.lineTo(gRect.x1 - gRect.inROff, clipY + clipH); ctx.stroke();
         }
         if (featherRight > 0) {
             ctx.strokeStyle = '#FFD700'; ctx.setLineDash([4, 4]);
-            ctx.beginPath(); ctx.moveTo(clipX + clipW - featherRight - featherRightOff, clipY);
-            ctx.lineTo(clipX + clipW - featherRight - featherRightOff, clipY + clipH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(gRect.x1 - gRect.inROff - featherRight, clipY);
+            ctx.lineTo(gRect.x1 - gRect.inROff - featherRight, clipY + clipH); ctx.stroke();
         }
         ctx.setLineDash([]);
         ctx.font = '20px sans-serif';
@@ -6225,10 +6300,16 @@ function _drawScrollTitleBackground(ctx, ov, titleLines, titleDrawX, titleDrawY,
 
 function _computeScrollFeatherAxis(span, rawStartOff, rawStartFeather, rawEndFeather, rawEndOff) {
     const safeSpan = Math.max(1, Number(span) || 1);
-    let sOff = Math.max(0, Number(rawStartOff) || 0);
-    let eOff = Math.max(0, Number(rawEndOff) || 0);
-    let sFeather = Math.max(0, Number(rawStartFeather) || 0);
-    let eFeather = Math.max(0, Number(rawEndFeather) || 0);
+    const sfRaw = Number(rawStartFeather) || 0;
+    const efRaw = Number(rawEndFeather) || 0;
+    const soRaw = (Number(rawStartOff) || 0) + (sfRaw < 0 ? sfRaw : 0);
+    const eoRaw = (Number(rawEndOff) || 0) + (efRaw < 0 ? efRaw : 0);
+    let sOff = Math.max(0, soRaw);
+    let eOff = Math.max(0, eoRaw);
+    let sFeather = Math.max(0, Math.abs(sfRaw));
+    let eFeather = Math.max(0, Math.abs(efRaw));
+    const expandStart = Math.max(0, -soRaw);
+    const expandEnd = Math.max(0, -eoRaw);
 
     const minWin = Math.min(safeSpan * 0.5, Math.max(40, safeSpan * 0.2));
     const maxTotalOff = Math.max(0, safeSpan - minWin);
@@ -6256,6 +6337,8 @@ function _computeScrollFeatherAxis(span, rawStartOff, rawStartFeather, rawEndFea
         eOff,
         sFeather,
         eFeather,
+        expandStart,
+        expandEnd,
         startZeroRatio,
         startOneRatio,
         endOneRatio,
@@ -11783,6 +11866,7 @@ const ReelsOverlay = {
     OverlayManager,
     ReelsBrushEngine,
     _resolveOverlayTextFill,
+    _computeScrollFeatherAxis,
 };
 
 if (typeof window !== 'undefined') {

@@ -1401,6 +1401,12 @@ function _renderBatchTable() {
             : `⚠️ 已选任务使用 ${insertFolders.length} 个不同文件夹`;
 
     // ── 自动校验与初始化当前活跃的覆层图层 ──
+    for (const t of (state.tasks || [])) {
+        if (t) _normalizeTaskScrollOverlays(t);
+    }
+    if (state.selectedIdx >= 0) {
+        _syncSelectedTaskOverlayMgrIfNeeded(state.selectedIdx);
+    }
     const templateTask = state.tasks[state.selectedIdx] || state.tasks[0];
     const cardTemplateTask = (templateTask && (templateTask.overlays || []).some(o => _isBatchWritableOverlay(o) && (o.type === 'textcard' || !o.type || o.type === '')))
         ? templateTask
@@ -2329,17 +2335,69 @@ function _hydrateBatchVideoThumbnails(container) {
     });
 }
 
+function _isAccidentalDefaultScrollOverlay(ov) {
+    if (!ov || ov.type !== 'scroll') return false;
+    const isDefaultFont = !ov.font_family || ov.font_family === 'Arial';
+    const isDefaultSize = !ov.fontsize || Number(ov.fontsize) === 40;
+    const hasNoCustomStyle = !ov.scroll_body_bg_enabled
+        && !ov.bg_enabled
+        && !ov.scroll_title_bg_enabled
+        && !ov.scroll_style_preset_id
+        && !ov.preset_id
+        && !ov.use_stroke
+        && !ov.shadow_enabled
+        && !ov.scroll_typewriter_enabled;
+    return isDefaultFont && isDefaultSize && hasNoCustomStyle;
+}
+
+function _normalizeTaskScrollOverlays(task) {
+    if (!task || !Array.isArray(task.overlays) || task.overlays.length === 0) return;
+    const scrollList = task.overlays.filter(o => o && o.type === 'scroll' && !o.is_phone_cta);
+    if (scrollList.length === 0) return;
+    if (scrollList.length >= 2) {
+        const styledScroll = scrollList.find(o => o.fixed_text || !_isAccidentalDefaultScrollOverlay(o));
+        const accidentalScrolls = scrollList.filter(o => o !== styledScroll && !o.fixed_text && _isAccidentalDefaultScrollOverlay(o));
+        if (styledScroll && accidentalScrolls.length > 0 && !_isAccidentalDefaultScrollOverlay(styledScroll)) {
+            const newestAccidental = accidentalScrolls[accidentalScrolls.length - 1];
+            const isDefaultPlaceholder = (s) => {
+                const t = String(s || '').trim();
+                return !t || t === '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字';
+            };
+            if (newestAccidental.content && !isDefaultPlaceholder(newestAccidental.content)) {
+                styledScroll.content = newestAccidental.content;
+                styledScroll.scroll_styled_ranges = null;
+            }
+            if (newestAccidental.scroll_title && !isDefaultPlaceholder(newestAccidental.scroll_title)) {
+                styledScroll.scroll_title = newestAccidental.scroll_title;
+                styledScroll.scroll_title_styled_ranges = null;
+            }
+            styledScroll.fixed_text = false;
+            const removeSet = new Set(accidentalScrolls);
+            task.overlays = task.overlays.filter(o => !removeSet.has(o));
+        }
+    }
+    for (const o of task.overlays) {
+        if (o && o.type === 'scroll' && o.fixed_text) {
+            o.fixed_text = false;
+        }
+    }
+}
+
 function _isBatchWritableOverlay(ov) {
-    return !!(ov && !ov.fixed_text && !ov.is_phone_cta && ov.name !== '📞 邀约电话');
+    if (!ov || ov.is_phone_cta || ov.name === '📞 邀约电话') return false;
+    if (ov.type === 'scroll') return true;
+    return !ov.fixed_text;
 }
 
 function _getTemplateOverlaysForType(state, type) {
     if (!state) return [];
     const matchType = (o) => _isBatchWritableOverlay(o) && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === ''));
     const primaryTask = state.tasks?.[state.selectedIdx] || state.tasks?.[0];
+    if (type === 'scroll' && primaryTask) _normalizeTaskScrollOverlays(primaryTask);
     const primaryList = primaryTask ? (primaryTask.overlays || []).filter(matchType) : [];
     if (primaryList.length > 0) return primaryList;
     for (const t of (state.tasks || [])) {
+        if (type === 'scroll' && t) _normalizeTaskScrollOverlays(t);
         const list = (t?.overlays || []).filter(matchType);
         if (list.length > 0) return list;
     }
@@ -2369,11 +2427,13 @@ function _findBatchTextCardOverlay(task) {
 }
 
 function _findBatchScrollOverlay(task) {
+    if (task) _normalizeTaskScrollOverlays(task);
     return (task.overlays || []).find(o => o && _isBatchWritableOverlay(o) && o.type === 'scroll');
 }
 
 function _findBatchOverlayByIdOrIdx(task, id, name, idx, type) {
-    const list = (task.overlays || []).filter(o => o && !o.fixed_text && !o.is_phone_cta && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === '')));
+    if (type === 'scroll' && task) _normalizeTaskScrollOverlays(task);
+    const list = (task.overlays || []).filter(o => o && _isBatchWritableOverlay(o) && (type === 'scroll' ? o.type === 'scroll' : (o.type === 'textcard' || !o.type || o.type === '')));
     if (list.length === 0) return null;
     if (id && id !== 'default') {
         // 派生任务的实例 ID 必须唯一；_templateOverlayId 用来保持批量表格
@@ -2467,7 +2527,7 @@ function _collectBatchOverlayTextSlots(overlays) {
         scrollBody: [],
     };
     (overlays || []).forEach(ov => {
-        if (!ov || ov.fixed_text) return;
+        if (!ov || (ov.fixed_text && ov.type !== 'scroll')) return;
         if (ov.type === 'textcard' || !ov.type || ov.type === '') {
             if (ov.title_text != null) slots.title.push(ov.title_text);
             if (ov.body_text != null) slots.body.push(ov.body_text);
@@ -2491,6 +2551,7 @@ function _shiftFirstTextSlot(...lists) {
 
 function _applyOverlayField(task, fieldCategory, str) {
     if (!task.overlays) task.overlays = [];
+    _normalizeTaskScrollOverlays(task);
     
     let targetId = null;
     let baseCategory = fieldCategory;
@@ -2524,8 +2585,15 @@ function _applyOverlayField(task, fieldCategory, str) {
                 task.overlays.push(ov);
             }
         }
-        if (baseCategory === 'scroll_title') ov.scroll_title = str;
-        if (baseCategory === 'scroll_body') ov.content = str;
+        ov.fixed_text = false;
+        if (baseCategory === 'scroll_title') {
+            if (ov.scroll_title !== str) ov.scroll_title_styled_ranges = null;
+            ov.scroll_title = str;
+        }
+        if (baseCategory === 'scroll_body') {
+            if (ov.content !== str) ov.scroll_styled_ranges = null;
+            ov.content = str;
+        }
     } else if (baseCategory.startsWith('overlay_')) {
         let ov = _findBatchOverlayByIdOrIdx(task, targetId, null, null, 'textcard');
         if (!ov) {
@@ -2590,6 +2658,7 @@ function _applyOverlayField(task, fieldCategory, str) {
 
 function _applyOverlayFieldWithTarget(task, fieldCategory, str, id, idx, type) {
     if (!task.overlays) task.overlays = [];
+    if (type === 'scroll') _normalizeTaskScrollOverlays(task);
     let ov = _findBatchOverlayByIdOrIdx(task, id, null, idx, type);
     if (!ov) {
         const state = window._reelsState;
@@ -2627,11 +2696,18 @@ function _applyOverlayFieldWithTarget(task, fieldCategory, str, id, idx, type) {
         }
     }
 
+    if (type === 'scroll') ov.fixed_text = false;
     if (fieldCategory === 'overlay_title') ov.title_text = str;
     if (fieldCategory === 'overlay_body') ov.body_text = str;
     if (fieldCategory === 'overlay_footer') ov.footer_text = str;
-    if (fieldCategory === 'scroll_title') ov.scroll_title = str;
-    if (fieldCategory === 'scroll_body') ov.content = str;
+    if (fieldCategory === 'scroll_title') {
+        if (ov.scroll_title !== str) ov.scroll_title_styled_ranges = null;
+        ov.scroll_title = str;
+    }
+    if (fieldCategory === 'scroll_body') {
+        if (ov.content !== str) ov.scroll_styled_ranges = null;
+        ov.content = str;
+    }
     if (fieldCategory === 'overlay_flipper_enabled') {
         const lower = String(str).trim().toLowerCase();
         ov.flipper_enabled = (lower === 'true' || lower === '1' || lower === 'yes' || lower === '启用' || lower === '开启' || lower === 'on');
@@ -5861,21 +5937,23 @@ function _bindBatchTableEvents() {
                 break;
             case 'scroll_title':
                 if (task.overlays && task.overlays.length > 0) {
+                    _normalizeTaskScrollOverlays(task);
                     if (targetId) {
                         const ov = _findBatchOverlayByIdOrIdx(task, targetId, null, null, 'scroll');
-                        if (ov) ov.scroll_title = '';
+                        if (ov) { ov.scroll_title = ''; ov.scroll_title_styled_ranges = null; ov.fixed_text = false; }
                     } else {
-                        for (const ov of task.overlays) if (!ov.fixed_text && ov.type === 'scroll') ov.scroll_title = '';
+                        for (const ov of task.overlays) if (ov.type === 'scroll') { ov.scroll_title = ''; ov.scroll_title_styled_ranges = null; ov.fixed_text = false; }
                     }
                 }
                 break;
             case 'scroll_body':
                 if (task.overlays && task.overlays.length > 0) {
+                    _normalizeTaskScrollOverlays(task);
                     if (targetId) {
                         const ov = _findBatchOverlayByIdOrIdx(task, targetId, null, null, 'scroll');
-                        if (ov) ov.content = '';
+                        if (ov) { ov.content = ''; ov.scroll_styled_ranges = null; ov.fixed_text = false; }
                     } else {
-                        for (const ov of task.overlays) if (!ov.fixed_text && ov.type === 'scroll') ov.content = '';
+                        for (const ov of task.overlays) if (ov.type === 'scroll') { ov.content = ''; ov.scroll_styled_ranges = null; ov.fixed_text = false; }
                     }
                 }
                 break;
@@ -11255,6 +11333,7 @@ function _createNewTextRow(state, title, body, ReelsOverlay, footer, targetId = 
 // ── 辅助：设置滚动字幕文案 ──
 function _setTaskScrollText(task, title, body, ReelsOverlay, targetId = null, targetIdx = null) {
     if (!task.overlays) task.overlays = [];
+    _normalizeTaskScrollOverlays(task);
     let scrollOv = _findBatchOverlayByIdOrIdx(task, targetId, null, targetIdx, 'scroll');
     if (!scrollOv) {
         // Clone template scroll overlay if available
@@ -11278,6 +11357,9 @@ function _setTaskScrollText(task, title, body, ReelsOverlay, targetId = null, ta
         }
     }
     // 无论是刚从模板创建，还是已经存在，都必须写入当前行的新文案。
+    scrollOv.fixed_text = false;
+    if (scrollOv.scroll_title !== title) scrollOv.scroll_title_styled_ranges = null;
+    if (scrollOv.content !== body) scrollOv.scroll_styled_ranges = null;
     scrollOv.scroll_title = title;
     scrollOv.content = body;
 }
@@ -22208,3 +22290,6 @@ window.reelsEditWritingTask=function(idx){
     };
     document.body.appendChild(modal);
 };
+window._normalizeTaskScrollOverlays = _normalizeTaskScrollOverlays;
+window._applyOverlayField = _applyOverlayField;
+window._applyOverlayFieldWithTarget = _applyOverlayFieldWithTarget;
