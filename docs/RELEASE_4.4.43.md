@@ -1,18 +1,26 @@
-# VideoKit 4.5.3
+# VideoKit 4.5.4
 
 更新仓库：golsaysea/videokit-Y。
 
 ## 下载
 
-- **Windows x64**：`VideoKit-Setup-4.5.3.exe` 安装版，或 `VideoKit-Setup-4.5.3.zip` 便携版。
-- **macOS Apple Silicon（M 系列）**：`VideoKit-4.5.3-macOS-arm64.dmg` / `.zip`。
-- **macOS Intel**：`VideoKit-4.5.3-macOS-x64.dmg` / `.zip`。
-- **Linux x64**：`VideoKit-4.5.3-Linux-x64.AppImage`、`VideoKit-4.5.3-Linux-x64.deb`、`VideoKit-4.5.3-Linux-x64.tar.gz`。
+- **Windows x64**：`VideoKit-Setup-4.5.4.exe` 安装版，或 `VideoKit-Setup-4.5.4.zip` 便携版。
+- **macOS Apple Silicon（M 系列）**：`VideoKit-4.5.4-macOS-arm64.dmg` / `.zip`。
+- **macOS Intel**：`VideoKit-4.5.4-macOS-x64.dmg` / `.zip`。
+- **Linux x64**：`VideoKit-4.5.4-Linux-x64.AppImage`、`VideoKit-4.5.4-Linux-x64.deb`、`VideoKit-4.5.4-Linux-x64.tar.gz`。
 - 同时发布 Windows、macOS、Linux 自动更新元数据和 SHA256 校验清单。
 
-## 本次更新（v4.5.3 退伍军人节专题部件与滚动字幕样式库）
+## 本次更新（v4.5.4 滚动字幕羽化拉杆+正负数输入与批量表格滚动内容原位更新）
 
-- **🇺🇸 美国退伍军人节（Veterans Day）全套专题部件更新**：
+- **☁️ 滚动字幕「羽化」交互与渲染升级**：
+  - 8 项羽化参数（`上羽化`、`上羽化偏移`、`下羽化`、`下羽化偏移`、`左羽化`、`左羽化偏移`、`右羽化`、`右羽化偏移`）全面改为 **拉杆滑块 + 手动数字输入框 + `↺` 一键重置**，移除原输入框拖拽改值拦截。
+  - 全面支持 **正负数调节**（滑杆 `-300 ~ 500`，手动输入框 `-1000 ~ 1000`）：正数向内柔化/收缩边界，负数向外扩边放行。
+  - 新增 **「羽化基准」切换 (`#rop-scroll-feather-mode`)**：默认 **「🎯 贴合字幕边缘 (推荐·立即见效)」**，即使字幕未触及外层裁切框也能立即柔化可见字幕边缘；支持切换 **「📐 仅在裁切框边缘羽化」**。
+  - 新增 **5 款一键羽化快捷胶囊**：`🚫 关闭`、`☁️ 上下柔化`、`⬆️ 仅上羽化`、`⬇️ 仅下羽化`、`🖼️ 四周柔边`。
+- **📋 批量表格修改滚动内容原位更新 & 自动清理重复层**：
+  - 修复滚动字幕覆层因 `fixed_text` 锁定标记串入导致批量表格修改 `滚动内容` 时新增默认白字重复滚动层的问题。
+  - 自动检测并合并不小心生成的重复默认滚动层，将最新文案保留在原带样式滚动字幕层上并自动解锁。
+- **🇺🇸 美国退伍军人节（Veterans Day）全套专题部件（v4.5.3 包含）**：
   - **5 款退伍军人节专属矢量出字笔尖图标**：
     - `🇺🇸 美国星条旗荣耀盾徽` (`us_flag_shield`)
     - `🎖️ 紫心英勇勋章笔` (`purple_heart_medal`)

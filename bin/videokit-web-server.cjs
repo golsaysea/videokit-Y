@@ -312,9 +312,9 @@ async function handleWebBridgeRpc(method, params = {}) {
         case 'getAppVersion': {
             try {
                 const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
-                return pkg.version || '4.5.3';
+                return pkg.version || '4.5.4';
             } catch {
-                return '4.5.3';
+                return '4.5.4';
             }
         }
 
@@ -728,7 +728,7 @@ function createWebServer(options = {}) {
             sendJson(res, 200, {
                 status: 'ok',
                 mode: 'web-bridge',
-                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.3',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.4',
                 auth_required: Boolean(activeToken),
             });
             return;
