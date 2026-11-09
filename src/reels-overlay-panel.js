@@ -670,7 +670,7 @@ class ReelsOverlayPanel {
                 <!-- ✨ 点缀装饰图层属性 (decor覆层独有) -->
                 <div id="rop-decor-props" class="rop-group" style="display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
-                        <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (30款黑色模板/粒子/电影颗粒/圣诞)</div>
+                        <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (34款黑色模板/粒子/电影颗粒/圣诞/退伍军人节)</div>
                         <div style="display:flex;align-items:center;gap:6px;">
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-open-dedicated-decor-tab" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:1px solid #a78bfa;border-radius:5px;cursor:pointer;">✨ 切换到【点缀与颗粒】独立大面板</button>
                             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--text-primary);margin:0;">
@@ -686,7 +686,7 @@ class ReelsOverlayPanel {
                     </div>
 
                     <div class="rop-grid">
-                        <label>30款主题</label>
+                        <label>34款主题</label>
                         <select id="rop-decor-style" class="rop-select">
                             <optgroup label="🖤 黑色氛围模板 & 飘浮粒子 (7款)">
                                 <option value="dark_floating_dust">🖤 暗黑深邃模板 + 悬浮微尘</option>
@@ -720,6 +720,12 @@ class ReelsOverlayPanel {
                                 <option value="xmas_hanging_baubles">🎅 圣诞顶部挂球与金星吊坠</option>
                                 <option value="xmas_candy_corner_ribbons">🍬 圣诞拐杖糖与蝴蝶结角花</option>
                                 <option value="xmas_golden_bells_reindeer">🔔 圣诞金铃铛与雪花金框</option>
+                            </optgroup>
+                            <optgroup label="🇺🇸 美国退伍军人节限定 (4款)">
+                                <option value="vet_stars_stripes_bunting">🇺🇸 星条旗三角彩旗与金星边框</option>
+                                <option value="vet_golden_eagles_medals">🎖️ 荣耀紫心勋章与烫金军礼框</option>
+                                <option value="vet_remembrance_poppies">🌺 致敬老兵纪念虞美人花框</option>
+                                <option value="vet_salute_fireworks_stars">🎆 爱国红白蓝星芒礼花点缀</option>
                             </optgroup>
                             <optgroup label="⚜️ 复古画框 & 边缘雕花 (5款)">
                                 <option value="vintage_gold_filigree">⚜️ 古典烫金巴洛克雕花角框</option>
@@ -807,15 +813,15 @@ class ReelsOverlayPanel {
                         </label>
                     </div>
 
-                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-34） -->
+                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-38） -->
                     <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.28);">
                         <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-34)</span>
+                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-38)</span>
                             <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开可视化滚动字幕样式预览库">🎨 样式库预览</button>
                         </div>
                         <div style="display:flex;gap:4px;align-items:center;">
                             <select id="rop-scroll-style-preset-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;">
-                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-34) —</option>
+                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-38) —</option>
                             </select>
                             <button type="button" id="rop-scroll-style-preset-apply" class="rop-btn" style="padding:3px 8px;font-size:11px;white-space:nowrap;background:rgba(56,189,248,0.18);color:#e0f2fe;border:1px solid rgba(56,189,248,0.35);border-radius:4px;cursor:pointer;" title="应用所选滚动字幕样式">应用</button>
                             <button type="button" id="rop-scroll-style-preset-save" class="rop-btn" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(34,197,94,0.16);color:#dcfce7;border:1px solid rgba(34,197,94,0.35);border-radius:4px;cursor:pointer;" title="将当前滚动字幕样式保存为自定义预设">保存</button>
@@ -826,7 +832,7 @@ class ReelsOverlayPanel {
                     <!-- 🎨 滚动字幕背景主题快速选择（始终置顶可见：支持整块大背景画板 & 逐行底衬 & 直接调节长宽与滚动循环） -->
                     <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:linear-gradient(135deg, rgba(220,38,38,0.10), rgba(21,128,61,0.10), rgba(245,158,11,0.10));border:1px solid rgba(251,191,36,0.28);">
                         <div style="font-size:11px;font-weight:700;color:#fde68a;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🖼️ 整块大背景画板 / 边框 (报纸 / 圣诞贺卡)</span>
+                            <span>🖼️ 整块大背景画板 / 边框 (报纸 / 圣诞 / 🇺🇸退伍军人节)</span>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭大背景</button>
                         </div>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
@@ -841,6 +847,10 @@ class ReelsOverlayPanel {
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_gingerbread_card" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#8d4e25,#5c2d10);color:#fffdf9;font-weight:700;border:1px solid #fde68a;border-radius:5px;cursor:pointer;">🍪 圣诞姜饼糖霜卡</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_starry_snow_night" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#bae6fd;font-weight:700;border:1px solid #38bdf8;border-radius:5px;cursor:pointer;">❄️ 圣诞飘雪夜空板</button>
                             <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_cream_holly_letter" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#fcf8ee,#efe6d5);color:#991b1b;font-weight:700;border:1px solid #15803d;border-radius:5px;cursor:pointer;">🦌 圣诞冬青信纸卡</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_stars_stripes_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0a1931,#1e3a8a,#b91c1c);color:#fffdf5;font-weight:700;border:1px solid #fbbf24;border-radius:5px;cursor:pointer;">🇺🇸 星条旗荣耀板</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_honor_medal_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#09152b,#172554);color:#fde68a;font-weight:700;border:1px solid #f59e0b;border-radius:5px;cursor:pointer;">🎖️ 老兵金章礼服板</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_dogtag_steel_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#475569,#1e293b);color:#f8fafc;font-weight:700;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer;">🏷️ 美军钢印铭牌板</button>
+                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_poppy_memorial_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#fcf8f2,#ede3d2);color:#991b1b;font-weight:700;border:1px solid #dc2626;border-radius:5px;cursor:pointer;">🌺 纪念虞美人花板</button>
                         </div>
                         <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 6px;align-items:center;font-size:11px;margin-bottom:5px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,0.22);">
                             <span style="color:#fde68a;white-space:nowrap;" title="往左拉变窄、往右拉变宽；点“自动”恢复自适应宽度">画板宽度</span>
@@ -871,7 +881,7 @@ class ReelsOverlayPanel {
                             </label>
                         </div>
                         <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;border-top:1px dashed rgba(255,255,255,0.14);padding-top:5px;">
-                            <span>✂️ 逐行贴字底衬 (随每行文字向上滚动：剪报条 / 圣诞带)</span>
+                            <span>✂️ 逐行贴字底衬 (随每行文字向上滚动：剪报条 / 圣诞带 / 🇺🇸退伍军人节)</span>
                             <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭行底衬</button>
                         </div>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
@@ -883,6 +893,10 @@ class ReelsOverlayPanel {
                             <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_pine_snow" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#14532d;color:#f0fdf4;font-weight:700;border:1px solid #86efac;border-radius:4px;cursor:pointer;">🎄 松林覆雪带</button>
                             <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_gingerbread_tag" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#7c3f1c;color:#fffdf9;font-weight:700;border:1px solid #fde68a;border-radius:4px;cursor:pointer;">🍪 姜饼糖霜签</button>
                             <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_frost_ice" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#0369a1;color:#e0f2fe;font-weight:700;border:1px solid #7dd3fc;border-radius:4px;cursor:pointer;">❄️ 冰雪半高条</button>
+                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_stars_stripes_ribbon" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:linear-gradient(90deg,#0a1931,#b91c1c);color:#fffdf5;font-weight:700;border:1px solid #fbbf24;border-radius:4px;cursor:pointer;">🇺🇸 星条旗绶带</button>
+                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_honor_medal_banner" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#0b172a;color:#fde68a;font-weight:700;border:1px solid #f59e0b;border-radius:4px;cursor:pointer;">🎖️ 老兵金章带</button>
+                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_dogtag_steel" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#cbd5e1;color:#1e293b;font-weight:700;border:1px solid #64748b;border-radius:4px;cursor:pointer;">🏷️ 钢印铭牌条</button>
+                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_poppy_parchment" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#fbf7ef;color:#991b1b;font-weight:700;border:1px solid #dc2626;border-radius:4px;cursor:pointer;">🌺 虞美人花条</button>
                         </div>
                         <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 6px;align-items:center;font-size:11px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,0.22);">
                             <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带左右两端的伸出长度（支持负数收窄）">左右长度</span>
@@ -982,6 +996,12 @@ class ReelsOverlayPanel {
                                 <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带</option>
                                 <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签</option>
                                 <option value="xmas_frost_ice">❄️ 圣诞冰雪极光半高底条</option>
+                            </optgroup>
+                            <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌">
+                                <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带</option>
+                                <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅</option>
+                                <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬</option>
+                                <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条</option>
                             </optgroup>
                         </select>
                         <label>背景模式</label>
@@ -1083,6 +1103,12 @@ class ReelsOverlayPanel {
                                 <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带 (积雪顶边+冬青彩球)</option>
                                 <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签 (白糖霜花边+冬青果)</option>
                             </optgroup>
+                            <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌系列">
+                                <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带 (深蓝星区+红白条纹+金星角花)</option>
+                                <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅 (海军蓝礼服+双层烫金绶带+紫心勋章)</option>
+                                <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬 (金属拉丝银灰+铆钉压边+军牌挂孔)</option>
+                                <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条 (复古纪念羊皮纸+红蓝双色线+虞美人花饰)</option>
+                            </optgroup>
                             <optgroup label="🖼️ 整块主题画板系列 (配合【整块】背景模式)">
                                 <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏+报头线)</option>
                                 <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+双线内框)</option>
@@ -1095,6 +1121,10 @@ class ReelsOverlayPanel {
                                 <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (白糖霜裱花框+冬青果)</option>
                                 <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝+漫天雪花星芒)</option>
                                 <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油信纸+红绿金线框)</option>
+                                <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
+                                <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
+                                <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
+                                <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
                             </optgroup>
                         </select>
                         <label>背景模式</label>
@@ -1121,6 +1151,8 @@ class ReelsOverlayPanel {
                         <div id="rop-scroll-tw-details" class="rop-grid" style="grid-column:span 2;display:none;">
                         <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #C8BFA8;background:#F3EFE6;color:#3B2220;cursor:pointer;">📰 复古旧报纸剪报贴字出字 (爆款同款)</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_stars_stripes" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #FBBF24;background:linear-gradient(90deg,#0A1931,#B91C1C);color:#FFFDF5;cursor:pointer;">🇺🇸 星条旗绶带+星盾笔出字</button>
+                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_honor_medal" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #F59E0B;background:#0B172A;color:#FDE68A;cursor:pointer;">🎖️ 老兵金章带+紫心勋章出字</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="xmas_candy" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px dashed #FCA5A5;background:#88131B;color:#FFFDF9;cursor:pointer;">🍬 圣诞拐杖糖带+糖笔出字</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="xmas_pine" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #86EFAC;background:#124229;color:#FFFFFF;cursor:pointer;">🎄 圣诞松林覆雪+圣诞树出字</button>
                             <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper_sepia" style="padding:4px 6px;font-size:11px;font-weight:600;border-radius:5px;border:1px solid #C2AE85;background:#EDE2C8;color:#3E2616;cursor:pointer;">🗞️ 泛黄古董报刊出字</button>
@@ -1218,12 +1250,17 @@ class ReelsOverlayPanel {
                             <option value="snowflake_wand">❄️ 晶莹冰雪魔杖</option>
                             <option value="santa_feather">🎅 圣诞红金绒毛笔</option>
                             <option value="jingle_bell">🔔 圣诞金铃铛</option>
+                            <option value="us_flag_shield">🇺🇸 美国星条旗荣耀盾徽</option>
+                            <option value="purple_heart_medal">🎖️ 紫心英勇勋章笔</option>
+                            <option value="bald_eagle_crest">🦅 美国白头海雕金章</option>
+                            <option value="veteran_poppy">🌺 阵亡将士纪念红罂粟花</option>
+                            <option value="military_dog_tag">🏷️ 美军银色纪念狗牌</option>
                             <option value="image">🖼 自定义图片 (PNG/WebP/GIF)</option>
                             <option value="char">| 文本光标</option>
                         </select>
 
                         <div style="grid-column: span 2; margin: 2px 0 4px 0;">
-                            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">点选内置笔尖小图标（共22款含🎄圣诞限定矢量图标 + 自定义传图）：</div>
+                            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">点选内置笔尖小图标（共27款含🎄圣诞 & 🇺🇸退伍军人节矢量图标 + 自定义传图）：</div>
                             <div id="rop-scroll-tw-icon-grid" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;">
                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="quill" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="quill" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>羽毛笔</span></button>
                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="rose" data-angle="-12" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="rose" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>玫瑰花</span></button>
@@ -1247,6 +1284,11 @@ class ReelsOverlayPanel {
                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="snowflake_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(56,189,248,0.35);background:rgba(12,74,110,0.22);color:#bae6fd;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="snowflake_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>冰雪杖</span></button>
                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="santa_feather" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(248,113,113,0.35);background:rgba(153,27,27,0.18);color:#fecaca;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="santa_feather" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣诞羽</span></button>
                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="jingle_bell" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(250,204,21,0.35);background:rgba(133,77,14,0.22);color:#fef08a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="jingle_bell" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金铃铛</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_flag_shield" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(251,191,36,0.45);background:rgba(30,58,138,0.28);color:#fde68a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_flag_shield" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>星条盾</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="purple_heart_medal" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(192,132,252,0.45);background:rgba(88,28,135,0.25);color:#f3e8ff;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="purple_heart_medal" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>紫心章</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="bald_eagle_crest" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(251,191,36,0.45);background:rgba(120,53,15,0.25);color:#fef08a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="bald_eagle_crest" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>白头鹰</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="veteran_poppy" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(248,113,113,0.45);background:rgba(153,27,27,0.22);color:#fecaca;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="veteran_poppy" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>虞美人</span></button>
+                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="military_dog_tag" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(148,163,184,0.45);background:rgba(51,65,85,0.28);color:#e2e8f0;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="military_dog_tag" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>军狗牌</span></button>
                             </div>
                         </div>
 
@@ -1359,6 +1401,12 @@ class ReelsOverlayPanel {
                                 <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (暖棕姜饼+白糖霜裱花框+冬青果)</option>
                                 <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝渐变+漫天雪花星芒)</option>
                                 <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油羊皮信纸+红绿金线框+冬青)</option>
+                            </optgroup>
+                            <optgroup label="🇺🇸 美国退伍军人节限定大背景画板 / 荣耀框">
+                                <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
+                                <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
+                                <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
+                                <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
                             </optgroup>
                         </select>
                         <label>颜色</label><input type="color" id="rop-scroll-bg-color" class="rop-color" value="#000000">
@@ -1504,6 +1552,12 @@ class ReelsOverlayPanel {
                                     <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带</option>
                                     <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带</option>
                                     <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签</option>
+                                </optgroup>
+                                <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌">
+                                    <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带</option>
+                                    <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅</option>
+                                    <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬</option>
+                                    <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条</option>
                                 </optgroup>
                                 <option value="custom">➕ 导入单张笔刷图...</option>
                             </select>
@@ -1653,6 +1707,12 @@ class ReelsOverlayPanel {
                                     <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带</option>
                                     <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带</option>
                                     <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签</option>
+                                </optgroup>
+                                <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌">
+                                    <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带</option>
+                                    <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅</option>
+                                    <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬</option>
+                                    <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条</option>
                                 </optgroup>
                                 <option value="custom">➕ 导入单张笔刷图...</option>
                             </select>
@@ -2756,6 +2816,7 @@ class ReelsOverlayPanel {
                     torn_parchment_board: { body: '#2C1D14', stroke: '#F7F1E3', sw: 1.2, title: '#8C5A08', ts: '#F7F1E3' },
                     grid_notebook_page: { body: '#1E293B', stroke: '#FAF8F2', sw: 1.2, title: '#B91C1C', ts: '#FAF8F2' },
                     xmas_cream_holly_letter: { body: '#2B1B17', stroke: '#FCF8EE', sw: 1.5, title: '#B91C1C', ts: '#FCF8EE' },
+                    vet_poppy_memorial_board: { body: '#1C1917', stroke: '#FAF6EE', sw: 1.5, title: '#991B1B', ts: '#FAF6EE' },
                 };
                 const darkBoards = {
                     kraft_clipboard: { body: '#FFFDF9', stroke: '#3E2723', sw: 2.5, title: '#FFE082', ts: '#3E2723' },
@@ -2765,6 +2826,9 @@ class ReelsOverlayPanel {
                     xmas_pine_snow_board: { body: '#FFFFFF', stroke: '#0A2618', sw: 2.0, title: '#FFE066', ts: '#0A2618' },
                     xmas_gingerbread_card: { body: '#FFFDF9', stroke: '#4E260E', sw: 2.2, title: '#FFE57F', ts: '#4E260E' },
                     xmas_starry_snow_night: { body: '#F0F9FF', stroke: '#081426', sw: 2.0, title: '#7DD3FC', ts: '#081426' },
+                    vet_stars_stripes_board: { body: '#FFFDF9', stroke: '#0A1931', sw: 2.2, title: '#FBBF24', ts: '#0A1931' },
+                    vet_honor_medal_board: { body: '#FFF8EB', stroke: '#09152B', sw: 2.2, title: '#FDE047', ts: '#09152B' },
+                    vet_dogtag_steel_board: { body: '#F8FAFC', stroke: '#0F172A', sw: 2.4, title: '#E2E8F0', ts: '#0F172A' },
                 };
                 const palette = lightBoards[preset] || darkBoards[preset];
                 if (palette) {
@@ -2778,7 +2842,7 @@ class ReelsOverlayPanel {
                 this._syncToOverlay();
             });
         });
-        // 一键切换滚动字幕逐行贴字底衬（旧报纸剪报条 / 圣诞拐杖糖带 / 红丝绒带 / 松林覆雪带 / 姜饼签）
+        // 一键切换滚动字幕逐行贴字底衬（旧报纸剪报条 / 圣诞拐杖糖带 / 红丝绒带 / 松林覆雪带 / 姜饼签 / 退伍军人节）
         this.container.querySelectorAll('.rop-scroll-body-bg-preset').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -2796,14 +2860,17 @@ class ReelsOverlayPanel {
                 this._val('rop-scroll-body-bg-pad-h', 24);
                 this._val('rop-scroll-body-bg-pad-top', 11);
                 this._val('rop-scroll-body-bg-pad-bottom', 11);
-                const isLightCutout = style === 'newspaper_cutout' || style === 'newspaper_sepia' || style === 'torn_cream_paper';
+                const isLightCutout = style === 'newspaper_cutout' || style === 'newspaper_sepia' || style === 'torn_cream_paper' || style === 'vet_poppy_parchment' || style === 'vet_dogtag_steel';
                 if (isLightCutout) {
-                    this._val('rop-scroll-color', style === 'newspaper_sepia' ? '#3E2616' : '#3B2220');
-                    this._val('rop-scroll-stroke-color', '#F4F0E8');
+                    this._val('rop-scroll-color', style === 'vet_dogtag_steel' ? '#0F172A' : (style === 'vet_poppy_parchment' ? '#1C1917' : (style === 'newspaper_sepia' ? '#3E2616' : '#3B2220')));
+                    this._val('rop-scroll-stroke-color', style === 'vet_dogtag_steel' ? '#F8FAFC' : '#F4F0E8');
                     this._val('rop-scroll-stroke-width', style === 'torn_cream_paper' ? 0 : 1.5);
                 } else {
                     this._val('rop-scroll-color', '#FFFDF9');
-                    this._val('rop-scroll-stroke-color', style === 'xmas_pine_snow' ? '#0D2E1B' : (style === 'xmas_gingerbread_tag' ? '#4E260E' : '#4A0404'));
+                    const darkStroke = (style === 'vet_stars_stripes_ribbon' || style === 'vet_honor_medal_banner')
+                        ? '#09152B'
+                        : (style === 'xmas_pine_snow' ? '#0D2E1B' : (style === 'xmas_gingerbread_tag' ? '#4E260E' : '#4A0404'));
+                    this._val('rop-scroll-stroke-color', darkStroke);
                     this._val('rop-scroll-stroke-width', 1.8);
                 }
                 this._syncToOverlay();
@@ -3087,6 +3154,37 @@ class ReelsOverlayPanel {
                     this._val('rop-scroll-tw-hide-unread', true);
                     this._val('rop-scroll-tw-active-highlight', false);
                     this._val('rop-scroll-tw-cursor-enabled', false);
+                    if (this._selectedOv) {
+                        this._selectedOv.italic = true;
+                    }
+                } else if (preset === 'vet_stars_stripes' || preset === 'vet_honor_medal') {
+                    const isFlag = preset === 'vet_stars_stripes';
+                    this._val('rop-scroll-font', 'Playfair Display');
+                    this._val('rop-scroll-bold', true);
+                    this._val('rop-scroll-weight', '700');
+                    this._val('rop-scroll-uppercase', false);
+                    this._val('rop-scroll-color', '#FFFDF9');
+                    this._val('rop-scroll-stroke-color', '#09152B');
+                    this._val('rop-scroll-stroke-width', 2.2);
+                    this._val('rop-scroll-shadow', false);
+                    this._val('rop-scroll-body-bg-enabled', true);
+                    this._val('rop-scroll-body-bg-style', isFlag ? 'vet_stars_stripes_ribbon' : 'vet_honor_medal_banner');
+                    this._val('rop-scroll-body-bg-mode', 'inline-joined');
+                    this._val('rop-scroll-body-bg-color', '#0A1931');
+                    this._val('rop-scroll-body-bg-opacity', 100);
+                    this._val('rop-scroll-body-bg-radius', 16);
+                    this._val('rop-scroll-body-bg-pad-h', 26);
+                    this._val('rop-scroll-body-bg-pad-top', 12);
+                    this._val('rop-scroll-body-bg-pad-bottom', 12);
+                    this._val('rop-scroll-tw-reveal-type', isFlag ? 'char' : 'word');
+                    this._val('rop-scroll-tw-unrevealed-opacity', 0);
+                    this._val('rop-scroll-tw-hide-unread', true);
+                    this._val('rop-scroll-tw-active-highlight', true);
+                    this._val('rop-scroll-tw-active-color', '#FBBF24');
+                    this._val('rop-scroll-tw-cursor-enabled', true);
+                    this._val('rop-scroll-tw-cursor-kind', isFlag ? 'us_flag_shield' : 'purple_heart_medal');
+                    this._val('rop-scroll-tw-cursor-scale', 1.25);
+                    this._val('rop-scroll-tw-cursor-angle', 0);
                     if (this._selectedOv) {
                         this._selectedOv.italic = true;
                     }
@@ -7344,6 +7442,18 @@ class ReelsOverlayPanel {
                         } else if (st.scroll_body_bg_style === 'xmas_pine_snow') {
                             boxBg = 'linear-gradient(135deg, #064e3b, #14532d)';
                             boxBorder = '1px solid #86efac';
+                        } else if (st.scroll_body_bg_style === 'vet_stars_stripes_ribbon') {
+                            boxBg = 'linear-gradient(135deg, #0a1931 0%, #1e3a8a 45%, #b91c1c 100%)';
+                            boxBorder = '1px solid #fbbf24';
+                        } else if (st.scroll_body_bg_style === 'vet_honor_medal_banner') {
+                            boxBg = 'linear-gradient(135deg, #09152b, #172554)';
+                            boxBorder = '1px solid #f59e0b';
+                        } else if (st.scroll_body_bg_style === 'vet_dogtag_steel') {
+                            boxBg = 'linear-gradient(135deg, #cbd5e1, #94a3b8)';
+                            boxBorder = '1px solid #64748b';
+                        } else if (st.scroll_body_bg_style === 'vet_poppy_parchment') {
+                            boxBg = '#fbf7ef';
+                            boxBorder = '1px solid #dc2626';
                         } else if (String(st.scroll_body_bg_color || '').toUpperCase() === '#FFFFFF') {
                             boxBg = 'rgba(255,255,255,0.42)';
                             boxBorder = '1px solid rgba(255,255,255,0.5)';
@@ -11214,6 +11324,7 @@ class ReelsDecorPanel {
             film_grain:     { bg: 'linear-gradient(135deg,#271c12,#451a03)', border: '#d97706', text: '#fde68a', tag: '🎞️ 电影颗粒' },
             stars:          { bg: 'linear-gradient(135deg,#1e1b4b,#3b0764)', border: '#eab308', text: '#fef08a', tag: '🌟 星芒光斑' },
             xmas:           { bg: 'linear-gradient(135deg,#14532d,#7f1d1d)', border: '#f87171', text: '#fef9c3', tag: '🎄 圣诞限定' },
+            veterans:       { bg: 'linear-gradient(135deg,#0a1931,#7f1d1d)', border: '#fbbf24', text: '#fef08a', tag: '🇺🇸 退伍军人节' },
             frame:          { bg: 'linear-gradient(135deg,#292524,#44403c)', border: '#d4af37', text: '#fde68a', tag: '⚜️ 复古画框' },
         };
 
@@ -11270,7 +11381,7 @@ class ReelsDecorPanel {
                 <!-- 顶部作用范围与多层管理栏 -->
                 <div style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                        <div style="font-weight:800;font-size:13px;color:#fde68a;">✨ 点缀、黑色模板与电影颗粒 (30款)</div>
+                        <div style="font-weight:800;font-size:13px;color:#fde68a;">✨ 点缀、黑色模板与电影颗粒 (34款)</div>
                         <div style="display:flex;align-items:center;gap:6px;">
                             <span style="font-size:11px;color:var(--text-secondary);">样式作用:</span>
                             <select id="rdp-style-scope" class="rop-select" style="width:auto;padding:2px 6px;font-size:11px;">
@@ -11520,20 +11631,21 @@ class ReelsDecorPanel {
                     </div>
                 </div>
 
-                <!-- 30款模板分类筛选与可视化卡片库 -->
+                <!-- 34款模板分类筛选与可视化卡片库 -->
                 <div style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
-                        <span style="font-size:11.5px;font-weight:700;color:#93c5fd;">🎨 30款预设库 (点击任意卡片立即应用)：</span>
+                        <span style="font-size:11.5px;font-weight:700;color:#93c5fd;">🎨 34款预设库 (点击任意卡片立即应用)：</span>
                         <select id="rdp-style-select" class="rop-select" style="max-width:210px;font-size:11px;padding:2px 6px;">
                             ${selectOptionsHtml}
                         </select>
                     </div>
                     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
-                        <button type="button" class="rdp-cat-btn active" data-cat="all" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #6366f1;background:#4f46e5;color:#fff;cursor:pointer;font-weight:700;">全部 (30)</button>
+                        <button type="button" class="rdp-cat-btn active" data-cat="all" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #6366f1;background:#4f46e5;color:#fff;cursor:pointer;font-weight:700;">全部 (34)</button>
                         <button type="button" class="rdp-cat-btn" data-cat="dark_particles" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;cursor:pointer;">🖤 黑色模板&粒子 (7)</button>
                         <button type="button" class="rdp-cat-btn" data-cat="film_grain" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #b45309;background:#271c12;color:#fde68a;cursor:pointer;">🎞️ 电影&回忆颗粒 (7)</button>
                         <button type="button" class="rdp-cat-btn" data-cat="stars" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #a16207;background:#1e1b4b;color:#fef08a;cursor:pointer;">🌟 发光星芒&光斑 (6)</button>
                         <button type="button" class="rdp-cat-btn" data-cat="xmas" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #15803d;background:#14532d;color:#fef9c3;cursor:pointer;">🎄 圣诞装饰 (5)</button>
+                        <button type="button" class="rdp-cat-btn" data-cat="veterans" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #fbbf24;background:linear-gradient(135deg,#0a1931,#7f1d1d);color:#fef08a;cursor:pointer;">🇺🇸 退伍军人节 (4)</button>
                         <button type="button" class="rdp-cat-btn" data-cat="frame" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #a16207;background:#292524;color:#fde68a;cursor:pointer;">⚜️ 复古画框 (5)</button>
                     </div>
                     <div id="rdp-preset-grid" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;max-height:255px;overflow-y:auto;padding-right:2px;">

@@ -7839,6 +7839,46 @@ const ReelsBrushEngine = {
             mode: 'bottom_strip',
             baseColor: '#0EA5E9',
         },
+        vet_stars_stripes_ribbon: {
+            label: '🇺🇸 美国星条旗荣耀绶带 (深蓝星区+红白条纹+金星角花)',
+            mode: 'xmas_ribbon',
+            baseColor: '#0F2547',
+            rimColor: '#F5D061',
+            rimWidth: 3.5,
+            shadowColor: 'rgba(6, 15, 32, 0.52)',
+            shadowBlur: 12,
+            shadowOffsetY: 4,
+        },
+        vet_honor_medal_banner: {
+            label: '🎖️ 退伍军人金章深蓝横幅 (海军蓝礼服+双层烫金绶带+紫心勋章)',
+            mode: 'xmas_ribbon',
+            baseColor: '#0B192C',
+            rimColor: '#FFD700',
+            rimWidth: 2.8,
+            shadowColor: 'rgba(5, 12, 24, 0.52)',
+            shadowBlur: 12,
+            shadowOffsetY: 4,
+        },
+        vet_dogtag_steel: {
+            label: '🏷️ 美军拉丝钢印铭牌底衬 (金属拉丝银灰+铆钉压边+军牌挂孔)',
+            mode: 'xmas_ribbon',
+            baseColor: '#334155',
+            rimColor: '#CBD5E1',
+            rimWidth: 2.6,
+            shadowColor: 'rgba(15, 23, 42, 0.55)',
+            shadowBlur: 12,
+            shadowOffsetY: 4,
+        },
+        vet_poppy_parchment: {
+            label: '🌺 纪念虞美人花宣纸贴条 (复古纪念羊皮纸+红蓝双色线+虞美人花饰)',
+            mode: 'xmas_ribbon',
+            baseColor: '#FAF5E8',
+            rimColor: '#B91C1C',
+            rimWidth: 2.4,
+            shadowColor: 'rgba(28, 18, 10, 0.42)',
+            shadowBlur: 11,
+            shadowOffsetY: 4,
+        },
     },
 
     CARD_BACKGROUND_STYLES: {
@@ -7914,11 +7954,110 @@ const ReelsBrushEngine = {
             baseColor: '#FCF8EE',
             tornEdge: false,
         },
+        vet_stars_stripes_board: {
+            label: '🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星角饰)',
+            tileStyle: null,
+            baseColor: '#0B1D3A',
+            tornEdge: false,
+        },
+        vet_honor_medal_board: {
+            label: '🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)',
+            tileStyle: null,
+            baseColor: '#0A1628',
+            tornEdge: false,
+        },
+        vet_dogtag_steel_board: {
+            label: '🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)',
+            tileStyle: null,
+            baseColor: '#273449',
+            tornEdge: false,
+        },
+        vet_poppy_memorial_board: {
+            label: '🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人花)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FAF5E8',
+            tornEdge: false,
+        },
     },
 
     _backingTileCache: {},
     _candyStripePatternCache: null,
     _cutoutScratchCanvas: null,
+
+    _drawFivePointStar(ctx, cx, cy, r = 10, fillColor = '#FFD700', strokeColor = '#92400E') {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.fillStyle = fillColor || '#FFD700';
+        ctx.strokeStyle = strokeColor || '#92400E';
+        ctx.lineWidth = Math.max(1, r * 0.12);
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+            const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+            const rad = (i % 2 === 0) ? r : r * 0.42;
+            const px = Math.cos(ang) * rad;
+            const py = Math.sin(ang) * rad;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        if (strokeColor) ctx.stroke();
+        ctx.restore();
+    },
+
+    _drawRemembrancePoppyOrnament(ctx, cx, cy, scale = 1, flipX = false) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        if (flipX) ctx.scale(-scale, scale);
+        else ctx.scale(scale, scale);
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetY = 1.5;
+
+        // Green poppy leaf
+        ctx.fillStyle = '#15803D';
+        ctx.strokeStyle = '#052E16';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.bezierCurveTo(-10, -8, -22, -6, -24, 2);
+        ctx.bezierCurveTo(-16, 8, -6, 6, 0, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Four overlapping crimson poppy petals
+        const petals = [
+            [0, -7, 8.5, '#DC2626'],
+            [7, 0, 8.2, '#EF4444'],
+            [0, 7, 8.5, '#B91C1C'],
+            [-7, 0, 8.2, '#DC2626'],
+        ];
+        for (const [px, py, pr, col] of petals) {
+            ctx.fillStyle = col;
+            ctx.strokeStyle = '#450A0A';
+            ctx.lineWidth = 1.1;
+            ctx.beginPath();
+            ctx.arc(px, py, pr, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+        }
+
+        // Velvet black center & gold stamen ring
+        ctx.fillStyle = '#111827';
+        ctx.strokeStyle = '#FDE047';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 4.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#FDE047';
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    },
 
     _drawHollyOrnament(ctx, cx, cy, scale = 1, flipX = false) {
         ctx.save();
@@ -8085,6 +8224,10 @@ const ReelsBrushEngine = {
             xmas_gingerbread_card: 'xmas_gingerbread_tag',
             xmas_starry_snow_night: 'xmas_frost_ice',
             xmas_cream_holly_letter: 'torn_cream_paper',
+            vet_stars_stripes_board: 'vet_stars_stripes_ribbon',
+            vet_honor_medal_board: 'vet_honor_medal_banner',
+            vet_dogtag_steel_board: 'vet_dogtag_steel',
+            vet_poppy_memorial_board: 'vet_poppy_parchment',
         };
         return map[style] || 'newspaper_cutout';
     },
@@ -8107,6 +8250,10 @@ const ReelsBrushEngine = {
             xmas_pine_snow: 'xmas_pine_snow_board',
             xmas_gingerbread_tag: 'xmas_gingerbread_card',
             xmas_frost_ice: 'xmas_starry_snow_night',
+            vet_stars_stripes_ribbon: 'vet_stars_stripes_board',
+            vet_honor_medal_banner: 'vet_honor_medal_board',
+            vet_dogtag_steel: 'vet_dogtag_steel_board',
+            vet_poppy_parchment: 'vet_poppy_memorial_board',
         };
         return map[style] || 'newspaper_page';
     },
@@ -8702,12 +8849,91 @@ const ReelsBrushEngine = {
                     ctx.lineWidth = 1.6;
                     _roundRect(ctx, rx + inset + 7, ry + inset + 7, rw - (inset + 7) * 2, rh - (inset + 7) * 2, Math.max(2, r - 10));
                     ctx.stroke();
+                } else if (styleId === 'vet_stars_stripes_board') {
+                    // 🇺🇸 US Stars & Stripes patriotic frame + deep navy interior + subtle red/white header bunting & gold rule
+                    const bgGrad = ctx.createLinearGradient(rx, ry, rx, ry + rh);
+                    bgGrad.addColorStop(0, '#0F2547');
+                    bgGrad.addColorStop(0.55, '#0B1A33');
+                    bgGrad.addColorStop(1, '#071124');
+                    ctx.fillStyle = bgGrad;
+                    ctx.fillRect(rx, ry, rw, rh);
+
+                    // Top & bottom red/white patriotic ribbon trim
+                    const trimH = Math.max(14, Math.min(24, rh * 0.032));
+                    const stripeW = 28;
+                    const modStripe = ((rawScrollY % (stripeW * 2)) + stripeW * 2) % (stripeW * 2);
+                    for (let sx = rx - stripeW * 2; sx < rx + rw + stripeW * 2; sx += stripeW) {
+                        const isRed = Math.floor((sx - rx + modStripe) / stripeW) % 2 === 0;
+                        ctx.fillStyle = isRed ? '#B91C1C' : '#F8FAFC';
+                        ctx.fillRect(sx, ry, stripeW, trimH);
+                        ctx.fillRect(sx, ry + rh - trimH, stripeW, trimH);
+                    }
+
+                    const inset = trimH + 6;
+                    ctx.strokeStyle = '#F5D061';
+                    ctx.lineWidth = 2.8;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 8));
+                    ctx.stroke();
+                } else if (styleId === 'vet_honor_medal_board') {
+                    // 🎖️ Dress uniform navy-blue board + gold bullion double border + diagonal honor ribbon sheen
+                    const ug = ctx.createRadialGradient(
+                        rx + rw * 0.5, ry + rh * 0.45, Math.min(rw, rh) * 0.1,
+                        rx + rw * 0.5, ry + rh * 0.5, Math.max(rw, rh) * 0.75
+                    );
+                    ug.addColorStop(0, '#17325C');
+                    ug.addColorStop(0.6, '#0D1F3C');
+                    ug.addColorStop(1, '#061020');
+                    ctx.fillStyle = ug;
+                    ctx.fillRect(rx, ry, rw, rh);
+
+                    const inset = 12;
+                    ctx.strokeStyle = '#FFD700';
+                    ctx.lineWidth = 3.2;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#DC2626';
+                    ctx.lineWidth = 1.6;
+                    _roundRect(ctx, rx + inset + 6, ry + inset + 6, rw - (inset + 6) * 2, rh - (inset + 6) * 2, Math.max(2, r - 10));
+                    ctx.stroke();
+                } else if (styleId === 'vet_dogtag_steel_board') {
+                    // 🏷️ Brushed gunmetal steel plaque + metallic sheen + inner stamped bevel
+                    const mg = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh);
+                    mg.addColorStop(0, '#334155');
+                    mg.addColorStop(0.35, '#475569');
+                    mg.addColorStop(0.65, '#1E293B');
+                    mg.addColorStop(1, '#0F172A');
+                    ctx.fillStyle = mg;
+                    ctx.fillRect(rx, ry, rw, rh);
+
+                    const inset = 12;
+                    ctx.strokeStyle = '#CBD5E1';
+                    ctx.lineWidth = 2.6;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.75)';
+                    ctx.lineWidth = 2.0;
+                    _roundRect(ctx, rx + inset + 4, ry + inset + 4, rw - (inset + 4) * 2, rh - (inset + 4) * 2, Math.max(2, r - 8));
+                    ctx.stroke();
+                } else if (styleId === 'vet_poppy_memorial_board') {
+                    // 🌺 Warm memorial parchment + crimson & navy double border
+                    const inset = 12;
+                    ctx.strokeStyle = '#B91C1C';
+                    ctx.lineWidth = 3.0;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#1E3A8A';
+                    ctx.lineWidth = 1.6;
+                    _roundRect(ctx, rx + inset + 7, ry + inset + 7, rw - (inset + 7) * 2, rh - (inset + 7) * 2, Math.max(2, r - 10));
+                    ctx.stroke();
                 }
             } finally {
                 ctx.restore(); // end clip
             }
 
-            // 3. Exterior / corner 3D ornaments (masking tape, holly berries, Bethlehem stars)
+            // 3. Exterior / corner 3D ornaments (masking tape, holly berries, Bethlehem stars, Veterans Day stars/poppies)
             if (styleId === 'kraft_clipboard' || styleId === 'grid_notebook_page') {
                 // Semi-transparent masking tape strips at top center or top corners
                 ctx.save();
@@ -8739,6 +8965,40 @@ const ReelsBrushEngine = {
                     this._drawStar8(ctx, rx + rw * 0.5, ry + 16, starR, '#FFF3B0');
                     this._drawStar8(ctx, rx + rw * 0.5, ry + rh - 16, starR, '#FFF3B0');
                 }
+            } else if (styleId === 'vet_stars_stripes_board' || styleId === 'vet_honor_medal_board') {
+                const ornScale = Math.max(0.85, Math.min(1.45, Math.min(rw, rh) / 480));
+                const padC = 22;
+                const starR = 11 * ornScale;
+                this._drawFivePointStar(ctx, rx + padC, ry + padC, starR, '#FFD700', '#92400E');
+                this._drawFivePointStar(ctx, rx + rw - padC, ry + padC, starR, '#FFD700', '#92400E');
+                this._drawFivePointStar(ctx, rx + padC, ry + rh - padC, starR, '#FFD700', '#92400E');
+                this._drawFivePointStar(ctx, rx + rw - padC, ry + rh - padC, starR, '#FFD700', '#92400E');
+                this._drawFivePointStar(ctx, rx + rw * 0.5, ry + 18, starR * 1.15, '#FFF3B0', '#92400E');
+            } else if (styleId === 'vet_dogtag_steel_board') {
+                const padC = 20;
+                for (const [cx, cy] of [
+                    [rx + padC, ry + padC],
+                    [rx + rw - padC, ry + padC],
+                    [rx + padC, ry + rh - padC],
+                    [rx + rw - padC, ry + rh - padC],
+                ]) {
+                    ctx.save();
+                    ctx.fillStyle = '#94A3B8';
+                    ctx.strokeStyle = '#0F172A';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            } else if (styleId === 'vet_poppy_memorial_board') {
+                const ornScale = Math.max(0.85, Math.min(1.4, Math.min(rw, rh) / 480));
+                const padC = 20;
+                this._drawRemembrancePoppyOrnament(ctx, rx + padC, ry + padC, ornScale, false);
+                this._drawRemembrancePoppyOrnament(ctx, rx + rw - padC, ry + padC, ornScale, true);
+                this._drawRemembrancePoppyOrnament(ctx, rx + padC, ry + rh - padC, ornScale, false);
+                this._drawRemembrancePoppyOrnament(ctx, rx + rw - padC, ry + rh - padC, ornScale, true);
             }
         } finally {
             ctx.restore();
@@ -9178,6 +9438,129 @@ const ReelsBrushEngine = {
                     if (i === 0) {
                         this._drawHollyOrnament(ctx, bx + bw - 4, by + 4, Math.max(0.7, Math.min(1.25, fs / 62)), true);
                     }
+                } else if (styleId === 'vet_stars_stripes_ribbon') {
+                    // 🇺🇸 美国星条旗荣耀绶带 (深海蓝底 + 顶底红白爱国条纹边 + 烫金线框 + 五角金星角花)
+                    const sGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
+                    sGrad.addColorStop(0, '#122C54');
+                    sGrad.addColorStop(0.5, '#0B1C38');
+                    sGrad.addColorStop(1, '#071226');
+                    ctx.fillStyle = sGrad;
+                    _roundRect(ctx, bx, by, bw, bh, r);
+                    ctx.fill();
+                    ctx.shadowColor = 'transparent';
+
+                    // 顶部与底部红白星条旗细边
+                    ctx.save();
+                    _roundRect(ctx, bx, by, bw, bh, r);
+                    ctx.clip();
+                    const bandH = Math.max(4, Math.min(8, bh * 0.11));
+                    ctx.fillStyle = '#DC2626';
+                    ctx.fillRect(bx, by, bw, bandH);
+                    ctx.fillRect(bx, by + bh - bandH, bw, bandH);
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(bx, by + bandH, bw, Math.max(1.5, bandH * 0.45));
+                    ctx.fillRect(bx, by + bh - bandH * 1.45, bw, Math.max(1.5, bandH * 0.45));
+                    ctx.restore();
+
+                    ctx.strokeStyle = '#F5D061';
+                    ctx.lineWidth = 2.2;
+                    _roundRect(ctx, bx, by, bw, bh, r);
+                    ctx.stroke();
+
+                    const starR = Math.max(6.5, Math.min(11, fs * 0.14));
+                    this._drawFivePointStar(ctx, bx + 12, by + bh * 0.5, starR, '#FFD700', '#92400E');
+                    this._drawFivePointStar(ctx, bx + bw - 12, by + bh * 0.5, starR, '#FFD700', '#92400E');
+                } else if (styleId === 'vet_honor_medal_banner') {
+                    // 🎖️ 退伍军人金章深蓝燕尾横幅 (美军礼服深蓝 + 双层烫金绶带 + 五角金星)
+                    const notch = Math.min(16, bh * 0.22);
+                    const mGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
+                    mGrad.addColorStop(0, '#17325C');
+                    mGrad.addColorStop(0.5, '#0D1F3C');
+                    mGrad.addColorStop(1, '#061020');
+                    ctx.fillStyle = mGrad;
+
+                    ctx.beginPath();
+                    ctx.moveTo(bx - notch * 0.4, by);
+                    ctx.lineTo(bx + bw + notch * 0.4, by);
+                    ctx.lineTo(bx + bw - notch * 0.55, by + bh * 0.5);
+                    ctx.lineTo(bx + bw + notch * 0.4, by + bh);
+                    ctx.lineTo(bx - notch * 0.4, by + bh);
+                    ctx.lineTo(bx + notch * 0.55, by + bh * 0.5);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.shadowColor = 'transparent';
+                    ctx.strokeStyle = '#FFD700';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(220, 38, 38, 0.85)';
+                    ctx.lineWidth = 1.4;
+                    ctx.strokeRect(bx + notch * 0.65, by + 4, Math.max(4, bw - notch * 1.3), Math.max(4, bh - 8));
+                    ctx.restore();
+
+                    const starR = Math.max(7, Math.min(12, fs * 0.15));
+                    this._drawFivePointStar(ctx, bx + notch * 0.8 + 6, by + 5, starR, '#FFD700', '#92400E');
+                    this._drawFivePointStar(ctx, bx + bw - notch * 0.8 - 6, by + bh - 5, starR * 0.9, '#FFD700', '#92400E');
+                } else if (styleId === 'vet_dogtag_steel') {
+                    // 🏷️ 美军拉丝钢印铭牌底衬 (不锈钢金属渐变 + 钢印内凹双线框 + 两侧铆钉)
+                    const dGrad = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
+                    dGrad.addColorStop(0, '#334155');
+                    dGrad.addColorStop(0.45, '#475569');
+                    dGrad.addColorStop(1, '#1E293B');
+                    ctx.fillStyle = dGrad;
+                    _roundRect(ctx, bx, by, bw, bh, Math.min(14, r));
+                    ctx.fill();
+
+                    ctx.shadowColor = 'transparent';
+                    ctx.strokeStyle = '#CBD5E1';
+                    ctx.lineWidth = 2.2;
+                    _roundRect(ctx, bx, by, bw, bh, Math.min(14, r));
+                    ctx.stroke();
+
+                    ctx.strokeStyle = 'rgba(15, 23, 42, 0.72)';
+                    ctx.lineWidth = 1.4;
+                    _roundRect(ctx, bx + 4, by + 4, Math.max(4, bw - 8), Math.max(4, bh - 8), Math.max(2, Math.min(11, r - 3)));
+                    ctx.stroke();
+
+                    // 左右两侧军牌金属铆钉孔
+                    for (const rxDot of [bx + 11, bx + bw - 11]) {
+                        ctx.fillStyle = '#94A3B8';
+                        ctx.strokeStyle = '#0F172A';
+                        ctx.lineWidth = 1.2;
+                        ctx.beginPath();
+                        ctx.arc(rxDot, by + bh * 0.5, 3.8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                    }
+                } else if (styleId === 'vet_poppy_parchment') {
+                    // 🌺 纪念虞美人花宣纸贴条 (暖白羊皮信纸 + 红蓝爱国双线内框 + 虞美人红花角饰)
+                    const pGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
+                    pGrad.addColorStop(0, '#FFFDF9');
+                    pGrad.addColorStop(1, '#F3E9D2');
+                    ctx.fillStyle = pGrad;
+                    _roundRect(ctx, bx, by, bw, bh, r);
+                    ctx.fill();
+
+                    ctx.shadowColor = 'transparent';
+                    ctx.strokeStyle = '#B91C1C';
+                    ctx.lineWidth = 2.2;
+                    _roundRect(ctx, bx, by, bw, bh, r);
+                    ctx.stroke();
+
+                    ctx.strokeStyle = '#1E3A8A';
+                    ctx.lineWidth = 1.2;
+                    _roundRect(ctx, bx + 4, by + 4, Math.max(4, bw - 8), Math.max(4, bh - 8), Math.max(2, r - 3));
+                    ctx.stroke();
+
+                    const ornScale = Math.max(0.68, Math.min(1.15, fs / 64));
+                    if (i === 0) {
+                        this._drawRemembrancePoppyOrnament(ctx, bx + 8, by + 6, ornScale, false);
+                    }
+                    if (i === activeLines.length - 1) {
+                        this._drawRemembrancePoppyOrnament(ctx, bx + bw - 8, by + bh - 6, ornScale, true);
+                    }
                 } else {
                     // 🎄 xmas_pine_snow: 松林绿覆雪字幕带 (森林绿底 + 顶部积雪波浪边 + 冬青红果)
                     const pGrad = ctx.createLinearGradient(bx, by, bx, by + bh);
@@ -9472,7 +9855,8 @@ const ReelsBrushEngine = {
         const defaultCutoutPalette = new Set([
             '', '#000000', '#7c3f1c', '#7a3e1d', '#f3efe6', '#eae2d3',
             '#f5ead4', '#f4e9d2', '#9e1b20', '#a61c1e', '#1e1c1a', '#191a20',
-            '#d6b588', '#d8ba8c', '#f6f2e9', '#fbfbf7', '#f8fafc'
+            '#d6b588', '#d8ba8c', '#f6f2e9', '#fbfbf7', '#f8fafc',
+            '#0a1931', '#0b172a', '#cbd5e1', '#fbf7ef',
         ]);
         if (opts.colormode === 'tint' && normOptColor && normOptColor !== normBaseColor && !defaultCutoutPalette.has(normOptColor)) {
             octx.save();
@@ -9492,6 +9876,18 @@ const ReelsBrushEngine = {
             const ornScale = Math.max(0.75, Math.min(1.25, maxFs / 60));
             this._drawHollyOrnament(ctx, firstCore.left - firstCore.cutoutR * 0.32, firstCore.top + 4, ornScale, false);
             this._drawHollyOrnament(ctx, lastCore.right + lastCore.cutoutR * 0.32, lastCore.bottom - 4, ornScale, true);
+        } else if (styleId === 'vet_poppy_parchment' && lineCores.length > 0) {
+            const firstCore = lineCores[0];
+            const lastCore = lineCores[lineCores.length - 1];
+            const ornScale = Math.max(0.75, Math.min(1.25, maxFs / 60));
+            this._drawRemembrancePoppyOrnament(ctx, firstCore.left - firstCore.cutoutR * 0.28, firstCore.top + 4, ornScale, false);
+            this._drawRemembrancePoppyOrnament(ctx, lastCore.right + lastCore.cutoutR * 0.28, lastCore.bottom - 4, ornScale, true);
+        } else if ((styleId === 'vet_stars_stripes_ribbon' || styleId === 'vet_honor_medal_banner') && lineCores.length > 0) {
+            const firstCore = lineCores[0];
+            const lastCore = lineCores[lineCores.length - 1];
+            const starR = Math.max(7, Math.min(13, maxFs * 0.16));
+            this._drawFivePointStar(ctx, firstCore.left - firstCore.cutoutR * 0.22, firstCore.top + 6, starR, '#FFD700', '#92400E');
+            this._drawFivePointStar(ctx, lastCore.right + lastCore.cutoutR * 0.22, lastCore.bottom - 6, starR, '#FFD700', '#92400E');
         }
         ctx.restore();
     },
@@ -9510,6 +9906,7 @@ const DECOR_OVERLAY_CATEGORIES = [
     { id: 'film_grain',     name: '🎞️ 电影颗粒 & 回忆质感 (7款)' },
     { id: 'stars',          name: '🌟 发光星芒 & 梦幻光斑 (6款)' },
     { id: 'xmas',           name: '🎄 圣诞节限定点缀 (5款)' },
+    { id: 'veterans',       name: '🇺🇸 美国退伍军人节限定 (4款)' },
     { id: 'frame',          name: '⚜️ 复古画框 & 边缘装饰 (5款)' },
 ];
 
@@ -10028,6 +10425,64 @@ const DECOR_OVERLAY_STYLES = {
         light_leak: true,
         floating_particles: true,
         particle_mode: 'dust',
+    },
+
+    // ── F. 🇺🇸 美国退伍军人节限定 (4款) ──
+    vet_stars_stripes_bunting: {
+        name: '🇺🇸 星条旗三角彩旗与金星边框',
+        category: 'veterans',
+        color1: '#DC2626',
+        color2: '#FFD700',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: true,
+        dark_vignette: 32,
+        dark_tint: '#060F22',
+    },
+    vet_golden_eagles_medals: {
+        name: '🎖️ 荣耀紫心勋章与烫金军礼框',
+        category: 'veterans',
+        color1: '#FFD700',
+        color2: '#FEF08A',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: true,
+        dark_vignette: 45,
+        dark_tint: '#050C1A',
+        floating_particles: true,
+        particle_mode: 'gold_ember',
+    },
+    vet_remembrance_poppies: {
+        name: '🌺 致敬老兵纪念虞美人花框',
+        category: 'veterans',
+        color1: '#DC2626',
+        color2: '#FDE047',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: true,
+        dark_vignette: 38,
+        dark_tint: '#120808',
+        floating_particles: true,
+        particle_mode: 'dust',
+    },
+    vet_salute_fireworks_stars: {
+        name: '🎆 爱国红白蓝星芒礼花点缀',
+        category: 'veterans',
+        color1: '#3B82F6',
+        color2: '#EF4444',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: false,
+        dark_vignette: 36,
+        dark_tint: '#050A18',
+        floating_particles: true,
+        particle_mode: 'bokeh',
+        layout: 'full_scatter',
+        center_clear: 45,
     },
 };
 
@@ -10883,6 +11338,69 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
             ctx.strokeRect(bx, by, bw, bh);
             ctx.restore();
         }
+
+        if (styleId === 'vet_stars_stripes_bunting') {
+            // 🇺🇸 顶部红白蓝星条旗三角彩旗挂绳 + 红蓝双色烫金外框
+            ctx.save();
+            ctx.strokeStyle = '#1E3A8A';
+            ctx.lineWidth = 4 * sizeMul;
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 1.8 * sizeMul;
+            ctx.strokeRect(bx + 7 * sizeMul, by + 7 * sizeMul, Math.max(4, bw - 14 * sizeMul), Math.max(4, bh - 14 * sizeMul));
+
+            const flagCount = 9;
+            const stepW = bw / flagCount;
+            for (let i = 0; i < flagCount; i++) {
+                const fx = bx + i * stepW;
+                const fy = by;
+                const fh = (34 + (i % 2) * 8) * sizeMul;
+                ctx.fillStyle = (i % 3 === 0) ? '#DC2626' : (i % 3 === 1 ? '#FFFFFF' : '#1E3A8A');
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 1.4 * sizeMul;
+                ctx.beginPath();
+                ctx.moveTo(fx + 2, fy);
+                ctx.lineTo(fx + stepW - 2, fy);
+                ctx.lineTo(fx + stepW * 0.5, fy + fh);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ReelsBrushEngine._drawFivePointStar(ctx, fx + stepW * 0.5, fy + fh * 0.38, 5.5 * sizeMul, '#FFD700', '#92400E');
+            }
+            ctx.restore();
+        }
+
+        if (styleId === 'vet_golden_eagles_medals') {
+            // 🎖️ 美军礼服双层烫金绶带军礼框 + 四边中央五角金星
+            ctx.save();
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 3.2 * sizeMul;
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.strokeStyle = '#DC2626';
+            ctx.lineWidth = 1.8 * sizeMul;
+            ctx.strokeRect(bx + 8 * sizeMul, by + 8 * sizeMul, Math.max(4, bw - 16 * sizeMul), Math.max(4, bh - 16 * sizeMul));
+            for (const [mx, my] of [
+                [bx + bw * 0.5, by],
+                [bx + bw * 0.5, by + bh],
+                [bx, by + bh * 0.5],
+                [bx + bw, by + bh * 0.5],
+            ]) {
+                ReelsBrushEngine._drawFivePointStar(ctx, mx, my, 13 * sizeMul, '#FFD700', '#92400E');
+            }
+            ctx.restore();
+        }
+
+        if (styleId === 'vet_remembrance_poppies') {
+            // 🌺 致敬老兵红蓝金纪念边框
+            ctx.save();
+            ctx.strokeStyle = '#B91C1C';
+            ctx.lineWidth = 3 * sizeMul;
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.strokeStyle = 'rgba(253, 224, 71, 0.65)';
+            ctx.lineWidth = 1.4 * sizeMul;
+            ctx.strokeRect(bx + 8 * sizeMul, by + 8 * sizeMul, Math.max(4, bw - 16 * sizeMul), Math.max(4, bh - 16 * sizeMul));
+            ctx.restore();
+        }
     }
 
     // ══════════════════════════════════════════════════
@@ -10918,6 +11436,17 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
             } else if (styleId === 'xmas_snowfall_frost') {
                 ReelsBrushEngine._drawSnowflakeOrnament(ctx, c.cx + (c.fx ? -16 : 16) * sizeMul, c.cy + (c.fy ? -16 : 16) * sizeMul, 20 * sizeMul, color1);
                 ReelsBrushEngine._drawHollyOrnament(ctx, c.cx + (c.fx ? -36 : 36) * sizeMul, c.cy + (c.fy ? -12 : 12) * sizeMul, 0.95 * sizeMul, c.fx);
+            } else if (styleId === 'vet_stars_stripes_bunting' || styleId === 'vet_golden_eagles_medals' || styleId === 'vet_salute_fireworks_stars') {
+                const sx = c.cx + (c.fx ? -20 : 20) * sizeMul;
+                const sy = c.cy + (c.fy ? -20 : 20) * sizeMul;
+                ReelsBrushEngine._drawFivePointStar(ctx, sx, sy, 16 * sizeMul, '#FFD700', '#92400E');
+                ReelsBrushEngine._drawFivePointStar(ctx, sx + (c.fx ? -24 : 24) * sizeMul, sy, 10 * sizeMul, '#EF4444', '#7F1D1D');
+                ReelsBrushEngine._drawFivePointStar(ctx, sx, sy + (c.fy ? -24 : 24) * sizeMul, 10 * sizeMul, '#3B82F6', '#1E3A8A');
+            } else if (styleId === 'vet_remembrance_poppies') {
+                const px = c.cx + (c.fx ? -22 : 22) * sizeMul;
+                const py = c.cy + (c.fy ? -22 : 22) * sizeMul;
+                ReelsBrushEngine._drawRemembrancePoppyOrnament(ctx, px, py, 1.35 * sizeMul, c.fx);
+                ReelsBrushEngine._drawFivePointStar(ctx, px + (c.fx ? -28 : 28) * sizeMul, py, 9 * sizeMul, '#FFD700', '#92400E');
             } else if (
                 styleId === 'vintage_gold_filigree' ||
                 styleId === 'angelic_rays_stars' ||
