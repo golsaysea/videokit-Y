@@ -3303,7 +3303,7 @@ async function autoEditByScript(opts = {}) {
             // 未变，就直接复制上次已编码的片段到本次临时拼接目录。
             const sourceForCache = plan.realClipPath || clipPath;
             const cacheKeyPayload = {
-                version: 2,
+                version: 3,
                 source: path.resolve(sourceForCache),
                 source_fingerprint: getAutoEditClipFingerprint(sourceForCache),
                 start: Number(plan.start.toFixed(3)),

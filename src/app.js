@@ -16279,19 +16279,27 @@ function sanitizeAutoEditBatchOutputName(value, fallback = 'auto_edit') {
 }
 
 function syncAutoEditBatchParallelLists() {
-    autoEditBatchScriptCells = [
+    const nextCells = [
         ...autoEditBatchTasks.map(task => task.script || ''),
         ...autoEditBatchUnmatchedScripts.map(item => item.script || '')
     ];
     const scripts = document.getElementById('autoedit-batch-paste');
-    if (scripts) {
-        scripts.value = autoEditBatchScriptCells.map(value => {
-            const text = String(value || '');
-            return /[\n\r"\t]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-        }).join('\n');
+    // 若当前任务均无文案，但粘贴框内已有未同步文本，保留粘贴框内容，避免文件夹扫描完成时清空用户刚粘贴的文案
+    if (!nextCells.some(v => String(v || '').trim()) && scripts?.value?.trim()) {
+        autoEditBatchScriptCells = parseAutoEditClipboardCells(scripts.value);
+    } else {
+        autoEditBatchScriptCells = nextCells;
+        if (scripts && document.activeElement !== scripts) {
+            scripts.value = autoEditBatchScriptCells.map(value => {
+                const text = String(value || '');
+                return /[\n\r"\t]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+            }).join('\n');
+        }
     }
     const names = document.getElementById('autoedit-batch-output-names');
-    if (names) names.value = autoEditBatchTasks.map(task => task.outputName || '').join('\n');
+    if (names && document.activeElement !== names) {
+        names.value = autoEditBatchTasks.map(task => task.outputName || '').join('\n');
+    }
 }
 
 function applyAutoEditBatchOutputNames(value) {
@@ -16498,12 +16506,89 @@ function parseAutoEditBatchPaste() {
     applyAutoEditBatchScripts(parseAutoEditClipboardCells(document.getElementById('autoedit-batch-paste')?.value || ''));
 }
 function applyAutoEditBatchScripts(cells, options = {}) {
-    autoEditBatchScriptCells = Array.isArray(cells) ? cells.slice() : [];
+    let normalizedCells = Array.isArray(cells) ? cells.slice() : [];
+    const rawPaste = String(document.getElementById('autoedit-batch-paste')?.value || '');
+    const activeTasks = autoEditBatchTasks.filter(task => task.clips?.length);
+    // 当仅有一个任务文件夹且用户直接粘贴了未加引号、无制表符的多行纯文本文案时，自动合并为该任务的完整断行文案
+    if (
+        autoEditBatchTasks.length === 1 &&
+        activeTasks.length === 1 &&
+        normalizedCells.length > 1 &&
+        !rawPaste.includes('"') &&
+        !rawPaste.includes('\t') &&
+        normalizedCells.every(c => !String(c || '').includes('\n'))
+    ) {
+        const merged = normalizedCells.map(c => String(c || '').trim()).filter(Boolean).join('\n');
+        if (merged) normalizedCells = [merged];
+    }
+    autoEditBatchScriptCells = normalizedCells;
     autoEditBatchUnmatchedScripts = [];
     autoEditBatchSmartPairingComplete = false;
-    autoEditBatchTasks.forEach((task, i) => setAutoEditBatchTaskScript(task, cells[i] || ''));
+    autoEditBatchTasks.forEach((task, i) => setAutoEditBatchTaskScript(task, normalizedCells[i] || ''));
     renderAutoEditBatchTasks();
-    if (!options.silent) showToast(`已自动识别 ${cells.length} 个文案单元格`, !autoEditBatchTasks.length || cells.length === autoEditBatchTasks.length ? 'success' : 'info');
+    if (!options.silent) showToast(`已自动识别 ${normalizedCells.length} 个文案单元格`, !autoEditBatchTasks.length || normalizedCells.length === autoEditBatchTasks.length ? 'success' : 'info');
+}
+
+function syncAutoEditBatchPendingScriptInputs() {
+    if (autoEditBatchInputTimer) {
+        clearTimeout(autoEditBatchInputTimer);
+        autoEditBatchInputTimer = null;
+        const pasteEl = document.getElementById('autoedit-batch-paste');
+        if (pasteEl) {
+            applyAutoEditBatchScripts(parseAutoEditClipboardCells(pasteEl.value), { silent: true });
+        }
+    }
+    const cardTextareas = document.querySelectorAll('#autoedit-batch-task-list .autoedit-batch-task textarea');
+    cardTextareas.forEach((textarea, idx) => {
+        const task = autoEditBatchTasks[idx];
+        if (task && typeof textarea.value === 'string' && textarea.value !== task.script) {
+            setAutoEditBatchTaskScript(task, textarea.value);
+            autoEditBatchScriptCells[idx] = textarea.value;
+        }
+    });
+    const activeTasks = autoEditBatchTasks.filter(task => task.clips?.length);
+    if (!activeTasks.length) return;
+    const anyTaskHasScript = activeTasks.some(task => task.script?.trim());
+    const pasteEl = document.getElementById('autoedit-batch-paste');
+    const rawPaste = String(pasteEl?.value || '');
+    if (!anyTaskHasScript && rawPaste.trim()) {
+        const parsedCells = parseAutoEditClipboardCells(rawPaste);
+        const validCells = parsedCells.filter(cell => String(cell || '').trim());
+        if (activeTasks.length === 1 && !rawPaste.includes('"') && !rawPaste.includes('\t') && validCells.length > 1 && validCells.every(c => !c.includes('\n'))) {
+            const mergedScript = validCells.join('\n');
+            autoEditBatchScriptCells = [mergedScript];
+            autoEditBatchUnmatchedScripts = [];
+            setAutoEditBatchTaskScript(activeTasks[0], mergedScript);
+        } else if (validCells.length > 0 && validCells.length <= activeTasks.length && !parsedCells[0]?.trim()) {
+            autoEditBatchScriptCells = validCells.slice();
+            autoEditBatchUnmatchedScripts = [];
+            activeTasks.forEach((task, i) => setAutoEditBatchTaskScript(task, validCells[i] || ''));
+        } else {
+            applyAutoEditBatchScripts(parsedCells, { silent: true });
+        }
+    } else if (
+        activeTasks.length === 1 &&
+        !rawPaste.includes('"') &&
+        !rawPaste.includes('\t') &&
+        autoEditBatchScriptCells.length > 1 &&
+        autoEditBatchScriptCells.every(c => !String(c || '').includes('\n'))
+    ) {
+        const validLines = autoEditBatchScriptCells.map(c => String(c || '').trim()).filter(Boolean);
+        if (validLines.length > 1) {
+            const mergedScript = validLines.join('\n');
+            autoEditBatchScriptCells = [mergedScript];
+            autoEditBatchUnmatchedScripts = [];
+            setAutoEditBatchTaskScript(activeTasks[0], mergedScript);
+        }
+    }
+    // 若批量任务仍无文案且仅有 1 个任务，回退检查单套面板文案框（#autoedit-script）
+    if (activeTasks.length === 1 && !activeTasks[0].script?.trim()) {
+        const singleScript = String(document.getElementById('autoedit-script')?.value || '').trim();
+        if (singleScript) {
+            setAutoEditBatchTaskScript(activeTasks[0], singleScript);
+            autoEditBatchScriptCells[0] = singleScript;
+        }
+    }
 }
 
 async function selectAutoEditBatchFolders() {
@@ -16570,7 +16655,14 @@ function isAutoEditBatchPathInside(childPath, parentPath) {
 
 async function loadAutoEditBatchFolders(dirs, { replace = false } = {}) {
     const videoExt = /\.(mp4|mov|mkv|avi|wmv|flv|webm|m4v)$/i;
-    const sourceScripts = autoEditBatchScriptCells.slice();
+    if (autoEditBatchInputTimer) {
+        clearTimeout(autoEditBatchInputTimer);
+        autoEditBatchInputTimer = null;
+    }
+    const rawPasteBeforeScan = String(document.getElementById('autoedit-batch-paste')?.value || '');
+    if (!autoEditBatchScriptCells.some(s => String(s || '').trim()) && rawPasteBeforeScan.trim()) {
+        autoEditBatchScriptCells = parseAutoEditClipboardCells(rawPasteBeforeScan);
+    }
     if (replace) {
         resetAutoEditBatchReview();
         autoEditBatchTasks = [];
@@ -16617,13 +16709,34 @@ async function loadAutoEditBatchFolders(dirs, { replace = false } = {}) {
             });
         excludedOverlapCount += candidates.length - clips.length;
         const index = autoEditBatchTasks.length;
-        const script = sourceScripts[index] || '';
+        let liveScripts = autoEditBatchScriptCells.slice();
+        const liveRawPaste = String(document.getElementById('autoedit-batch-paste')?.value || '');
+        if (!liveScripts.some(s => String(s || '').trim()) && liveRawPaste.trim()) {
+            liveScripts = parseAutoEditClipboardCells(liveRawPaste);
+            autoEditBatchScriptCells = liveScripts.slice();
+        }
+        if (
+            orderedDirs.length === 1 &&
+            index === 0 &&
+            liveScripts.length > 1 &&
+            !liveRawPaste.includes('"') &&
+            !liveRawPaste.includes('\t') &&
+            liveScripts.every(c => !String(c || '').includes('\n'))
+        ) {
+            const merged = liveScripts.map(c => String(c || '').trim()).filter(Boolean).join('\n');
+            if (merged) {
+                liveScripts = [merged];
+                autoEditBatchScriptCells = [merged];
+            }
+        }
+        const script = liveScripts[index] || '';
         const name = window.electronAPI.pathBasename(folder);
         autoEditBatchTasks.push({ taskOrder: index, folder, name, outputName: name, sendToReels: Boolean(clips.length), clips, script, thumbnail: '', manualSubtitleMap: {}, status: clips.length ? 'waiting' : 'skipped', message: clips.length ? (script ? `文案已配对 · 含子文件夹 ${clips.length} 个视频` : `等待文案 · 含子文件夹 ${clips.length} 个视频`) : '空文件夹，已跳过', result: null });
         existingFolders.add(folderKey);
         added++;
     }
-    autoEditBatchUnmatchedScripts = sourceScripts.slice(autoEditBatchTasks.length).map((script, index) => ({
+    const finalScripts = autoEditBatchScriptCells.slice();
+    autoEditBatchUnmatchedScripts = finalScripts.slice(autoEditBatchTasks.length).map((script, index) => ({
         script,
         originalIndex: autoEditBatchTasks.length + index,
         confirmed: false
@@ -16632,7 +16745,12 @@ async function loadAutoEditBatchFolders(dirs, { replace = false } = {}) {
     renderAutoEditBatchTasks();
     const tasksNeedingThumbnail = replace ? autoEditBatchTasks : autoEditBatchTasks.slice(-added);
     for (const task of tasksNeedingThumbnail) {
-        if (task.clips[0]) { task.thumbnail = await batchCutGenThumb(task.clips[0]); renderAutoEditBatchTasks(); }
+        if (task.clips[0]) {
+            task.thumbnail = await batchCutGenThumb(task.clips[0]);
+            const activeEl = document.activeElement;
+            const isEditingInList = activeEl && document.getElementById('autoedit-batch-task-list')?.contains(activeEl) && ['TEXTAREA', 'INPUT'].includes(activeEl.tagName);
+            if (!isEditingInList) renderAutoEditBatchTasks();
+        }
     }
     if (excludedOverlapCount) showToast(`已排除 ${excludedOverlapCount} 个与其他批次重叠的素材，避免跨批次串入`, 'info', 7000);
     return added;
@@ -16710,11 +16828,21 @@ function clearAutoEditBatchTasks() {
     renderAutoEditBatchTasks();
     saveAutoEditWorkspaceState();
 }
-function updateAutoEditBatchScript(index, value) {
+function updateAutoEditBatchScriptLive(index, value) {
     if (!autoEditBatchTasks[index]) return;
     setAutoEditBatchTaskScript(autoEditBatchTasks[index], value);
     autoEditBatchScriptCells[index] = value;
 }
+function updateAutoEditBatchScript(index, value) {
+    if (!autoEditBatchTasks[index]) return;
+    setAutoEditBatchTaskScript(autoEditBatchTasks[index], value);
+    autoEditBatchScriptCells[index] = value;
+    syncAutoEditBatchParallelLists();
+    renderAutoEditBatchTasks();
+    saveAutoEditWorkspaceState();
+}
+window.updateAutoEditBatchScriptLive = updateAutoEditBatchScriptLive;
+window.updateAutoEditBatchScript = updateAutoEditBatchScript;
 function updateAutoEditBatchSendToReels(index, checked) {
     if (!autoEditBatchTasks[index]) return;
     autoEditBatchTasks[index].sendToReels = Boolean(checked);
@@ -16915,7 +17043,8 @@ function deselectAutoEditBatchProblemTasks() {
     showToast(`已取消 ${deselected} 个有反馈问题的任务`, 'info');
 }
 function autoEditBatchTaskResultLabel(task) {
-    if (!task?.clips?.length || task.status === 'skipped') return '空文件夹，已跳过';
+    if (!task?.clips?.length) return '空文件夹，已跳过';
+    if (task.status === 'skipped') return task.message || '无文案，已跳过';
     if (autoEditBatchExportIsCurrent(task)) return '已导出';
     if (task.status === 'analyzing') return '分析中';
     if (task.status === 'error') return `处理失败${task.message ? `：${task.message}` : ''}`;
@@ -16959,17 +17088,36 @@ window.copyAutoEditBatchTaskResults = copyAutoEditBatchTaskResults;
 
 function setAutoEditBatchTaskScript(task, value) {
     const nextScript = String(value || '');
-    if (task.script === nextScript) return;
+    const hasScript = Boolean(nextScript.trim());
+    const hasClips = Boolean(task.clips?.length);
+    if (task.script === nextScript) {
+        if (hasScript && hasClips && task.status === 'skipped') {
+            task.status = 'waiting';
+            task.sendToReels = true;
+            task.message = `文案已配对 · 含子文件夹 ${task.clips.length} 个视频`;
+        }
+        return;
+    }
     task.script = nextScript;
     // 分析结果与当时的文案一一绑定。文案改动后禁止继续使用旧时间线。
     if (task.result || task.reviewSegments) {
         task.result = null;
         task.reviewSegments = null;
         task.reelsTransferError = '';
-        task.status = task.clips?.length ? 'waiting' : 'error';
-        task.message = task.clips?.length ? '文案已修改，请重新分析' : '没有视频';
+        task.status = hasClips ? 'waiting' : 'error';
+        task.message = hasClips ? '文案已修改，请重新分析' : '没有视频';
         task.exportSignature = '';
         task.exportedAt = '';
+        if (hasClips && hasScript) task.sendToReels = true;
+    } else if (hasClips) {
+        if (hasScript) {
+            task.status = 'waiting';
+            task.sendToReels = true;
+            task.message = `文案已配对 · 含子文件夹 ${task.clips.length} 个视频`;
+        } else {
+            task.status = 'waiting';
+            task.message = `等待文案 · 含子文件夹 ${task.clips.length} 个视频`;
+        }
     }
 }
 
@@ -17814,7 +17962,7 @@ function renderAutoEditBatchTasks() {
             : '';
         return `<div class="autoedit-batch-task" ondragover="event.preventDefault()" ondrop="autoEditBatchDrop(event,${i})" style="border:1px solid var(--border-color);border-radius:8px;padding:10px;background:var(--bg-tertiary);display:grid;grid-template-columns:128px minmax(0,1fr);gap:10px;">
           <div style="width:128px;align-self:start;">${task.thumbnail ? `<div style="width:128px;display:flex;justify-content:center;align-items:center;background:#111;border-radius:6px;overflow:hidden;"><img src="${task.thumbnail}" onclick="playAutoEditBatchSource(${i})" style="display:block;max-width:128px;width:auto;height:auto;max-height:180px;object-fit:contain;cursor:pointer;" title="按原始视频比例显示，点击预览"></div>` : '<div style="width:128px;height:82px;background:#111;border-radius:6px;display:grid;place-items:center;color:#777;">无缩略图</div>'}<div title="${escapeHtml(first)}" style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px;">${escapeHtml(first)}</div></div>
-          <div><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;"><label title="输入目标顺序编号后回车或点击空白处" style="display:inline-flex;align-items:center;gap:4px;padding:3px 6px;border:1px solid rgba(99,102,241,.5);border-radius:6px;background:rgba(99,102,241,.12);font-size:11px;color:#c7d2fe;">顺序 <input type="number" min="1" max="${autoEditBatchTasks.length}" value="${i+1}" onchange="setAutoEditBatchTaskOrder(${i},this.value)" onkeydown="if(event.key==='Enter'){this.blur()}" ${autoEditBatchRunning?'disabled':''} style="width:46px;background:#111225;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 4px;text-align:center;"></label><span draggable="true" ondragstart="autoEditBatchDragStart(event,${i})" title="拖动排序" style="cursor:grab;font-size:18px;">☰</span><button class="btn btn-secondary" title="上移一位" onclick="nudgeAutoEditBatchTask(${i},-1)" ${autoEditBatchRunning||i===0?'disabled':''} style="padding:1px 5px;">↑</button><button class="btn btn-secondary" title="下移一位" onclick="nudgeAutoEditBatchTask(${i},1)" ${autoEditBatchRunning||i===autoEditBatchTasks.length-1?'disabled':''} style="padding:1px 5px;">↓</button><strong>${escapeHtml(task.name)}</strong>${smartPairHtml}</div><span title="${escapeHtml(task.reelsTransferError || task.message)}" style="color:${colors[task.status] || '#8b95c0'};font-size:12px;line-height:1.55;white-space:pre-line;">${escapeHtml(task.message)}</span></div><div class="hint">直接修改顺序编号可快速移动 · ${task.clips.length} 个视频 · ${lines} 行断行文案</div><div style="display:flex;align-items:center;gap:12px;margin-top:7px;flex-wrap:wrap;"><label style="display:flex;align-items:center;gap:7px;font-size:11px;flex:1;min-width:250px;"><strong style="min-width:76px;color:#c7d2fe;">🏷️ 导出名称</strong><input class="input" value="${escapeHtml(task.outputName || task.name)}" placeholder="Reels 中的任务名和最终文件名" onchange="updateAutoEditBatchOutputName(${i},this.value)" ${autoEditBatchRunning?'disabled':''} style="flex:1;"></label><label title="未勾选的任务不会裁切、不会生成视频或字幕，也不会送入 Reels" style="display:inline-flex;align-items:center;gap:5px;color:#a7f3d0;font-size:11px;white-space:nowrap;"><input type="checkbox" onchange="updateAutoEditBatchSendToReels(${i},this.checked)" ${task.sendToReels === false ? '' : 'checked'} ${autoEditBatchRunning?'disabled':''}> 参与本次导出</label></div><label style="display:block;margin-top:8px;"><strong style="display:block;font-size:11px;color:#bfdbfe;margin-bottom:4px;">📝 当前任务的完整断行后文案 <span class="hint" style="font-weight:400;">（用于字幕匹配和自动剪辑）</span></strong><textarea class="input" rows="3" placeholder="在这里输入或修改已经断好行的完整文案……" onchange="updateAutoEditBatchScript(${i},this.value)" ${autoEditBatchRunning?'disabled':''} style="width:100%;resize:vertical;background:var(--bg-secondary);">${escapeHtml(task.script)}</textarea></label>${analysisResultHtml}${outputSourceHtml}${task.result?.analysis_only ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;"><button class="btn btn-primary" onclick="openAutoEditBatchTimelineReview(${i})" ${autoEditBatchRunning?'disabled':''} style="font-size:12px;padding:4px 10px;">⏱ 时间线审核</button><button class="btn btn-secondary" onclick="openAutoEditBatchReview(${i})" ${autoEditBatchRunning?'disabled':''} style="font-size:12px;padding:4px 10px;">📋 列表审核</button><button class="btn btn-primary" onclick="exportAutoEditBatchTask(${i})" ${autoEditBatchRunning||task.status==='analyzing'?'disabled':''} style="font-size:12px;padding:4px 10px;">正式导出</button><button class="btn btn-secondary" onclick="exportAutoEditBatchTask(${i},{skipReels:true})" ${autoEditBatchRunning||task.status==='analyzing'?'disabled':''} style="font-size:12px;padding:4px 10px;">仅视频 + 字幕</button></div>` : ''}${task.result?.output_path ? `<button class="btn btn-secondary" onclick="showAutoEditBatchOutput(${i})" style="margin-top:6px;">📁 查看成片</button>${task.reelsTransferError ? `<button class="btn btn-secondary" onclick="retryAutoEditBatchTaskToReels(${i})" ${autoEditBatchRunning?'disabled':''} style="margin:6px 0 0 6px;">重送 Reels</button>` : ''}` : ''}</div>
+          <div><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;"><div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;"><label title="输入目标顺序编号后回车或点击空白处" style="display:inline-flex;align-items:center;gap:4px;padding:3px 6px;border:1px solid rgba(99,102,241,.5);border-radius:6px;background:rgba(99,102,241,.12);font-size:11px;color:#c7d2fe;">顺序 <input type="number" min="1" max="${autoEditBatchTasks.length}" value="${i+1}" onchange="setAutoEditBatchTaskOrder(${i},this.value)" onkeydown="if(event.key==='Enter'){this.blur()}" ${autoEditBatchRunning?'disabled':''} style="width:46px;background:#111225;color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:4px;padding:2px 4px;text-align:center;"></label><span draggable="true" ondragstart="autoEditBatchDragStart(event,${i})" title="拖动排序" style="cursor:grab;font-size:18px;">☰</span><button class="btn btn-secondary" title="上移一位" onclick="nudgeAutoEditBatchTask(${i},-1)" ${autoEditBatchRunning||i===0?'disabled':''} style="padding:1px 5px;">↑</button><button class="btn btn-secondary" title="下移一位" onclick="nudgeAutoEditBatchTask(${i},1)" ${autoEditBatchRunning||i===autoEditBatchTasks.length-1?'disabled':''} style="padding:1px 5px;">↓</button><strong>${escapeHtml(task.name)}</strong>${smartPairHtml}</div><span title="${escapeHtml(task.reelsTransferError || task.message)}" style="color:${colors[task.status] || '#8b95c0'};font-size:12px;line-height:1.55;white-space:pre-line;">${escapeHtml(task.message)}</span></div><div class="hint">直接修改顺序编号可快速移动 · ${task.clips.length} 个视频 · ${lines} 行断行文案</div><div style="display:flex;align-items:center;gap:12px;margin-top:7px;flex-wrap:wrap;"><label style="display:flex;align-items:center;gap:7px;font-size:11px;flex:1;min-width:250px;"><strong style="min-width:76px;color:#c7d2fe;">🏷️ 导出名称</strong><input class="input" value="${escapeHtml(task.outputName || task.name)}" placeholder="Reels 中的任务名和最终文件名" onchange="updateAutoEditBatchOutputName(${i},this.value)" ${autoEditBatchRunning?'disabled':''} style="flex:1;"></label><label title="未勾选的任务不会裁切、不会生成视频或字幕，也不会送入 Reels" style="display:inline-flex;align-items:center;gap:5px;color:#a7f3d0;font-size:11px;white-space:nowrap;"><input type="checkbox" onchange="updateAutoEditBatchSendToReels(${i},this.checked)" ${task.sendToReels === false ? '' : 'checked'} ${autoEditBatchRunning?'disabled':''}> 参与本次导出</label></div><label style="display:block;margin-top:8px;"><strong style="display:block;font-size:11px;color:#bfdbfe;margin-bottom:4px;">📝 当前任务的完整断行后文案 <span class="hint" style="font-weight:400;">（用于字幕匹配和自动剪辑）</span></strong><textarea class="input" rows="3" placeholder="在这里输入或修改已经断好行的完整文案……" oninput="updateAutoEditBatchScriptLive(${i},this.value)" onchange="updateAutoEditBatchScript(${i},this.value)" ${autoEditBatchRunning?'disabled':''} style="width:100%;resize:vertical;background:var(--bg-secondary);">${escapeHtml(task.script)}</textarea></label>${analysisResultHtml}${outputSourceHtml}${task.result?.analysis_only ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center;"><button class="btn btn-primary" onclick="openAutoEditBatchTimelineReview(${i})" ${autoEditBatchRunning?'disabled':''} style="font-size:12px;padding:4px 10px;">⏱ 时间线审核</button><button class="btn btn-secondary" onclick="openAutoEditBatchReview(${i})" ${autoEditBatchRunning?'disabled':''} style="font-size:12px;padding:4px 10px;">📋 列表审核</button><button class="btn btn-primary" onclick="exportAutoEditBatchTask(${i})" ${autoEditBatchRunning||task.status==='analyzing'?'disabled':''} style="font-size:12px;padding:4px 10px;">正式导出</button><button class="btn btn-secondary" onclick="exportAutoEditBatchTask(${i},{skipReels:true})" ${autoEditBatchRunning||task.status==='analyzing'?'disabled':''} style="font-size:12px;padding:4px 10px;">仅视频 + 字幕</button></div>` : ''}${task.result?.output_path ? `<button class="btn btn-secondary" onclick="showAutoEditBatchOutput(${i})" style="margin-top:6px;">📁 查看成片</button>${task.reelsTransferError ? `<button class="btn btn-secondary" onclick="retryAutoEditBatchTaskToReels(${i})" ${autoEditBatchRunning?'disabled':''} style="margin:6px 0 0 6px;">重送 Reels</button>` : ''}` : ''}</div>
         </div>`;
     }).join('');
     const unmatchedCards = autoEditBatchUnmatchedScripts.length ? `<section style="grid-column:1/-1;border:1px solid rgba(251,191,36,.45);border-radius:9px;padding:12px;background:rgba(251,191,36,.06);">
@@ -18045,6 +18193,7 @@ function solveAutoEditBatchSmartAssignment(scores) {
 
 async function startAutoEditBatchSmartPairing() {
     if (autoEditBatchRunning) return showToast('批量任务正在运行，请稍候', 'info');
+    syncAutoEditBatchPendingScriptInputs();
     // 空文案单元格不参与智能匹配；它们常常对应未就绪文案或被跳过的任务
     const scriptItems = autoEditBatchScriptCells
         .map((script, originalIndex) => ({ script: String(script || ''), originalIndex }))
@@ -18212,11 +18361,21 @@ function autoEditBatchProjectHasHumanReview(project) {
 
 async function startAutoEditBatchAnalysis() {
     if(autoEditBatchRunning)return showToast('批量任务正在运行，请稍候','info');
+    syncAutoEditBatchPendingScriptInputs();
     if (!autoEditBatchTasks.length) return showToast('请先选择多个文件夹','error');
     const activeTasks = autoEditBatchTasks.filter(task => task.clips?.length);
     const skippedTasks = autoEditBatchTasks.filter(task => !task.clips?.length);
     skippedTasks.forEach(task => { task.status = 'skipped'; task.sendToReels = false; task.message = '空文件夹，已跳过'; });
     if (!activeTasks.length) { renderAutoEditBatchTasks(); return showToast('没有可分析的视频任务', 'warning'); }
+
+    // 恢复已补充文案但此前因缺文案被标记为 skipped 的任务
+    activeTasks.forEach(t => {
+        if (t.script?.trim() && t.status === 'skipped') {
+            t.status = 'waiting';
+            t.sendToReels = true;
+            t.message = `文案已配对 · 含子文件夹 ${t.clips.length} 个视频`;
+        }
+    });
 
     // 缺少文案的任务自动跳过，不阻碍其他正常任务
     const missingScriptTasks = activeTasks.filter(t => !t.script?.trim());
@@ -18226,7 +18385,17 @@ async function startAutoEditBatchAnalysis() {
         t.message = '无文案（空单元格已跳过）';
     });
 
-    const tasksToAnalyze = activeTasks.filter(t => t.script?.trim() && t.sendToReels !== false);
+    let tasksToAnalyze = activeTasks.filter(t => t.script?.trim() && t.sendToReels !== false);
+    if (!tasksToAnalyze.length) {
+        const tasksWithScript = activeTasks.filter(t => t.script?.trim());
+        if (tasksWithScript.length) {
+            tasksWithScript.forEach(t => {
+                t.sendToReels = true;
+                if (t.status === 'skipped') t.status = 'waiting';
+            });
+            tasksToAnalyze = tasksWithScript;
+        }
+    }
     if (!tasksToAnalyze.length) {
         renderAutoEditBatchTasks();
         return showToast('没有可分析的有效任务（所有任务均缺少文案或已跳过）', 'warning');

@@ -3427,9 +3427,15 @@ test('BatchCut & AutoEdit clip cutting/concatenation fix: default precise mode, 
     assert.ok(ffmpegSrc.includes('检测到直拼视频轨时长'), 'concatClips must verify output video stream duration against container duration and auto-recover if video ended early');
     assert.ok(ffmpegSrc.includes('timelineDur - tDur - frameStep * 0.5'), 'concatClipsWithTransitions must keep safety margin before EOF on xfade offset so video never freezes into a static frame');
 
-    // 3. autoEdit.js aligns audio PTS and guards against sub-frame micro-cuts
+    // 3. autoEdit.js aligns audio PTS, guards against sub-frame micro-cuts, and invalidates old cut cache via version: 3
     assert.ok(autoEditSrc.includes('aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS'), 'autoEdit.js must use aresample=async=1:first_pts=0 when cutting segments');
     assert.ok(autoEditSrc.includes('plan.end - plan.start < 0.35'), 'autoEdit.js must guard against sub-0.35s micro-cut segments');
+    assert.match(autoEditSrc, /const cacheKeyPayload = \{\s*version: 3,/, 'autoEdit.js must bump cacheKeyPayload version to 3 so pre-4.5.6 cut caches are re-cut with PTS sync');
+
+    // 4. AutoEdit batch task script synchronization & recovery from skipped/sendToReels=false state
+    assert.ok(appSrc.includes('function syncAutoEditBatchPendingScriptInputs()'), 'app.js must define syncAutoEditBatchPendingScriptInputs to flush pending script inputs before analysis/smart-pairing');
+    assert.ok(appSrc.includes('oninput="updateAutoEditBatchScriptLive(${i},this.value)"'), 'Task card script textarea must sync live on input so background thumbnail renders do not lose typed scripts');
+    assert.ok(appSrc.includes('const tasksWithScript = activeTasks.filter(t => t.script?.trim());'), 'startAutoEditBatchAnalysis must recover tasks that have scripts even if sendToReels was previously set to false');
 });
 
 

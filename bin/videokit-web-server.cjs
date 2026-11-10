@@ -312,9 +312,9 @@ async function handleWebBridgeRpc(method, params = {}) {
         case 'getAppVersion': {
             try {
                 const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf-8'));
-                return pkg.version || '4.5.6';
+                return pkg.version || '4.5.7';
             } catch {
-                return '4.5.6';
+                return '4.5.7';
             }
         }
 
@@ -732,7 +732,7 @@ function createWebServer(options = {}) {
             sendJson(res, 200, {
                 status: 'ok',
                 mode: 'web-bridge',
-                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.6',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.7',
                 auth_required: Boolean(activeToken),
             });
             return;
@@ -749,7 +749,7 @@ function createWebServer(options = {}) {
             const presetsMod = require('../src/reels-presets-init.js');
             sendJson(res, 200, {
                 status: 'ok',
-                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.6',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.5.7',
                 subtitle_presets: presetsMod.REELS_PRESET_ID_MAP || {},
                 scroll_presets: Object.fromEntries(Object.entries(presetsMod.REELS_SCROLL_PRESET_ID_MAP || {}).filter(([k]) => k.startsWith('sc-'))),
                 overlay_presets: presetsMod.REELS_OVERLAY_PRESET_ID_MAP || {},
