@@ -451,6 +451,9 @@ async function reelsWysiwygExport(params) {
     } = params;
 
     const isMultiClip = bgMode === 'multi' && Array.isArray(bgClipPool) && bgClipPool.length > 0;
+    if (isMultiClip && voicePath && (voicePath === backgroundPath || bgClipPool.includes(voicePath))) {
+        voicePath = null;
+    }
     taskOverlays = _cloneOverlaysForWysiwygExport(taskOverlays);
 
     // ── 多素材诊断日志 ──
@@ -607,6 +610,10 @@ async function reelsWysiwygExport(params) {
                 log(`音频原始时长: ${rawAudioDur.toFixed(2)}s × ${audioDurScale}% = ${duration.toFixed(2)}s`);
             } else {
                 duration = rawAudioDur;
+            }
+            if (!isMultiClip && backgroundPath && voicePath === backgroundPath && effectiveSubDuration > duration) {
+                duration = Math.max(duration, effectiveSubDuration);
+                log(`带声背景视频短于字幕时长，自动对齐到字幕时长: ${duration.toFixed(2)}s`);
             }
         }
         // ── 覆层视频 (Content Video) 时长优先于背景 ──

@@ -3292,6 +3292,7 @@ async function autoEditByScript(opts = {}) {
                 '-filter_complex', filterComplex,
                 '-map', '[v]', '-map', '[a]',
                 '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
+                '-video_track_timescale', '90000',
                 '-c:a', 'aac', '-b:a', '192k',
                 '-avoid_negative_ts', 'make_zero',
                 '-shortest',
@@ -3303,7 +3304,7 @@ async function autoEditByScript(opts = {}) {
             // 未变，就直接复制上次已编码的片段到本次临时拼接目录。
             const sourceForCache = plan.realClipPath || clipPath;
             const cacheKeyPayload = {
-                version: 3,
+                version: 4,
                 source: path.resolve(sourceForCache),
                 source_fingerprint: getAutoEditClipFingerprint(sourceForCache),
                 start: Number(plan.start.toFixed(3)),

@@ -3427,16 +3427,98 @@ test('BatchCut & AutoEdit clip cutting/concatenation fix: default precise mode, 
     assert.ok(ffmpegSrc.includes('检测到直拼视频轨时长'), 'concatClips must verify output video stream duration against container duration and auto-recover if video ended early');
     assert.ok(ffmpegSrc.includes('timelineDur - tDur - frameStep * 0.5'), 'concatClipsWithTransitions must keep safety margin before EOF on xfade offset so video never freezes into a static frame');
 
-    // 3. autoEdit.js aligns audio PTS, guards against sub-frame micro-cuts, and invalidates old cut cache via version: 3
+    // 3. autoEdit.js aligns audio PTS, guards against sub-frame micro-cuts, and invalidates old cut cache via version: 4
     assert.ok(autoEditSrc.includes('aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS'), 'autoEdit.js must use aresample=async=1:first_pts=0 when cutting segments');
     assert.ok(autoEditSrc.includes('plan.end - plan.start < 0.35'), 'autoEdit.js must guard against sub-0.35s micro-cut segments');
-    assert.match(autoEditSrc, /const cacheKeyPayload = \{\s*version: 3,/, 'autoEdit.js must bump cacheKeyPayload version to 3 so pre-4.5.6 cut caches are re-cut with PTS sync');
+    assert.match(autoEditSrc, /const cacheKeyPayload = \{\s*version: 4,/, 'autoEdit.js must bump cacheKeyPayload version to 4 so pre-4.5.8 cut caches are re-cut with timescale 90000 and PTS sync');
 
     // 4. AutoEdit batch task script synchronization & recovery from skipped/sendToReels=false state
     assert.ok(appSrc.includes('function syncAutoEditBatchPendingScriptInputs()'), 'app.js must define syncAutoEditBatchPendingScriptInputs to flush pending script inputs before analysis/smart-pairing');
     assert.ok(appSrc.includes('oninput="updateAutoEditBatchScriptLive(${i},this.value)"'), 'Task card script textarea must sync live on input so background thumbnail renders do not lose typed scripts');
     assert.ok(appSrc.includes('const tasksWithScript = activeTasks.filter(t => t.script?.trim());'), 'startAutoEditBatchAnalysis must recover tasks that have scripts even if sendToReels was previously set to false');
 });
+
+test('Batch Reels multi-clip & auto-concat 30s truncation fix: tasks 2..N preserve full 2m+ duration instead of truncating to first 30s clip', () => {
+    const ReelsRenderPlan = require(path.join(ROOT, 'src/reels-render-plan.js'));
+    const batchReelsSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const batchTableSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    const wysiwygSrc = fs.readFileSync(path.join(ROOT, 'src/reels-wysiwyg-export.js'), 'utf8');
+    const layeredSrc = fs.readFileSync(path.join(ROOT, 'src/reels-layered-export.js'), 'utf8');
+    const rawvideoSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'), 'utf8');
+    const ffmpegSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg.js'), 'utf8');
+    const autoEditSrc = fs.readFileSync(path.join(ROOT, 'electron/services/autoEdit.js'), 'utf8');
+
+    // 1. Unselected multi-clip tasks (Tasks 2, 3, 4, 5) must NOT have bgPath overwritten with bgClipPool[0] (30s) by syncLegacyFields
+    const task2 = {
+        bgMode: 'multi',
+        bgPath: '',
+        videoPath: '',
+        bgClipPool: ['C:/clips/clip1_30s.mp4', 'C:/clips/clip2_30s.mp4', 'C:/clips/clip3_30s.mp4', 'C:/clips/clip4_30s.mp4', 'C:/clips/clip5_27s.mp4'],
+        segments: [{ start: 0, end: 147, text: 'Full 2m27s sermon subtitle' }],
+    };
+    assert.equal(ReelsRenderPlan.fillBackgroundLoops(task2, { duration: 147 }), false, 'fillBackgroundLoops must skip multi-clip tasks');
+    ReelsRenderPlan.syncLegacyFields(task2, { width: 1080, height: 1920 });
+    assert.equal(task2.bgPath, '', 'syncLegacyFields must not write bgClipPool[0] (30s clip) into task.bgPath on unselected multi-clip tasks');
+    assert.equal(task2.videoPath, '', 'syncLegacyFields must not write bgClipPool[0] (30s clip) into task.videoPath on unselected multi-clip tasks');
+
+    // 2. batch-reels.js must not use bgPath (pool[0]) as voiceSource when task is in multi-clip mode, and must auto-concat unconcatenated clipPool tasks before export
+    assert.ok(
+        batchReelsSrc.includes("const isMultiBgTask = task.bgMode === 'multi' && effectiveBgClipPool.length > 0;"),
+        'reelsStartBatch must detect multi-clip background tasks before assigning voiceSource'
+    );
+    assert.ok(
+        batchReelsSrc.includes("const voiceSource = task.audioPath || ((workMode === 'voiced_bg' && !isMultiBgTask) ? bgPath : null);"),
+        'reelsStartBatch must not pass single-clip bgPath as voiceSource when isMultiBgTask is true'
+    );
+    assert.ok(
+        batchReelsSrc.includes('await window.reelsConcatTaskClipPool(taskIdx);'),
+        'reelsStartBatch must auto-concatenate any task with clipPoolDir/clipPool that was not manually concatenated before export'
+    );
+
+    // 3. reels-batch-table.js _applyPoolToTask must clear stale single-clip bgPath/videoPath when applying multi-clip pool to rows 2..N
+    assert.ok(
+        batchTableSrc.includes("if (task.bgMode === 'multi') {\n                targetTask.bgPath = '';") ||
+        batchTableSrc.includes("if (task.bgMode === 'multi') {\r\n                targetTask.bgPath = '';"),
+        '_applyPoolToTask must clear stale single-clip bgPath on target rows when applying multi-clip pool'
+    );
+    assert.ok(
+        batchTableSrc.includes('window.reelsConcatTaskClipPool = _rbtConcatTaskClipPool;'),
+        'reels-batch-table.js must expose window.reelsConcatTaskClipPool for pre-export auto-concatenation'
+    );
+
+    // 4. reels-wysiwyg-export.js & reels-layered-export.js must guard against voicePath being in bgClipPool and align single voiced_bg duration to effectiveSubDuration
+    assert.ok(
+        wysiwygSrc.includes('if (isMultiClip && voicePath && (voicePath === backgroundPath || bgClipPool.includes(voicePath)))'),
+        'reels-wysiwyg-export.js must clear voicePath when it points to a background pool clip in multi-clip mode'
+    );
+    assert.ok(
+        wysiwygSrc.includes('if (!isMultiClip && backgroundPath && voicePath === backgroundPath && effectiveSubDuration > duration)'),
+        'reels-wysiwyg-export.js must extend duration to effectiveSubDuration when a voiced_bg clip is shorter than its subtitles'
+    );
+    assert.ok(
+        layeredSrc.includes('if (isMultiClip && voicePath && (voicePath === backgroundPath || bgClipPool.includes(voicePath)))'),
+        'reels-layered-export.js must clear voicePath when it points to a background pool clip in multi-clip mode'
+    );
+
+    // 5. ffmpeg-rawvideo.js, ffmpeg.js & autoEdit.js must prevent xfade/concat/mixAudio premature 30s termination
+    assert.ok(
+        rawvideoSrc.includes('tpad=stop_mode=clone:stop_duration=2,settb=1/${safeFps},setpts=N'),
+        'prepareBg multi-clip xfade must pad clips with tpad=stop_mode=clone:stop_duration=2 so clip 0 never hits premature EOF at 30s'
+    );
+    assert.ok(
+        rawvideoSrc.includes("const voicePadTail = getSessionVideoDuration(session) > 0 ? ',apad' : '';"),
+        'mixAudio must pad [voice] with apad so -shortest never truncates a 2m+ rendered video to a 30s audio stream'
+    );
+    assert.ok(
+        ffmpegSrc.includes('const expectedTotalDur = clipDurs.reduce('),
+        'concatClips must verify output video duration against expectedTotalDur (sum of input clips) and fallback to normalizeAllClips if truncated'
+    );
+    assert.ok(
+        ffmpegSrc.includes("'-video_track_timescale', '90000'") && autoEditSrc.includes("'-video_track_timescale', '90000'"),
+        'concatClips and autoEdit must lock -video_track_timescale 90000 for seamless stream-copy concatenation'
+    );
+});
+
 
 
 

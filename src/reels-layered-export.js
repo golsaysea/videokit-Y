@@ -235,6 +235,9 @@ async function reelsLayeredExport(params) {
     } = params;
 
     const isMultiClip = bgMode === 'multi' && Array.isArray(bgClipPool) && bgClipPool.length > 0;
+    if (isMultiClip && voicePath && (voicePath === backgroundPath || bgClipPool.includes(voicePath))) {
+        voicePath = null;
+    }
 
     if (!canvas) throw new Error('需要提供 canvas');
     if (!backgroundPath && !isMultiClip && !contentVideoBlurBg && !contentVideoDirectBg) throw new Error('缺少背景素材');
@@ -307,6 +310,9 @@ async function reelsLayeredExport(params) {
                 duration = rawAudioDur * _audioDurFactor;
             } else {
                 duration = rawAudioDur;
+            }
+            if (!isMultiClip && backgroundPath && voicePath === backgroundPath && effectiveSubDuration > duration) {
+                duration = Math.max(duration, effectiveSubDuration);
             }
         }
         if (!duration || duration <= 0) {

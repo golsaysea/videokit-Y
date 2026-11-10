@@ -13541,6 +13541,21 @@ async function _reelsStartExportImpl(options = {}) {
     // ── 导出前同步当前任务的覆层（用户可能删除/修改了覆层但尚未切换任务） ──
     _syncCurrentOverlayEditorToSelectedTask();
 
+    // ═══ 导出前若任务配置了片段池但尚未执行拼接，自动为所有未拼接行执行拼接 ═══
+    if (typeof window.reelsConcatTaskClipPool === 'function') {
+        for (const task of selectedForExport) {
+            const hasClipPool = !!(task && (task.clipPoolDir || (Array.isArray(task.clipPool) && task.clipPool.length >= 2)));
+            const needsConcat = hasClipPool && (!task.concatVideoPath || task.concatStatus !== 'done');
+            if (needsConcat) {
+                const taskIdx = (_reelsState.tasks || []).indexOf(task);
+                if (taskIdx >= 0) {
+                    _reelsAppendExportLogUI(`[前置检查] 任务 "${task.baseName || task.fileName || `#${taskIdx + 1}`}" 正在自动拼接片段池背景...`);
+                    await window.reelsConcatTaskClipPool(taskIdx);
+                }
+            }
+        }
+    }
+
     // 导出前自动对齐未对齐的 TXT 任务
     if (workMode !== 'srt') {
         const unaligned = selectedForExport.filter(t =>
@@ -14064,9 +14079,14 @@ async function _reelsStartExportImpl(options = {}) {
                 throw new Error(`任务「${task.fileName || task.baseName || i + 1}」的背景素材缺少完整本地路径：${bgPath}。请重新选择该视频后再导出；为防止串用其他任务的同名素材，本次已停止。`);
             }
             
+            const effectiveBgClipPool = _getEffectiveBgClipPool(task);
+            const isMultiBgTask = task.bgMode === 'multi' && effectiveBgClipPool.length > 0;
             const hasVoiceAudio = !!task.audioPath || workMode === 'voiced_bg';
             // For voiced_bg mode, use the background video's audio track as the voice source
-            const voiceSource = task.audioPath || (workMode === 'voiced_bg' ? bgPath : null);
+            // ONLY in single-background mode. In multi-clip mode, bgPath may still point to the
+            // first 30s clip (pool[0]), which would truncate the entire export to 30s instead of
+            // using the stitched multi-clip pool duration and audio.
+            const voiceSource = task.audioPath || ((workMode === 'voiced_bg' && !isMultiBgTask) ? bgPath : null);
             const effectiveAudioDurScale = (workMode === 'voiced_bg' && !task.audioPath)
                 ? (task.bgDurScale || task.audioDurScale || 100)
                 : (task.audioDurScale || 100);

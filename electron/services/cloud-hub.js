@@ -223,7 +223,7 @@ function buildHubRequestUrl(hubUrl, token = '') {
 function buildHubHeaders(token = '') {
     const headers = {
         'Accept': 'application/json',
-        'User-Agent': 'VideoKit-CloudHub/4.5.7',
+        'User-Agent': 'VideoKit-CloudHub/4.5.8',
     };
     const cleanToken = String(token || '').trim();
     if (cleanToken) {
@@ -241,7 +241,7 @@ async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
     const res = await fetch(directUrl, {
         method: 'GET',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.5.7',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.5.8',
             ...customHeaders,
         },
         redirect: 'follow',
@@ -266,7 +266,7 @@ async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
         const res2 = await fetch(u2.toString(), {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.5.7',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.5.8',
                 ...customHeaders,
             },
             redirect: 'follow',

@@ -107,7 +107,8 @@ async function getMediaDuration(filePath) {
                 const _nbFrames = parseInt(_vStream.nb_frames, 10);
                 const _parseFps = (s) => { if (!s || typeof s !== 'string') return 0; const p = s.split('/'); const n = parseFloat(p[0]), d = p.length > 1 ? parseFloat(p[1]) : 1; return (Number.isFinite(n) && Number.isFinite(d) && d > 0) ? (n / d) : 0; };
                 const _avgFps = _parseFps(_vStream.avg_frame_rate), _rFps = _parseFps(_vStream.r_frame_rate);
-                const _effFps = (_avgFps > 0 && _rFps > 0 && Math.abs(_avgFps - _rFps) < 1.5) ? _avgFps : (_avgFps > 0 ? _avgFps : _rFps);
+                const _isCfr = _avgFps > 0 && _rFps > 0 && Math.abs(_avgFps - _rFps) < 1.5;
+                const _effFps = _isCfr ? _avgFps : 0;
                 const _framesDur = (Number.isFinite(_nbFrames) && _nbFrames > 0 && _effFps > 0) ? (_nbFrames / _effFps) : 0;
                 const _cands = [streamDur, parseFloat(parsed?.format?.duration), _framesDur].filter(d => Number.isFinite(d) && d > 0.2);
                 if (_cands.length > 0) return Math.min(..._cands);
@@ -786,7 +787,7 @@ async function prepareBg(opts) {
                     const clipFpsFilter = clip.isImage
                         ? `fps=${safeFps}`
                         : `framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
-                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},${clipPtsFilter},${clipFpsFilter},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=1/${safeFps},setpts=N`;
+                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},${clipPtsFilter},${clipFpsFilter},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,tpad=stop_mode=clone:stop_duration=2,settb=1/${safeFps},setpts=N`;
                     filterParts.push(`[${i}:v]${normalizeVideoFilter}[v${i}]`);
                 }
 
@@ -2350,17 +2351,23 @@ async function mixAudio(session) {
                 filterParts.push(`[${idx}:a]${filter}${label}`);
                 labels.push(label);
             });
+            const padTail = getSessionVideoDuration(session) > 0 ? ',apad' : '';
             if (labels.length > 1) {
-                filterParts.push(`${labels.join('')}amix=inputs=${labels.length}:duration=first:dropout_transition=0:normalize=0[aout]`);
+                filterParts.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:dropout_transition=0:normalize=0${padTail}[aout]`);
             } else {
-                filterParts.push(`${labels[0]}acopy[aout]`);
+                filterParts.push(`${labels[0]}acopy${padTail}[aout]`);
             }
             args.push('-filter_complex', filterParts.join(';'),
                 '-map', '0:v', '-map', '[aout]',
                 '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', ...outputDurationArgs(session), '-movflags', '+faststart', ...(String(outputPath || '').toLowerCase().endsWith('.tmp') ? ['-f', 'mp4'] : []), outputPath);
         }
     } else {
-        args = ['-y', '-i', tempVideo, '-i', voicePath];
+        const shouldLoopVoiceBg = Boolean(
+            voicePath && backgroundPath
+            && path.resolve(String(voicePath)) === path.resolve(String(backgroundPath))
+            && getSessionVideoDuration(session) > 0
+        );
+        args = ['-y', '-i', tempVideo, ...(shouldLoopVoiceBg ? ['-stream_loop', '-1'] : []), '-i', voicePath];
 
         let nextInputIdx = 2;
         const bgVolumeVal2 = typeof bgVolume === 'number' ? bgVolume : 0.1;
@@ -2473,9 +2480,12 @@ async function mixAudio(session) {
             voiceOutLabel = '[vstereo]';
         }
 
-        // 重命名为 [voice]
+        // 重命名为 [voice]（当有固定视频总时长时补充 apad，防止短音频在 -shortest 下把 2 分钟成片截断成 30 秒）
+        const voicePadTail = getSessionVideoDuration(session) > 0 ? ',apad' : '';
         if (voiceOutLabel !== '[voice]') {
-            filterParts.push(`${voiceOutLabel}acopy[voice]`);
+            filterParts.push(`${voiceOutLabel}acopy${voicePadTail}[voice]`);
+        } else if (voicePadTail) {
+            filterParts.push(`[voice]acopy${voicePadTail}[voice]`);
         }
 
         let mixLabels = ['[voice]'];

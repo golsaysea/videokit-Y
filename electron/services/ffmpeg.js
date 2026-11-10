@@ -216,9 +216,8 @@ async function getDuration(filePath) {
             };
             const avgFps = parseRate(stream.avg_frame_rate);
             const rFps = parseRate(stream.r_frame_rate);
-            const effectiveFps = (avgFps > 0 && rFps > 0 && Math.abs(avgFps - rFps) < 1.5)
-                ? avgFps
-                : (avgFps > 0 ? avgFps : rFps);
+            const isCfr = avgFps > 0 && rFps > 0 && Math.abs(avgFps - rFps) < 1.5;
+            const effectiveFps = isCfr ? avgFps : 0;
             const framesDur = (Number.isFinite(nbFrames) && nbFrames > 0 && effectiveFps > 0)
                 ? (nbFrames / effectiveFps)
                 : 0;
@@ -2242,6 +2241,7 @@ async function concatClips(opts = {}) {
                 '-filter_complex', filterComplex,
                 '-map', '[v]', '-map', '[a]',
                 '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
+                '-video_track_timescale', '90000',
                 '-c:a', 'aac', '-b:a', '192k',
                 '-avoid_negative_ts', 'make_zero',
                 '-shortest',
@@ -2273,14 +2273,32 @@ async function concatClips(opts = {}) {
             outputPath
         ], { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
 
-        // 校验输出视频轨与容器总时长是否一致：若快速拼接的输入存在 timebase/非关键帧切点不一致导致视频轨提前中断（画面定格只剩声音），自动回退重编码归一化拼接
+        // 校验输出视频轨与容器总时长/预期总时长是否一致：若快速拼接的输入存在 timebase/非关键帧切点不一致导致视频轨提前中断（如 2 分钟成片只剩第一个 30 秒片段，或画面定格只剩声音），自动回退重编码归一化拼接
         if (skipNormalization) {
-            const [outVDur, outCDur] = await Promise.all([
+            const getRawFormatDuration = async (targetPath) => {
+                try {
+                    const { stdout } = await runCommand('ffprobe', [
+                        '-v', 'error',
+                        '-show_entries', 'format=duration',
+                        '-of', 'default=noprint_wrappers=1:nokey=1',
+                        targetPath
+                    ], { timeout: PROBE_TIMEOUT });
+                    const val = parseFloat((stdout || '').trim());
+                    return Number.isFinite(val) && val > 0 ? val : NaN;
+                } catch (_) {
+                    return NaN;
+                }
+            };
+            const [outVDur, outFormatDur, clipDurs] = await Promise.all([
                 getPrimaryStreamDuration(outputPath, 'v:0'),
-                getDuration(outputPath),
+                getRawFormatDuration(outputPath),
+                Promise.all(validClips.map(c => _getEffectiveClipDuration(c))),
             ]);
-            if (Number.isFinite(outCDur) && outCDur > 1 && (!Number.isFinite(outVDur) || (outCDur - outVDur) > 0.45)) {
-                console.warn(`[ConcatClips] 检测到直拼视频轨时长 (${outVDur}s) 短于总时长 (${outCDur}s)，自动执行音画对齐归一化重拼...`);
+            const expectedTotalDur = clipDurs.reduce((sum, d) => sum + (Number.isFinite(d) && d > 0 ? d : 0), 0);
+            const formatMismatch = Number.isFinite(outFormatDur) && outFormatDur > 1 && (!Number.isFinite(outVDur) || (outFormatDur - outVDur) > 0.45);
+            const expectedMismatch = expectedTotalDur > 1 && (!Number.isFinite(outVDur) || outVDur < expectedTotalDur - Math.max(0.8, validClips.length * 0.25));
+            if (formatMismatch || expectedMismatch) {
+                console.warn(`[ConcatClips] 检测到直拼视频轨时长 (${outVDur}s) 短于总时长 (容器=${outFormatDur}s, 预期=${expectedTotalDur.toFixed(2)}s)，自动执行音画对齐归一化重拼...`);
                 normalized = await normalizeAllClips();
                 const normListContent = normalized.map(p => `file '${_escapeConcatListPath(p)}'`).join('\n');
                 fs.writeFileSync(listPath, normListContent, 'utf-8');

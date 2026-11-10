@@ -400,7 +400,7 @@
         const voice = read('voice');
         const bgm = read('bgm');
         const content = read('content_video');
-        if (background.length === 1) {
+        if (background.length === 1 && task.bgMode !== 'multi') {
             const clip = background[0];
             const path = timeline.sources[clip.sourceId]?.path || '';
             task.bgPath = path || task.bgPath;
@@ -974,6 +974,7 @@
     }
 
     function fillBackgroundLoops(task, options = {}) {
+        if (task?.bgMode === 'multi' && Array.isArray(task.bgClipPool) && task.bgClipPool.some(Boolean)) return false;
         const timeline = ensureTimeline(task, options);
         if (!timeline) return false;
         const totalDuration = taskDuration(task, options);

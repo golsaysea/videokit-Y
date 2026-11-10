@@ -9810,6 +9810,13 @@ function _showBgPoolDialog(taskIdx) {
             targetTask.bgClipSettings = JSON.parse(JSON.stringify(task.bgClipSettings || {}));
             targetTask.bgMinClipDur = task.bgMinClipDur;
             targetTask.bgMaxClipDur = task.bgMaxClipDur;
+            if (task.bgMode === 'multi') {
+                targetTask.bgPath = '';
+                targetTask.videoPath = '';
+                targetTask.bgSrcUrl = '';
+                targetTask.srcUrl = '';
+                _rbtResetTaskBackgroundTimeline(targetTask);
+            }
         };
 
         box.querySelector('#bgpool-current-only')?.addEventListener('click', () => {
@@ -12720,16 +12727,26 @@ async function _rbtConcatTaskClipPool(idx) {
     const state = window._reelsState;
     const task = state && state.tasks && state.tasks[idx];
     if (!task) return;
-    if (!task.clipPoolDir) {
+    const hasExistingPool = Array.isArray(task.clipPool) && task.clipPool.length >= 2;
+    if (!task.clipPoolDir && !hasExistingPool) {
         await _rbtPickClipPool(idx);
     }
-    if (!task.clipPoolDir) return;
+    if (!task.clipPoolDir && !(Array.isArray(task.clipPool) && task.clipPool.length >= 2)) return;
 
     try {
         const order = task.clipOrder || 'name';
-        const freshClips = await _rbtLoadClipPoolFromDir(task.clipPoolDir, order);
-        if (freshClips.length < 2) throw new Error('片段池至少需要 2 个视频文件');
-        task.clipPool = freshClips.map(c => ({ name: c.name, path: c.path, mtime: c.mtime || 0, size: c.size || 0 }));
+        if (task.clipPoolDir) {
+            const freshClips = await _rbtLoadClipPoolFromDir(task.clipPoolDir, order);
+            if (freshClips.length < 2) throw new Error('片段池至少需要 2 个视频文件');
+            task.clipPool = freshClips.map(c => ({ name: c.name, path: c.path, mtime: c.mtime || 0, size: c.size || 0 }));
+        } else {
+            task.clipPool = _rbtSortClipPool(
+                task.clipPool.map(c => typeof c === 'string'
+                    ? { name: c.split(/[/\\]/).pop() || c, path: c, mtime: 0, size: 0 }
+                    : c),
+                order
+            );
+        }
         task.concatStatus = 'generating';
         _skipNextApply = true;
         _renderBatchTable();
@@ -12774,6 +12791,7 @@ async function _rbtConcatTaskClipPool(idx) {
         showToast('片段拼接失败: ' + e.message, 'error', 8000);
     }
 }
+window.reelsConcatTaskClipPool = _rbtConcatTaskClipPool;
 
 function _rbtBuildVoiceoverBatchFolderName(date = new Date()) {
     const y = date.getFullYear();
