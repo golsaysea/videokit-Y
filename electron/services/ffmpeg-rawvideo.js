@@ -778,11 +778,15 @@ async function prepareBg(opts) {
                 const tDur = Math.max(0.1, bgTransDur);
 
                 // 预处理每个输入
+                const safeFps = Math.max(1, Number(fps) || 30);
                 for (let i = 0; i < selectedClips.length; i++) {
                     const clip = selectedClips[i];
                     const clipPtsFilter = clip.isImage ? 'setpts=PTS-STARTPTS' : ptsFilter;
                     const clipColorFilter = clip.isImage ? '' : `${buildInputBt709ConvertFilter(clip.path, ffmpeg)},`;
-                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=AVTB,${clipPtsFilter}`;
+                    const clipFpsFilter = clip.isImage
+                        ? `fps=${safeFps}`
+                        : `framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
+                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},${clipPtsFilter},${clipFpsFilter},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=1/${safeFps},setpts=N`;
                     filterParts.push(`[${i}:v]${normalizeVideoFilter}[v${i}]`);
                 }
 
@@ -790,13 +794,14 @@ async function prepareBg(opts) {
                 let prevLabel = 'v0';
                 let cumulativeOffset = 0;
                 const xfadeZones = []; // 记录所有转场区间
+                const tDurAligned = Math.max(1, Math.round(tDur * safeFps)) / safeFps;
                 for (let i = 1; i < selectedClips.length; i++) {
-                    cumulativeOffset += selectedClips[i - 1].duration - tDur;
+                    cumulativeOffset += selectedClips[i - 1].duration - tDurAligned;
                     const outLabel = i === selectedClips.length - 1 ? 'vout' : `vx${i}`;
-                    const offset = Math.max(0, cumulativeOffset);
-                    xfadeZones.push({ start: offset, end: offset + tDur });
+                    const offset = Math.max(0, Math.round(cumulativeOffset * safeFps) / safeFps);
+                    xfadeZones.push({ start: offset, end: offset + tDurAligned });
                     filterParts.push(
-                        `[${prevLabel}][v${i}]xfade=transition=${xfadeTrans}:duration=${tDur.toFixed(3)}:offset=${offset.toFixed(3)}[${outLabel}]`
+                        `[${prevLabel}][v${i}]xfade=transition=${xfadeTrans}:duration=${tDurAligned.toFixed(6)}:offset=${offset.toFixed(6)},settb=1/${safeFps},setpts=N[${outLabel}]`
                     );
                     prevLabel = outLabel;
                 }
@@ -823,11 +828,15 @@ async function prepareBg(opts) {
                 );
             } else {
                 // 无转场: concat 硬切
+                const safeFps = Math.max(1, Number(fps) || 30);
                 for (let i = 0; i < selectedClips.length; i++) {
                     const clip = selectedClips[i];
                     const clipPtsFilter = clip.isImage ? 'setpts=PTS-STARTPTS' : ptsFilter;
                     const clipColorFilter = clip.isImage ? '' : `${buildInputBt709ConvertFilter(clip.path, ffmpeg)},`;
-                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},fps=${fps},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=AVTB,${clipPtsFilter}`;
+                    const clipFpsFilter = clip.isImage
+                        ? `fps=${safeFps}`
+                        : `framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
+                    const normalizeVideoFilter = `${clipColorFilter}${scaleCropFilter},${clipPtsFilter},${clipFpsFilter},setsar=1,format=yuv420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=1/${safeFps},setpts=N`;
                     filterParts.push(`[${i}:v]${normalizeVideoFilter}[v${i}]`);
                 }
                 const concatLabels = selectedClips.map((_, i) => `[v${i}]`).join('');
@@ -974,17 +983,17 @@ async function prepareBg(opts) {
     const rawBgDuration = await getMediaDuration(backgroundPath);
     const bgDuration = rawBgDuration * ptsFactor;
     const fadeEnabled = loopFade && bgDuration > 0;
-    const fadeDur = Math.min(loopFadeDur || 1.0, bgDuration * 0.4);
+    const requestedFadeDur = Math.min(loopFadeDur || 1.0, bgDuration * 0.4);
 
     if (fadeEnabled && bgDuration > 0 && duration > bgDuration + 0.5) {
-        const safeFps = Math.max(1, Number(fps) || 30);
-        const step = Math.max(0.1, bgDuration - fadeDur - (2 / safeFps));
+        const plan = computeLoopFadePlan(bgDuration, duration, requestedFadeDur, fps);
+        const { safeFps, fadeDur, step, segCount } = plan;
 
         // ── 智能避让：确保背景视频不会在转场过渡中结束 ──
         // xfade 发生在 offset = i * step，持续 fadeDur 秒
         // 如果 duration 落在 [offset, offset + fadeDur] 区间内，画面会是半透明重叠
         let bgTrimDuration = duration;
-        for (let i = 1; i <= 20; i++) {
+        for (let i = 1; i < segCount; i++) {
             const xfadeStart = i * step;
             const xfadeEnd = xfadeStart + fadeDur;
             if (bgTrimDuration > xfadeStart && bgTrimDuration < xfadeEnd) {
@@ -995,8 +1004,6 @@ async function prepareBg(opts) {
                 break;
             }
         }
-
-        const segCount = Math.min(Math.ceil(bgTrimDuration / step) + 1, 20);
 
         if (segCount >= 2) {
             const args = ['-y'];
@@ -1010,11 +1017,11 @@ async function prepareBg(opts) {
             for (let i = 1; i < segCount; i++) {
                 const inLabel = `v${i}`;
                 const outLabel = i === segCount - 1 ? 'vout' : `vx${i}`;
-                const offset = Math.max(0, i * step).toFixed(3);
+                const offset = Math.max(0, i * step).toFixed(6);
                 const padSec = i === segCount - 1 ? 10 : 2;
                 filterParts.push(normalizedDirectBackgroundFilter(i, scaleCropFilter, ptsFilter, safeFps, inLabel, padSec, backgroundPath));
                 filterParts.push(
-                    `[${prevLabel}][${inLabel}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${offset}[${outLabel}]`
+                    `[${prevLabel}][${inLabel}]xfade=transition=fade:duration=${fadeDur.toFixed(6)}:offset=${offset},settb=1/${safeFps},setpts=N[${outLabel}]`
                 );
                 prevLabel = outLabel;
             }
@@ -1062,10 +1069,15 @@ async function prepareBg(opts) {
 }
 
 async function extractSimpleLoopWithTrim(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor = 1.0, shouldLoop = false, trimStart = null, trimEnd = null) {
-    const colorPrefix = isImageMedia(backgroundPath) ? '' : `${buildInputBt709ConvertFilter(backgroundPath, ffmpeg)},`;
+    const isImg = isImageMedia(backgroundPath);
+    const safeFps = Math.max(1, Number(fps) || 30);
+    const colorPrefix = isImg ? '' : `${buildInputBt709ConvertFilter(backgroundPath, ffmpeg)},`;
     let vf = `${colorPrefix}${scaleCropFilter}`;
     if (Math.abs(ptsFactor - 1.0) > 0.01) {
         vf = `${vf},setpts=PTS*${ptsFactor.toFixed(3)}`;
+    }
+    if (!isImg) {
+        vf = `${vf},framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
     }
     const args = ['-y'];
     if (shouldLoop) {
@@ -1092,6 +1104,7 @@ async function extractSimpleLoopWithTrim(ffmpeg, backgroundPath, framesDir, scal
 
 async function extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFilter, fps, duration, ptsFactor = 1.0, shouldLoop = false) {
     const isImg = isImageMedia(backgroundPath);
+    const safeFps = Math.max(1, Number(fps) || 30);
     const colorPrefix = isImg ? '' : `${buildInputBt709ConvertFilter(backgroundPath, ffmpeg)},`;
     let vf = `${colorPrefix}${scaleCropFilter}`;
     if (!isImg) {
@@ -1100,6 +1113,7 @@ async function extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFil
         } else {
             vf = `${vf},setpts=PTS-STARTPTS`;
         }
+        vf = `${vf},framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
         if (!shouldLoop) {
             vf = `${vf},tpad=stop_mode=clone:stop_duration=5`;
         }
@@ -1249,17 +1263,69 @@ function buildInputBt709ConvertFilter(sourcePathOrProfile, ffmpegPath = findFFmp
     return `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,${cleanHdrMeta}`;
 }
 
+function computeLoopFadePlan(scaledBgDuration, targetDuration, rawLoopFadeDur, fps) {
+    const safeFps = Math.max(1, Number(fps) || 30);
+    const bgDur = Math.max(0, Number(scaledBgDuration) || 0);
+    const targetDur = Math.max(0, Number(targetDuration) || 0);
+    const requestedFade = Math.min(Math.max(0.05, Number(rawLoopFadeDur) || 1), bgDur * 0.4);
+
+    // 若 k = ceil(targetDur / bgDur) 段原始总时长足够覆盖 targetDur，只是因 fadeDur 交叠吃掉过多时长而逼出第 k+1 段，
+    // 则在不低于 0.4s 的前提下微调缩减 fadeDur，避免在视频结尾前 1 秒触发多余的二次 xfade 缩放回弹跳变
+    let adjustedFade = requestedFade;
+    const minNaturalSegments = bgDur > 0 ? Math.max(2, Math.ceil(targetDur / bgDur)) : 2;
+    if (bgDur > 0 && targetDur > bgDur + 0.5 && minNaturalSegments >= 2) {
+        const availableOverlap = (minNaturalSegments * bgDur) - targetDur;
+        const maxFadeWithoutExtraSeg = (availableOverlap / (minNaturalSegments - 1)) - (2 / safeFps);
+        const minAcceptableFade = Math.min(0.4, requestedFade);
+        if (maxFadeWithoutExtraSeg >= minAcceptableFade && maxFadeWithoutExtraSeg < requestedFade) {
+            adjustedFade = maxFadeWithoutExtraSeg;
+        }
+    }
+
+    const fadeFrames = Math.max(1, Math.round(adjustedFade * safeFps));
+    const fadeDur = fadeFrames / safeFps;
+    const bgFrames = Math.max(fadeFrames + 3, Math.round(bgDur * safeFps));
+    const stepFrames = Math.max(3, bgFrames - fadeFrames - 2);
+    const step = stepFrames / safeFps;
+
+    let segCount = 2;
+    const maxSegments = 20;
+    while (segCount < maxSegments) {
+        const coveredByCurrent = ((segCount - 1) * step) + bgDur;
+        if (coveredByCurrent >= targetDur - 0.001) break;
+        const nextOffset = segCount * step;
+        if (nextOffset >= targetDur - fadeDur - 0.4 && (targetDur - coveredByCurrent) <= 0.6) {
+            break;
+        }
+        segCount++;
+    }
+
+    return {
+        safeFps,
+        fadeFrames,
+        fadeDur,
+        stepFrames,
+        step,
+        segCount,
+    };
+}
+
 function normalizedDirectBackgroundFilter(inputIndex, scaleCropFilter, ptsFilter, fps, outputLabel, stopPadSeconds = 0, sourcePathOrProfile = null) {
     const safeFps = Math.max(1, Number(fps) || 30);
     const padFilter = Number(stopPadSeconds) > 0
         ? `,tpad=stop_mode=clone:stop_duration=${Number(stopPadSeconds).toFixed(2)}`
         : '';
     const isImageSource = typeof sourcePathOrProfile === 'string' && isImageMedia(sourcePathOrProfile);
-    // Downscale & normalize FPS first so 4K/60fps sources process 4x fewer pixels during BT.709 / HDR tone-mapping
+    // Downscale & normalize FPS first so 4K/60fps sources process 4x fewer pixels during BT.709 / HDR tone-mapping.
+    // For video sources (especially 24/25fps AI zoom/pan clips), framerate interpolates sub-frame positions before fps=${safeFps}
+    // to eliminate 6Hz 3:2 nearest-frame duplication stutter, while settb=1/${safeFps},setpts=N prevents AVTB microsecond rounding drift in xfade/overlay.
+    const fpsFilter = isImageSource
+        ? `fps=${safeFps}`
+        : `framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
     const postScaleColorFilter = isImageSource
         ? 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv'
         : buildInputBt709ConvertFilter(sourcePathOrProfile);
-    return `[${inputIndex}:v]${scaleCropFilter},${ptsFilter},fps=${safeFps},${postScaleColorFilter},settb=AVTB,setpts=PTS-STARTPTS${padFilter}[${outputLabel}]`;
+    return `[${inputIndex}:v]${scaleCropFilter},${ptsFilter},${fpsFilter},${postScaleColorFilter}${padFilter},settb=1/${safeFps},setpts=N[${outputLabel}]`;
 }
 
 // A GIF is a short repeating animation. Decode one complete cycle once, even
@@ -1586,9 +1652,8 @@ async function startSession(opts) {
             ? Math.min(rawBgFromOpts, probedVideoDur)
             : (probedVideoDur || rawBgFromOpts);
         const scaledBgDuration = rawBgDuration * Math.max(0.01, (bgDurScale || 100) / 100);
-        const fadeDur = Math.min(Math.max(0.05, Number(opts.loopFadeDur) || 1), scaledBgDuration * 0.4);
-        const safeFps = Math.max(1, Number(fps) || 30);
-        const step = Math.max(0.1, scaledBgDuration - fadeDur - (2 / safeFps));
+        const loopFadePlan = computeLoopFadePlan(scaledBgDuration, targetDuration, opts.loopFadeDur, fps);
+        const { safeFps, fadeDur, step } = loopFadePlan;
         const useDirectLoopFade = !isAlphaBgImage && opts.loopFade && scaledBgDuration > fadeDur + 0.05
             && targetDuration > scaledBgDuration + 0.5;
         // 仅当目标合成时长明确超过背景视频时长（例如短背景循环配长语音，且未启用 xfade）时才开启 -stream_loop -1。
@@ -1603,7 +1668,7 @@ async function startSession(opts) {
         const maxBgReadDuration = Math.max(10, Math.ceil((Number(targetDuration) || 60) / ptsFactorForInput) + 5);
         let bgInputCount = 1;
         if (useDirectLoopFade) {
-            bgInputCount = Math.max(2, Math.ceil((targetDuration - scaledBgDuration) / step) + 2);
+            bgInputCount = loopFadePlan.segCount;
             for (let i = 0; i < bgInputCount; i++) args.push('-fflags', '+genpts', '-i', opts.alphaOverlayBgPath);
             console.log(`[WYSIWYG] 背景直通 xfade 循环: ${bgInputCount} 段, rawVideoDur=${rawBgDuration.toFixed(3)}s, step=${step.toFixed(3)}s, fade=${fadeDur.toFixed(3)}s`);
         } else if (isAlphaBgImage) {
@@ -1662,7 +1727,7 @@ async function startSession(opts) {
             let previous = 'bg0';
             for (let i = 1; i < bgInputCount; i++) {
                 const out = i === bgInputCount - 1 ? 'bg' : `bgx${i}`;
-                parts.push(`[${previous}][bg${i}]xfade=transition=fade:duration=${fadeDur.toFixed(3)}:offset=${(i * step).toFixed(3)}[${out}]`);
+                parts.push(`[${previous}][bg${i}]xfade=transition=fade:duration=${fadeDur.toFixed(6)}:offset=${(i * step).toFixed(6)},settb=1/${safeFps},setpts=N[${out}]`);
                 previous = out;
             }
             bgFilter = parts.join(';');
@@ -1678,7 +1743,7 @@ async function startSession(opts) {
         const fgInput = bgInputCount;
         // Retain final-frame protection when the original overlay/fps path hits EOF.
         const finalFramePad = totalFrames > 0 ? `,tpad=stop_mode=clone:stop_duration=${(1 / Math.max(1, fps)).toFixed(8)}` : '';
-        const filterComplex = `${bgFilter};[${fgInput}:v]scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuva420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv[fg];[bg][fg]overlay=0:0:format=auto:shortest=1${finalFramePad},fps=${fps},format=yuv420p,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv[outv]`;
+        const filterComplex = `${bgFilter};[${fgInput}:v]scale=in_range=full:in_color_matrix=bt709:out_range=limited:out_color_matrix=bt709,format=yuva420p,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv,settb=1/${safeFps},setpts=N[fg];[bg][fg]overlay=0:0:format=auto:shortest=1${finalFramePad},fps=${fps},format=yuv420p,sidedata=mode=delete:type=MASTERING_DISPLAY_METADATA,sidedata=mode=delete:type=CONTENT_LIGHT_LEVEL,setparams=colorspace=bt709:color_primaries=bt709:color_trc=bt709:range=tv[outv]`;
         args.push('-filter_complex', filterComplex, '-map', '[outv]');
 
     } else {
@@ -3095,6 +3160,7 @@ module.exports = {
         validateFrameCompletion,
         normalizeDisplayAspectFilter,
         normalizedDirectBackgroundFilter,
+        computeLoopFadePlan,
         probeVideoColorProfile,
         buildInputBt709ConvertFilter,
     },

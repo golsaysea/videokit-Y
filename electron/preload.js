@@ -832,6 +832,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // 模板多窗口
     openTemplateWindow: (templateId, templateName) => ipcRenderer.invoke('open-template-window', templateId, templateName),
+    triggerSystemShutdown: () => ipcRenderer.invoke('system:shutdown-now'),
+    cancelSystemShutdown: () => ipcRenderer.invoke('system:cancel-shutdown'),
 });
 
 // 兼容 ITEN 原生桥接层 bridge 对象

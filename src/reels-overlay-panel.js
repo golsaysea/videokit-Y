@@ -3445,8 +3445,13 @@ class ReelsOverlayPanel {
         const decorApplyAllEl = this.container.querySelector('#rop-decor-apply-all');
         if (decorApplyAllEl) {
             decorApplyAllEl.addEventListener('change', () => {
-                if (decorApplyAllEl.checked && this._selectedOv && this._selectedOv.type === 'decor') {
-                    this._syncToOverlay();
+                if (decorApplyAllEl.checked) {
+                    const styleScopeEl = this.container.querySelector('#rop-style-scope');
+                    if (styleScopeEl && styleScopeEl.value === 'task') styleScopeEl.value = 'folder';
+                    if (this._selectedOv && this._selectedOv.type === 'decor') {
+                        this._syncToOverlay();
+                        this._syncOverlayStyleToScopeTasks(this._selectedOv);
+                    }
                 }
             });
         }
@@ -3776,16 +3781,26 @@ class ReelsOverlayPanel {
         const applyAllEl = this.container.querySelector('#rop-card-apply-all');
         if (applyAllEl) {
             applyAllEl.addEventListener('change', () => {
-                if (applyAllEl.checked && this._selectedOv && this._selectedOv.type === 'textcard') {
-                    this._syncToOverlay();
+                if (applyAllEl.checked) {
+                    const styleScopeEl = this.container.querySelector('#rop-style-scope');
+                    if (styleScopeEl && styleScopeEl.value === 'task') styleScopeEl.value = 'folder';
+                    if (this._selectedOv && this._selectedOv.type === 'textcard') {
+                        this._syncToOverlay();
+                        this._syncOverlayStyleToScopeTasks(this._selectedOv);
+                    }
                 }
             });
         }
         const scrollApplyAllEl = this.container.querySelector('#rop-scroll-apply-all');
         if (scrollApplyAllEl) {
             scrollApplyAllEl.addEventListener('change', () => {
-                if (scrollApplyAllEl.checked && this._selectedOv && this._selectedOv.type === 'scroll') {
-                    this._syncToOverlay();
+                if (scrollApplyAllEl.checked) {
+                    const styleScopeEl = this.container.querySelector('#rop-style-scope');
+                    if (styleScopeEl && styleScopeEl.value === 'task') styleScopeEl.value = 'folder';
+                    if (this._selectedOv && this._selectedOv.type === 'scroll') {
+                        this._syncToOverlay();
+                        this._syncOverlayStyleToScopeTasks(this._selectedOv);
+                    }
                 }
             });
         }
@@ -5542,7 +5557,18 @@ class ReelsOverlayPanel {
     // 选中 / 属性同步
     // ═══════════════════════════════════════════════
 
+    _flushPendingScopeSync() {
+        if (this._scopeSyncTimer) {
+            if (typeof clearTimeout === 'function') clearTimeout(this._scopeSyncTimer);
+            this._scopeSyncTimer = null;
+            if (this._selectedOv) {
+                this._syncOverlayStyleToScopeTasks(this._selectedOv);
+            }
+        }
+    }
+
     selectOverlay(ov) {
+        this._flushPendingScopeSync();
         // 清除之前选中的标记
         if (this._selectedOv) {
             this._selectedOv._selected = false;
@@ -5656,6 +5682,7 @@ class ReelsOverlayPanel {
     }
 
     deselectOverlay() {
+        this._flushPendingScopeSync();
         if (this._selectedOv) this._selectedOv._selected = false;
         this._selectedOv = null;
         this.container.querySelector('#rop-props').style.display = 'none';
@@ -7434,21 +7461,61 @@ class ReelsOverlayPanel {
 
     _shouldSyncStyleToScope(ov) {
         if (this.videoCanvas?.scopedTask) return false;
-        const scope = this._getOverlayStyleScope();
-        if (scope === 'task') return false;
         if (ov?.type === 'textcard') {
             const cb = this.container?.querySelector('#rop-card-apply-all');
-            if (cb && !cb.checked) return false;
+            if (cb) return Boolean(cb.checked);
         }
         if (ov?.type === 'scroll') {
             const cb = this.container?.querySelector('#rop-scroll-apply-all');
-            if (cb && !cb.checked) return false;
+            if (cb) return Boolean(cb.checked);
         }
         if (ov?.type === 'decor') {
             const cb = this.container?.querySelector('#rop-decor-apply-all');
-            if (cb && !cb.checked) return false;
+            if (cb) return Boolean(cb.checked);
         }
+        const scope = this._getOverlayStyleScope();
+        if (scope === 'task') return false;
         return true;
+    }
+
+    _afterScopeStyleSync(scopedTasks) {
+        const tasks = Array.isArray(scopedTasks) ? scopedTasks.filter(Boolean) : [];
+        if (tasks.length === 0) return;
+        const measureMotion = (typeof window !== 'undefined' && typeof window.ReelsOverlay?.measureScrollMotion === 'function')
+            ? window.ReelsOverlay.measureScrollMotion
+            : null;
+        for (const task of tasks) {
+            if (Array.isArray(task.overlays)) {
+                for (const sOv of task.overlays) {
+                    if (!sOv || sOv.type !== 'scroll') continue;
+                    delete sOv._scrollMetricsCache;
+                    if (sOv.scroll_end_y_auto && measureMotion) {
+                        try {
+                            const motion = measureMotion(sOv);
+                            if (motion && Number.isFinite(motion.endY)) {
+                                sOv.scroll_to_y = Math.round(motion.endY * 10) / 10;
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+            if (task._batchTabId && typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const tab = _batchTableState.tabs.find(t => t && t.id === task._batchTabId);
+                if (tab) tab._dirty = true;
+            }
+        }
+        if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+            try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+        }
+        if (typeof _syncTasksToActiveTab === 'function') {
+            try { _syncTasksToActiveTab(); } catch (_) {}
+        }
+        if (typeof _batchAutoSave === 'function') {
+            try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+        }
+        if (typeof _renderTaskList === 'function') {
+            try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
+        }
     }
 
     _findMatchingOverlayInTask(task, sourceOv) {
@@ -7520,6 +7587,9 @@ class ReelsOverlayPanel {
                     task.overlays.push(styleCopy);
                 }
             });
+            if (typeof this._afterScopeStyleSync === 'function') {
+                this._afterScopeStyleSync(scopedTasks);
+            }
         } finally {
             this._isApplyingGenericOverlay = false;
         }
@@ -7569,6 +7639,9 @@ class ReelsOverlayPanel {
                     task.overlays.push(clone);
                 }
             });
+            if (typeof this._afterScopeStyleSync === 'function') {
+                this._afterScopeStyleSync(scopedTasks);
+            }
         } finally {
             this._isApplyingAllTextcards = false;
         }
@@ -7661,9 +7734,14 @@ class ReelsOverlayPanel {
             // End time and auto/manual mode belong to each task, never to shared style.
             delete styleObj.end;
             delete styleObj.scroll_end_auto;
+            if (ov.scroll_end_y_auto) {
+                delete styleObj.scroll_to_y;
+            }
 
             scopedTasks.forEach(task => {
-                if (Array.isArray(task?.overlays)) this._sanitizeScrollOverlayList(task.overlays);
+                if (Array.isArray(task?.overlays) && typeof this._sanitizeScrollOverlayList === 'function') {
+                    this._sanitizeScrollOverlayList(task.overlays);
+                }
                 const targetOv = this._findMatchingOverlayInTask(task, ov);
                 if (targetOv && targetOv !== ov) {
                     const styleCopy = JSON.parse(JSON.stringify(styleObj));
@@ -7672,9 +7750,70 @@ class ReelsOverlayPanel {
                     // Styling must not reset a target task's own manual scroll timing.
                 }
             });
+            if (typeof this._afterScopeStyleSync === 'function') {
+                this._afterScopeStyleSync(scopedTasks);
+            }
         } finally {
             this._isApplyingAllScrolls = false;
         }
+    }
+
+    // 根据【样式作用】下拉选择（当前队列 / 所有队列 / 仅当前任务）返回目标任务列表
+    _getStyleApplyScopeTasks(scopeOverride = null) {
+        if (this.videoCanvas?.scopedTask) return [this.videoCanvas.scopedTask];
+        let scope = scopeOverride || this._getOverlayStyleScope();
+        if (!scopeOverride && scope === 'task' && this._selectedOv) {
+            const ovType = this._selectedOv.type;
+            const applyCb = ovType === 'scroll'
+                ? this.container?.querySelector('#rop-scroll-apply-all')
+                : (ovType === 'textcard'
+                    ? this.container?.querySelector('#rop-card-apply-all')
+                    : (ovType === 'decor' ? this.container?.querySelector('#rop-decor-apply-all') : null));
+            if (applyCb && applyCb.checked) scope = 'folder';
+        }
+        const state = typeof window !== 'undefined' ? window._reelsState : null;
+        const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
+        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
+        if (scope === 'task') {
+            return selectedTask ? [selectedTask] : [];
+        }
+        if (scope === 'all') {
+            const combined = new Set(allTasks);
+            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const activeIds = new Set(allTasks.map(t => t?.id).filter(Boolean));
+                for (const tab of _batchTableState.tabs) {
+                    for (const t of (tab?.tasks || [])) {
+                        if (t && (!t.id || !activeIds.has(t.id))) combined.add(t);
+                    }
+                }
+            }
+            return Array.from(combined);
+        }
+        // 默认: 'folder' (当前队列)
+        let scoped = [];
+        const groupTasks = this.videoCanvas?.getTaskGroupTasks?.();
+        if (Array.isArray(groupTasks) && groupTasks.length > 0) {
+            scoped = groupTasks;
+        } else if (!selectedTask) {
+            scoped = allTasks;
+        } else if (selectedTask._folderQueueId) {
+            scoped = allTasks.filter(t => t._folderQueueId === selectedTask._folderQueueId);
+        } else if (selectedTask._batchTabId) {
+            scoped = allTasks.filter(t => t._batchTabId === selectedTask._batchTabId);
+        } else {
+            const unpartitioned = allTasks.filter(t => !t._folderQueueId && !t._batchTabId);
+            scoped = unpartitioned.length > 0 ? unpartitioned : allTasks;
+        }
+        // 兼容“一文件夹一视频”批量队列：当当前 _folderQueueId 只有 1 条视频而列表有多条任务时，
+        // 自动扩展到同批次标签页或全部主列表任务，避免“当前队列”只对单条视频生效。
+        if (scoped.length <= 1 && allTasks.length > 1) {
+            if (selectedTask?._batchTabId) {
+                const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
+                if (sameTab.length > 1) return sameTab;
+            }
+            return allTasks;
+        }
+        return scoped;
     }
 
     _getCustomScrollStylePresets() {
@@ -8134,42 +8273,6 @@ class ReelsOverlayPanel {
             }
         };
         setTimeout(() => document.addEventListener('mousedown', onDocClick), 10);
-    }
-
-    // 根据【样式作用】下拉选择（当前队列 / 所有队列 / 仅当前任务）返回目标任务列表
-    _getStyleApplyScopeTasks(scopeOverride = null) {
-        if (this.videoCanvas?.scopedTask) return [this.videoCanvas.scopedTask];
-        const scope = scopeOverride || this._getOverlayStyleScope();
-        const state = window._reelsState;
-        const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
-        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
-        if (scope === 'task') {
-            return selectedTask ? [selectedTask] : [];
-        }
-        if (scope === 'all') {
-            const combined = new Set(allTasks);
-            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
-                const activeIds = new Set(allTasks.map(t => t?.id).filter(Boolean));
-                for (const tab of _batchTableState.tabs) {
-                    for (const t of (tab?.tasks || [])) {
-                        if (t && (!t.id || !activeIds.has(t.id))) combined.add(t);
-                    }
-                }
-            }
-            return Array.from(combined);
-        }
-        // 默认: 'folder' (当前队列)
-        const groupTasks = this.videoCanvas?.getTaskGroupTasks?.();
-        if (Array.isArray(groupTasks) && groupTasks.length > 0) return groupTasks;
-        if (!selectedTask) return allTasks;
-        if (selectedTask._folderQueueId) {
-            return allTasks.filter(t => t._folderQueueId === selectedTask._folderQueueId);
-        }
-        if (selectedTask._batchTabId) {
-            return allTasks.filter(t => t._batchTabId === selectedTask._batchTabId);
-        }
-        const unpartitioned = allTasks.filter(t => !t._folderQueueId && !t._batchTabId);
-        return unpartitioned.length > 0 ? unpartitioned : allTasks;
     }
 
     _syncTextcardMaskEnabledUI() {

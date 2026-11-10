@@ -27853,7 +27853,7 @@ async function startBatchCut() {
         return;
     }
 
-    const precise = document.getElementById('batchcut-precise-mode')?.checked ?? false;
+    const precise = document.getElementById('batchcut-precise-mode')?.checked ?? true;
 
     // 快速模式余量
     const paddingBefore = precise ? 0 : (parseFloat(document.getElementById('batchcut-padding-before')?.value) || 0);

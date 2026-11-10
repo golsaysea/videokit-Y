@@ -320,8 +320,9 @@ function _syncGroupedProjectionToTabs(activeTasks, forceAllTabs = false) {
         grouped.get(task._batchTabId).push(task);
     }
     const selectedTaskTabId = window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?._batchTabId || '';
-    const styleScope = document.getElementById('reels-style-scope')?.value || document.getElementById('rop-style-scope')?.value || 'folder';
-    const syncAllBecauseGlobalScope = forceAllTabs || styleScope === 'all';
+    const subStyleScope = document.getElementById('reels-style-scope')?.value || '';
+    const ovStyleScope = document.getElementById('rop-style-scope')?.value || '';
+    const syncAllBecauseGlobalScope = forceAllTabs || subStyleScope === 'all' || ovStyleScope === 'all';
     // A task may have just arrived from another workflow while the external
     // queue is a merged projection.  Include every group present in that queue,
     // not only the groups that were part of the older projection snapshot.
@@ -988,6 +989,9 @@ function reelsToggleBatchTable(options = {}) {
     _batchTableState.visible = !_batchTableState.visible;
     if (_batchTableState.visible) {
         // 同步当前画布图层到活跃任务
+        if (window._reelsState?.overlayPanel && typeof window._reelsState.overlayPanel._flushPendingScopeSync === 'function') {
+            window._reelsState.overlayPanel._flushPendingScopeSync();
+        }
         if (window._reelsState && window._reelsState.selectedIdx >= 0) {
             const curTask = window._reelsState.tasks[window._reelsState.selectedIdx];
             if (curTask && window._reelsState.overlayProxy && window._reelsState.overlayProxy.overlayMgr) {

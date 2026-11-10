@@ -3014,6 +3014,63 @@ app.whenReady().then(async () => {
         return { success: true, reused: false };
     });
 
+    // ==================== 渲染完成后自动关机支持 ====================
+    handleTrusted('system:shutdown-now', async () => {
+        try {
+            log('[AutoShutdown] 收到渲染完成后自动关机请求，准备执行系统关机...');
+            isQuitting = true;
+            app.isQuitting = true;
+            return await new Promise((resolve) => {
+                if (process.platform === 'win32') {
+                    execFile('shutdown', ['/s', '/t', '0'], { windowsHide: true }, (err) => {
+                        if (err) {
+                            log('[AutoShutdown] Windows shutdown error: ' + err.message);
+                            resolve({ ok: false, error: err.message });
+                        } else {
+                            resolve({ ok: true });
+                        }
+                    });
+                } else if (process.platform === 'darwin') {
+                    execFile('osascript', ['-e', 'tell app "System Events" to shut down'], (err) => {
+                        if (err) {
+                            log('[AutoShutdown] macOS shutdown error: ' + err.message);
+                            resolve({ ok: false, error: err.message });
+                        } else {
+                            resolve({ ok: true });
+                        }
+                    });
+                } else {
+                    execFile('systemctl', ['poweroff'], (err) => {
+                        if (err) {
+                            execFile('shutdown', ['-h', 'now'], (err2) => {
+                                if (err2) resolve({ ok: false, error: err2.message });
+                                else resolve({ ok: true });
+                            });
+                        } else {
+                            resolve({ ok: true });
+                        }
+                    });
+                }
+            });
+        } catch (err) {
+            log('[AutoShutdown] Error: ' + err.message);
+            return { ok: false, error: err.message };
+        }
+    });
+
+    handleTrusted('system:cancel-shutdown', async () => {
+        try {
+            if (process.platform === 'win32') {
+                await new Promise((resolve) => {
+                    execFile('shutdown', ['/a'], { windowsHide: true }, () => resolve());
+                });
+            }
+            return { ok: true };
+        } catch (err) {
+            return { ok: false, error: err.message };
+        }
+    });
+
     // 防止 macOS App Nap
     if (process.platform === 'darwin') {
         powerSaveId = powerSaveBlocker.start('prevent-app-suspension');

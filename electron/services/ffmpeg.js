@@ -944,29 +944,46 @@ async function mediaTrim(filePath, startTime, endTime, outputDir, precise = true
     const baseName = path.parse(filePath).name;
     const ext = path.extname(filePath).toLowerCase();
     const outDir = outputDir || path.dirname(filePath);
-    const duration = endTime - startTime;
+    const duration = Math.max(0.05, endTime - startTime);
     const startStr = formatSceneTime(startTime);
     const endStr = formatSceneTime(endTime);
     const outputFilename = `${baseName}_trimmed_${startStr.replace(/:/g, '.')}-${endStr.replace(/:/g, '.')}${ext}`;
     const outputPath = path.join(outDir, outputFilename);
 
+    const hasAudio = await hasAudioTrack(filePath);
     let args;
     if (precise) {
         args = [
-            '-y', '-i', filePath,
+            '-y',
             '-ss', startTime.toFixed(3), '-to', endTime.toFixed(3),
-            '-c:v', 'libx264', '-crf', '15', '-preset', 'medium',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-avoid_negative_ts', 'make_zero',
-            outputPath
+            '-i', filePath,
+            '-vf', `setpts=PTS-STARTPTS,trim=0:${duration.toFixed(3)},setpts=PTS-STARTPTS`,
         ];
+        if (hasAudio) {
+            args.push(
+                '-af', `aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,atrim=0:${duration.toFixed(3)},asetpts=PTS-STARTPTS`,
+                '-c:a', 'aac', '-b:a', '192k'
+            );
+        } else {
+            args.push('-an');
+        }
+        args.push(
+            '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+            '-avoid_negative_ts', 'make_zero',
+            '-shortest',
+            '-movflags', '+faststart',
+            outputPath
+        );
     } else {
         args = [
-            '-y', '-ss', startTime.toFixed(3),
+            '-y',
+            '-fflags', '+genpts',
+            '-ss', startTime.toFixed(3),
             '-i', filePath,
             '-t', duration.toFixed(3),
             '-c', 'copy',
             '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart',
             outputPath
         ];
     }
@@ -1741,17 +1758,21 @@ async function batchCut(filePath, segments, outputDir, precise = true) {
     const cutOutputDir = path.join(outDir, `${baseName}_cuts`);
     fs.mkdirSync(cutOutputDir, { recursive: true });
 
-    // 获取视频总时长（用于 "到结尾" 的片段）
-    const totalDuration = await getDuration(filePath);
+    // 获取视频总时长（用于 "到结尾" 的片段）及音轨状态
+    const [totalDuration, hasAudio] = await Promise.all([
+        getDuration(filePath),
+        hasAudioTrack(filePath),
+    ]);
 
     const exported = [];
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
-        const start = parseFloat(seg.start || 0);
+        const start = Math.max(0, parseFloat(seg.start || 0));
         let end = seg.end != null && seg.end !== '' ? parseFloat(seg.end) : null;
         if (end == null && totalDuration) end = totalDuration;
         if (end == null) throw new Error(`片段 #${i + 1}: 无法确定结束时间（无法获取视频总时长）`);
         if (end - start <= 0) continue;
+        const clipDur = Math.max(0.05, end - start);
 
         // 文件名：序号_名称
         const safeName = (seg.name || `片段${i + 1}`).replace(/[/\\:*?"<>|]/g, '_');
@@ -1761,23 +1782,39 @@ async function batchCut(filePath, segments, outputDir, precise = true) {
 
         let args;
         if (precise) {
-            // 精确模式：重编码，帧级精准
+            // 精确模式：重编码 + 音视频 PTS 归零与时长严格对齐，彻底消除非关键帧跳切与口型偏移
             args = [
-                '-y', '-i', filePath,
+                '-y',
                 '-ss', start.toFixed(3), '-to', end.toFixed(3),
-                '-c:v', 'libx264', '-crf', '15', '-preset', 'medium',
-                '-c:a', 'aac', '-b:a', '192k',
-                '-avoid_negative_ts', 'make_zero',
-                outputPath
-            ];
-        } else {
-            // 快速模式：stream copy
-            args = [
-                '-y', '-ss', start.toFixed(3),
                 '-i', filePath,
-                '-to', (end - start).toFixed(3),
+                '-vf', `setpts=PTS-STARTPTS,trim=0:${clipDur.toFixed(3)},setpts=PTS-STARTPTS`,
+            ];
+            if (hasAudio) {
+                args.push(
+                    '-af', `aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,atrim=0:${clipDur.toFixed(3)},asetpts=PTS-STARTPTS`,
+                    '-c:a', 'aac', '-b:a', '192k'
+                );
+            } else {
+                args.push('-an');
+            }
+            args.push(
+                '-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+                '-avoid_negative_ts', 'make_zero',
+                '-shortest',
+                '-movflags', '+faststart',
+                outputPath
+            );
+        } else {
+            // 快速模式：stream copy（使用 -t 持续时长而非 -to，并重生 PTS 减少音画起止偏差）
+            args = [
+                '-y',
+                '-fflags', '+genpts',
+                '-ss', start.toFixed(3),
+                '-i', filePath,
+                '-t', clipDur.toFixed(3),
                 '-c', 'copy',
                 '-avoid_negative_ts', 'make_zero',
+                '-movflags', '+faststart',
                 outputPath
             ];
         }
@@ -2150,6 +2187,17 @@ async function hasAudioTrack(filePath) {
     }
 }
 
+async function _getEffectiveClipDuration(filePath) {
+    const [vDur, cDur] = await Promise.all([
+        getPrimaryStreamDuration(filePath, 'v:0'),
+        getDuration(filePath),
+    ]);
+    if (Number.isFinite(vDur) && vDur > 0 && Number.isFinite(cDur) && cDur > 0) {
+        return Math.min(vDur, cDur);
+    }
+    return (Number.isFinite(vDur) && vDur > 0) ? vDur : (Number.isFinite(cDur) && cDur > 0 ? cDur : 0);
+}
+
 async function concatClips(opts = {}) {
     const {
         clips = [],
@@ -2171,36 +2219,43 @@ async function concatClips(opts = {}) {
     const tmpDir = path.join(os.tmpdir(), `videokit_concat_${sessionId}`);
     fs.mkdirSync(tmpDir, { recursive: true });
 
-    const normalized = [];
-    try {
-        if (skipNormalization) {
-            normalized.push(...validClips);
-        } else {
-            for (let i = 0; i < validClips.length; i++) {
-                const src = validClips[i];
-                const out = path.join(tmpDir, `clip_${String(i + 1).padStart(4, '0')}.mp4`);
-                const hasAudio = await hasAudioTrack(src);
-                const args = ['-y', '-i', src];
-                let filterComplex;
-                if (hasAudio) {
-                    filterComplex = `[0:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},setsar=1[v];[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a]`;
-                } else {
-                    args.push('-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000');
-                    filterComplex = `[0:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},setsar=1[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a]`;
-                }
-                args.push(
-                    '-filter_complex', filterComplex,
-                    '-map', '[v]', '-map', '[a]',
-                    '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
-                    '-c:a', 'aac', '-b:a', '192k',
-                    '-shortest',
-                    out
-                );
-                console.log(`[ConcatClips] 归一化 ${i + 1}/${validClips.length}: ${path.basename(src)}`);
-                await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
-                normalized.push(out);
+    const normalizeAllClips = async () => {
+        const list = [];
+        for (let i = 0; i < validClips.length; i++) {
+            const src = validClips[i];
+            const out = path.join(tmpDir, `clip_${String(i + 1).padStart(4, '0')}.mp4`);
+            const [hasAudio, effDur] = await Promise.all([
+                hasAudioTrack(src),
+                _getEffectiveClipDuration(src),
+            ]);
+            const vTrim = effDur > 0.05 ? `,trim=0:${effDur.toFixed(3)},setpts=PTS-STARTPTS` : '';
+            const aTrim = effDur > 0.05 ? `,atrim=0:${effDur.toFixed(3)},asetpts=PTS-STARTPTS` : '';
+            const args = ['-y', '-i', src];
+            let filterComplex;
+            if (hasAudio) {
+                filterComplex = `[0:v]setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=1/${fps},setsar=1${vTrim}[v];[0:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo${aTrim}[a]`;
+            } else {
+                args.push('-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000');
+                filterComplex = `[0:v]setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=1/${fps},setsar=1${vTrim}[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo${aTrim}[a]`;
             }
+            args.push(
+                '-filter_complex', filterComplex,
+                '-map', '[v]', '-map', '[a]',
+                '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-b:a', '192k',
+                '-avoid_negative_ts', 'make_zero',
+                '-shortest',
+                out
+            );
+            console.log(`[ConcatClips] 归一化 ${i + 1}/${validClips.length}: ${path.basename(src)}`);
+            await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
+            list.push(out);
         }
+        return list;
+    };
+
+    try {
+        let normalized = skipNormalization ? [...validClips] : await normalizeAllClips();
 
         const listPath = path.join(tmpDir, 'concat_list.txt');
         const listContent = normalized.map(p => `file '${_escapeConcatListPath(p)}'`).join('\n');
@@ -2208,12 +2263,40 @@ async function concatClips(opts = {}) {
 
         await runCommand('ffmpeg', [
             '-y',
+            '-fflags', '+genpts',
             '-f', 'concat',
             '-safe', '0',
             '-i', listPath,
             '-c', 'copy',
+            '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart',
             outputPath
         ], { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
+
+        // 校验输出视频轨与容器总时长是否一致：若快速拼接的输入存在 timebase/非关键帧切点不一致导致视频轨提前中断（画面定格只剩声音），自动回退重编码归一化拼接
+        if (skipNormalization) {
+            const [outVDur, outCDur] = await Promise.all([
+                getPrimaryStreamDuration(outputPath, 'v:0'),
+                getDuration(outputPath),
+            ]);
+            if (Number.isFinite(outCDur) && outCDur > 1 && (!Number.isFinite(outVDur) || (outCDur - outVDur) > 0.45)) {
+                console.warn(`[ConcatClips] 检测到直拼视频轨时长 (${outVDur}s) 短于总时长 (${outCDur}s)，自动执行音画对齐归一化重拼...`);
+                normalized = await normalizeAllClips();
+                const normListContent = normalized.map(p => `file '${_escapeConcatListPath(p)}'`).join('\n');
+                fs.writeFileSync(listPath, normListContent, 'utf-8');
+                await runCommand('ffmpeg', [
+                    '-y',
+                    '-fflags', '+genpts',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', listPath,
+                    '-c', 'copy',
+                    '-avoid_negative_ts', 'make_zero',
+                    '-movflags', '+faststart',
+                    outputPath
+                ], { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
+            }
+        }
 
         const duration = await getDuration(outputPath);
         return {
@@ -2277,33 +2360,39 @@ async function concatClipsWithTransitions(opts = {}) {
         if (skipNormalization) {
             normalized.push(...validClips);
             for (const c of validClips) {
-                durations.push(await getDuration(c) || 0);
+                durations.push(await _getEffectiveClipDuration(c) || 0);
             }
         } else {
             for (let i = 0; i < validClips.length; i++) {
                 const src = validClips[i];
                 const out = path.join(tmpDir, `clip_${String(i + 1).padStart(4, '0')}.mp4`);
-                const hasAudio = await hasAudioTrack(src);
+                const [hasAudio, srcEffDur] = await Promise.all([
+                    hasAudioTrack(src),
+                    _getEffectiveClipDuration(src),
+                ]);
+                const vTrim = srcEffDur > 0.05 ? `,trim=0:${srcEffDur.toFixed(3)},setpts=PTS-STARTPTS` : '';
+                const aTrim = srcEffDur > 0.05 ? `,atrim=0:${srcEffDur.toFixed(3)},asetpts=PTS-STARTPTS` : '';
                 const args = ['-y', '-i', src];
                 let filterComplex;
                 if (hasAudio) {
-                    filterComplex = `[0:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=AVTB,setsar=1[v];[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                    filterComplex = `[0:v]setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=AVTB,setsar=1${vTrim}[v];[0:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo${aTrim}[a]`;
                 } else {
                     args.push('-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000');
-                    filterComplex = `[0:v]scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=AVTB,setsar=1[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                    filterComplex = `[0:v]setpts=PTS-STARTPTS,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},fps=${fps},settb=AVTB,setsar=1${vTrim}[v];[1:a]aformat=sample_rates=48000:channel_layouts=stereo${aTrim}[a]`;
                 }
                 args.push(
                     '-filter_complex', filterComplex,
                     '-map', '[v]', '-map', '[a]',
-                    '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+                    '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
                     '-c:a', 'aac', '-b:a', '192k',
+                    '-avoid_negative_ts', 'make_zero',
                     '-shortest',
                     out
                 );
                 console.log(`[ConcatXfade] 归一化 ${i + 1}/${validClips.length}: ${path.basename(src)}`);
                 await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
                 normalized.push(out);
-                durations.push(await getDuration(out) || 0);
+                durations.push(await _getEffectiveClipDuration(out) || 0);
             }
         }
 
@@ -2320,28 +2409,33 @@ async function concatClipsWithTransitions(opts = {}) {
         normalized.forEach(p => args.push('-i', p));
 
         const filters = [];
+        const safeFps = Math.max(1, parseFloat(fps) || 30);
+        const frameStep = 1 / safeFps;
         for (let i = 0; i < normalized.length; i++) {
-            filters.push(`[${i}:v]fps=${fps},settb=AVTB,setsar=1[v${i}]`);
-            filters.push(`[${i}:a]aformat=sample_rates=48000:channel_layouts=stereo[a${i}]`);
+            const clipDur = Math.max(0.1, durations[i] || 0.1);
+            filters.push(`[${i}:v]setpts=PTS-STARTPTS,fps=${safeFps},settb=AVTB,setsar=1,trim=0:${clipDur.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+            filters.push(`[${i}:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${clipDur.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
         }
 
         const xfadeName = _mapXfadeTransition(transition);
         let videoLabel = 'v0';
         let audioLabel = 'a0';
-        let timelineDur = durations[0] || 0;
+        let timelineDur = Math.max(0.1, durations[0] || 0.1);
 
         for (let i = 1; i < normalized.length; i++) {
+            const clipDur = Math.max(0.1, durations[i] || 0.1);
             const tDur = transitionDurations[i - 1];
             const outV = `vx${i}`;
             const outA = `ax${i}`;
             if (tDur > 0) {
-                const offset = Math.max(0.01, timelineDur - tDur);
-                filters.push(`[${videoLabel}][v${i}]xfade=transition=${xfadeName}:duration=${tDur.toFixed(3)}:offset=${offset.toFixed(3)}[${outV}]`);
+                // 预留半帧安全余量，防止 xfade 因浮点舍入在第一路流 EOF 后才到达 offset 导致后续画面永久冻结为静态图
+                const offset = Math.max(0.01, timelineDur - tDur - frameStep * 0.5);
+                filters.push(`[${videoLabel}][v${i}]xfade=transition=${xfadeName}:duration=${tDur.toFixed(3)}:offset=${offset.toFixed(3)},settb=AVTB[${outV}]`);
                 filters.push(`[${audioLabel}][a${i}]acrossfade=d=${tDur.toFixed(3)}[${outA}]`);
-                timelineDur += (durations[i] || 0) - tDur;
+                timelineDur = offset + clipDur;
             } else {
                 filters.push(`[${videoLabel}][${audioLabel}][v${i}][a${i}]concat=n=2:v=1:a=1[${outV}][${outA}]`);
-                timelineDur += durations[i] || 0;
+                timelineDur += clipDur;
             }
             videoLabel = outV;
             audioLabel = outA;
@@ -2351,8 +2445,11 @@ async function concatClipsWithTransitions(opts = {}) {
             '-filter_complex', filters.join(';'),
             '-map', `[${videoLabel}]`,
             '-map', `[${audioLabel}]`,
-            '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+            '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
             '-c:a', 'aac', '-b:a', '192k',
+            '-avoid_negative_ts', 'make_zero',
+            '-shortest',
+            '-movflags', '+faststart',
             outputPath
         );
         await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });

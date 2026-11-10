@@ -3350,6 +3350,90 @@ test('Playback 10s stop & render stutter fixes: feather canvas pooling, scroll a
     assert.match(rawVideoSrc, /targetDuration\s*>\s*scaledBgDuration\s*\+\s*0\.5/, 'useDirectLoopFade must require targetDuration > scaledBgDuration + 0.5');
 });
 
+test('Scope sync (同步到作用范围) across singleton folder queues & auto-shutdown 10s countdown option', () => {
+    const overlayPanelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const batchReelsSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const batchTableSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const mainJsSrc = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
+    const preloadJsSrc = fs.readFileSync(path.join(ROOT, 'electron/preload.js'), 'utf8');
+
+    // 1. Verify _getStyleApplyScopeTasks & _getCurrentReelsGroupTasks expand singleton _folderQueueId to sameTab/allTasks
+    assert.match(overlayPanelSrc, /if\s*\(scoped\.length\s*<=\s*1\s*&&\s*allTasks\.length\s*>\s*1\)/, '_getStyleApplyScopeTasks must expand singleton folder queue to batch tab or all tasks');
+    assert.match(batchReelsSrc, /if\s*\(sameFolder\.length\s*>\s*1\s*\|\|\s*allTasks\.length\s*<=\s*1\)\s*return\s*sameFolder;/, '_getCurrentReelsGroupTasks must expand singleton folder queue to batch tab or all tasks');
+
+    // 2. Verify _afterScopeStyleSync persists scope changes and flushes pending sync on task switch
+    assert.match(overlayPanelSrc, /_afterScopeStyleSync\(scopedTasks\)/, 'Overlay Panel must define and call _afterScopeStyleSync(scopedTasks)');
+    assert.match(overlayPanelSrc, /_flushPendingScopeSync\(\)/, 'Overlay Panel must flush pending scope sync on select/deselect');
+    assert.match(batchReelsSrc, /_reelsState\.overlayPanel\._flushPendingScopeSync\(\)/, 'reelsSelectTask must flush pending scope sync before switching tasks');
+    assert.match(batchTableSrc, /subStyleScope\s*===\s*'all'\s*\|\|\s*ovStyleScope\s*===\s*'all'/, '_syncGroupedProjectionToTabs must check both reels-style-scope and rop-style-scope for all-tabs sync');
+
+    // 3. Verify Auto-Shutdown option is unchecked by default and implements 10s cancellable countdown
+    const shutdownCheckboxMatch = indexHtmlSrc.match(/<input[^>]*id="reels-export-auto-shutdown"[^>]*>/);
+    assert.ok(shutdownCheckboxMatch, 'reels-export-auto-shutdown checkbox must exist in index.html');
+    assert.ok(!/\bchecked\b/i.test(shutdownCheckboxMatch[0]), 'reels-export-auto-shutdown must default to unchecked');
+    assert.match(batchReelsSrc, /function\s+_reelsShowAutoShutdownModal\(/, 'batch-reels.js must define _reelsShowAutoShutdownModal');
+    assert.match(batchReelsSrc, /reels-cancel-auto-shutdown-btn/, '_reelsShowAutoShutdownModal must include cancel shutdown button');
+    assert.match(mainJsSrc, /handleTrusted\('system:shutdown-now'/, 'electron/main.js must register trusted system:shutdown-now handler');
+    assert.match(mainJsSrc, /handleTrusted\('system:cancel-shutdown'/, 'electron/main.js must register trusted system:cancel-shutdown handler');
+    assert.match(preloadJsSrc, /triggerSystemShutdown:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('system:shutdown-now'\)/, 'preload.js must expose triggerSystemShutdown');
+    assert.match(preloadJsSrc, /cancelSystemShutdown:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('system:cancel-shutdown'\)/, 'preload.js must expose cancelSystemShutdown');
+});
+
+test('Zooming background & xfade loop stutter fix: exact frame timebase (settb=1/fps,setpts=N), framerate sub-frame interpolation, and tail-xfade avoidance', () => {
+    const rawvideo = require(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'));
+    const rawvideoSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'), 'utf8');
+
+    // 1. normalizedDirectBackgroundFilter must use settb=1/30,setpts=N (no settb=AVTB) and framerate interpolation for video clips
+    const videoFilter = rawvideo._test.normalizedDirectBackgroundFilter(
+        0,
+        'scale=1080:1920,setsar=1',
+        'setpts=PTS-STARTPTS',
+        30,
+        'bg0',
+        2,
+        'C:/videos/ai_zoom_24fps.mp4'
+    );
+    assert.ok(videoFilter.includes('framerate=fps=30:interp_start=0:interp_end=255:scene=8.2,fps=30'), 'Video background filter must smoothly interpolate 24/25fps camera zoom/pan to target fps');
+    assert.ok(videoFilter.includes('tpad=stop_mode=clone:stop_duration=2.00,settb=1/30,setpts=N[bg0]'), 'Video background filter must normalize timebase to 1/fps and PTS=N after tpad');
+    assert.ok(!videoFilter.includes('settb=AVTB'), 'Video background filter must not use settb=AVTB which causes 1us rounding drift after xfade');
+
+    // 2. computeLoopFadePlan must avoid redundant tail-end xfade on 8.0s clip -> 15.067s video
+    const plan = rawvideo._test.computeLoopFadePlan(8.0, 15.067, 1.0, 30);
+    assert.equal(plan.segCount, 2, '8.0s background covering 15.067s video must use 2 segments (1 xfade) instead of 3 segments (which caused a redundant zoom reset at 13.87s)');
+    assert.equal(plan.fadeFrames, 26);
+    assert.equal(plan.stepFrames, 212);
+    assert.ok(Math.abs((plan.step + 8.0) - 15.066667) < 0.001, '2 segments must cover the full 15.067s duration');
+
+    // 3. startSession and prepareBg must re-lock settb=1/${safeFps},setpts=N after xfade and on [fg] before overlay
+    assert.ok(!rawvideoSrc.includes('settb=AVTB'), 'ffmpeg-rawvideo.js must not use settb=AVTB in xfade/overlay filtergraphs');
+    assert.match(rawvideoSrc, /xfade=transition=fade:duration=\$\{fadeDur\.toFixed\(6\)\}:offset=\$\{\(i \* step\)\.toFixed\(6\)\},settb=1\/\$\{safeFps\},setpts=N/, 'startSession xfade must re-lock settb=1/fps,setpts=N');
+    assert.match(rawvideoSrc, /settb=1\/\$\{safeFps\},setpts=N\[fg\];\[bg\]\[fg\]overlay=0:0/, 'Foreground rawvideo stream must lock settb=1/fps,setpts=N before overlay');
+});
+
+test('BatchCut & AutoEdit clip cutting/concatenation fix: default precise mode, A/V PTS sync, and xfade video duration lock', () => {
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+    const ffmpegSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg.js'), 'utf8');
+    const autoEditSrc = fs.readFileSync(path.join(ROOT, 'electron/services/autoEdit.js'), 'utf8');
+
+    // 1. BatchCut UI defaults to precise mode checked and 0s padding
+    assert.match(htmlSrc, /id="batchcut-precise-mode"\s+checked/, 'batchcut-precise-mode must be checked by default to prevent non-keyframe jump cuts and lip-sync drift');
+    assert.ok(appSrc.includes("document.getElementById('batchcut-precise-mode')?.checked ?? true"), 'startBatchCut must default precise to true');
+
+    // 2. batchCut & concatClips & concatClipsWithTransitions align A/V timestamps and probe actual video stream duration
+    assert.ok(ffmpegSrc.includes('async function _getEffectiveClipDuration(filePath)'), 'ffmpeg.js must probe effective video+container duration via _getEffectiveClipDuration');
+    assert.ok(ffmpegSrc.includes('aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS'), 'ffmpeg.js must align audio start PTS with video');
+    assert.ok(ffmpegSrc.includes('检测到直拼视频轨时长'), 'concatClips must verify output video stream duration against container duration and auto-recover if video ended early');
+    assert.ok(ffmpegSrc.includes('timelineDur - tDur - frameStep * 0.5'), 'concatClipsWithTransitions must keep safety margin before EOF on xfade offset so video never freezes into a static frame');
+
+    // 3. autoEdit.js aligns audio PTS and guards against sub-frame micro-cuts
+    assert.ok(autoEditSrc.includes('aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS'), 'autoEdit.js must use aresample=async=1:first_pts=0 when cutting segments');
+    assert.ok(autoEditSrc.includes('plan.end - plan.start < 0.35'), 'autoEdit.js must guard against sub-0.35s micro-cut segments');
+});
+
+
+
 
 
 

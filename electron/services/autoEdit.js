@@ -3236,6 +3236,12 @@ async function autoEditByScript(opts = {}) {
 
             const cutPath = path.join(tmpDir, `auto_${String(i + 1).padStart(4, '0')}.mp4`);
             const hasAudio = await ffmpegService.hasAudioTrack(clipPath);
+            if (plan.end - plan.start < 0.35 && Number.isFinite(plan.duration) && plan.duration > 0.35) {
+                plan.end = Math.min(plan.duration, plan.start + 0.35);
+                if (plan.end - plan.start < 0.35) {
+                    plan.start = Math.max(0, plan.end - 0.35);
+                }
+            }
             const args = ['-y'];
             args.push('-ss', plan.start.toFixed(3));
             args.push('-to', plan.end.toFixed(3));
@@ -3275,21 +3281,21 @@ async function autoEditByScript(opts = {}) {
             let filterComplex;
             const keepSourceAudio = hasAudio && !(plan.isOpeningHook && plan.hookKeepAudio === false);
             if (keepSourceAudio) {
-                // 每段在输入寻址后必须清零 PTS。否则首个关键帧前的时间戳可能被
-                // 保留到 concat 输出，未经过字幕滤镜二次编码时播放器会显示开头黑帧。
-                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},setsar=1[v];[0:a]${audioRemoveFilter}asetpts=PTS-STARTPTS,${atempoFilter},aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                // 每段在输入寻址后必须清零 PTS 并用 aresample 对齐音画起点，防止 VFR/AI 生成视频在拼接后口型偏移或视频轨提前结束。
+                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},settb=1/${fps},setsar=1[v];[0:a]aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS,${atempoFilter},aformat=sample_rates=48000:channel_layouts=stereo[a]`;
             } else {
                 args.push('-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000');
-                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},setsar=1[v];[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},settb=1/${fps},setsar=1[v];[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a]`;
             }
 
             args.push(
                 '-filter_complex', filterComplex,
                 '-map', '[v]', '-map', '[a]',
-                '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+                '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac', '-b:a', '192k',
                 '-avoid_negative_ts', 'make_zero',
                 '-shortest',
+                '-movflags', '+faststart',
                 cutPath
             );
 
@@ -3297,7 +3303,7 @@ async function autoEditByScript(opts = {}) {
             // 未变，就直接复制上次已编码的片段到本次临时拼接目录。
             const sourceForCache = plan.realClipPath || clipPath;
             const cacheKeyPayload = {
-                version: 1,
+                version: 2,
                 source: path.resolve(sourceForCache),
                 source_fingerprint: getAutoEditClipFingerprint(sourceForCache),
                 start: Number(plan.start.toFixed(3)),

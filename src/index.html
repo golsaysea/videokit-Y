@@ -2783,8 +2783,8 @@
               <h4 style="margin-bottom: 12px; color: var(--text-secondary);">⚙️ 剪辑选项</h4>
               <div class="checkbox-row">
                 <label class="checkbox-label">
-                  <input type="checkbox" id="batchcut-precise-mode" onchange="toggleBatchCutPaddingUI()">
-                  <span>精确模式（帧级精准，重编码，速度较慢）</span>
+                  <input type="checkbox" id="batchcut-precise-mode" checked onchange="toggleBatchCutPaddingUI()">
+                  <span>精确模式（帧级精准 + 音画口型对齐，重编码，推荐开启）</span>
                 </label>
                 <label class="checkbox-label">
                   <input type="checkbox" id="batchcut-open-after">
@@ -2793,24 +2793,24 @@
               </div>
               <!-- 快速模式余量设置 -->
               <div id="batchcut-padding-row"
-                style="margin-top: 8px; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                style="margin-top: 8px; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; display: none; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <span style="font-size: 12px; color: var(--text-secondary);">⚡ 快速模式余量（自动扩展入出点，确保内容完整）:</span>
                 <div style="display: flex; align-items: center; gap: 4px;">
                   <span style="font-size: 12px; color: var(--text-muted);">入点提前</span>
-                  <input type="number" id="batchcut-padding-before" value="3" min="0" max="10" step="1"
+                  <input type="number" id="batchcut-padding-before" value="0" min="0" max="10" step="1"
                     style="width: 50px; font-size: 12px; padding: 2px 6px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; text-align: center;">
                   <span style="font-size: 12px; color: var(--text-muted);">秒</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px;">
                   <span style="font-size: 12px; color: var(--text-muted);">出点延后</span>
-                  <input type="number" id="batchcut-padding-after" value="3" min="0" max="10" step="1"
+                  <input type="number" id="batchcut-padding-after" value="0" min="0" max="10" step="1"
                     style="width: 50px; font-size: 12px; padding: 2px 6px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; text-align: center;">
                   <span style="font-size: 12px; color: var(--text-muted);">秒</span>
                 </div>
               </div>
               <p class="hint" style="margin-top: 6px;">
-                ✅ <strong>精确模式</strong>：重编码 (libx264 CRF 18)，帧级精准，适合需要严格入出点的场景，速度较慢。<br>
-                ⚡ <strong>快速模式</strong>：stream copy 秒剪，但只能在关键帧处切割。开启余量后自动扩展入出点（如提前3秒/延后3秒），确保你要的内容一定在里面，只是前后多几秒。
+                ✅ <strong>精确模式（默认推荐）</strong>：重编码 (libx264) + 音画时间戳归零同步，彻底避免非关键帧跳切、口型错位及拼接后画面卡死。<br>
+                ⚡ <strong>快速模式</strong>：stream copy 秒剪，只能在视频关键帧(GOP)处切割；用于口播/二次拼接时容易出现跳切或口型偏移。
               </p>
             </div>
 
@@ -7571,6 +7571,10 @@
                     <option value="fcpxml-compound">🎞️ FCPXML 复合片段</option>
                   </select>
                 </label>
+                <label style="display:flex;align-items:center;gap:4px;font-size:11px;white-space:nowrap;cursor:pointer;color:#fca5a5;" title="默认不开启。勾选后，当本次批量渲染完成时将弹出 10 秒倒计时自动关机提示（可随时点击取消）">
+                  <input type="checkbox" id="reels-export-auto-shutdown">
+                  <span>🔌 渲染完自动关机</span>
+                </label>
                 <button id="reels-export-btn" class="btn btn-primary" style="font-size:12px;padding:6px 18px;white-space:nowrap;"
                   onclick="reelsStartExport()">🚀 开始导出</button>
                 <button class="btn btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap;"
@@ -8085,7 +8089,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.5</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.5.6 (Beta测试版)</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"

@@ -1150,14 +1150,22 @@ function _initReelsModule() {
                         const group = _getCurrentReelsGroupTasks();
                         if (Array.isArray(group) && group.length > 0) return group;
                     }
-                    const tasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks : [];
+                    const tasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks.filter(Boolean) : [];
                     const selected = _getSelectedTask() || tasks[0] || null;
                     if (!selected) return tasks;
                     if (selected._folderQueueId) {
-                        return tasks.filter(task => task && task._folderQueueId === selected._folderQueueId);
+                        const sameFolder = tasks.filter(task => task && task._folderQueueId === selected._folderQueueId);
+                        if (sameFolder.length > 1 || tasks.length <= 1) return sameFolder;
+                        if (selected._batchTabId) {
+                            const sameTab = tasks.filter(task => task && task._batchTabId === selected._batchTabId);
+                            if (sameTab.length > 1) return sameTab;
+                        }
+                        return tasks;
                     }
                     if (selected._batchTabId) {
-                        return tasks.filter(task => task && task._batchTabId === selected._batchTabId);
+                        const sameTab = tasks.filter(task => task && task._batchTabId === selected._batchTabId);
+                        if (sameTab.length > 1 || tasks.length <= 1) return sameTab;
+                        return tasks;
                     }
                     const unpartitioned = tasks.filter(task => task && !task._folderQueueId && !task._batchTabId);
                     return unpartitioned.length > 0 ? unpartitioned : tasks;
@@ -2740,19 +2748,28 @@ function _getSubtitleStyleScope() {
 }
 
 function _getCurrentReelsGroupTasks() {
-    const task = _getSelectedTask();
+    const allTasks = (_reelsState.tasks || []).filter(Boolean);
+    const task = _getSelectedTask() || allTasks[0] || null;
     if (!task) return [];
-    // folder 作用域必须优先按真实队列分组。恢复后所有队列都可能
-    // 共享同一个“批量导入任务”标签 ID；先按 batchTabId 会把修改误应用到 108 条。
+    // folder 作用域必须优先按真实队列分组。当为“一文件夹一视频”单任务队列且列表有多条任务时，
+    // 自动回退到同标签页分组或全部主列表任务，避免“当前队列”只对单条视频生效。
     if (task._folderQueueId) {
-        return (_reelsState.tasks || []).filter(t => t._folderQueueId === task._folderQueueId);
+        const sameFolder = allTasks.filter(t => t._folderQueueId === task._folderQueueId);
+        if (sameFolder.length > 1 || allTasks.length <= 1) return sameFolder;
+        if (task._batchTabId) {
+            const sameTab = allTasks.filter(t => t._batchTabId === task._batchTabId);
+            if (sameTab.length > 1) return sameTab;
+        }
+        return allTasks;
     }
     if (task._batchTabId) {
-        return (_reelsState.tasks || []).filter(t => t._batchTabId === task._batchTabId);
+        const sameTab = allTasks.filter(t => t._batchTabId === task._batchTabId);
+        if (sameTab.length > 1 || allTasks.length <= 1) return sameTab;
+        return allTasks;
     }
     // 未分文件夹/标签的普通任务属于同一个主队列/默认分组（整批任务一同控制）
-    const unpartitioned = (_reelsState.tasks || []).filter(t => !t._folderQueueId && !t._batchTabId);
-    return unpartitioned.length > 0 ? unpartitioned : (_reelsState.tasks || [task]);
+    const unpartitioned = allTasks.filter(t => !t._folderQueueId && !t._batchTabId);
+    return unpartitioned.length > 0 ? unpartitioned : allTasks;
 }
 
 function _getNamedSubtitlePresetStyle(name) {
@@ -10222,6 +10239,9 @@ async function _preFetchTaskMediaDurations(task) {
 
 function reelsSelectTask(idx, options = {}) {
     // ── 保存当前任务的覆层 ──
+    if (_reelsState.overlayPanel && typeof _reelsState.overlayPanel._flushPendingScopeSync === 'function') {
+        _reelsState.overlayPanel._flushPendingScopeSync();
+    }
     const prevTask = _reelsState.tasks[_reelsState.selectedIdx];
     if (prevTask && _reelsState.overlayProxy && _reelsState.overlayProxy.overlayMgr) {
         if (_reelsState._coverEditMode && prevTask.cover) {
@@ -13830,6 +13850,10 @@ async function _reelsStartExportImpl(options = {}) {
     if (!resumeState && !doFcpxml && totalJobs > recycleEvery && typeof showToast === 'function') {
         showToast(`长队列分段模式：段内并发 ${concurrency}，每 ${recycleEvery} 条刷新并自动续传`, 'info', 7000);
     }
+    const autoShutdownCheckbox = document.getElementById('reels-export-auto-shutdown');
+    if (resumeState?.autoShutdown && autoShutdownCheckbox) {
+        autoShutdownCheckbox.checked = true;
+    }
     const resumeManifest = {
         version: 1,
         active: true,
@@ -13846,6 +13870,7 @@ async function _reelsStartExportImpl(options = {}) {
         okCount: Math.max(0, Number(resumeState?.okCount) || 0),
         failCount: Math.max(0, Number(resumeState?.failCount) || 0),
         failDetails: Array.isArray(resumeState?.failDetails) ? resumeState.failDetails.slice(-30) : [],
+        autoShutdown: Boolean(autoShutdownCheckbox?.checked),
     };
     try { localStorage.setItem(REELS_EXPORT_RESUME_KEY, JSON.stringify(resumeManifest)); } catch (_) { }
     // 并发任务各自上报进度。汇总时必须按每个任务的最新进度相加，
@@ -14891,6 +14916,7 @@ async function _reelsStartExportImpl(options = {}) {
     if (shouldRefreshForRecycle) {
         resumeManifest.reloadPending = true;
         resumeManifest.reloadRequestedAt = Date.now();
+        resumeManifest.autoShutdown = Boolean(document.getElementById('reels-export-auto-shutdown')?.checked);
         try {
             if (typeof _batchAutoSave === 'function') _batchAutoSave();
             if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
@@ -14963,6 +14989,28 @@ async function _reelsStartExportImpl(options = {}) {
                 : `✅ 全部完成 (${totalJobs}个视频${matrixNote})`;
         }
     }
+    const autoShutdownEl = document.getElementById('reels-export-auto-shutdown');
+    const shouldAutoShutdown = !canceled && totalJobs > 0 && doneCount > 0 && Boolean(autoShutdownEl?.checked);
+    if (exportBtn) {
+        exportBtn.disabled = false;
+        exportBtn.innerHTML = '🚀 开始导出';
+    }
+    _reelsState.isExporting = false;
+    try { localStorage.removeItem(REELS_EXPORT_RESUME_KEY); } catch (_) { }
+
+    if (shouldAutoShutdown) {
+        if (autoShutdownEl) autoShutdownEl.checked = false;
+        if (failCount === 0) _reelsUpdateLastErrorUI('');
+        _reelsShowAutoShutdownModal({
+            okCount,
+            failCount,
+            totalJobs,
+            outputDir: outputDirTrimmed,
+            seconds: 10,
+        });
+        return;
+    }
+
     if (!canceled && failCount > 0) {
         const shortErr = failDetails.slice(0, 5).join('\n');
         await _reelsShowExportError(`导出失败 ${failCount} 个\n输出目录: ${outputDirTrimmed}\n\n失败原因:\n${shortErr}`);
@@ -14979,17 +15027,178 @@ async function _reelsStartExportImpl(options = {}) {
             try { await window.electronAPI.apiCall('file/open-folder', { path: outputDirTrimmed }); } catch (e) { }
         }
     }
-    if (exportBtn) {
-        exportBtn.disabled = false;
-        exportBtn.innerHTML = '🚀 开始导出';
-    }
-    _reelsState.isExporting = false;
-    try { localStorage.removeItem(REELS_EXPORT_RESUME_KEY); } catch (_) { }
 }
+
+function _reelsShowAutoShutdownModal({ okCount = 0, failCount = 0, totalJobs = 0, outputDir = '', seconds = 10 } = {}) {
+    const existing = document.getElementById('reels-auto-shutdown-modal');
+    if (existing) existing.remove();
+
+    const totalSec = Math.max(1, Math.round(Number(seconds) || 10));
+    let remaining = totalSec;
+    let timer = null;
+    let finished = false;
+
+    const modal = document.createElement('div');
+    modal.id = 'reels-auto-shutdown-modal';
+    modal.style.cssText = [
+        'position:fixed',
+        'inset:0',
+        'z-index:999999',
+        'background:rgba(5,8,18,0.82)',
+        'backdrop-filter:blur(6px)',
+        'display:flex',
+        'align-items:center',
+        'justify-content:center',
+        'font-family:system-ui,-apple-system,sans-serif',
+    ].join(';');
+
+    const box = document.createElement('div');
+    box.style.cssText = [
+        'width:440px',
+        'max-width:92vw',
+        'background:#111827',
+        'border:1px solid rgba(248,113,113,0.45)',
+        'border-radius:14px',
+        'padding:22px 24px',
+        'box-shadow:0 24px 64px rgba(0,0,0,0.75)',
+        'color:#f8fafc',
+        'display:flex',
+        'flex-direction:column',
+        'gap:14px',
+    ].join(';');
+
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:17px;font-weight:700;color:#fca5a5;display:flex;align-items:center;gap:8px;';
+    titleEl.textContent = '🔌 渲染已完成，即将自动关机';
+    box.appendChild(titleEl);
+
+    const summaryEl = document.createElement('div');
+    summaryEl.style.cssText = 'font-size:13px;line-height:1.6;color:#cbd5e1;background:rgba(255,255,255,0.04);padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);word-break:break-all;';
+    const summaryText = failCount > 0
+        ? `本次渲染完成 ${okCount}/${totalJobs} 个（失败 ${failCount} 个）`
+        : `本次渲染已全部完成（共 ${okCount}/${totalJobs} 个视频）`;
+    summaryEl.textContent = outputDir ? `${summaryText}\n输出目录：${outputDir}` : summaryText;
+    summaryEl.style.whiteSpace = 'pre-wrap';
+    box.appendChild(summaryEl);
+
+    const countdownWrap = document.createElement('div');
+    countdownWrap.style.cssText = 'text-align:center;padding:8px 0 4px;';
+    const countdownText = document.createElement('div');
+    countdownText.style.cssText = 'font-size:15px;color:#f1f5f9;margin-bottom:10px;';
+    const secSpan = document.createElement('span');
+    secSpan.id = 'reels-shutdown-countdown-sec';
+    secSpan.style.cssText = 'font-size:28px;font-weight:800;color:#f87171;margin:0 6px;font-variant-numeric:tabular-nums;';
+    secSpan.textContent = String(remaining);
+    countdownText.append('系统将在', secSpan, '秒后自动关机');
+    countdownWrap.appendChild(countdownText);
+
+    const barOuter = document.createElement('div');
+    barOuter.style.cssText = 'width:100%;height:8px;background:rgba(255,255,255,0.1);border-radius:999px;overflow:hidden;';
+    const barInner = document.createElement('div');
+    barInner.style.cssText = 'width:100%;height:100%;background:linear-gradient(90deg,#ef4444,#f97316);transition:width 0.95s linear;';
+    barOuter.appendChild(barInner);
+    countdownWrap.appendChild(barOuter);
+    box.appendChild(countdownWrap);
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:4px;';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.id = 'reels-cancel-auto-shutdown-btn';
+    cancelBtn.style.cssText = 'flex:1;padding:10px 16px;font-size:14px;font-weight:700;border-radius:8px;border:1px solid rgba(56,189,248,0.5);background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;cursor:pointer;';
+    cancelBtn.textContent = '✋ 取消自动关机 (Esc)';
+
+    const nowBtn = document.createElement('button');
+    nowBtn.type = 'button';
+    nowBtn.id = 'reels-exec-auto-shutdown-now-btn';
+    nowBtn.style.cssText = 'padding:10px 14px;font-size:13px;font-weight:600;border-radius:8px;border:1px solid rgba(248,113,113,0.45);background:rgba(239,68,68,0.18);color:#fecaca;cursor:pointer;';
+    nowBtn.textContent = '⚡ 立即关机';
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(nowBtn);
+    box.appendChild(btnRow);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    const cleanup = () => {
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
+        }
+        window.removeEventListener('keydown', onKeyDown);
+        modal.remove();
+    };
+
+    const cancelShutdown = () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        try { window.electronAPI?.cancelSystemShutdown?.(); } catch (_) {}
+        if (typeof showToast === 'function') {
+            showToast('✅ 已取消自动关机', 'info', 4000);
+        }
+    };
+
+    const executeShutdown = async () => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        try {
+            if (typeof _batchAutoSave === 'function') _batchAutoSave({ skipSync: true });
+        } catch (_) {}
+        try {
+            if (window.electronAPI && typeof window.electronAPI.triggerSystemShutdown === 'function') {
+                const res = await window.electronAPI.triggerSystemShutdown();
+                if (res && res.ok === false && typeof showToast === 'function') {
+                    showToast('⚠️ 自动关机指令执行失败: ' + (res.error || '未知错误'), 'error', 6000);
+                }
+            }
+        } catch (err) {
+            console.error('[AutoShutdown] triggerSystemShutdown failed:', err);
+        }
+    };
+
+    const onKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelShutdown();
+        }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    cancelBtn.addEventListener('click', cancelShutdown);
+    nowBtn.addEventListener('click', () => { executeShutdown(); });
+    setTimeout(() => {
+        try { cancelBtn.focus(); } catch (_) {}
+        barInner.style.width = `${Math.max(0, ((remaining - 1) / totalSec) * 100)}%`;
+    }, 30);
+
+    timer = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+            secSpan.textContent = '0';
+            barInner.style.width = '0%';
+            executeShutdown();
+            return;
+        }
+        secSpan.textContent = String(remaining);
+        barInner.style.width = `${Math.max(0, ((remaining - 1) / totalSec) * 100)}%`;
+    }, 1000);
+}
+window.videokitStartShutdownCountdown = _reelsShowAutoShutdownModal;
 
 // 分段释放内存后自动续传。仅接受 2 分钟内由程序主动发起的重载，
 // 避免用户隔天打开应用时意外继续旧导出。
 document.addEventListener('DOMContentLoaded', () => {
+    const autoShutdownCheckbox = document.getElementById('reels-export-auto-shutdown');
+    if (autoShutdownCheckbox) {
+        autoShutdownCheckbox.checked = false;
+        autoShutdownCheckbox.addEventListener('change', () => {
+            if (autoShutdownCheckbox.checked && typeof showToast === 'function') {
+                showToast('🔌 已开启：本次批量渲染完成后将倒计时 10 秒自动关机（可随时取消）', 'info', 4000);
+            }
+        });
+    }
     setTimeout(() => {
         if (_reelsState.isExporting) return;
         let manifest = null;

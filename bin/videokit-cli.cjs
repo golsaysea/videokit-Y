@@ -88,9 +88,9 @@ function getPackageVersion() {
     try {
         const pkgPath = path.resolve(__dirname, '..', 'package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        return pkg.version || '4.5.5';
+        return pkg.version || '4.5.6';
     } catch {
-        return '4.5.5';
+        return '4.5.6';
     }
 }
 
