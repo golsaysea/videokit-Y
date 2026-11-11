@@ -132,8 +132,10 @@ const ANIM_TYPE_LABELS = [
     ['远景打字推进', 'zoom_typewriter'],
     ['双行焦点放大', 'line_focus'],
     ['底线扫描显字', 'underline_sweep'],
+    ['羽化擦除显字', 'feather_wipe'],
     ['三词叠排(中词放大)', 'three_word_focus_stack'],
     ['四行滚词(彩虹跟读)', 'rolling_rainbow_karaoke'],
+    ['三行滚词(金羽跟读)', 'rolling_quill_karaoke'],
     ['闪光高亮', 'flash_highlight'],
     ['黄绿辉光逐词叠排', 'kinetic_glow_stack'],
 ];
@@ -959,6 +961,88 @@ function computeUnderlineSweepCharReveal(charCenterDist, sweepState) {
     };
 }
 
+/**
+ * Feather Wipe Reveal (`feather_wipe` / 羽化擦除显字)
+ * Matches the Facebook Reel 1918205892888012 ("I am blessed, I am grateful" / "Thank you God"):
+ * - Full line layout is fixed and centered at its final X position (no text jumping/shifting).
+ * - Sweeps horizontally from left to right across Line 1 first, then Line 2.
+ * - Unrevealed characters ahead of the wipe front are 100% invisible (ghostAlpha = 0, no underline bar).
+ * - At the leading edge of the wipe, white fill feathers in slightly ahead of the 3D orange-red outline/extrusion,
+ *   producing a soft translucent white mist that solidifies into crisp 3D gradient-extruded letters.
+ */
+function computeFeatherWipeState(currentTime, segStart, segEnd, lineWidths, opts = {}) {
+    const safeWidths = Array.isArray(lineWidths)
+        ? lineWidths.map(w => Math.max(0, Number(w) || 0))
+        : [];
+    const totalWidth = safeWidths.reduce((acc, w) => acc + w, 0);
+    const segDur = Math.max(0.05, (Number(segEnd) || 0) - (Number(segStart) || 0));
+    const elapsed = Math.max(0, (Number(currentTime) || 0) - (Number(segStart) || 0));
+
+    const baseDur = Number(opts.sweepDuration) > 0 ? Number(opts.sweepDuration) : 1.15;
+    const lineCount = Math.max(1, safeWidths.filter(w => w > 0).length);
+    const multiLineScale = 1 + Math.max(0, lineCount - 1) * 0.78;
+    const effectiveDur = Math.min(segDur * 0.88, Math.max(0.28, baseDur * multiLineScale));
+
+    const rawP = effectiveDur > 0 ? Math.min(1.0, Math.max(0.0, elapsed / effectiveDur)) : 1.0;
+    // Smooth natural sweep curve (gentle acceleration and soft landing)
+    const sweepProgress = rawP < 1.0 ? (0.45 * rawP + 0.55 * easeOutCubic(rawP)) : 1.0;
+    const fontSize = Math.max(16, Number(opts.fontSize) || 52);
+    const transitionWindow = Math.max(36, fontSize * 2.15);
+    // Include transitionWindow at the tail so the last character's 3D outline finishes 100% at rawP = 1.0
+    const sweptDist = sweepProgress * (totalWidth + transitionWindow * 0.55);
+
+    return {
+        active: true,
+        isFeatherWipe: true,
+        sweepProgress,
+        rawProgress: rawP,
+        sweptDist,
+        totalWidth,
+        transitionWindow,
+        ghostAlpha: 0.0,
+        activeLineIdx: -1,
+        barLocalLeft: 0,
+        barLocalRight: 0,
+        barAlpha: 0,
+        fontSize,
+    };
+}
+
+/**
+ * Per-character reveal state for `feather_wipe`.
+ * - White fill (`fillAlpha`) leads slightly at the feather front as a soft white mist.
+ * - 3D extrusion & stroke (`strokeAlpha`, `shadowAlpha`) solidify right behind the white mist.
+ */
+function computeFeatherWipeCharReveal(charCenterDist, sweepState) {
+    if (!sweepState || !sweepState.active || sweepState.sweepProgress >= 0.999) {
+        return { revealProgress: 1.0, fillAlpha: 1.0, strokeAlpha: 1.0, shadowAlpha: 1.0, dy: 0 };
+    }
+    const win = Math.max(24, Number(sweepState.transitionWindow) || 96);
+    const swept = Number(sweepState.sweptDist) || 0;
+
+    // Leading edge reaches character when swept >= charCenterDist - win * 0.55
+    const raw = (swept - (charCenterDist - win * 0.55)) / win;
+    if (raw <= 0.001) {
+        return { revealProgress: 0.0, fillAlpha: 0.0, strokeAlpha: 0.0, shadowAlpha: 0.0, dy: 0 };
+    }
+    const clamped = Math.max(0.0, Math.min(1.0, raw));
+    const revealProgress = easeOutCubic(clamped);
+
+    // White fill leads slightly (misty white front), while 3D outline/extrusion trails slightly and locks in
+    const fillAlpha = Math.min(1.0, Math.pow(revealProgress, 0.70));
+    const strokeRaw = Math.max(0.0, Math.min(1.0, (clamped - 0.10) / 0.90));
+    const strokeAlpha = Math.pow(strokeRaw, 1.65);
+    const shadowAlpha = Math.pow(strokeRaw, 1.75);
+
+    return {
+        revealProgress,
+        fillAlpha,
+        strokeAlpha,
+        shadowAlpha,
+        dy: 0,
+    };
+}
+
 // Spectrum shape types
 const SPECTRUM_SHAPES = [
     ['频谱条', 'bars'],
@@ -1011,6 +1095,8 @@ const ReelsAnimEngine = {
     computeActiveLineFocusScales,
     computeUnderlineSweepState,
     computeUnderlineSweepCharReveal,
+    computeFeatherWipeState,
+    computeFeatherWipeCharReveal,
 };
 
 // Browser global

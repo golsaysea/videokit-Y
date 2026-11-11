@@ -7041,7 +7041,7 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 const isInActiveWord = Boolean(activeWord && tok.wordId === activeWord.id);
                 const isBeforeActiveWord = Boolean(activeWord && tok.wordId != null && tok.wordId < activeWord.id);
                 if (isInActiveWord) {
-                    const charRevealed = !hideUnread
+                    const charRevealed = (!hideUnread && !ov.scroll_tw_active_char_sweep)
                         || revealType === 'word'
                         || currentTime >= tok.start
                         || tok === activeWord.tokens[0];

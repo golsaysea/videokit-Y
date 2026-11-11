@@ -327,6 +327,13 @@ const REELS_ANIMATION_PRESETS = {
         anim_out_type: 'fade',
         anim_out_duration: 0.14,
     },
+    feather_wipe: {
+        label: 'Feather Wipe · 羽化擦除显字',
+        anim_in_type: 'feather_wipe',
+        anim_in_duration: 1.15,
+        anim_out_type: 'fade',
+        anim_out_duration: 0.25,
+    },
     three_word_focus_stack: {
         label: 'Three-Word Hero Stack · 三词叠排(中词放大)',
         anim_in_type: 'three_word_focus_stack',
@@ -4403,7 +4410,7 @@ function _reelsUpdatePreviewInternal() {
         const s = segs.find(s => audioCycleTime >= s.start && audioCycleTime <= s.end);
         if (s) {
             activeSegment = s;
-        } else if ((style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segs.length > 0) {
+        } else if ((style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke') && segs.length > 0) {
             // Scrolling/typewriter mode: find nearest segment so lines stay visible between gaps
             let best = segs[0];
             for (let i = 1; i < segs.length; i++) {
@@ -9277,11 +9284,17 @@ function reelsToggleFolderQueue(queueId) {
     _renderTaskList({ preserveScroll: true });
 }
 
+function _persistReelsExportSelectionChange() {
+    _renderTaskList({ preserveScroll: true });
+    if (typeof _batchAutoSave === 'function') _batchAutoSave();
+    if (typeof _autoSaveReelsProject === 'function') _autoSaveReelsProject();
+}
+
 function reelsToggleFolderQueueExport(queueId, checked) {
     (_reelsState.tasks || []).forEach(task => {
         if (task._folderQueueId === queueId) task._exportSelected = !!checked;
     });
-    _renderTaskList({ preserveScroll: true });
+    _persistReelsExportSelectionChange();
 }
 window.reelsToggleFolderQueueExport = reelsToggleFolderQueueExport;
 
@@ -9873,7 +9886,7 @@ function _renderTaskList(options = {}) {
         read: cb => _reelsState.tasks[Number(cb.dataset.taskIdx)]?._exportSelected !== false,
         write: (cb, checked) => { const task=_reelsState.tasks[Number(cb.dataset.taskIdx)]; if(task)task._exportSelected=checked; },
         changed: _updateExportSelectedCountUI,
-        done: () => _renderTaskList({preserveScroll:true}),
+        done: () => _persistReelsExportSelectionChange(),
     });
     const prevScrollTop = container.scrollTop;
 
@@ -10227,7 +10240,7 @@ function reelsToggleBatchGroupExport(groupId, checked) {
             task._exportSelected = !!checked;
         }
     });
-    _renderTaskList({ preserveScroll: true });
+    _persistReelsExportSelectionChange();
 }
 window.reelsToggleBatchGroupExport = reelsToggleBatchGroupExport;
 
@@ -12759,14 +12772,14 @@ function reelsCancelExport() {
 function reelsToggleExportSelect(idx, checked) {
     const task = _reelsState.tasks[idx];
     if (task) task._exportSelected = !!checked;
-    _renderTaskList({ preserveScroll: true });
+    _persistReelsExportSelectionChange();
 }
 window.reelsToggleExportSelect = reelsToggleExportSelect;
 
 /** 全选 / 取消全选 */
 function reelsToggleExportSelectAll(checked) {
     _reelsState.tasks.forEach(t => t._exportSelected = !!checked);
-    _renderTaskList({ preserveScroll: true });
+    _persistReelsExportSelectionChange();
 }
 window.reelsToggleExportSelectAll = reelsToggleExportSelectAll;
 

@@ -274,7 +274,7 @@ jobs:
       - name: Merge macOS update metadata
         run: |
           python3 - <<'PY'
-          import json
+          import json, shutil
           from pathlib import Path
           root = Path('all-builds')
           intel = json.loads((root / 'latest-mac-x64.json').read_text())
@@ -286,6 +286,20 @@ jobs:
           (root / 'latest-mac.yml').write_text(json.dumps(intel, indent=2) + '\n')
           for file in root.glob('latest-mac-*.json'):
               file.unlink()
+          # 若为预测试版 (如 v4.6.0-beta)，双向同步生成 beta*.yml 与 latest*.yml
+          if '-' in str(intel.get('version', '')):
+              for src_name, dst_name in [
+                  ('latest.yml', 'beta.yml'),
+                  ('beta.yml', 'latest.yml'),
+                  ('latest-mac.yml', 'beta-mac.yml'),
+                  ('beta-mac.yml', 'latest-mac.yml'),
+                  ('latest-linux.yml', 'beta-linux.yml'),
+                  ('beta-linux.yml', 'latest-linux.yml'),
+              ]:
+                  src_path = root / src_name
+                  dst_path = root / dst_name
+                  if src_path.is_file() and not dst_path.is_file():
+                      shutil.copyfile(src_path, dst_path)
           PY
 
       - name: Generate SHA256 checksums
@@ -304,5 +318,7 @@ jobs:
         with:
           files: all-builds/*
           draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           generate_release_notes: true
           body_path: all-builds/RELEASE_NOTES.md

@@ -1290,7 +1290,7 @@ async function reelsWysiwygExport(params) {
                     }
                 }
                 // Scrolling/typewriter mode: find nearest segment during gaps (same as preview logic)
-                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke') && segments.length > 0) {
+                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke') && segments.length > 0) {
                     let best = segments[0];
                     for (const seg of segments) {
                         if ((seg.start || 0) <= t) best = seg;

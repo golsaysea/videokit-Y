@@ -323,4 +323,6 @@ jobs:
         with:
           files: all-builds/*
           draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           generate_release_notes: true

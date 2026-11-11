@@ -16269,7 +16269,7 @@ function setAutoEditBatchTaskFilter(filter) {
 }
 function selectAutoEditBatchProblemTasks() {
     if (autoEditBatchRunning || autoEditActiveRequestIds.size) return showToast('请在任务完成后修改导出选择', 'info');
-    autoEditBatchTasks.forEach(task => { task.sendToReels = autoEditBatchTaskHasIssues(task); });
+    autoEditBatchTasks.forEach(task => { task.sendToReels = autoEditBatchTaskHasIssues(task); }); if (typeof persistAutoEditBatchReview === 'function') persistAutoEditBatchReview();
     saveAutoEditWorkspaceState();
     renderAutoEditBatchTasks();
 }
@@ -16845,7 +16845,7 @@ window.updateAutoEditBatchScriptLive = updateAutoEditBatchScriptLive;
 window.updateAutoEditBatchScript = updateAutoEditBatchScript;
 function updateAutoEditBatchSendToReels(index, checked) {
     if (!autoEditBatchTasks[index]) return;
-    autoEditBatchTasks[index].sendToReels = Boolean(checked);
+    autoEditBatchTasks[index].sendToReels = Boolean(checked); if (typeof persistAutoEditBatchReview === 'function') persistAutoEditBatchReview(); saveAutoEditWorkspaceState();
     renderAutoEditBatchTasks();
 }
 function getAutoEditBatchLiveResult(task) {
@@ -16993,7 +16993,7 @@ function selectAutoEditBatchPassedTasks() {
     });
     persistAutoEditBatchReview();
     renderAutoEditBatchTasks();
-    showToast(`已选择 ${selected} 个通过任务`, 'success');
+    showToast(`已选择 ${selected} 个通过任务`, 'success'); saveAutoEditWorkspaceState();
 }
 function selectAutoEditBatchHandledPassedTasks() {
     let selected = 0;
@@ -17004,7 +17004,7 @@ function selectAutoEditBatchHandledPassedTasks() {
     });
     persistAutoEditBatchReview();
     renderAutoEditBatchTasks();
-    showToast(`已选择 ${selected} 个修改后合格任务`, 'success');
+    showToast(`已选择 ${selected} 个修改后合格任务`, 'success'); saveAutoEditWorkspaceState();
 }
 function selectAutoEditBatchFailedTasks() {
     let selected = 0;
@@ -17015,7 +17015,7 @@ function selectAutoEditBatchFailedTasks() {
     });
     persistAutoEditBatchReview();
     renderAutoEditBatchTasks();
-    showToast(`已选择 ${selected} 个未通过任务`, 'info');
+    showToast(`已选择 ${selected} 个未通过任务`, 'info'); saveAutoEditWorkspaceState();
 }
 function autoEditBatchTaskIsUnexported(task) {
     return !autoEditBatchExportIsCurrent(task);
@@ -17039,7 +17039,7 @@ function deselectAutoEditBatchProblemTasks() {
     autoEditBatchTasks.forEach(task => {
         if (autoEditBatchTaskHasIssues(task) && task.sendToReels !== false) { task.sendToReels = false; deselected++; }
     });
-    persistAutoEditBatchReview(); renderAutoEditBatchTasks();
+    persistAutoEditBatchReview(); renderAutoEditBatchTasks(); saveAutoEditWorkspaceState();
     showToast(`已取消 ${deselected} 个有反馈问题的任务`, 'info');
 }
 function autoEditBatchTaskResultLabel(task) {
@@ -17072,7 +17072,7 @@ async function copyAutoEditBatchTaskResults() {
     showToast(`已复制 ${autoEditBatchTasks.length} 个任务的处理结果`, 'success');
 }
 function setAllAutoEditBatchSendToReels(checked) {
-    autoEditBatchTasks.forEach(task => { task.sendToReels = Boolean(checked); });
+    autoEditBatchTasks.forEach(task => { task.sendToReels = Boolean(checked); }); if (typeof persistAutoEditBatchReview === 'function') persistAutoEditBatchReview(); saveAutoEditWorkspaceState();
     persistAutoEditBatchReview();
     renderAutoEditBatchTasks();
     showToast(checked ? `已勾选 ${autoEditBatchTasks.length} 个任务参与导出` : `已取消 ${autoEditBatchTasks.length} 个任务的导出`, 'success');
@@ -18760,6 +18760,13 @@ function saveAutoEditWorkspaceState() {
     autoEditWorkspaces[autoEditWorkspaceIndex].state = captureAutoEditWorkspace();
     try {
         localStorage.setItem('videokit-autoedit-workspaces-v1', JSON.stringify({ index: autoEditWorkspaceIndex, workspaces: autoEditWorkspaces }));
+        try {
+            if (Array.isArray(autoEditBatchTasks) && autoEditBatchTasks.length) {
+                localStorage.setItem('videokit_autoedit_batch_review', JSON.stringify({ tasks: autoEditBatchTasks, scripts: autoEditBatchScriptCells, unmatched: autoEditBatchUnmatchedScripts }));
+            } else {
+                localStorage.removeItem('videokit_autoedit_batch_review');
+            }
+        } catch (_) {}
         document.getElementById('autoedit-workspace-save-error')?.remove();
         return true;
     } catch (error) {

@@ -261,18 +261,34 @@ async function fetchLatestZipUrl(allowPrerelease) {
  * 返回: >0 表示 a>b, <0 表示 a<b, 0 表示相等
  */
 function compareVersions(a, b) {
-    const pa = a.replace(/-.+$/, '').split('.').map(Number);
-    const pb = b.replace(/-.+$/, '').split('.').map(Number);
+    const [baseA, preA = ''] = String(a || '').split('-', 2);
+    const [baseB, preB = ''] = String(b || '').split('-', 2);
+    const pa = baseA.split('.').map(Number);
+    const pb = baseB.split('.').map(Number);
     for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
         const na = pa[i] || 0;
         const nb = pb[i] || 0;
         if (na !== nb) return na - nb;
     }
-    // 如果基础版本相同，带 prerelease 的视为更低
-    const aHasPre = a.includes('-');
-    const bHasPre = b.includes('-');
+    const aHasPre = Boolean(preA);
+    const bHasPre = Boolean(preB);
     if (aHasPre && !bHasPre) return -1;
     if (!aHasPre && bHasPre) return 1;
+    if (aHasPre && bHasPre) {
+        const partsA = preA.split(/[.-]/);
+        const partsB = preB.split(/[.-]/);
+        for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+            const sa = partsA[i] ?? '';
+            const sb = partsB[i] ?? '';
+            const na = Number(sa);
+            const nb = Number(sb);
+            if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+                if (na !== nb) return na - nb;
+            } else if (sa !== sb) {
+                return sa.localeCompare(sb);
+            }
+        }
+    }
     return 0;
 }
 

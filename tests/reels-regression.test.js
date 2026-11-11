@@ -3568,6 +3568,249 @@ test('Batch Reels multi-clip & auto-concat 30s truncation fix: tasks 2..N preser
     );
 });
 
+test('sub-76 autumn 3D gradient outline + feather_wipe (Thank You God reel style) renders soft white mist lead and 3D gradient extrusion', () => {
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    assert.ok(indexHtmlSrc.includes('<option value="feather_wipe">羽化擦除显字</option>'));
+
+    const sandbox = loadBrowserScript('src/reels-style-engine.js', { window: { addEventListener() {} } });
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+    loadBrowserScript('src/reels-anim-engine.js', sandbox);
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+
+    const ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    const ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    const ReelsCanvasRenderer = sandbox.window.ReelsCanvasRenderer;
+
+    const resolved = sandbox.window.resolveBuiltinPreset('sub-76');
+    assert.ok(resolved && resolved.preset, 'sub-76 must resolve to Thank You God preset');
+    assert.equal(resolved.name, '🍁 秋枫暖橙3D立体_羽化擦除 (Thank You God同款)');
+
+    const style = ReelsStyleEngine.applySubtitlePreset('🍁 秋枫暖橙3D立体_羽化擦除 (Thank You God同款)');
+    assert.equal(style.anim_in_type, 'feather_wipe');
+    assert.equal(style.extrude_3d_enabled, true);
+    assert.equal(style.outline_gradient_enabled, true);
+    assert.equal(style.outline_gradient_direction, 'vertical');
+    assert.equal(style.outline_gradient_scope, 'block');
+    assert.equal(style.pos_y, 0.23);
+
+    // Verify feather_wipe state & char reveal:
+    // - Unrevealed characters ahead of wipe are 100% invisible (fillAlpha = 0, strokeAlpha = 0)
+    // - Leading-edge characters have white fill leading ahead of 3D stroke/extrusion (fillAlpha > strokeAlpha)
+    const wipeMid = ReelsAnimEngine.computeFeatherWipeState(0.55, 0.0, 4.0, [420, 400], { sweepDuration: 1.15, fontSize: 52 });
+    assert.equal(wipeMid.active, true);
+    assert.equal(wipeMid.barAlpha, 0, 'feather_wipe must not draw an underline bar');
+
+    const revealedChar = ReelsAnimEngine.computeFeatherWipeCharReveal(20, wipeMid);
+    assert.ok(revealedChar.fillAlpha > 0.95 && revealedChar.strokeAlpha > 0.9, 'Left revealed char must have full white fill and 3D outline');
+
+    const edgeDist = wipeMid.sweptDist + wipeMid.transitionWindow * 0.2;
+    const edgeChar = ReelsAnimEngine.computeFeatherWipeCharReveal(edgeDist, wipeMid);
+    assert.ok(edgeChar.fillAlpha > edgeChar.strokeAlpha, 'At feather wipe front, white fill mist must lead ahead of 3D outline');
+
+    const unrevealedChar = ReelsAnimEngine.computeFeatherWipeCharReveal(760, wipeMid);
+    assert.equal(unrevealedChar.fillAlpha, 0, 'Characters ahead of wipe front must be completely invisible');
+    assert.equal(unrevealedChar.strokeAlpha, 0, 'Characters ahead of wipe front must have zero stroke');
+
+    // Render 2-line segment via ReelsCanvasRenderer and verify gradient + 3D extrusion steps + two-pass order
+    const gradStops = [];
+    const drawOps = [];
+    const alphaStack = [];
+    const ctx = {
+        font: '700 52px Fredoka',
+        globalAlpha: 1,
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        save() { alphaStack.push(this.globalAlpha); },
+        restore() { if (alphaStack.length) this.globalAlpha = alphaStack.pop(); },
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        arcTo() {},
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        createLinearGradient(x0, y0, x1, y1) {
+            const g = {
+                isGrad: true,
+                x0, y0, x1, y1,
+                stops: [],
+                addColorStop(offset, color) {
+                    this.stops.push({ offset, color });
+                    gradStops.push({ offset, color });
+                },
+            };
+            return g;
+        },
+        createRadialGradient() { return { addColorStop() {} }; },
+        measureText(txt) { return { width: String(txt || '').length * 24, actualBoundingBoxAscent: 38, actualBoundingBoxDescent: 10 }; },
+        fillText(txt, x, y) { drawOps.push({ op: 'fill', text: String(txt), x, y, style: this.fillStyle, alpha: Number(this.globalAlpha.toFixed(3)) }); },
+        strokeText(txt, x, y) { drawOps.push({ op: 'stroke', text: String(txt), x, y, style: this.strokeStyle, alpha: Number(this.globalAlpha.toFixed(3)) }); },
+    };
+
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const seg = {
+        start: 0.0,
+        end: 4.0,
+        text: 'Thank you God, for all the good\nYou keep sending my way',
+    };
+    renderer.renderSubtitle(style, seg, 0.6, 1080, 1920);
+
+    assert.ok(gradStops.length >= 3, 'Vertical block gradient must be created for 3D extrusion & outline');
+    const strokeIdx = drawOps.findIndex(d => d.op === 'stroke' && d.style && d.style.isGrad);
+    const whiteFillIdx = drawOps.findIndex(d => d.op === 'fill' && d.style === '#FFFFFF');
+    assert.ok(strokeIdx >= 0 && whiteFillIdx > strokeIdx, '3D gradient outline pass must be drawn before white character fill pass');
+});
+
+test('Anointed Woman preset (sub-77 / sc-48) renders 3-line progressive sliding window + per-line dark pill box + active word green sweep + golden feather quill', () => {
+    const sandbox = loadBrowserScript('src/reels-style-engine.js', { window: { addEventListener() {} } });
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+    loadBrowserScript('src/reels-anim-engine.js', sandbox);
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+
+    const ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    const ReelsCanvasRenderer = sandbox.window.ReelsCanvasRenderer;
+
+    const sub77 = sandbox.window.resolveBuiltinPreset('sub-77');
+    assert.ok(sub77 && sub77.kind === 'subtitle', 'sub-77 must resolve as a built-in subtitle preset');
+    assert.equal(sub77.name, '🪶 三行滚词_金羽绿字跟读 (Anointed Woman同款)');
+    assert.equal(sub77.preset.anim_in_type, 'rolling_quill_karaoke');
+    assert.equal(sub77.preset.font_family, 'Dancing Script');
+    assert.equal(sub77.preset.color_text, '#FFFFFF');
+    assert.equal(sub77.preset.color_high, '#18A84B');
+    assert.equal(sub77.preset.use_box, true);
+    assert.equal(sub77.preset.fullpage_typewriter_cursor_kind, 'feather_gold');
+    assert.equal(sub77.preset.scrolling_visible_lines, 3);
+
+    const sc48 = sandbox.window.resolveBuiltinPreset('sc-48');
+    assert.ok(sc48 && sc48.kind === 'scroll_style', 'sc-48 must resolve as a built-in scroll style preset');
+    assert.equal(sc48.style.scroll_tw_cursor_kind, 'feather_gold');
+    assert.equal(sc48.style.scroll_tw_active_color, '#18A84B');
+    assert.equal(sc48.style.scroll_tw_active_char_sweep, true);
+
+    const style = ReelsStyleEngine.applySubtitlePreset('🪶 三行滚词_金羽绿字跟读 (Anointed Woman同款)');
+    const fillOps = [];
+    const clipRects = [];
+    const stateStack = [];
+    const ctx = {
+        font: '',
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        globalAlpha: 1,
+        textAlign: 'left',
+        textBaseline: 'top',
+        direction: 'ltr',
+        save() { stateStack.push({ alpha: this.globalAlpha, fillStyle: this.fillStyle, font: this.font }); },
+        restore() {
+            const prev = stateStack.pop();
+            if (prev) {
+                this.globalAlpha = prev.alpha;
+                this.fillStyle = prev.fillStyle;
+                this.font = prev.font;
+            }
+        },
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        arcTo() {},
+        rect(x, y, w, h) { this._lastRect = { x, y, w, h }; },
+        clip() { if (this._lastRect) clipRects.push({ ...this._lastRect }); },
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+        measureText(txt) { return { width: String(txt || '').length * 22, actualBoundingBoxAscent: 42, actualBoundingBoxDescent: 12 }; },
+        fillText(txt, x, y) {
+            fillOps.push({ text: String(txt), x, y, style: String(this.fillStyle), alpha: Number(this.globalAlpha.toFixed(3)) });
+        },
+        strokeText() {},
+    };
+
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const segments = [
+        {
+            start: 0.0,
+            end: 0.9,
+            text: 'You are an',
+            words: [
+                { word: 'You', start: 0.0, end: 0.3 },
+                { word: 'are', start: 0.3, end: 0.6 },
+                { word: 'an', start: 0.6, end: 0.9 },
+            ],
+        },
+        {
+            start: 1.0,
+            end: 1.8,
+            text: 'anointed woman.',
+            words: [
+                { word: 'anointed', start: 1.0, end: 1.4 },
+                { word: 'woman.', start: 1.4, end: 1.8 },
+            ],
+        },
+        {
+            start: 1.9,
+            end: 2.9,
+            text: 'What was meant',
+            words: [
+                { word: 'What', start: 1.9, end: 2.2 },
+                { word: 'was', start: 2.2, end: 2.5 },
+                { word: 'meant', start: 2.5, end: 2.9 },
+            ],
+        },
+        {
+            start: 3.0,
+            end: 4.0,
+            text: 'to destroy you',
+            words: [
+                { word: 'to', start: 3.0, end: 3.3 },
+                { word: 'destroy', start: 3.3, end: 3.7 },
+                { word: 'you', start: 3.7, end: 4.0 },
+            ],
+        },
+    ];
+    renderer.setContextSegments(segments);
+
+    // 1) At t = 0.45s (Line 1 active on "are"): only Line 1 ("You", "are", "an") is rendered, and "are" has green sweep
+    fillOps.length = 0;
+    clipRects.length = 0;
+    renderer.renderSubtitle(style, segments[0], 0.45, 1080, 1920);
+    assert.ok(fillOps.some(op => op.text === 'You' && op.style.toUpperCase() === '#FFFFFF'), 'Line 1 spoken word "You" must return to white #FFFFFF');
+    assert.ok(fillOps.some(op => op.text === 'are' && op.style.toUpperCase() === '#18A84B'), 'Active word "are" must be swept with emerald green #18A84B');
+    assert.ok(!fillOps.some(op => op.text === 'anointed'), 'Line 2 must not be visible yet during Line 1');
+    assert.equal(clipRects.length, 1, 'Exactly one horizontal clip sweep must be applied for the active word');
+
+    // 2) At t = 2.65s (Line 3 active on "meant"): 3 lines visible ("You", "anointed", "meant")
+    fillOps.length = 0;
+    renderer.renderSubtitle(style, segments[2], 2.65, 1080, 1920);
+    assert.ok(fillOps.some(op => op.text === 'You'), 'Line 1 must still be visible when Line 3 is active');
+    assert.ok(fillOps.some(op => op.text === 'anointed'), 'Line 2 must be visible when Line 3 is active');
+    assert.ok(fillOps.some(op => op.text === 'meant' && op.style.toUpperCase() === '#18A84B'), 'Active word "meant" on Line 3 must sweep in #18A84B');
+
+    // 3) At t = 3.55s (Line 4 active on "destroy", past step transition): Line 1 ("You") has scrolled out, 3 lines [Line 2, Line 3, Line 4] remain
+    fillOps.length = 0;
+    renderer.renderSubtitle(style, segments[3], 3.55, 1080, 1920);
+    assert.ok(!fillOps.some(op => op.text === 'You' && op.alpha > 0.05), 'Line 1 ("You") must drop off once Line 4 has scrolled into the 3-line window');
+    assert.ok(fillOps.some(op => op.text === 'anointed'), 'Line 2 must now sit at the top of the 3-line window');
+    assert.ok(fillOps.some(op => op.text === 'What'), 'Line 3 must sit in the middle of the 3-line window');
+    assert.ok(fillOps.some(op => op.text === 'destroy' && op.style.toUpperCase() === '#18A84B'), 'Active word "destroy" on Line 4 must sweep in #18A84B');
+});
+
+
+
 
 
 

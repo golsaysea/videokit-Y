@@ -333,8 +333,11 @@ function _syncGroupedProjectionToTabs(activeTasks, forceAllTabs = false) {
         const existingTasks = Array.isArray(tab.tasks) ? tab.tasks : [];
         const membershipChanged = projGroup.length !== existingTasks.length ||
             projGroup.some((pt, i) => pt?.id !== existingTasks[i]?.id);
+        const exportSelectionChanged = !membershipChanged &&
+            projGroup.some((pt, i) => (pt?._exportSelected !== false) !== (existingTasks[i]?._exportSelected !== false));
         const shouldResyncTab = syncAllBecauseGlobalScope ||
             membershipChanged ||
+            exportSelectionChanged ||
             Boolean(tab._dirty) ||
             !Array.isArray(tab._cachedSerializedTasks) ||
             tab.id === _batchTableState.activeTabId ||

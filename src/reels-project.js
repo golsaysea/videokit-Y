@@ -36,7 +36,7 @@ const REELS_TASK_EXTRA_FIELDS = [
     'customDuration', 'duration', 'alignSource', '_autoEditSource',
     // 文案自动剪辑送入 Reels 时保留来源工程、原片和审核快照，供以后追溯和二剪。
     'autoEditProject',
-    '_overlayPresetName',
+    '_overlayPresetName', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName',
     'firstSubtitleStyleOverride',
     'writingTitle', 'writingSplit',
 ];
@@ -47,7 +47,7 @@ function _clonePlain(value) {
         // 使用 replacer 过滤掉 _ 开头的运行时临时属性
         // (如 _allOverlays 造成循环引用, _renderedX/_renderedY 等渲染缓存)
         return JSON.parse(JSON.stringify(value, (key, val) => {
-            if (key && key.startsWith('_') && key !== '_subtitlePreset' && key !== '_overlayPresetName' && key !== '_autoEditSource') return undefined;
+            if (key && key.startsWith('_') && !['_subtitlePreset', '_overlayPresetName', '_autoEditSource', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName'].includes(key)) return undefined;
             return val;
         }));
     } catch (e) {

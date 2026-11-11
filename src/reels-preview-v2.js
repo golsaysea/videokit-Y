@@ -2185,7 +2185,7 @@
         if (segs.length === 0) return null;
         const active = segs.find(seg => time >= numberOr(seg.start, 0) && time <= numberOr(seg.end, 0));
         if (active) return active;
-        if (!(style && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke'))) return null;
+        if (!(style && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke'))) return null;
 
         // 滚动/打字机模式在句间空隙保留最近一个已开始的片段。
         let nearest = segs[0];
