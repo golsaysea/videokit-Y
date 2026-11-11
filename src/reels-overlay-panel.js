@@ -1460,10 +1460,10 @@ class ReelsOverlayPanel {
                     <!-- ⑤ 羽化 -->
                     <div class="rop-group-title" style="margin-top:8px;">羽化</div>
                     <div class="rop-grid">
-                        <label title="贴合字幕边缘：在当前可见字幕上下左右边缘直接柔化，静止或短字幕也能立即见效；裁切框边缘：仅当字幕滚出橙色裁切框时才羽化">羽化基准</label>
+                        <label title="裁切框边缘（早期经典羽化）：按裁切框边界计算羽化与偏移，完整兼容早期预设的大小与配置；贴合字幕边缘：在当前可见字幕边缘直接柔化">羽化基准</label>
                         <select id="rop-scroll-feather-mode" class="rop-select">
-                            <option value="content">🎯 贴合字幕边缘 (推荐·立即见效)</option>
-                            <option value="clip">📐 仅在裁切框边缘羽化</option>
+                            <option value="clip">📐 裁切框边缘 (默认·早期经典羽化)</option>
+                            <option value="content_edge">🎯 贴合字幕边缘</option>
                         </select>
                         <label>快捷预设</label>
                         <div style="display:flex;gap:4px;flex-wrap:wrap;">
@@ -4864,6 +4864,7 @@ class ReelsOverlayPanel {
                 'scroll_title_bold', 'scroll_title_color', 'scroll_title_gradient_direction', 'scroll_title_align', 'scroll_title_gap', 'scroll_title_fixed',
                 'scroll_title_independent', 'scroll_title_x', 'scroll_title_y',
                 'scroll_title_auto_fit', 'scroll_title_max_height',
+                'feather_mode',
                 'feather_top', 'feather_bottom', 'feather_top_offset', 'feather_bottom_offset',
                 'feather_left', 'feather_right', 'feather_left_offset', 'feather_right_offset',
                 'bg_enabled', 'bg_style', 'bg_color', 'bg_opacity', 'bg_radius',
@@ -5879,8 +5880,7 @@ class ReelsOverlayPanel {
         if (!el) return 0;
         const rawVal = parseFloat(el.value);
         if (!Number.isFinite(rawVal) || rawVal <= 0) return 0;
-        const defaultValue = Math.max(120, parseFloat(el.dataset.default) || 120);
-        if (el.dataset.isAuto === '1' && el.dataset.userEdited !== '1' && Math.abs(rawVal - defaultValue) < 1) {
+        if (el.dataset.isAuto === '1' && el.dataset.userEdited !== '1') {
             return 0;
         }
         return Math.max(60, Math.round(rawVal));
@@ -6471,7 +6471,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-offset-x', ov.scroll_offset_x ?? 0);
             this._val('rop-scroll-offset-y', ov.scroll_offset_y ?? 0);
             // scroll_speed 已移除，速度由 距离÷时间 自动决定
-            this._val('rop-scroll-feather-mode', ov.feather_mode || 'content');
+            this._val('rop-scroll-feather-mode', ov.feather_mode === 'content_edge' ? 'content_edge' : 'clip');
             this._val('rop-scroll-feather-top', Number.isFinite(Number(ov.feather_top)) ? Number(ov.feather_top) : 80);
             this._val('rop-scroll-feather-bottom', Number.isFinite(Number(ov.feather_bottom)) ? Number(ov.feather_bottom) : 80);
             this._val('rop-scroll-feather-top-offset', Number.isFinite(Number(ov.feather_top_offset)) ? Number(ov.feather_top_offset) : 0);
@@ -7141,7 +7141,7 @@ class ReelsOverlayPanel {
             ov.scroll_offset_x = this._get('rop-scroll-offset-x') ?? 0;
             ov.scroll_offset_y = this._get('rop-scroll-offset-y') ?? 0;
             ov.scroll_speed = 1;  // 固定为1，速度由 距离÷时间 自动决定
-            ov.feather_mode = this._get('rop-scroll-feather-mode') || 'content';
+            ov.feather_mode = this._get('rop-scroll-feather-mode') === 'content_edge' ? 'content_edge' : 'clip';
             ov.feather_top = Number(this._get('rop-scroll-feather-top')) || 0;
             ov.feather_bottom = Number(this._get('rop-scroll-feather-bottom')) || 0;
             ov.feather_top_offset = Number(this._get('rop-scroll-feather-top-offset')) || 0;

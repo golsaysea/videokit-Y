@@ -2912,9 +2912,31 @@ test('Scroll feather slider+manual negative input UI and Batch Table in-place sc
     assert.ok(panelSrc.includes('id="rop-scroll-feather-mode"'), 'Scroll feather panel must include #rop-scroll-feather-mode selector');
     assert.ok(panelSrc.includes('rop-scroll-feather-preset'), 'Scroll feather panel must include .rop-scroll-feather-preset quick buttons');
 
-    // 2. Verify negative feather and negative offset support in ReelsOverlay
+    // 2. Verify classic clip feather default, preset card size preservation, and negative feather/offset support in ReelsOverlay
     const ovSandbox = loadBrowserScript('src/reels-overlay.js', {});
     const ReelsOverlay = ovSandbox.window.ReelsOverlay;
+    const defaultScrollOv = ReelsOverlay.createScrollOverlay();
+    assert.equal(defaultScrollOv.feather_mode, 'clip', 'Scroll overlays must default to classic early clip-box feathering ("clip")');
+    const legacyPresetOv = ReelsOverlay.createScrollOverlay({
+        x: 90,
+        y: 320,
+        w: 900,
+        h: 980,
+        bg_enabled: true,
+        bg_padding_top: 55,
+        bg_padding_bottom: 55,
+        bg_padding_left: 16,
+        bg_padding_right: 16,
+        feather_top: 120,
+        feather_bottom: 160,
+        feather_bottom_offset: 140,
+        content: 'Legacy preset line 1\nLegacy preset line 2\nLegacy preset line 3',
+    });
+    delete legacyPresetOv.feather_mode;
+    const mockCtx = Object.assign(ovSandbox.document.createElement('canvas').getContext('2d'), { drawImage() {} });
+    ReelsOverlay.drawOverlay(mockCtx, legacyPresetOv, 1.0, 1080, 1920);
+    assert.equal(legacyPresetOv._renderedY, 320 - 55, 'Imported preset card Y must preserve bg_padding_top without feather trimming');
+    assert.equal(legacyPresetOv._renderedH, 980 + 55 + 55, 'Imported preset card height must preserve h + bg_padding_top + bg_padding_bottom without feather trimming');
     const axisNeg = ReelsOverlay._computeScrollFeatherAxis(600, -50, -80, 100, -40);
     assert.equal(axisNeg.sFeather, 80, 'Negative feather (-80) must preserve 80px feather width');
     assert.equal(axisNeg.expandStart, 130, 'Negative offset (-50) + negative feather (-80) must compute 130px outward expansion');
@@ -3516,6 +3538,33 @@ test('Batch Reels multi-clip & auto-concat 30s truncation fix: tasks 2..N preser
     assert.ok(
         ffmpegSrc.includes("'-video_track_timescale', '90000'") && autoEditSrc.includes("'-video_track_timescale', '90000'"),
         'concatClips and autoEdit must lock -video_track_timescale 90000 for seamless stream-copy concatenation'
+    );
+
+    // 6. AutoEdit -> Batch Reels single-video 30s loop/truncation guards across tasks 2..N
+    assert.ok(
+        batchReelsSrc.includes('function _domElementMatchesMediaPath(el, targetPath)') &&
+        batchReelsSrc.includes('_domElementMatchesMediaPath(video, bgPath)'),
+        '_getVideoDuration must verify preview <video> src matches task bgPath before reading or caching video.duration'
+    );
+    assert.ok(
+        batchReelsSrc.includes('let _autoEditReelsCreateQueue = Promise.resolve();'),
+        'reelsCreateTaskFromAutoEditResult must serialize concurrent batch auto-edit completions so tasks 2..N do not race on _reelsState'
+    );
+    assert.ok(
+        batchReelsSrc.includes('const videoDuration = Math.max(probedDuration, subtitleDuration, reviewSegmentsDuration);'),
+        'reelsCreateTaskFromAutoEditResult must protect videoDuration with subtitleDuration and reviewSegmentsDuration lower bounds'
+    );
+    assert.ok(
+        autoEditSrc.includes('output_duration: effectiveOutputDuration,'),
+        'autoEditByScript must return authoritative output_duration for Batch Reels'
+    );
+    assert.ok(
+        wysiwygSrc.includes('voiceSameAsBg: Boolean(!isMultiClip && backgroundPath && ((voicePath && voicePath === backgroundPath) || isAutoEditTask))'),
+        'reelsWysiwygExport must pass voiceSameAsBg and authoritative alphaBgDuration to startSession so 2m+ auto-edit videos are not xfade-looped at 30s'
+    );
+    assert.ok(
+        rawvideoSrc.includes('const trustFullBgDuration = Boolean(opts.voiceSameAsBg || opts.isAutoEditTask)'),
+        'ffmpeg-rawvideo startSession must trust full authoritative duration when a single voiced/auto-edit background probe is truncated'
     );
 });
 

@@ -104,18 +104,29 @@ async function getMediaDuration(filePath) {
                 const parsed = JSON.parse(rawJson || '{}');
                 const _vStream = parsed?.streams?.[0] || {};
                 const streamDur = parseFloat(_vStream.duration);
+                const formatDur = parseFloat(parsed?.format?.duration);
                 const _nbFrames = parseInt(_vStream.nb_frames, 10);
                 const _parseFps = (s) => { if (!s || typeof s !== 'string') return 0; const p = s.split('/'); const n = parseFloat(p[0]), d = p.length > 1 ? parseFloat(p[1]) : 1; return (Number.isFinite(n) && Number.isFinite(d) && d > 0) ? (n / d) : 0; };
                 const _avgFps = _parseFps(_vStream.avg_frame_rate), _rFps = _parseFps(_vStream.r_frame_rate);
                 const _isCfr = _avgFps > 0 && _rFps > 0 && Math.abs(_avgFps - _rFps) < 1.5;
                 const _effFps = _isCfr ? _avgFps : 0;
                 const _framesDur = (Number.isFinite(_nbFrames) && _nbFrames > 0 && _effFps > 0) ? (_nbFrames / _effFps) : 0;
-                const _cands = [streamDur, parseFloat(parsed?.format?.duration), _framesDur].filter(d => Number.isFinite(d) && d > 0.2);
-                if (_cands.length > 0) return Math.min(..._cands);
-                const formatDur = parseFloat(parsed?.format?.duration);
                 if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
-                    return Math.min(streamDur, formatDur);
+                    const baseDur = Math.min(streamDur, formatDur);
+                    if (_framesDur > 0.2) {
+                        const streamMatchesFormat = Math.abs(streamDur - formatDur) <= 1.5;
+                        const framesSuspiciouslyShort = streamMatchesFormat && formatDur > 35 && _framesDur < baseDur * 0.7;
+                        if (!framesSuspiciouslyShort) {
+                            return Math.min(baseDur, _framesDur);
+                        }
+                    }
+                    if (formatDur > 35 && streamDur < formatDur * 0.7 && _framesDur >= formatDur - 1.5) {
+                        return Math.min(formatDur, _framesDur);
+                    }
+                    return baseDur;
                 }
+                const _cands = [streamDur, formatDur, _framesDur].filter(d => Number.isFinite(d) && d > 0.2);
+                if (_cands.length > 0) return Math.min(..._cands);
                 if (Number.isFinite(streamDur) && streamDur > 0) return streamDur;
                 if (Number.isFinite(formatDur) && formatDur > 0) return formatDur;
             } catch (_) { /* fallback below */ }
@@ -981,7 +992,9 @@ async function prepareBg(opts) {
     }
 
     // 视频背景
-    const rawBgDuration = await getMediaDuration(backgroundPath);
+    const probedBgDur = await getMediaDuration(backgroundPath);
+    const trustFullBgDur = Boolean(opts.voicePath && opts.voicePath === backgroundPath) && Number(duration) > 35 && probedBgDur > 0 && probedBgDur < Number(duration) * 0.7;
+    const rawBgDuration = trustFullBgDur ? Math.max(probedBgDur, Number(duration) / Math.max(0.01, ptsFactor || 1.0)) : probedBgDur;
     const bgDuration = rawBgDuration * ptsFactor;
     const fadeEnabled = loopFade && bgDuration > 0;
     const requestedFadeDur = Math.min(loopFadeDur || 1.0, bgDuration * 0.4);
@@ -1649,8 +1662,12 @@ async function startSession(opts) {
         const rawBgFromOpts = Math.max(0, Number(opts.alphaBgDuration) || 0);
         // 核验视频流真实有效时长（防止容器/音轨长于视频轨，如视频轨 8s、音轨 15.85s 导致 xfade offset 越界并在第 240 帧提前以 code=0 退出）
         const probedVideoDur = !isAlphaBgImage ? await getMediaDuration(opts.alphaOverlayBgPath) : 0;
+        const trustFullBgDuration = Boolean(opts.voiceSameAsBg || opts.isAutoEditTask)
+            && rawBgFromOpts > 35
+            && probedVideoDur > 0
+            && probedVideoDur < rawBgFromOpts * 0.7;
         const rawBgDuration = (rawBgFromOpts > 0 && probedVideoDur > 0)
-            ? Math.min(rawBgFromOpts, probedVideoDur)
+            ? (trustFullBgDuration ? Math.max(rawBgFromOpts, probedVideoDur) : Math.min(rawBgFromOpts, probedVideoDur))
             : (probedVideoDur || rawBgFromOpts);
         const scaledBgDuration = rawBgDuration * Math.max(0.01, (bgDurScale || 100) / 100);
         const loopFadePlan = computeLoopFadePlan(scaledBgDuration, targetDuration, opts.loopFadeDur, fps);
@@ -2495,7 +2512,7 @@ async function mixAudio(session) {
             const bgTempo = buildAtempoChainForDurationScale(session.bgDurScale || 100);
             const bgBaseFilter = `volume=${bgVolume.toFixed(3)}${mainAudioGate}`;
             const bgFilter = bgTempo ? `${bgBaseFilter},${bgTempo}` : bgBaseFilter;
-            filterParts.push(`[${renderedBgInputIdx}:a]${bgFilter}[rbg]`);
+            filterParts.push(`[${renderedBgInputIdx}:a]${bgFilter}${voicePadTail}[rbg]`);
             mixLabels.push('[rbg]');
         }
 
@@ -2525,7 +2542,7 @@ async function mixAudio(session) {
             const duration = Math.max(.05, Number(item.duration) || 1.5);
             const delay = Math.max(0, Math.round((Number(item.timelineStart) || 0) * 1000));
             const label = `[insa${index}]`;
-            filterParts.push(`[${item.inputIdx}:a]atrim=start=${trimStart.toFixed(3)}:duration=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${gain.toFixed(3)},adelay=${delay}|${delay}${label}`);
+            filterParts.push(`[${item.inputIdx}:a]atrim=start=${trimStart.toFixed(3)}:duration=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${gain.toFixed(3)},adelay=${delay}|${delay}${voicePadTail}${label}`);
             mixLabels.push(label);
         });
 

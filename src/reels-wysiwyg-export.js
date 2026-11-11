@@ -407,6 +407,9 @@ async function reelsWysiwygExport(params) {
         loopFade = true,
         loopFadeDur = 1.0,
         customDuration = 0,  // 自定义输出时长（秒），0 = 自动
+        expectedDuration = 0,
+        alphaBgDuration = 0,
+        isAutoEditTask = false,
         bgmPath = '',        // 配乐文件路径
         bgmVolume = 0.3,     // 配乐音量 (0~1)
         bgmStart = 0,        // 配乐素材起点（秒）
@@ -615,6 +618,11 @@ async function reelsWysiwygExport(params) {
                 duration = Math.max(duration, effectiveSubDuration);
                 log(`带声背景视频短于字幕时长，自动对齐到字幕时长: ${duration.toFixed(2)}s`);
             }
+            const scaledExpectedDur = (Number(expectedDuration) || 0) * _audioDurFactor;
+            if (!isMultiClip && backgroundPath && voicePath === backgroundPath && scaledExpectedDur > duration) {
+                duration = Math.max(duration, scaledExpectedDur);
+                log(`带声背景视频短于任务预期时长，自动对齐到预期时长: ${duration.toFixed(2)}s`);
+            }
         }
         // ── 覆层视频 (Content Video) 时长优先于背景 ──
         if ((!duration || duration <= 0) && contentVideoPath) {
@@ -686,6 +694,11 @@ async function reelsWysiwygExport(params) {
                 } else {
                     duration = Math.max(rawBgDur, effectiveSubDuration);
                 }
+                const scaledExpectedBgDur = (Number(expectedDuration) || 0) * _bgDurFactor;
+                if (isAutoEditTask && scaledExpectedBgDur > duration) {
+                    duration = Math.max(duration, scaledExpectedBgDur);
+                    log(`自动剪辑背景视频短于任务预期时长，自动对齐到预期时长: ${duration.toFixed(2)}s`);
+                }
             }
         }
         if (!duration || duration <= 0) {
@@ -730,6 +743,17 @@ async function reelsWysiwygExport(params) {
     if (loopFade && backgroundPath && !_isImageFile(backgroundPath) && !isMultiClip) {
         let _probedBg = await window.electronAPI.getMediaDuration(backgroundPath);
         _probedBg = _probedBg * (_bgDurFactor || 1.0);
+        if ((voicePath && voicePath === backgroundPath) || isAutoEditTask) {
+            _probedBg = Math.max(
+                _probedBg,
+                duration,
+                effectiveSubDuration,
+                (Number(alphaBgDuration) || 0) * (_bgDurFactor || 1.0),
+                (Number(expectedDuration) || 0) * (_bgDurFactor || 1.0),
+            );
+        } else if (Number(alphaBgDuration) > 0 && _probedBg > 0 && _probedBg < Number(alphaBgDuration) * 0.7) {
+            _probedBg = Math.max(_probedBg, Number(alphaBgDuration) * (_bgDurFactor || 1.0));
+        }
         if (_probedBg > 0 && duration <= _probedBg + 0.5) {
             log(`🎯 [智能提速] 合成时长(${duration.toFixed(2)}s)无需底板(${_probedBg.toFixed(2)}s)循环！强制关闭渐变，唤醒极速贴合 ⚡️！`);
             loopFade = false; 
@@ -939,8 +963,16 @@ async function reelsWysiwygExport(params) {
         backgroundPath: isMultiClip ? bgAudioPath : backgroundPath,
         alphaOverlayBgPath: params.alphaOverlayBgPath || null,
         alphaBgDuration: params.alphaOverlayBgPath && !_isImageFile(params.alphaOverlayBgPath)
-            ? await window.electronAPI.getMediaDuration(params.alphaOverlayBgPath)
+            ? Math.max(
+                Number(await window.electronAPI.getMediaDuration(params.alphaOverlayBgPath)) || 0,
+                Number(alphaBgDuration) || 0,
+                (!isMultiClip && ((voicePath && voicePath === params.alphaOverlayBgPath) || isAutoEditTask))
+                    ? (Number(duration) / Math.max(0.01, _bgDurFactor || 1.0))
+                    : 0,
+            )
             : 0,
+        voiceSameAsBg: Boolean(!isMultiClip && backgroundPath && ((voicePath && voicePath === backgroundPath) || isAutoEditTask)),
+        isAutoEditTask: Boolean(isAutoEditTask),
         loopFade,
         loopFadeDur,
         // Multi-clip mode: use bgAudioPath if present. Single mode: check if bg has audio.

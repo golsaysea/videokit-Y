@@ -223,7 +223,17 @@ async function getDuration(filePath) {
                 : 0;
             if (Number.isFinite(streamDur) && streamDur > 0 && Number.isFinite(formatDur) && formatDur > 0) {
                 const baseDur = Math.min(streamDur, formatDur);
-                return framesDur > 0.2 ? Math.min(baseDur, framesDur) : baseDur;
+                if (framesDur > 0.2) {
+                    const streamMatchesFormat = Math.abs(streamDur - formatDur) <= 1.5;
+                    const framesSuspiciouslyShort = streamMatchesFormat && formatDur > 35 && framesDur < baseDur * 0.7;
+                    if (!framesSuspiciouslyShort) {
+                        return Math.min(baseDur, framesDur);
+                    }
+                }
+                if (formatDur > 35 && streamDur < formatDur * 0.7 && framesDur >= formatDur - 1.5) {
+                    return Math.min(formatDur, framesDur);
+                }
+                return baseDur;
             }
             const candidates = [streamDur, formatDur, framesDur].filter(d => Number.isFinite(d) && d > 0.2);
             if (candidates.length > 0) {
@@ -2289,16 +2299,20 @@ async function concatClips(opts = {}) {
                     return NaN;
                 }
             };
-            const [outVDur, outFormatDur, clipDurs] = await Promise.all([
+            const [outVDur, outFormatDur, outProbedDur, clipDurs] = await Promise.all([
                 getPrimaryStreamDuration(outputPath, 'v:0'),
                 getRawFormatDuration(outputPath),
+                getDuration(outputPath),
                 Promise.all(validClips.map(c => _getEffectiveClipDuration(c))),
             ]);
             const expectedTotalDur = clipDurs.reduce((sum, d) => sum + (Number.isFinite(d) && d > 0 ? d : 0), 0);
-            const formatMismatch = Number.isFinite(outFormatDur) && outFormatDur > 1 && (!Number.isFinite(outVDur) || (outFormatDur - outVDur) > 0.45);
-            const expectedMismatch = expectedTotalDur > 1 && (!Number.isFinite(outVDur) || outVDur < expectedTotalDur - Math.max(0.8, validClips.length * 0.25));
+            const effectiveOutVDur = (Number.isFinite(outVDur) && Number.isFinite(outProbedDur) && outProbedDur > 0)
+                ? Math.min(outVDur, outProbedDur)
+                : (Number.isFinite(outVDur) ? outVDur : outProbedDur);
+            const formatMismatch = Number.isFinite(outFormatDur) && outFormatDur > 1 && (!Number.isFinite(effectiveOutVDur) || (outFormatDur - effectiveOutVDur) > 0.45);
+            const expectedMismatch = expectedTotalDur > 1 && (!Number.isFinite(effectiveOutVDur) || effectiveOutVDur < expectedTotalDur - Math.max(0.8, validClips.length * 0.25));
             if (formatMismatch || expectedMismatch) {
-                console.warn(`[ConcatClips] 检测到直拼视频轨时长 (${outVDur}s) 短于总时长 (容器=${outFormatDur}s, 预期=${expectedTotalDur.toFixed(2)}s)，自动执行音画对齐归一化重拼...`);
+                console.warn(`[ConcatClips] 检测到直拼视频轨时长 (${effectiveOutVDur}s) 短于总时长 (容器=${outFormatDur}s, 预期=${expectedTotalDur.toFixed(2)}s)，自动执行音画对齐归一化重拼...`);
                 normalized = await normalizeAllClips();
                 const normListContent = normalized.map(p => `file '${_escapeConcatListPath(p)}'`).join('\n');
                 fs.writeFileSync(listPath, normListContent, 'utf-8');

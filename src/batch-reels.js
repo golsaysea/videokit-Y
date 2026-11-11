@@ -6883,6 +6883,29 @@ function _syncScrollAudioTiming(task) {
     }
 }
 
+function _domElementMatchesMediaPath(el, targetPath) {
+    if (!el || !targetPath) return false;
+    const rawSrc = el.currentSrc || el.src || (typeof el.getAttribute === 'function' ? el.getAttribute('src') : '') || '';
+    if (!rawSrc) return true;
+    const normDom = _normalizeLocalMediaPath(rawSrc).toLowerCase();
+    const normTarget = _normalizeLocalMediaPath(targetPath).toLowerCase();
+    return Boolean(normDom && normTarget && normDom === normTarget);
+}
+
+function _isSingleAutoEditTask(task) {
+    return Boolean(task && task.bgMode !== 'multi' && (task._autoEditSource || task.alignSource === 'auto_edit' || task.autoEditProject));
+}
+
+function _getTaskSubtitleEnd(task) {
+    if (!task || !Array.isArray(task.segments) || task.segments.length === 0) return 0;
+    let maxEnd = 0;
+    for (const seg of task.segments) {
+        const end = Number(seg?.end) || 0;
+        if (end > maxEnd) maxEnd = end;
+    }
+    return maxEnd;
+}
+
 function _getAudioDuration(task) {
     if (!task || !task.audioPath) return 0;
     if (_reelsState._mediaDurations && _reelsState._mediaDurations[task.audioPath] > 0) {
@@ -6890,8 +6913,9 @@ function _getAudioDuration(task) {
     }
     if (task === _getSelectedTask()) {
         const audio = document.getElementById('reels-preview-audio');
-        if (audio && isFinite(audio.duration) && audio.duration > 0) {
-            if (_reelsState._mediaDurations && task.audioPath) {
+        if (audio && isFinite(audio.duration) && audio.duration > 0 && _domElementMatchesMediaPath(audio, task.audioPath)) {
+            const rawSrc = audio.currentSrc || audio.src || (typeof audio.getAttribute === 'function' ? audio.getAttribute('src') : '') || '';
+            if (rawSrc && _reelsState._mediaDurations && task.audioPath) {
                 _reelsState._mediaDurations[task.audioPath] = audio.duration;
             }
             return audio.duration;
@@ -6908,19 +6932,25 @@ function _getVideoDuration(task) {
     const previewBg = _resolvePreviewBackgroundPath(task);
     const bgPath = previewBg.path;
     if (!bgPath || previewBg.isMulti || _isImagePath(bgPath)) return 0;
+    const minAutoEditDur = _isSingleAutoEditTask(task)
+        ? Math.max(Number(task.duration) || 0, _getTaskSubtitleEnd(task))
+        : 0;
     if (_reelsState._mediaDurations && _reelsState._mediaDurations[bgPath] > 0) {
-        return _reelsState._mediaDurations[bgPath];
+        const cached = _reelsState._mediaDurations[bgPath];
+        return minAutoEditDur > cached ? minAutoEditDur : cached;
     }
     if (task === _getSelectedTask()) {
         const video = document.getElementById('reels-preview-video');
-        if (video && isFinite(video.duration) && video.duration > 0) {
-            if (_reelsState._mediaDurations && bgPath) {
-                _reelsState._mediaDurations[bgPath] = video.duration;
+        if (video && isFinite(video.duration) && video.duration > 0 && _domElementMatchesMediaPath(video, bgPath)) {
+            const rawSrc = video.currentSrc || video.src || (typeof video.getAttribute === 'function' ? video.getAttribute('src') : '') || '';
+            const effectiveDur = minAutoEditDur > video.duration ? minAutoEditDur : video.duration;
+            if (rawSrc && _reelsState._mediaDurations && bgPath) {
+                _reelsState._mediaDurations[bgPath] = effectiveDur;
             }
-            return video.duration;
+            return effectiveDur;
         }
     }
-    return 0;
+    return minAutoEditDur > 0 ? minAutoEditDur : 0;
 }
 
 function _getContentVideoDuration(task) {
@@ -6936,7 +6966,7 @@ function _getContentVideoDuration(task) {
     }
     if (task === _getSelectedTask()) {
         const cvVideo = document.getElementById('reels-preview-contentvideo');
-        if (cvVideo && cvVideo.src && isFinite(cvVideo.duration) && cvVideo.duration > 0) {
+        if (cvVideo && cvVideo.src && isFinite(cvVideo.duration) && cvVideo.duration > 0 && _domElementMatchesMediaPath(cvVideo, task.contentVideoPath)) {
             const trimStart = parseFloat(task.contentVideoTrimStart) || 0;
             const trimEnd = parseFloat(task.contentVideoTrimEnd) || 0;
             if (trimEnd > trimStart && trimStart >= 0) {
@@ -8074,7 +8104,13 @@ function _updateTimelineForTask(task) {
                 ? _resolvePreviewBackgroundPath(task)
                 : { path: task.bgPath || task.videoPath || '' };
             const backgroundPath = resolvedBackground?.path || task.bgPath || task.videoPath || '';
-            const rawBackgroundDuration = _getVideoDuration(task);
+            const isVoicedSingleVideo = task.bgMode !== 'multi' && (
+                _isSingleAutoEditTask(task) ||
+                (!task.audioPath && document.getElementById('reels-work-mode')?.value === 'voiced_bg' && subtitleDuration > 0)
+            );
+            const rawBackgroundDuration = isVoicedSingleVideo
+                ? Math.max(_getVideoDuration(task), Number(task.duration) || 0, subtitleDuration)
+                : _getVideoDuration(task);
             const outputDuration = Math.max(subtitleDuration, _getAudioDuration(task), _getContentVideoDuration(task), Number(task.duration) || 0, task.customDuration || 0, rawBackgroundDuration || 0, 1);
             if (backgroundPath) {
                 const loopDuration = rawBackgroundDuration > 0.05 ? rawBackgroundDuration : outputDuration;
@@ -8174,7 +8210,16 @@ function _getOrCreateTaskByBase(baseName, fallbackName = '') {
     return task;
 }
 
+let _autoEditReelsCreateQueue = Promise.resolve();
+
 async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {}) {
+    const run = () => _reelsCreateTaskFromAutoEditResultImpl(autoEditResult, opts);
+    const queued = _autoEditReelsCreateQueue.then(run, run);
+    _autoEditReelsCreateQueue = queued.catch(() => {});
+    return queued;
+}
+
+async function _reelsCreateTaskFromAutoEditResultImpl(autoEditResult = {}, opts = {}) {
     const videoPath = autoEditResult.output_path || autoEditResult.outputPath || '';
     const srtPath = autoEditResult.srt_path || autoEditResult.srtPath || '';
     if (!videoPath) throw new Error('缺少自动剪辑输出视频');
@@ -8241,29 +8286,6 @@ async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
         task.srcUrl = null;
     }
 
-    // 自动剪辑的导出视频才是这条 Reels 的权威时长。此前这里只带了 SRT，
-    // 在媒体元数据异步返回前，时间线和导出会用“最后一条字幕结束时间”作
-    // 为整片长度，导致末尾无字幕或字幕不完整时被严重截短。
-    const resultDuration = Number(
-        autoEditResult.output_duration ?? autoEditResult.outputDuration ??
-        autoEditResult.video_duration ?? autoEditResult.videoDuration ??
-        autoEditResult.media_duration ?? autoEditResult.mediaDuration ??
-        autoEditResult.duration
-    );
-    let videoDuration = Number.isFinite(resultDuration) && resultDuration > 0 ? resultDuration : 0;
-    if (!videoDuration && typeof window.electronAPI?.getMediaDuration === 'function') {
-        try {
-            videoDuration = Number(await window.electronAPI.getMediaDuration(videoPath)) || 0;
-        } catch (error) {
-            console.warn('[Reels] 无法读取自动剪辑导出视频时长，将等待后续媒体探测', error);
-        }
-    }
-    if (videoDuration > 0) {
-        task.duration = videoDuration;
-        _reelsState._mediaDurations = _reelsState._mediaDurations || {};
-        _reelsState._mediaDurations[videoPath] = videoDuration;
-    }
-
     let srtContent = autoEditResult.srt_content || '';
     if (!srtContent && window.electronAPI?.readFileText) {
         srtContent = await window.electronAPI.readFileText(srtPath);
@@ -8284,6 +8306,36 @@ async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
             }, []);
     }
 
+    // 自动剪辑的导出视频才是这条 Reels 的权威时长。同时结合已解析的 SRT 末尾时间与审核片段累计时长做下限保护，
+    // 防止因无损拼接头部元数据只记录首段（如 30s）导致整片时长被误判为 30s 并切成 5 段循环。
+    const subtitleDuration = _getTaskSubtitleEnd(task);
+    const reviewSegmentsDuration = Array.isArray(task.autoEditProject?.reviewSegments)
+        ? task.autoEditProject.reviewSegments.reduce((sum, seg) => {
+            const d = Number(seg?.duration);
+            return sum + (Number.isFinite(d) && d > 0 ? d : 0);
+        }, 0)
+        : 0;
+    const resultDuration = Number(
+        autoEditResult.output_duration ?? autoEditResult.outputDuration ??
+        autoEditResult.video_duration ?? autoEditResult.videoDuration ??
+        autoEditResult.media_duration ?? autoEditResult.mediaDuration ??
+        autoEditResult.duration
+    );
+    let probedDuration = Number.isFinite(resultDuration) && resultDuration > 0 ? resultDuration : 0;
+    if (!probedDuration && typeof window.electronAPI?.getMediaDuration === 'function') {
+        try {
+            probedDuration = Number(await window.electronAPI.getMediaDuration(videoPath)) || 0;
+        } catch (error) {
+            console.warn('[Reels] 无法读取自动剪辑导出视频时长，将等待后续媒体探测', error);
+        }
+    }
+    const videoDuration = Math.max(probedDuration, subtitleDuration, reviewSegmentsDuration);
+    if (videoDuration > 0) {
+        task.duration = videoDuration;
+        _reelsState._mediaDurations = _reelsState._mediaDurations || {};
+        _reelsState._mediaDurations[videoPath] = videoDuration;
+    }
+
     // 先记住接收前的状态。后续任何页面初始化/渲染错误都要回滚，
     // 避免批量接收失败后留下半条任务，重试时又不断重复。
     const previousTaskCount = _reelsState.tasks.length;
@@ -8293,7 +8345,7 @@ async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
     let batchArchive = null;
     try {
         _reelsState.tasks.push(task);
-        _reelsState.selectedIdx = _reelsState.tasks.length - 1;
+        const newSelectedIdx = _reelsState.tasks.length - 1;
         // Persist into the active batch tab before any table/list rerender. This
         // is essential when the current Reels queue is a multi-tab projection.
         batchArchive = window.reelsArchiveTaskToActiveBatchTab?.(task) || null;
@@ -8305,8 +8357,13 @@ async function reelsCreateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
 
         if (typeof _renderBatchTable === 'function') _renderBatchTable();
         if (typeof _renderTaskList === 'function') _renderTaskList();
-        if (typeof reelsSelectTask === 'function') reelsSelectTask(_reelsState.selectedIdx);
-        else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+        if (typeof reelsSelectTask === 'function') {
+            reelsSelectTask(newSelectedIdx);
+            _reelsState.selectedIdx = newSelectedIdx;
+        } else {
+            _reelsState.selectedIdx = newSelectedIdx;
+            if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+        }
 
         // 不依赖用户手动点“保存工程”：每次送入自动剪辑成片时，在成片旁生成
         // `<成片名>.reels-project.json`。随后即使点击清空任务，二剪工程仍在。
@@ -8374,8 +8431,13 @@ async function reelsUpdateTaskFromAutoEditResult(autoEditResult = {}, opts = {})
     } else {
         task.autoEditProject = { ...task.autoEditProject, pendingSrtPath: srtPath };
     }
-    const duration = Number(autoEditResult.output_duration ?? autoEditResult.outputDuration ?? autoEditResult.duration)
+    const subtitleDuration = _getTaskSubtitleEnd(task);
+    const reviewSegmentsDuration = Array.isArray(autoEditResult.review_segments)
+        ? autoEditResult.review_segments.reduce((sum, seg) => sum + (Number.isFinite(Number(seg?.duration)) && Number(seg.duration) > 0 ? Number(seg.duration) : 0), 0)
+        : 0;
+    const probedDuration = Number(autoEditResult.output_duration ?? autoEditResult.outputDuration ?? autoEditResult.duration)
         || Number(await window.electronAPI?.getMediaDuration?.(videoPath)) || 0;
+    const duration = Math.max(probedDuration, subtitleDuration, reviewSegmentsDuration);
     if (duration > 0) {
         task.duration = duration;
         _reelsState._mediaDurations = _reelsState._mediaDurations || {};
@@ -14509,10 +14571,15 @@ async function _reelsStartExportImpl(options = {}) {
                         }
                     }
                 } catch(_) {}
+                const taskSubtitleEnd = _getTaskSubtitleEnd(task);
+                const taskExpectedDuration = Math.max(Number(task.duration) || 0, taskSubtitleEnd);
                 // 媒体探测失败可能返回 null/undefined，任务自定义时长也可能是字符串。
                 // 后续日志和并行判断都要求有限数字；无效值归零，由稳定导出路径自行探测/兜底。
                 estimatedDuration = Number(estimatedDuration);
                 if (!Number.isFinite(estimatedDuration) || estimatedDuration < 0) estimatedDuration = 0;
+                if (!isMultiBgTask && (workMode === 'voiced_bg' || _isSingleAutoEditTask(task)) && taskExpectedDuration > estimatedDuration) {
+                    estimatedDuration = taskExpectedDuration;
+                }
                 const estimatedFrames = Math.ceil((estimatedDuration || 0) * 30);
                 const hasVideoOverlays = showOverlay && Array.isArray(task.overlays) && task.overlays.some(ov => ov && ov.type === 'video' && !ov.disabled);
                 const hasContentVideo = !!task.contentVideoPath;
@@ -14643,6 +14710,12 @@ async function _reelsStartExportImpl(options = {}) {
                     overlayAboveSubtitle: task.overlayAboveSubtitle !== false,
                     backgroundPath: bgPath,
                     alphaOverlayBgPath: canUseAlpha ? bgPath : null,
+                    alphaBgDuration: Math.max(
+                        _getVideoDuration(task) || 0,
+                        (!isMultiBgTask && (workMode === 'voiced_bg' || _isSingleAutoEditTask(task))) ? taskExpectedDuration : 0
+                    ),
+                    expectedDuration: taskExpectedDuration,
+                    isAutoEditTask: _isSingleAutoEditTask(task),
                     bgMode: task.bgMode || 'single',
                     bgClipPool: _getEffectiveBgClipPool(task),
                     bgClipSettings: task.bgClipSettings || {},

@@ -1099,7 +1099,7 @@ function createScrollOverlay(opts = {}) {
         bg_blur_enabled: opts.bg_blur_enabled ?? false,
         bg_blur_amount: opts.bg_blur_amount ?? 10,             // 模糊强度 px (1-30)
         // 羽化
-        feather_mode: opts.feather_mode || 'content',
+        feather_mode: opts.feather_mode === 'content_edge' ? 'content_edge' : 'clip',
         feather_top: opts.feather_top ?? 80,
         feather_bottom: opts.feather_bottom ?? 80,
         feather_top_offset: opts.feather_top_offset ?? 0,
@@ -5713,17 +5713,10 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         } else {
             const _baseCardRefY = _origClipY;
             const _baseCardRefH = _origClipH;
-            if (_rawBgH > 0) {
-                _cardH = Math.max(60, _rawBgH);
-                _cardY = _baseCardRefY + _baseCardRefH / 2 - _cardH / 2 + _bgOffY;
-            } else {
-                const topFeatherTrim = _titleFixed ? 0 : Math.max(0, _fTopInset - Math.max(0, _effPadT));
-                const botFeatherTrim = Math.max(0, _fBotInset - Math.max(0, _effPadB));
-                const cardTopY = (_baseCardRefY + (_titleFixed ? -_effPadT : topFeatherTrim)) + _bgOffY;
-                const cardBotY = (_baseCardRefY + _baseCardRefH - botFeatherTrim) + _bgOffY;
-                _cardY = cardTopY;
-                _cardH = Math.max(60, cardBotY - cardTopY);
-            }
+            _cardH = _rawBgH > 0 ? Math.max(60, _rawBgH) : Math.max(60, _baseCardRefH + _padT0 + _padB0);
+            _cardY = _rawBgH > 0
+                ? (_baseCardRefY + _baseCardRefH / 2 - _cardH / 2 + _bgOffY)
+                : (_baseCardRefY - _padT0 + _bgOffY);
         }
     }
     const _cardRad = ov.bg_fullscreen ? 0 : parseFloat(ov.bg_radius ?? 12);
@@ -5900,7 +5893,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     const featherRight    = Math.abs(rawFeatherRight);
     const featherLeftOff  = rawFeatherLeftOff + (rawFeatherLeft < 0 ? rawFeatherLeft : 0);
     const featherRightOff = rawFeatherRightOff + (rawFeatherRight < 0 ? rawFeatherRight : 0);
-    const featherMode     = ov.feather_mode || 'content';
+    const featherMode     = ov.feather_mode === 'content_edge' ? 'content_edge' : 'clip';
     const _bodyPadHForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_h ?? 16)) : 6;
     const _bodyPadTForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_top ?? 10)) : 6;
     const _bodyPadBForFeather = ov.scroll_body_bg_enabled ? Math.max(0, parseFloat(ov.scroll_body_bg_pad_bottom ?? 10)) : 6;
@@ -5926,7 +5919,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         let gradY1 = cH;
         let gradX0 = 0;
         let gradX1 = cW;
-        if (featherMode !== 'clip') {
+        if (featherMode === 'content_edge') {
             gradY0 = Math.max(0, Math.min(cH - 16, localBlockY - _bodyPadTForFeather - expT));
             gradY1 = Math.max(gradY0 + 16, Math.min(cH, localBlockY + blockContentH + _bodyPadBForFeather + expB));
             gradX0 = Math.max(0, Math.min(cW - 16, localBlockX - _bodyPadHForFeather - expL));

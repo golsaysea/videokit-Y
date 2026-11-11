@@ -3835,10 +3835,32 @@ async function autoEditByScript(opts = {}) {
             message: '自动剪辑完成',
         });
 
+        const finalVideoPath = subtitledPath || manualAudioVideoPath || voiceChangedVideoPath || outputPath;
+        let probedOutputDuration = 0;
+        try {
+            probedOutputDuration = Number(await ffmpegService.getDuration(finalVideoPath)) || 0;
+        } catch (_) {
+            probedOutputDuration = 0;
+        }
+        const srtEndSec = srtItems.length > 0
+            ? Math.max(...srtItems.map(item => (Number(item?.end) || 0) / 1000))
+            : 0;
+        const timelineDurationSec = Math.max(
+            0,
+            (Number(timelineCursorMs) || 0) / 1000,
+            srtEndSec,
+            Array.isArray(reviewSegments)
+                ? reviewSegments.reduce((sum, seg) => sum + (Number.isFinite(Number(seg?.duration)) && Number(seg.duration) > 0 ? Number(seg.duration) : 0), 0)
+                : 0
+        );
+        const effectiveOutputDuration = Math.max(probedOutputDuration, timelineDurationSec);
+
         return {
             success: true,
             message: `自动剪辑完成: ${selected.length} 段${subtitleUnavailable ? '（字幕未生成，已保留无字幕成片）' : ''}`,
             output_path: outputPath,
+            output_duration: effectiveOutputDuration,
+            duration: effectiveOutputDuration,
             srt_path: srtPath,
             mp3_path: mp3Path,
             voice_changed_mp3_path: voiceChangedMp3Path,
@@ -3846,7 +3868,7 @@ async function autoEditByScript(opts = {}) {
             manual_audio_path: manualAudioPath,
             manual_audio_video_path: manualAudioVideoPath,
             subtitled_path: subtitledPath,
-            final_video_path: subtitledPath || manualAudioVideoPath || voiceChangedVideoPath || outputPath,
+            final_video_path: finalVideoPath,
             output_dir: outputDir,
             report_path: reportPath,
             // 送入 Reels 后需要能恢复整条自动剪辑链路，而不只是拿到成片。
