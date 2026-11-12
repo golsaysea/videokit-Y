@@ -2407,9 +2407,35 @@ function reelsApplyAnimationPreset(silent = false) {
     set('reels-jump-scale', preset.letter_jump_scale);
     set('reels-jump-scale-range', preset.letter_jump_scale);
     set('reels-flash-color', preset.flash_color);
-    set('reels-glow-color', preset.holy_glow_color);
-    set('reels-glow-radius', preset.holy_glow_radius);
-    set('reels-glow-radius-range', preset.holy_glow_radius);
+    set('reels-glow-color', preset.anim_in_type === 'kinetic_glow_stack'
+        ? (preset.kinetic_glow_color || preset.holy_glow_color)
+        : preset.holy_glow_color);
+    const presetGlowRadius = preset.anim_in_type === 'kinetic_glow_stack'
+        ? (preset.kinetic_glow_blur ?? preset.holy_glow_radius)
+        : preset.holy_glow_radius;
+    set('reels-glow-radius', presetGlowRadius);
+    set('reels-glow-radius-range', presetGlowRadius);
+    set('reels-kinetic-group-words', preset.kinetic_group_words);
+    set('reels-kinetic-group-words-range', preset.kinetic_group_words);
+    set('reels-kinetic-scale-max', preset.kinetic_scale_max);
+    set('reels-kinetic-scale-max-range', preset.kinetic_scale_max);
+    set('reels-kinetic-scale-min', preset.kinetic_scale_min);
+    set('reels-kinetic-scale-min-range', preset.kinetic_scale_min);
+    if (preset.kinetic_background_dim !== undefined) {
+        const bgDimPct = Math.round(Number(preset.kinetic_background_dim) * 100);
+        set('reels-kinetic-bg-dim', bgDimPct);
+        set('reels-kinetic-bg-dim-range', bgDimPct);
+    }
+    if (preset.kinetic_spotlight_opacity !== undefined) {
+        const spotPct = Math.round(Number(preset.kinetic_spotlight_opacity) * 100);
+        set('reels-kinetic-spotlight', spotPct);
+        set('reels-kinetic-spotlight-range', spotPct);
+    }
+    if (preset.kinetic_vignette_strength !== undefined) {
+        const vigPct = Math.round(Number(preset.kinetic_vignette_strength) * 100);
+        set('reels-kinetic-vignette', vigPct);
+        set('reels-kinetic-vignette-range', vigPct);
+    }
     set('reels-blur-max', preset.blur_sharp_max);
     set('reels-blur-max-range', preset.blur_sharp_max);
     set('reels-typewriter-reveal-type', preset.typewriter_reveal_type);
@@ -2474,6 +2500,14 @@ const REELS_ANIMATION_PARAM_GROUPS = [
     { types: ['letter_jump'], label: '逐字放大', ids: ['reels-jump-scale', 'reels-jump-scale-range'] },
     { types: ['flash_highlight'], label: '闪光高亮', ids: ['reels-flash-color'] },
     { types: ['holy_glow', 'kinetic_glow_stack'], label: '圣光／辉光字幕', ids: ['reels-glow-color', 'reels-glow-radius', 'reels-glow-radius-range'] },
+    { types: ['kinetic_glow_stack'], label: '辉光逐词叠排', ids: [
+        'reels-kinetic-group-words', 'reels-kinetic-group-words-range',
+        'reels-kinetic-scale-max', 'reels-kinetic-scale-max-range',
+        'reels-kinetic-scale-min', 'reels-kinetic-scale-min-range',
+        'reels-kinetic-bg-dim', 'reels-kinetic-bg-dim-range',
+        'reels-kinetic-spotlight', 'reels-kinetic-spotlight-range',
+        'reels-kinetic-vignette', 'reels-kinetic-vignette-range'
+    ] },
     { types: ['blur_sharp'], label: '模糊到清晰', ids: ['reels-blur-max', 'reels-blur-max-range'] },
     { types: ['word_pop_random', 'word_pop_random_pulse'], label: '逐词弹出／回弹', ids: [
         'reels-word-pop-min', 'reels-word-pop-min-range', 'reels-word-pop-max', 'reels-word-pop-max-range',
@@ -2954,6 +2988,8 @@ function _readStyleFromUI() {
         effect_glow_range: num('reels-effect-glow-range', 22),
         effect_glow_blur: num('reels-effect-glow-blur', 18),
         effect_glow_opacity: num('reels-effect-glow-opacity', 70),
+        stroke_expand_layer_widths: val('reels-effect-controls-enabled') === '1' ? existingStyle.stroke_expand_layer_widths : undefined,
+        stroke_expand_layer_feathers: val('reels-effect-controls-enabled') === '1' ? existingStyle.stroke_expand_layer_feathers : undefined,
 
         // Shadow
         shadow_blur: chk('reels-shadow') ? num('reels-shadow-blur', 4) : 0,
@@ -3116,6 +3152,27 @@ function _readStyleFromUI() {
         holy_glow_radius: num('reels-glow-radius', 6),
         holy_glow_period: 3.0,
         kinetic_glow_color: val('reels-glow-color') || existingStyle.kinetic_glow_color || '#E7FF00',
+        kinetic_glow_blur: (val('reels-anim-in') === 'kinetic_glow_stack' || get('reels-glow-radius'))
+            ? num('reels-glow-radius', existingStyle.kinetic_glow_blur ?? 64)
+            : (existingStyle.kinetic_glow_blur ?? 64),
+        kinetic_group_words: get('reels-kinetic-group-words')
+            ? Math.max(2, Math.min(6, Math.round(num('reels-kinetic-group-words', existingStyle.kinetic_group_words ?? 3))))
+            : (existingStyle.kinetic_group_words ?? 3),
+        kinetic_scale_max: get('reels-kinetic-scale-max')
+            ? num('reels-kinetic-scale-max', existingStyle.kinetic_scale_max ?? 1.56)
+            : (existingStyle.kinetic_scale_max ?? 1.56),
+        kinetic_scale_min: get('reels-kinetic-scale-min')
+            ? num('reels-kinetic-scale-min', existingStyle.kinetic_scale_min ?? 0.72)
+            : (existingStyle.kinetic_scale_min ?? 0.72),
+        kinetic_background_dim: get('reels-kinetic-bg-dim')
+            ? Math.max(0, Math.min(1, num('reels-kinetic-bg-dim', Math.round((existingStyle.kinetic_background_dim ?? 0.72) * 100)) / 100))
+            : (existingStyle.kinetic_background_dim ?? 0.72),
+        kinetic_spotlight_opacity: get('reels-kinetic-spotlight')
+            ? Math.max(0, Math.min(1, num('reels-kinetic-spotlight', Math.round((existingStyle.kinetic_spotlight_opacity ?? 0.22) * 100)) / 100))
+            : (existingStyle.kinetic_spotlight_opacity ?? 0.22),
+        kinetic_vignette_strength: get('reels-kinetic-vignette')
+            ? Math.max(0, Math.min(1, num('reels-kinetic-vignette', Math.round((existingStyle.kinetic_vignette_strength ?? 0.78) * 100)) / 100))
+            : (existingStyle.kinetic_vignette_strength ?? 0.78),
         blur_sharp_max: num('reels-blur-max', 20),
         blur_sharp_clear_frac: 0.4,
 
@@ -3499,8 +3556,11 @@ function _writeStyleToUI(style) {
     set('reels-stroke-width', style.border_width || 3);
     setChk('reels-stroke-expand', style.stroke_expand_enabled);
     set('reels-se-layers', style.stroke_expand_layers || 3);
+    set('reels-se-layers-range', style.stroke_expand_layers || 3);
     set('reels-se-step', style.stroke_expand_step || 4);
+    set('reels-se-step-range', style.stroke_expand_step || 4);
     set('reels-se-feather', style.stroke_expand_feather || 8);
+    set('reels-se-feather-range', style.stroke_expand_feather || 8);
     set('reels-se-colors', Array.isArray(style.stroke_expand_colors)
         ? style.stroke_expand_colors.join(',')
         : (typeof style.stroke_expand_colors === 'string' ? style.stroke_expand_colors : '#FF0000,#00FF00,#0000FF'));
@@ -3637,7 +3697,29 @@ function _writeStyleToUI(style) {
     set('reels-glow-color', style.anim_in_type === 'kinetic_glow_stack'
         ? (style.kinetic_glow_color || style.holy_glow_color || '#E7FF00')
         : (style.holy_glow_color || '#FFFFAA'));
-    set('reels-glow-radius', style.holy_glow_radius || 6);
+    const uiGlowRadius = style.anim_in_type === 'kinetic_glow_stack'
+        ? (style.kinetic_glow_blur ?? style.holy_glow_radius ?? 64)
+        : (style.holy_glow_radius ?? 6);
+    set('reels-glow-radius', uiGlowRadius);
+    set('reels-glow-radius-range', uiGlowRadius);
+    const kGroupWords = style.kinetic_group_words ?? 3;
+    set('reels-kinetic-group-words', kGroupWords);
+    set('reels-kinetic-group-words-range', kGroupWords);
+    const kScaleMax = style.kinetic_scale_max ?? 1.56;
+    set('reels-kinetic-scale-max', kScaleMax);
+    set('reels-kinetic-scale-max-range', kScaleMax);
+    const kScaleMin = style.kinetic_scale_min ?? 0.72;
+    set('reels-kinetic-scale-min', kScaleMin);
+    set('reels-kinetic-scale-min-range', kScaleMin);
+    const kBgDim = Math.round((style.kinetic_background_dim ?? 0.72) * 100);
+    set('reels-kinetic-bg-dim', kBgDim);
+    set('reels-kinetic-bg-dim-range', kBgDim);
+    const kSpot = Math.round((style.kinetic_spotlight_opacity ?? 0.22) * 100);
+    set('reels-kinetic-spotlight', kSpot);
+    set('reels-kinetic-spotlight-range', kSpot);
+    const kVig = Math.round((style.kinetic_vignette_strength ?? 0.78) * 100);
+    set('reels-kinetic-vignette', kVig);
+    set('reels-kinetic-vignette-range', kVig);
     set('reels-blur-max', style.blur_sharp_max || 20);
     set('reels-typewriter-reveal-type', style.typewriter_reveal_type || 'word');
     set('reels-random-word-spacing', style.random_word_spacing || 0);
@@ -11742,7 +11824,7 @@ function reelsOpenSubtitlePresetLibrary() {
         // 内保存的像素字号、X/Y 坐标与最终导出完全一致。
         return `<article class="rsp-card" data-animated="${animated ? 'true' : 'false'}" data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-code="${String(code).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-name="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><canvas class="rsp-preview-canvas" width="360" height="640" data-preview-index="${previewIndex}" aria-label="${title} 的字幕效果预览"></canvas><div class="rsp-name">${codeBadge}${title}</div><div class="rsp-group">${code ? `[${String(code).replace(/</g,'&lt;')}] · ` : ''}${String(g.category).replace(/</g,'&lt;')}${animated ? ' · 悬浮播放' : ''}</div><button class="rsp-use">选用</button>${custom ? '<button class="rsp-move-group">分组</button><button class="rsp-delete">删除</button>' : ''}</article>`;
     })).join('');
-    modal.innerHTML = `<div class="rsp-shell"><header><h2>动态字幕预设库 (支持编号 sub-01 ~ sub-75 / se-01 ~ se-31)</h2><div style="display:flex;align-items:center;gap:10px;"><input type="text" class="rsp-search-input" placeholder="🔍 搜索编号或名称 (如 sub-68 / 72 / 星条旗)..." style="width:240px;padding:6px 10px;border-radius:6px;border:1px solid rgba(125,211,252,0.4);background:rgba(15,23,42,0.85);color:#f8fafc;font-size:12px;outline:none;"><button class="rsp-clear-mine" ${myPresetNames.length ? '' : 'disabled'} title="只删除“我的预设”分组，不影响内置预设、模板同步或覆层预设">清空我的预设</button><button class="rsp-close">✕</button></div></header><div class="rsp-main"><aside><button data-group="all" class="active">全部预设</button>${groups}</aside><section><div class="rsp-grid">${cards || '<p>暂无预设</p>'}</div></section></div></div>`;
+    modal.innerHTML = `<div class="rsp-shell"><header><h2>动态字幕预设库 (支持编号 sub-01 ~ sub-127 / se-01 ~ se-31)</h2><div style="display:flex;align-items:center;gap:10px;"><input type="text" class="rsp-search-input" placeholder="🔍 搜索编号或名称 (如 sub-103 / 119 / Submagic)..." style="width:240px;padding:6px 10px;border-radius:6px;border:1px solid rgba(125,211,252,0.4);background:rgba(15,23,42,0.85);color:#f8fafc;font-size:12px;outline:none;"><button class="rsp-clear-mine" ${myPresetNames.length ? '' : 'disabled'} title="只删除“我的预设”分组，不影响内置预设、模板同步或覆层预设">清空我的预设</button><button class="rsp-close">✕</button></div></header><div class="rsp-main"><aside><button data-group="all" class="active">全部预设</button>${groups}</aside><section><div class="rsp-grid">${cards || '<p>暂无预设</p>'}</div></section></div></div>`;
     document.body.appendChild(modal);
     // 卡片预览与导出/编辑面板使用同一个 Canvas 渲染器。悬浮时从 0 秒
     // 重新播放，因而展示的是每套预设本身的入场、逐词、卡拉 OK 等真实效果。
@@ -11783,19 +11865,21 @@ function reelsOpenSubtitlePresetLibrary() {
         const isLineFocusCard = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
         const isUnderlineSweepCard = style.anim_in_type === 'underline_sweep';
         const isThreeWordFocusStackCard = style.anim_in_type === 'three_word_focus_stack';
+        const isKineticGlowStackCard = style.anim_in_type === 'kinetic_glow_stack';
+        const isRollingKaraokeCard = style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke';
+        const isFeatherWipeCard = style.anim_in_type === 'feather_wipe';
+        const preserveAnimCard = isBoxWipeCard || isLineFocusCard || isUnderlineSweepCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard || isFeatherWipeCard;
         const finalStyle = {
             ...style,
             anim_in_type: isBoxWipeCard
                 ? 'box_wipe'
                 : (isLineFocusCard
                     ? 'line_focus'
-                    : (isUnderlineSweepCard
-                        ? 'underline_sweep'
-                        : (isThreeWordFocusStackCard ? 'three_word_focus_stack' : 'none'))),
+                    : (preserveAnimCard ? style.anim_in_type : 'none')),
             anim_out_type: 'none',
             dynamic_box: false,
-            karaoke_highlight: (isLineFocusCard || isThreeWordFocusStackCard) ? Boolean(style.karaoke_highlight ?? true) : false,
-            highlight_enabled: (isLineFocusCard || isThreeWordFocusStackCard) ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
+            karaoke_highlight: (isLineFocusCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard) ? Boolean(style.karaoke_highlight ?? true) : false,
+            highlight_enabled: (isLineFocusCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard) ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
             word_pop: false,
             fullpage_typewriter: false,
         };
@@ -11805,9 +11889,11 @@ function reelsOpenSubtitlePresetLibrary() {
                 ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.35)
                 : (isUnderlineSweepCard
                     ? (previewSegment.start + 0.24)
-                    : (isThreeWordFocusStackCard
+                    : ((isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard)
                         ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.52)
-                        : staticPreviewTime)));
+                        : (isFeatherWipeCard
+                            ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.72)
+                            : staticPreviewTime))));
         const draw = (time, animated = false) => {
             if (!renderer) { renderer = new window.ReelsCanvasRenderer(canvas); renderer.setContextSegments(previewSegments); ctx = canvas.getContext('2d'); }
             const activeSegment = animated

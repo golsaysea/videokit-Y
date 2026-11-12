@@ -3052,7 +3052,7 @@ class ReelsCanvasRenderer {
         const barY = geom.glyphBottom + Math.max(4, fontSize * 0.085 * lineScale);
         const rad = barH / 2;
 
-        const barColorHex = (s && s.use_underline && s.color_underline) ? s.color_underline : '#FFFFFF';
+        const barColorHex = (s && (s.use_underline || s.anim_in_type === 'underline_sweep') && s.color_underline) ? s.color_underline : '#FFFFFF';
         const rgb = typeof this._parseColor === 'function' ? this._parseColor(barColorHex) : [255, 255, 255];
         const r = rgb[0] ?? 255;
         const g = rgb[1] ?? 255;
@@ -6695,35 +6695,69 @@ class ReelsCanvasRenderer {
         const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1)
             ? s.pos_y * videoH : (Number(s.pos_y) || videoH * 0.40);
 
+        const glowColor = (s.ambient_glow_enabled && s.ambient_glow_color)
+            ? s.ambient_glow_color
+            : (s.kinetic_glow_color || s.holy_glow_color || '#E7FF00');
+        const [glowR, glowG, glowB] = this._parseColor(glowColor);
+
         ctx.save();
-        const dimOpacity = clamp01(Number(s.kinetic_background_dim ?? 0.50));
-        ctx.fillStyle = `rgba(0,0,0,${dimOpacity})`;
-        ctx.fillRect(0, 0, videoW, videoH);
+        const dimOpacity = clamp01(Number(
+            (s.ambient_lighting_enabled && s.ambient_dark_center_opacity !== undefined)
+                ? s.ambient_dark_center_opacity
+                : (s.kinetic_background_dim ?? 0.50)
+        ));
+        if (dimOpacity > 0.001) {
+            const darkColor = (s.ambient_lighting_enabled && s.ambient_dark_color) ? s.ambient_dark_color : '#000000';
+            const [dR, dG, dB] = this._parseColor(darkColor);
+            ctx.fillStyle = `rgba(${dR},${dG},${dB},${dimOpacity})`;
+            ctx.fillRect(0, 0, videoW, videoH);
+        }
 
         const tintOpacity = clamp01(Number(s.kinetic_tint_opacity ?? 0.18));
-        ctx.fillStyle = `rgba(118,108,0,${tintOpacity})`;
-        ctx.fillRect(0, 0, videoW, videoH);
+        if (tintOpacity > 0.001) {
+            const tR = Math.round(glowR * 0.51);
+            const tG = Math.round(glowG * 0.42);
+            const tB = Math.round(glowB * 0.48);
+            ctx.fillStyle = `rgba(${tR},${tG},${tB},${tintOpacity})`;
+            ctx.fillRect(0, 0, videoW, videoH);
+        }
 
-        const vignetteStrength = clamp01(Number(s.kinetic_vignette_strength ?? 0.96));
-        const vignetteRadiusFactor = Math.max(0.35, Math.min(1.2, Number(s.kinetic_vignette_radius ?? 0.62)));
-        const vignetteRadius = Math.max(videoW, videoH) * vignetteRadiusFactor;
-        const vignette = ctx.createRadialGradient(cx, cy, Math.min(videoW, videoH) * 0.10, cx, cy, vignetteRadius);
-        vignette.addColorStop(0, 'rgba(0,0,0,0)');
-        vignette.addColorStop(0.46, `rgba(0,0,0,${vignetteStrength * 0.20})`);
-        vignette.addColorStop(1, `rgba(0,0,0,${vignetteStrength})`);
-        ctx.fillStyle = vignette;
-        ctx.fillRect(0, 0, videoW, videoH);
+        const vignetteStrength = clamp01(Number(
+            (s.ambient_lighting_enabled && s.ambient_dark_opacity !== undefined)
+                ? s.ambient_dark_opacity
+                : (s.kinetic_vignette_strength ?? 0.96)
+        ));
+        if (vignetteStrength > 0.001) {
+            const vignetteRadiusFactor = Math.max(0.25, Math.min(1.5, Number(
+                (s.ambient_lighting_enabled && s.ambient_dark_radius !== undefined)
+                    ? s.ambient_dark_radius
+                    : (s.kinetic_vignette_radius ?? 0.62)
+            )));
+            const vignetteRadius = Math.max(videoW, videoH) * vignetteRadiusFactor;
+            const vignette = ctx.createRadialGradient(cx, cy, Math.min(videoW, videoH) * 0.10, cx, cy, vignetteRadius);
+            vignette.addColorStop(0, 'rgba(0,0,0,0)');
+            vignette.addColorStop(0.46, `rgba(0,0,0,${vignetteStrength * 0.20})`);
+            vignette.addColorStop(1, `rgba(0,0,0,${vignetteStrength})`);
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, videoW, videoH);
+        }
 
-        const spotlightOpacity = clamp01(Number(s.kinetic_spotlight_opacity ?? 0.24));
-        const spotlightRadius = Math.min(videoW, videoH) * 0.34;
-        const glowColor = s.kinetic_glow_color || s.holy_glow_color || '#E7FF00';
-        const [glowR, glowG, glowB] = this._parseColor(glowColor);
-        const spotlight = ctx.createRadialGradient(cx, cy, 0, cx, cy, spotlightRadius);
-        spotlight.addColorStop(0, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity})`);
-        spotlight.addColorStop(0.34, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity * 0.48})`);
-        spotlight.addColorStop(1, `rgba(${glowR},${glowG},${glowB},0)`);
-        ctx.fillStyle = spotlight;
-        ctx.fillRect(0, 0, videoW, videoH);
+        const spotlightOpacity = clamp01(Number(
+            (s.ambient_glow_enabled && s.ambient_glow_opacity !== undefined)
+                ? s.ambient_glow_opacity
+                : (s.kinetic_spotlight_opacity ?? 0.24)
+        ));
+        if (spotlightOpacity > 0.001) {
+            const spotlightRadius = (s.ambient_glow_enabled && Number(s.ambient_glow_radius) > 0)
+                ? Math.max(80, Number(s.ambient_glow_radius))
+                : Math.min(videoW, videoH) * 0.34;
+            const spotlight = ctx.createRadialGradient(cx, cy, 0, cx, cy, spotlightRadius);
+            spotlight.addColorStop(0, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity})`);
+            spotlight.addColorStop(0.34, `rgba(${glowR},${glowG},${glowB},${spotlightOpacity * 0.48})`);
+            spotlight.addColorStop(1, `rgba(${glowR},${glowG},${glowB},0)`);
+            ctx.fillStyle = spotlight;
+            ctx.fillRect(0, 0, videoW, videoH);
+        }
         ctx.restore();
     }
 
@@ -6794,9 +6828,30 @@ class ReelsCanvasRenderer {
         const oldOpacity = clamp01(Number(s.kinetic_old_word_opacity ?? 0.92));
         const letterSpacing = Number(s.letter_spacing) || 0;
         const lineGap = Math.max(0, Number(s.kinetic_line_gap ?? 0.08)) * baseSize;
-        const glowBlur = Math.max(0, Number(s.kinetic_glow_blur ?? 38));
-        const glowColor = s.kinetic_glow_color || s.holy_glow_color || '#E7FF00';
-        const textColor = s.color_text || '#FFFDF2';
+        const rawGlowBlur = s.kinetic_glow_blur !== undefined
+            ? Number(s.kinetic_glow_blur)
+            : (s.holy_glow_radius !== undefined ? Number(s.holy_glow_radius) : 38);
+        const glowBlur = Math.max(0, Number.isFinite(rawGlowBlur) ? rawGlowBlur : 38);
+        const glowColor = (s.ambient_glow_enabled && s.ambient_glow_color)
+            ? s.ambient_glow_color
+            : (s.kinetic_glow_color || s.holy_glow_color || '#E7FF00');
+        const baseTextColor = (s.text_gradient_enabled && s.text_gradient_colors)
+            ? s.text_gradient_colors
+            : (s.color_text || '#FFFDF2');
+        const highlightEnabled = s.highlight_enabled !== false && s.karaoke_highlight !== false;
+        const activeTextColor = (s.high_gradient_enabled && s.high_gradient_colors)
+            ? s.high_gradient_colors
+            : (s.color_high || baseTextColor);
+        const useStroke = Boolean(s.use_stroke);
+        const outlineColor = s.color_outline || '#000000';
+        const borderW = useStroke ? (Number(s.border_width) || 0) : 0;
+        const outlineAlpha = (s.opacity_outline ?? 255) / 255;
+        const useBox = Boolean(s.use_box);
+        const bgColor = s.color_bg || '#000000';
+        const bgOpacity = clamp01((Number.isFinite(Number(s.opacity_bg)) ? Number(s.opacity_bg) : 150) / 255);
+        const boxRadius = Math.max(0, Number(s.box_radius ?? 12));
+        const padX = Math.max(0, Number(s.box_padding_x ?? 18));
+        const padY = Math.max(0, Number(s.box_padding_y ?? 8));
 
         const layout = visible.map((w, localIndex) => {
             // Reference layout: a small lead word, one oversized hero word,
@@ -6853,13 +6908,33 @@ class ReelsCanvasRenderer {
             const wordGlow = item.isActive
                 ? (0.35 + 0.65 * item.eased)
                 : Number(s.kinetic_old_glow_opacity ?? 0.62);
+            const itemColor = (item.isActive && highlightEnabled && activeTextColor)
+                ? activeTextColor
+                : baseTextColor;
 
             ctx.save();
             ctx.globalAlpha = overallAlpha * wordAlpha;
+            if (useBox && bgOpacity > 0.01) {
+                const boxW = item.width + padX * 2;
+                const boxH = item.fontSize * 1.05 + padY * 2;
+                const boxX = drawX - padX;
+                const boxY = y - padY + item.fontSize * 0.04;
+                ctx.save();
+                ctx.globalAlpha = overallAlpha * wordAlpha * bgOpacity;
+                ctx.fillStyle = bgColor;
+                this._roundRect(ctx, boxX, boxY, boxW, boxH, Math.min(boxRadius, boxW / 2, boxH / 2));
+                ctx.fill();
+                ctx.restore();
+            }
+            if (s.stroke_expand_enabled) {
+                this._renderWordStrokeExpand(ctx, s, item.word, drawX, y, item.fontStr, letterSpacing);
+            }
             this._drawWord(
-                ctx, item.word, drawX, y, textColor,
-                false, '#000000', 0, 0,
-                glowBlur * (item.isActive ? 1 : 0.72), 0, 0,
+                ctx, item.word, drawX, y, itemColor,
+                useStroke, outlineColor, borderW, outlineAlpha,
+                glowBlur * (item.isActive ? 1 : 0.72),
+                Number(s.shadow_offset_x) || 0,
+                Number(s.shadow_offset_y) || 0,
                 glowColor, clamp01(wordGlow), letterSpacing, s
             );
             ctx.restore();
@@ -7569,10 +7644,14 @@ class ReelsCanvasRenderer {
             }
         }
 
-        const baseColor = s.color_text || '#FFFFFF';
-        const activeColor = (s.color_high && String(s.color_high).toUpperCase() !== '#FFFFFF')
-            ? String(s.color_high).split(',')[0].trim()
-            : '#18A84B';
+        const baseColor = (s.text_gradient_colors && String(s.text_gradient_colors).includes(','))
+            ? String(s.text_gradient_colors).trim()
+            : (s.color_text || '#FFFFFF');
+        const activeColor = (s.high_gradient_colors && String(s.high_gradient_colors).includes(','))
+            ? String(s.high_gradient_colors).trim()
+            : ((s.color_high && String(s.color_high).toUpperCase() !== '#FFFFFF')
+                ? String(s.color_high).trim()
+                : '#18A84B');
         const useStroke = s.use_stroke !== false;
         const borderW = Number(s.border_width) || 4.5;
         const outlineColor = s.color_outline || '#000000';
@@ -7845,7 +7924,10 @@ function _resolveGenericFallback(fontFamily) {
     const serifHints = [
         'serif', 'times', 'georgia', 'playfair', 'crimson', 'lora', 'gelasio',
         'caslon', 'vidaloka', 'yeseva', 'dm serif', 'young serif', 'rye',
-        'song', 'ming', 'mincho',
+        'song', 'ming', 'mincho', 'cinzel', 'castoro', 'marcellus', 'rozha',
+        'gloock', 'bellefair', 'caudex', 'mate sc', 'yuji syuku', 'cormorant',
+        'chonburi', 'didone', 'rufina', 'trirong', 'taviraj', 'alike',
+        'bentham', 'radley', 'fanwood', 'italiana',
     ];
     return serifHints.some(k => f.includes(k)) ? 'serif' : 'sans-serif';
 }

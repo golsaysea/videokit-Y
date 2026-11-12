@@ -2148,6 +2148,906 @@ window.FONTS_METADATA = {
       ],
       "category": "display",
       "importedFrom": "subtitled"
+    },
+    {
+      "family": "Syne",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "luxury", "poster"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["先锋", "几何", "艺术", "潮流", "无衬线"]
+    },
+    {
+      "family": "League Spartan",
+      "category": "sans",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["viral", "subtitle", "poster"],
+      "popularity": 96,
+      "source": "google",
+      "aliases": ["爆款", "粗黑", "几何", "短视频", "大字"]
+    },
+    {
+      "family": "Hanken Grotesk",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "tech", "news"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["现代", "新怪诞", "干练", "口播", "无衬线"]
+    },
+    {
+      "family": "Be Vietnam Pro",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "tech"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["高清", "口播", "清晰", "现代", "无衬线"]
+    },
+    {
+      "family": "Gabarito",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "subtitle"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["圆润", "几何", "科普", "醒目", "无衬线"]
+    },
+    {
+      "family": "Chakra Petch",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game", "viral"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["赛博", "机甲", "切角", "科技", "电竞", "游戏"]
+    },
+    {
+      "family": "Rajdhani",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game", "poster"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["电竞", "窄体", "科技", "未来感", "汽车"]
+    },
+    {
+      "family": "Michroma",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "movie", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["科幻", "宽体", "未来", "大片", "太空"]
+    },
+    {
+      "family": "Syncopate",
+      "category": "sans",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["movie", "luxury", "poster"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["电影预告", "宽体", "大写", "片头", "高级感"]
+    },
+    {
+      "family": "Lexend Deca",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "news"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["高易读", "字幕", "长句", "清晰", "阅读"]
+    },
+    {
+      "family": "Spline Sans",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "subtitle"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["科技", "UI", "极简", "现代"]
+    },
+    {
+      "family": "Epilogue",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "narrative", "luxury"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["人文", "叙事", "现代", "高级"]
+    },
+    {
+      "family": "Cinzel",
+      "category": "serif",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["luxury", "movie", "viral"],
+      "popularity": 97,
+      "source": "google",
+      "aliases": ["古典", "罗马", "碑刻", "史诗", "圣经", "电影", "神圣"]
+    },
+    {
+      "family": "Cinzel Decorative",
+      "category": "serif",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["luxury", "movie", "poster"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["华丽", "罗马", "装饰", "奇幻", "古典"]
+    },
+    {
+      "family": "Castoro Titling",
+      "category": "serif",
+      "regions": ["uk", "europe", "us"],
+      "useCases": ["luxury", "documentary", "narrative"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["精雕", "碑文", "历史", "纪录片", "衬线"]
+    },
+    {
+      "family": "Marcellus",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["luxury", "narrative", "movie"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["古罗马", "电影", "优雅", "独白", "衬线"]
+    },
+    {
+      "family": "Vidaloka",
+      "category": "serif",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "poster"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["时尚", "杂志", "水滴", "美妆", "高定"]
+    },
+    {
+      "family": "Rozha One",
+      "category": "serif",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "poster", "viral"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["高对比", "海报", "粗衬线", "时尚大片"]
+    },
+    {
+      "family": "Gloock",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["luxury", "poster", "narrative"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["摩登", "高对比", "杂志", "Editorial", "衬线"]
+    },
+    {
+      "family": "Bellefair",
+      "category": "serif",
+      "regions": ["uk", "europe", "us"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["文艺复兴", "优雅", "诗歌", "文学", "衬线"]
+    },
+    {
+      "family": "Caudex",
+      "category": "serif",
+      "regions": ["europe", "us"],
+      "useCases": ["narrative", "documentary"],
+      "popularity": 87,
+      "source": "google",
+      "aliases": ["中世纪", "书卷", "羊皮纸", "古典", "信仰"]
+    },
+    {
+      "family": "Mate SC",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["narrative", "documentary", "luxury"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["小型大写", "古典", "衬线", "语录"]
+    },
+    {
+      "family": "Titan One",
+      "category": "display",
+      "regions": ["us", "europe", "philippines"],
+      "useCases": ["viral", "kids", "poster"],
+      "popularity": 96,
+      "source": "google",
+      "aliases": ["爆款", "圆润", "卡通", "3D", "厚重", "大字"]
+    },
+    {
+      "family": "Luckiest Guy",
+      "category": "display",
+      "regions": ["us", "uk", "philippines"],
+      "useCases": ["viral", "kids", "game"],
+      "popularity": 97,
+      "source": "google",
+      "aliases": ["爆款", "综艺", "街头", "搞笑", "MrBeast", "粗黑"]
+    },
+    {
+      "family": "Boogaloo",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["复古", "摇滚", "活力", "音乐", "卡点"]
+    },
+    {
+      "family": "Carter One",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["美式", "斜切", "运动", "健身", "激励", "海报"]
+    },
+    {
+      "family": "Paytone One",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "subtitle", "poster"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["厚重", "圆角", "强冲击", "口播", "高亮"]
+    },
+    {
+      "family": "Calistoga",
+      "category": "display",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["viral", "narrative", "poster"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["复古", "报刊", "圆润", "粗衬线", "故事"]
+    },
+    {
+      "family": "Racing Sans One",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster", "game"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["赛车", "极速", "斜体", "燃向", "汽车"]
+    },
+    {
+      "family": "Black Han Sans",
+      "category": "display",
+      "regions": ["us", "cjk"],
+      "useCases": ["viral", "poster"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["超粗黑", "重锤", "冲击", "大标题", "爆款"]
+    },
+    {
+      "family": "Dela Gothic One",
+      "category": "display",
+      "regions": ["cjk", "us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["日系", "潮流", "扁平", "超粗黑", "Y2K"]
+    },
+    {
+      "family": "Bungee Spice",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "game", "poster"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["立体", "彩色", "渐变", "高能", "游戏"]
+    },
+    {
+      "family": "Chewy",
+      "category": "display",
+      "regions": ["us", "philippines"],
+      "useCases": ["kids", "viral"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["Q弹", "果冻", "零食", "美食", "萌宠", "可爱"]
+    },
+    {
+      "family": "Rowdies",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster", "news"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["粗犷", "街头", "展示体", "大字报"]
+    },
+    {
+      "family": "Parisienne",
+      "category": "script",
+      "regions": ["europe", "us", "uk"],
+      "useCases": ["luxury", "lifestyle", "narrative"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["法式", "浪漫", "连笔", "手写", "优雅"]
+    },
+    {
+      "family": "Italianno",
+      "category": "script",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["意式", "贵族", "纤细", "书法", "信笺"]
+    },
+    {
+      "family": "Mrs Saint Delafield",
+      "category": "script",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["羽毛笔", "签名", "古典", "手写", "落款"]
+    },
+    {
+      "family": "Petit Formal Script",
+      "category": "script",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "lifestyle"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["请柬", "婚礼", "精致", "手写", "仪式感"]
+    },
+    {
+      "family": "Sriracha",
+      "category": "script",
+      "regions": ["us", "philippines"],
+      "useCases": ["viral", "lifestyle", "subtitle"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["马克笔", "手写", "自然", "Vlog", "旁白"]
+    },
+    {
+      "family": "Mali",
+      "category": "script",
+      "regions": ["us", "europe"],
+      "useCases": ["kids", "lifestyle"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["手账", "可爱", "治愈", "圆体", "校园"]
+    },
+    {
+      "family": "Nanum Pen Script",
+      "category": "script",
+      "regions": ["cjk", "us"],
+      "useCases": ["lifestyle", "narrative"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["钢笔", "清新", "日记", "手写", "青春"]
+    },
+    {
+      "family": "Sedgwick Ave Display",
+      "category": "script",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["涂鸦", "街头", "刷子", "说唱", "滑板"]
+    },
+    {
+      "family": "Courier Prime",
+      "category": "mono",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["movie", "narrative", "documentary"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["打字机", "电影剧本", "档案", "悬疑", "等宽"]
+    },
+    {
+      "family": "Special Elite",
+      "category": "mono",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["movie", "documentary", "viral"],
+      "popularity": 96,
+      "source": "google",
+      "aliases": ["复古打字机", "旧色带", "斑驳", "案件", "胶片", "档案"]
+    },
+    {
+      "family": "VT323",
+      "category": "mono",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game", "viral"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["像素", "CRT", "终端", "黑客", "复古电子", "等宽"]
+    },
+    {
+      "family": "DM Mono",
+      "category": "mono",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "subtitle"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["极简", "设计感", "等宽", "参数", "时间轴"]
+    },
+    {
+      "family": "Noto Serif TC",
+      "category": "cjk",
+      "regions": ["cjk"],
+      "useCases": ["subtitle", "movie", "documentary"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["思源宋体繁体", "繁体", "港台", "电影感", "古风", "宋体"]
+    },
+    {
+      "family": "Noto Serif HK",
+      "category": "cjk",
+      "regions": ["cjk"],
+      "useCases": ["subtitle", "movie", "documentary"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["思源宋体香港", "港片", "香港", "繁体", "宋体"]
+    },
+    {
+      "family": "Shippori Mincho",
+      "category": "cjk",
+      "regions": ["cjk"],
+      "useCases": ["movie", "narrative", "luxury"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["明朝体", "日系", "映画", "电影", "唯美", "汉字", "宋体"]
+    },
+    {
+      "family": "Yuji Syuku",
+      "category": "cjk",
+      "regions": ["cjk"],
+      "useCases": ["narrative", "poster", "documentary"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["毛笔", "书道", "书法", "国风", "武侠", "汉字"]
+    },
+    {
+      "family": "Antonio",
+      "category": "sans",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["viral", "poster", "movie"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["窄体", "高瘦", "美式", "大标题", "电影海报"]
+    },
+    {
+      "family": "Six Caps",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["poster", "viral", "movie"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["超窄", "高挑", "大写", "压迫感", "海报"]
+    },
+    {
+      "family": "Fjalla One",
+      "category": "sans",
+      "regions": ["europe", "us"],
+      "useCases": ["viral", "news", "subtitle"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["北欧", "硬朗", "新闻", "运动", "醒目"]
+    },
+    {
+      "family": "Akshar",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "tech"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["现代", "锐利", "几何", "口播", "清晰"]
+    },
+    {
+      "family": "Cabin Condensed",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["subtitle", "news"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["紧凑", "人文", "窄体", "多词", "字幕"]
+    },
+    {
+      "family": "Saira Condensed",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "tech", "game"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["竞技", "赛车", "运动", "窄体", "燃向"]
+    },
+    {
+      "family": "Saira Stencil One",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["poster", "game", "viral"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["军事", "工业", "镂空", "喷漆", "硬核"]
+    },
+    {
+      "family": "Aldrich",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["科幻", "机甲", "圆角", "UI", "数码"]
+    },
+    {
+      "family": "Electrolize",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["赛博", "电子", "电音", "极客", "未来"]
+    },
+    {
+      "family": "Quantico",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "movie", "game"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["战术", "特工", "军事", "切角", "行动"]
+    },
+    {
+      "family": "Audiowide",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "viral", "poster"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["电音", "宽体", "DJ", "未来科技", "卡点"]
+    },
+    {
+      "family": "Oxanium",
+      "category": "sans",
+      "regions": ["us", "europe"],
+      "useCases": ["game", "tech", "viral"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["电竞", "HUD", "方形", "科幻", "游戏"]
+    },
+    {
+      "family": "Gruppo",
+      "category": "sans",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "tech", "movie"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["极简", "纤细", "宽体", "未来", "片头"]
+    },
+    {
+      "family": "Julius Sans One",
+      "category": "sans",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["luxury", "movie", "narrative"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["轻奢", "纤细", "全大写", "电影片尾", "美学"]
+    },
+    {
+      "family": "Cormorant Upright",
+      "category": "serif",
+      "regions": ["uk", "europe", "us"],
+      "useCases": ["luxury", "narrative", "documentary"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["诗意", "古典", "圣经", "文学", "衬线"]
+    },
+    {
+      "family": "Playfair Display SC",
+      "category": "serif",
+      "regions": ["uk", "europe", "us"],
+      "useCases": ["luxury", "poster", "narrative"],
+      "popularity": 93,
+      "source": "google",
+      "aliases": ["高定", "杂志", "小型大写", "奢侈品", "衬线"]
+    },
+    {
+      "family": "Chonburi",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["poster", "luxury", "viral"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["复古", "高对比", "粗衬线", "封面"]
+    },
+    {
+      "family": "Antic Didone",
+      "category": "serif",
+      "regions": ["europe", "uk", "us"],
+      "useCases": ["luxury", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["Vogue", "高定", "极细对比", "时尚大片", "Didone"]
+    },
+    {
+      "family": "Rufina",
+      "category": "serif",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["刀锋", "艺术", "画廊", "高级人文", "衬线"]
+    },
+    {
+      "family": "Trirong",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["narrative", "documentary"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["古典", "丝滑", "历史", "访谈", "衬线"]
+    },
+    {
+      "family": "Taviraj",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["narrative", "documentary"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["学院派", "书卷", "读书", "知识", "衬线"]
+    },
+    {
+      "family": "Alike Angular",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["narrative", "documentary"],
+      "popularity": 87,
+      "source": "google",
+      "aliases": ["棱角", "雕刻", "人文", "故事", "衬线"]
+    },
+    {
+      "family": "Bentham",
+      "category": "serif",
+      "regions": ["uk", "europe", "us"],
+      "useCases": ["narrative", "documentary"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["英伦", "19世纪", "古典印刷", "档案", "衬线"]
+    },
+    {
+      "family": "Radley",
+      "category": "serif",
+      "regions": ["us", "europe"],
+      "useCases": ["narrative", "lifestyle"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["温润", "手工雕刻", "治愈", "情感", "衬线"]
+    },
+    {
+      "family": "Fanwood Text",
+      "category": "serif",
+      "regions": ["us", "uk"],
+      "useCases": ["movie", "narrative"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["小说", "美式", "电影独白", "故事字幕", "衬线"]
+    },
+    {
+      "family": "Italiana",
+      "category": "serif",
+      "regions": ["europe", "us", "uk"],
+      "useCases": ["luxury", "poster"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["意式", "极细", "奢华", "高定", "香水", "珠宝"]
+    },
+    {
+      "family": "Sigmar One",
+      "category": "display",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["viral", "kids", "poster"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["爆款", "超厚重", "卡通", "搞笑", "娱乐"]
+    },
+    {
+      "family": "Wendy One",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "kids"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["灵动", "粗犷", "街头", "活力", "大字"]
+    },
+    {
+      "family": "Ceviche One",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["动感", "笔刷", "粗黑", "美食", "街头"]
+    },
+    {
+      "family": "Fredericka the Great",
+      "category": "display",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["narrative", "poster", "lifestyle"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["粉笔", "手绘", "蚀刻", "黑板报", "文艺复古"]
+    },
+    {
+      "family": "Rye",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["poster", "narrative"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["西部", "牛仔", "木刻", "美式复古", "公路"]
+    },
+    {
+      "family": "Sancreek",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["poster", "narrative"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["招牌", "19世纪", "美式复古", "奇闻"]
+    },
+    {
+      "family": "Smokum",
+      "category": "display",
+      "regions": ["us"],
+      "useCases": ["poster", "movie"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["通缉令", "西部", "荒野", "传奇", "复古"]
+    },
+    {
+      "family": "Creepster",
+      "category": "display",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["viral", "movie", "poster"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["惊悚", "恐怖", "滴落", "万圣节", "悬疑案件"]
+    },
+    {
+      "family": "Nosifer",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "movie", "poster"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["暗黑", "哥特", "溶蚀", "恐怖", "特效"]
+    },
+    {
+      "family": "Eater",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["movie", "poster"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["暗夜", "诡谲", "惊悚", "午夜故事"]
+    },
+    {
+      "family": "Wallpoet",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["涂鸦", "街头", "硬核", "工业", "喷漆"]
+    },
+    {
+      "family": "Plaster",
+      "category": "display",
+      "regions": ["europe", "us"],
+      "useCases": ["poster", "luxury"],
+      "popularity": 88,
+      "source": "google",
+      "aliases": ["先锋", "几何块面", "超宽", "潮牌"]
+    },
+    {
+      "family": "Megrim",
+      "category": "display",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "poster"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["前卫", "几何折线", "艺术", "实验"]
+    },
+    {
+      "family": "Zen Dots",
+      "category": "display",
+      "regions": ["us", "cjk", "europe"],
+      "useCases": ["tech", "game", "viral"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["未来主义", "圆点", "科技", "数码潮玩"]
+    },
+    {
+      "family": "Mr De Haviland",
+      "category": "script",
+      "regions": ["us", "uk", "europe"],
+      "useCases": ["luxury", "movie"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["好莱坞", "贵族签名", "复古", "落款"]
+    },
+    {
+      "family": "Herr Von Muellerhoff",
+      "category": "script",
+      "regions": ["europe", "uk", "us"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["皇家", "铜版画", "花体", "宫廷", "信笺"]
+    },
+    {
+      "family": "Miss Fajardose",
+      "category": "script",
+      "regions": ["europe", "us"],
+      "useCases": ["luxury", "narrative"],
+      "popularity": 89,
+      "source": "google",
+      "aliases": ["华丽", "纤长", "羽毛笔", "花体", "诗歌"]
+    },
+    {
+      "family": "Rochester",
+      "category": "script",
+      "regions": ["uk", "us", "europe"],
+      "useCases": ["luxury", "lifestyle"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["维多利亚", "英伦", "优雅书法", "浪漫"]
+    },
+    {
+      "family": "Niconne",
+      "category": "script",
+      "regions": ["europe", "us"],
+      "useCases": ["lifestyle", "narrative"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["柔美", "复古斜体", "手写", "情感语录"]
+    },
+    {
+      "family": "Yesteryear",
+      "category": "script",
+      "regions": ["us", "uk"],
+      "useCases": ["poster", "lifestyle", "viral"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["美式复古", "画报", "连笔", "怀旧"]
+    },
+    {
+      "family": "Rancho",
+      "category": "script",
+      "regions": ["us", "europe"],
+      "useCases": ["lifestyle", "viral"],
+      "popularity": 91,
+      "source": "google",
+      "aliases": ["阳光", "手刷体", "旅行", "户外", "Vlog"]
+    },
+    {
+      "family": "Nova Mono",
+      "category": "mono",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "game"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["科幻", "几何", "圆润", "终端", "等宽"]
+    },
+    {
+      "family": "Syne Mono",
+      "category": "mono",
+      "regions": ["europe", "us"],
+      "useCases": ["tech", "poster"],
+      "popularity": 90,
+      "source": "google",
+      "aliases": ["先锋", "实验", "艺术", "等宽"]
+    },
+    {
+      "family": "Overpass Mono",
+      "category": "mono",
+      "regions": ["us", "europe"],
+      "useCases": ["tech", "subtitle"],
+      "popularity": 92,
+      "source": "google",
+      "aliases": ["工业", "仪表盘", "数据", "极客", "等宽"]
     }
   ]
 };

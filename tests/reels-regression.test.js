@@ -3809,6 +3809,204 @@ test('Anointed Woman preset (sub-77 / sc-48) renders 3-line progressive sliding 
     assert.ok(fillOps.some(op => op.text === 'destroy' && op.style.toUpperCase() === '#18A84B'), 'Active word "destroy" on Line 4 must sweep in #18A84B');
 });
 
+test('20 new innovative presets (sub-78..sub-97), zero duplicate presets across categories, and adjustable kinetic_glow_stack', () => {
+    const styleSandbox = loadBrowserScript('src/reels-style-engine.js');
+    loadBrowserScript('src/reels-presets-init.js', styleSandbox);
+    const engine = styleSandbox.window.ReelsStyleEngine;
+    const resolveBuiltinPreset = styleSandbox.window.resolveBuiltinPreset;
+
+    // 1) Verify zero duplicate preset names across PRESET_CATEGORIES and getPresetsByCategory()
+    const { categorized, presetsMap } = engine.getPresetsByCategory();
+    const seenAcrossCategories = new Map();
+    for (const group of categorized) {
+        for (const name of group.names) {
+            assert.ok(
+                !seenAcrossCategories.has(name),
+                `Preset "${name}" must not appear in multiple categories (found in both "${seenAcrossCategories.get(name)}" and "${group.category}")`
+            );
+            seenAcrossCategories.set(name, group.category);
+        }
+    }
+
+    // 2) Verify all 50 new presets sub-78 through sub-127 exist, resolve, have unique fingerprints, and are categorized
+    const seenFingerprints = new Map();
+    for (let i = 78; i <= 127; i++) {
+        const code = `sub-${i}`;
+        const resolved = resolveBuiltinPreset(code);
+        assert.ok(resolved && resolved.kind === 'subtitle', `${code} must resolve as a builtin subtitle preset`);
+        assert.ok(presetsMap[resolved.name], `${code} (${resolved.name}) must exist in presetsMap`);
+        assert.ok(seenAcrossCategories.has(resolved.name), `${code} (${resolved.name}) must belong to exactly one category`);
+        const fp = engine.subtitleStyleFingerprint(presetsMap[resolved.name]);
+        assert.ok(!seenFingerprints.has(fp), `${code} (${resolved.name}) must have a distinct style fingerprint from ${seenFingerprints.get(fp)}`);
+        seenFingerprints.set(fp, code);
+    }
+
+    // 3) Verify kinetic_glow_stack ([sub-38] 参考_黄绿辉光逐词叠排) responds to custom glow radius, color_high, stroke, and box
+    const fillOps = [];
+    const strokeOps = [];
+    const roundRectCalls = [];
+    const ctx = {
+        canvas: { width: 1080, height: 1920 },
+        font: '',
+        direction: 'ltr',
+        textBaseline: 'top',
+        textAlign: 'left',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        fillStyle: '#fff',
+        strokeStyle: '#000',
+        lineWidth: 1,
+        lineJoin: 'round',
+        lineCap: 'round',
+        miterLimit: 2,
+        shadowBlur: 0,
+        shadowColor: 'transparent',
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        save() {},
+        restore() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        beginPath() {},
+        closePath() {},
+        rect() {},
+        fillRect() {},
+        clearRect() {},
+        clip() {},
+        moveTo() {},
+        lineTo() {},
+        arcTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        fill() {},
+        stroke() {},
+        setLineDash() {},
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+        measureText: (txt) => ({ width: String(txt || '').length * 22 }),
+        fillText(text) {
+            fillOps.push({
+                text: String(text),
+                fillStyle: String(this.fillStyle),
+                shadowBlur: this.shadowBlur,
+                shadowColor: String(this.shadowColor),
+            });
+        },
+        strokeText(text) {
+            strokeOps.push({
+                text: String(text),
+                strokeStyle: String(this.strokeStyle),
+                lineWidth: this.lineWidth,
+            });
+        },
+    };
+
+    const rendererSandbox = loadBrowserScript('src/reels-canvas-renderer.js', {
+        document: {
+            createElement: () => ({
+                width: 1080,
+                height: 1920,
+                getContext: () => ctx,
+            }),
+        },
+    });
+    const ReelsCanvasRenderer = rendererSandbox.window.ReelsCanvasRenderer;
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const origRoundRect = renderer._roundRect.bind(renderer);
+    renderer._roundRect = function (...args) {
+        roundRectCalls.push(args);
+        return origRoundRect(...args);
+    };
+
+    const baseGlowPreset = engine.mergeStyle({
+        ...presetsMap['参考_黄绿辉光逐词叠排'],
+        holy_glow_color: '#00E5FF',
+        kinetic_glow_color: '#00E5FF',
+        holy_glow_radius: 18,
+        kinetic_glow_blur: 18,
+        color_text: '#FFFFFF',
+        color_high: '#FF2A85',
+        highlight_enabled: true,
+        use_stroke: true,
+        color_outline: '#112233',
+        border_width: 6,
+        use_box: true,
+        color_bg: '#050811',
+        opacity_bg: 180,
+    });
+    const seg = {
+        start: 0,
+        end: 1.5,
+        text: 'God is good',
+        words: [
+            { word: 'God', start: 0.0, end: 0.5 },
+            { word: 'is', start: 0.5, end: 1.0 },
+            { word: 'good', start: 1.0, end: 1.5 },
+        ],
+    };
+    renderer.setContextSegments([seg]);
+    renderer.renderSubtitle(baseGlowPreset, seg, 0.75, 1080, 1920);
+
+    // Active word "is" must use color_high (#FF2A85), spoken word "God" uses color_text (#FFFFFF)
+    assert.ok(fillOps.some(op => op.text === 'is' && op.fillStyle.toUpperCase() === '#FF2A85'), 'Active word in kinetic_glow_stack must respect color_high');
+    assert.ok(fillOps.some(op => op.text === 'God' && op.fillStyle.toUpperCase() === '#FFFFFF'), 'Non-active spoken word in kinetic_glow_stack must use color_text');
+    // Glow pass must use custom glow radius (18) and glow color (#00E5FF)
+    assert.ok(fillOps.some(op => op.shadowColor.toUpperCase() === '#00E5FF' && Math.abs(op.shadowBlur - 18) < 1), 'kinetic_glow_stack must respect customized glow radius and color');
+    // Stroke must be rendered when use_stroke=true and border_width=6
+    assert.ok(strokeOps.length > 0 && strokeOps.some(op => op.strokeStyle.toUpperCase() === '#112233'), 'kinetic_glow_stack must render outline when use_stroke is enabled');
+    // Box must be rendered when use_box=true
+    assert.ok(roundRectCalls.length > 0, 'kinetic_glow_stack must render background box when use_box is enabled');
+
+    // 4) Verify 50 newly added free Google Fonts are registered in GOOGLE_FONTS, getUnifiedFontCatalog(), and FONTS_METADATA
+    const metaSandbox = loadBrowserScript('src/fonts-metadata.js');
+    const fontSandbox = loadBrowserScript('src/reels-font-manager.js', {
+        window: { FONTS_METADATA: metaSandbox.window.FONTS_METADATA },
+    });
+    const fm = fontSandbox.window.getFontManager();
+    assert.ok(fm, 'getFontManager() should return ReelsFontManager instance');
+    for (const gf of fontSandbox.window.GOOGLE_FONTS) {
+        if (!fm._allowedFonts.includes(gf)) fm._allowedFonts.push(gf);
+    }
+    const catalog = fm.getUnifiedFontCatalog();
+    const new50GoogleFonts = [
+        'Syne', 'League Spartan', 'Hanken Grotesk', 'Be Vietnam Pro', 'Gabarito',
+        'Chakra Petch', 'Rajdhani', 'Michroma', 'Syncopate', 'Lexend Deca',
+        'Spline Sans', 'Epilogue', 'Cinzel', 'Cinzel Decorative', 'Castoro Titling',
+        'Marcellus', 'Vidaloka', 'Rozha One', 'Gloock', 'Bellefair',
+        'Caudex', 'Mate SC', 'Titan One', 'Luckiest Guy', 'Boogaloo',
+        'Carter One', 'Paytone One', 'Calistoga', 'Racing Sans One', 'Black Han Sans',
+        'Dela Gothic One', 'Bungee Spice', 'Chewy', 'Rowdies', 'Parisienne',
+        'Italianno', 'Mrs Saint Delafield', 'Petit Formal Script', 'Sriracha', 'Mali',
+        'Nanum Pen Script', 'Sedgwick Ave Display', 'Courier Prime', 'Special Elite', 'VT323',
+        'DM Mono', 'Noto Serif TC', 'Noto Serif HK', 'Shippori Mincho', 'Yuji Syuku',
+    ];
+    const new50EnglishGoogleFonts = [
+        'Antonio', 'Six Caps', 'Fjalla One', 'Akshar', 'Cabin Condensed',
+        'Saira Condensed', 'Saira Stencil One', 'Aldrich', 'Electrolize', 'Quantico',
+        'Audiowide', 'Oxanium', 'Gruppo', 'Julius Sans One', 'Cormorant Upright',
+        'Playfair Display SC', 'Chonburi', 'Antic Didone', 'Rufina', 'Trirong',
+        'Taviraj', 'Alike Angular', 'Bentham', 'Radley', 'Fanwood Text',
+        'Italiana', 'Sigmar One', 'Wendy One', 'Ceviche One', 'Fredericka the Great',
+        'Rye', 'Sancreek', 'Smokum', 'Creepster', 'Nosifer',
+        'Eater', 'Wallpoet', 'Plaster', 'Megrim', 'Zen Dots',
+        'Mr De Haviland', 'Herr Von Muellerhoff', 'Miss Fajardose', 'Rochester', 'Niconne',
+        'Yesteryear', 'Rancho', 'Nova Mono', 'Syne Mono', 'Overpass Mono',
+    ];
+    assert.equal(new50GoogleFonts.length, 50);
+    assert.equal(new50EnglishGoogleFonts.length, 50);
+    for (const fontName of [...new50GoogleFonts, ...new50EnglishGoogleFonts]) {
+        assert.ok(fontSandbox.window.GOOGLE_FONTS.includes(fontName), `GOOGLE_FONTS should include ${fontName}`);
+        assert.ok(catalog.groups.google.includes(fontName), `Unified catalog google group should include ${fontName}`);
+        assert.ok(catalog.displayNames[fontName], `displayNames should have a Chinese label for ${fontName}`);
+        const meta = fm._getFontMetadata(fontName);
+        assert.ok(meta && meta.source === 'google' && Array.isArray(meta.aliases) && meta.aliases.length > 0, `FONTS_METADATA should provide rich metadata for ${fontName}`);
+    }
+});
+
+
 
 
 

@@ -64,6 +64,12 @@ const GOOGLE_FONTS = [
     'Assistant', 'Encode Sans', 'Encode Sans Condensed', 'Pathway Gothic One', 'Zen Kaku Gothic New',
     'Readex Pro', 'Atkinson Hyperlegible', 'Wix Madefor Display', 'Schibsted Grotesk', 'Geist',
     'Instrument Sans', 'Onest', 'Afacad', 'Bricolage Grotesque', 'Funnel Sans',
+    'Syne', 'League Spartan', 'Hanken Grotesk', 'Be Vietnam Pro', 'Gabarito',
+    'Chakra Petch', 'Rajdhani', 'Michroma', 'Syncopate', 'Lexend Deca',
+    'Spline Sans', 'Epilogue',
+    'Antonio', 'Six Caps', 'Fjalla One', 'Akshar', 'Cabin Condensed',
+    'Saira Condensed', 'Saira Stencil One', 'Aldrich', 'Electrolize', 'Quantico',
+    'Audiowide', 'Oxanium', 'Gruppo', 'Julius Sans One',
     // ── Serif 衬线 ──
     'Playfair Display', 'Crimson Pro', 'Lora', 'Merriweather', 'Libre Baskerville',
     'Noto Serif', 'Noto Serif SC', 'Noto Serif JP', 'Noto Serif KR',
@@ -75,6 +81,11 @@ const GOOGLE_FONTS = [
     'Alegreya', 'Crimson Text', 'Old Standard TT', 'Sorts Mill Goudy',
     'Cormorant', 'Fraunces', 'Newsreader', 'Instrument Serif', 'Young Serif',
     'Bodoni Moda', 'Prata', 'Lora', 'Gentium Book Plus',
+    'Cinzel', 'Cinzel Decorative', 'Castoro Titling', 'Marcellus', 'Vidaloka',
+    'Rozha One', 'Gloock', 'Bellefair', 'Caudex', 'Mate SC',
+    'Cormorant Upright', 'Playfair Display SC', 'Chonburi', 'Antic Didone', 'Rufina',
+    'Trirong', 'Taviraj', 'Alike Angular', 'Bentham', 'Radley',
+    'Fanwood Text', 'Italiana',
     // ── Display 标题/装饰 ──
     'Bebas Neue', 'Anton', 'Righteous', 'Fredoka', 'Lilita One',
     'Bowlby One SC', 'Black Ops One', 'Bungee', 'Orbitron',
@@ -88,6 +99,12 @@ const GOOGLE_FONTS = [
     'Chango', 'Bungee Inline', 'Silkscreen', 'Rubik Mono One',
     'Rubik Glitch', 'Rubik Wet Paint', 'Rubik Burned', 'Rubik Dirt',
     'Climate Crisis', 'Nabla', 'Bagel Fat One', 'Honk',
+    'Titan One', 'Luckiest Guy', 'Boogaloo', 'Carter One', 'Paytone One',
+    'Calistoga', 'Racing Sans One', 'Black Han Sans', 'Dela Gothic One', 'Bungee Spice',
+    'Chewy', 'Rowdies',
+    'Sigmar One', 'Wendy One', 'Ceviche One', 'Fredericka the Great', 'Rye',
+    'Sancreek', 'Smokum', 'Creepster', 'Nosifer', 'Eater',
+    'Wallpoet', 'Plaster', 'Megrim', 'Zen Dots',
     // ── Handwriting 手写/书法 ──
     'Permanent Marker', 'Pacifico', 'Lobster', 'Satisfy', 'Dancing Script',
     'Caveat', 'Kalam', 'Patrick Hand', 'Indie Flower', 'Shadows Into Light',
@@ -98,17 +115,24 @@ const GOOGLE_FONTS = [
     'Homemade Apple', 'Just Another Hand', 'Nothing You Could Do', 'Cedarville Cursive',
     'Gloria Hallelujah', 'Gochi Hand', 'Coming Soon', 'La Belle Aurore',
     'Pangolin', 'Sue Ellen Francisco', 'Schoolbell', 'Short Stack',
+    'Parisienne', 'Italianno', 'Mrs Saint Delafield', 'Petit Formal Script', 'Sriracha',
+    'Mali', 'Nanum Pen Script', 'Sedgwick Ave Display',
+    'Mr De Haviland', 'Herr Von Muellerhoff', 'Miss Fajardose', 'Rochester', 'Niconne',
+    'Yesteryear', 'Rancho',
     // ── Monospace 等宽 ──
     'Fira Code', 'JetBrains Mono', 'Source Code Pro', 'Roboto Mono',
     'Space Mono', 'IBM Plex Mono', 'Ubuntu Mono',
     'Inconsolata', 'PT Mono', 'Anonymous Pro', 'Cousine',
     'Share Tech Mono', 'Cutive Mono', 'Major Mono Display', 'Xanh Mono',
     'Azeret Mono', 'Red Hat Mono', 'Martian Mono', 'Geist Mono',
+    'Courier Prime', 'Special Elite', 'VT323', 'DM Mono',
+    'Nova Mono', 'Syne Mono', 'Overpass Mono',
     // ── 中文/CJK 特色 ──
     'LXGW WenKai', 'LXGW WenKai TC', 'Ma Shan Zheng',
     'ZCOOL XiaoWei', 'ZCOOL QingKe HuangYou', 'ZCOOL KuaiLe',
     'Liu Jian Mao Cao', 'Long Cang', 'Zhi Mang Xing',
     'Noto Sans Mono', 'Noto Serif Display',
+    'Noto Serif TC', 'Noto Serif HK', 'Shippori Mincho', 'Yuji Syuku',
 ];
 
 // 默认展开时优先展示的热门 Google 字体。
@@ -139,6 +163,26 @@ const POPULAR_GOOGLE_FONTS = [
     'Alfa Slab One', 'Lilita One', 'Passion One', 'Bangers', 'Lobster',
     'Lobster Two', 'Permanent Marker', 'Satisfy', 'Dancing Script', 'Kalam',
     'Indie Flower', 'Great Vibes', 'Allura', 'Courgette', 'Cookie',
+    'Syne', 'League Spartan', 'Hanken Grotesk', 'Be Vietnam Pro', 'Gabarito',
+    'Chakra Petch', 'Rajdhani', 'Michroma', 'Syncopate', 'Lexend Deca',
+    'Spline Sans', 'Epilogue', 'Cinzel', 'Cinzel Decorative', 'Castoro Titling',
+    'Marcellus', 'Vidaloka', 'Rozha One', 'Gloock', 'Bellefair',
+    'Caudex', 'Mate SC', 'Titan One', 'Luckiest Guy', 'Boogaloo',
+    'Carter One', 'Paytone One', 'Calistoga', 'Racing Sans One', 'Black Han Sans',
+    'Dela Gothic One', 'Bungee Spice', 'Chewy', 'Rowdies', 'Parisienne',
+    'Italianno', 'Mrs Saint Delafield', 'Petit Formal Script', 'Sriracha', 'Mali',
+    'Nanum Pen Script', 'Sedgwick Ave Display', 'Courier Prime', 'Special Elite', 'VT323',
+    'DM Mono', 'Noto Serif TC', 'Noto Serif HK', 'Shippori Mincho', 'Yuji Syuku',
+    'Antonio', 'Six Caps', 'Fjalla One', 'Akshar', 'Cabin Condensed',
+    'Saira Condensed', 'Saira Stencil One', 'Aldrich', 'Electrolize', 'Quantico',
+    'Audiowide', 'Oxanium', 'Gruppo', 'Julius Sans One', 'Cormorant Upright',
+    'Playfair Display SC', 'Chonburi', 'Antic Didone', 'Rufina', 'Trirong',
+    'Taviraj', 'Alike Angular', 'Bentham', 'Radley', 'Fanwood Text',
+    'Italiana', 'Sigmar One', 'Wendy One', 'Ceviche One', 'Fredericka the Great',
+    'Rye', 'Sancreek', 'Smokum', 'Creepster', 'Nosifer',
+    'Eater', 'Wallpoet', 'Plaster', 'Megrim', 'Zen Dots',
+    'Mr De Haviland', 'Herr Von Muellerhoff', 'Miss Fajardose', 'Rochester', 'Niconne',
+    'Yesteryear', 'Rancho', 'Nova Mono', 'Syne Mono', 'Overpass Mono',
     // 欧洲语言 / 拉丁扩展 / 希腊语 / 西里尔文常用
     'Noto Sans', 'Noto Serif', 'Noto Sans Display', 'Noto Serif Display',
     'Noto Sans Mono', 'Noto Sans Georgian', 'Noto Serif Georgian',
@@ -847,11 +891,11 @@ class ReelsFontManager {
         const name = String(fontName || '');
         const lower = name.toLowerCase();
         let category = 'sans';
-        if (lower.includes('serif') || ['georgia', 'times new roman', 'lora', 'merriweather', 'garamond', 'baskerville', 'bodoni', 'prata', 'cardo', 'literata'].some(x => lower.includes(x))) category = 'serif';
-        if (lower.includes('mono') || lower.includes('code') || lower.includes('console') || lower.includes('courier')) category = 'mono';
-        if (lower.includes('script') || lower.includes('hand') || lower.includes('cursive') || ['pacifico', 'lobster', 'caveat', 'kalam', 'satisfy'].some(x => lower.includes(x))) category = 'script';
-        if (['anton', 'bebas', 'display', 'black', 'condensed', 'poster', 'bungee', 'orbitron', 'righteous', 'fatface', 'slab', 'impact'].some(x => lower.includes(x))) category = 'display';
-        if (/[\u4e00-\u9fff]/.test(name) || lower.includes('noto sans sc') || lower.includes('noto serif sc') || lower.includes('kaiti') || lower.includes('heiti') || lower.includes('song') || lower.includes('wenkai')) category = 'cjk';
+        if (lower.includes('serif') || ['georgia', 'times new roman', 'lora', 'merriweather', 'garamond', 'baskerville', 'bodoni', 'prata', 'cardo', 'literata', 'cinzel', 'castoro', 'marcellus', 'vidaloka', 'rozha', 'gloock', 'bellefair', 'caudex', 'mate sc', 'cormorant', 'playfair', 'chonburi', 'didone', 'rufina', 'trirong', 'taviraj', 'alike', 'bentham', 'radley', 'fanwood', 'italiana'].some(x => lower.includes(x))) category = 'serif';
+        if (lower.includes('mono') || lower.includes('code') || lower.includes('console') || lower.includes('courier') || ['special elite', 'vt323'].some(x => lower.includes(x))) category = 'mono';
+        if (lower.includes('script') || lower.includes('hand') || lower.includes('cursive') || ['pacifico', 'lobster', 'caveat', 'kalam', 'satisfy', 'parisienne', 'italianno', 'delafield', 'sriracha', 'mali', 'sedgwick', 'haviland', 'muellerhoff', 'fajardose', 'rochester', 'niconne', 'yesteryear', 'rancho'].some(x => lower.includes(x))) category = 'script';
+        if (['anton', 'bebas', 'display', 'black', 'condensed', 'poster', 'bungee', 'orbitron', 'righteous', 'fatface', 'slab', 'impact', 'titan one', 'luckiest guy', 'boogaloo', 'carter one', 'paytone one', 'calistoga', 'racing sans', 'dela gothic', 'chewy', 'rowdies', 'sigmar one', 'wendy one', 'ceviche one', 'fredericka', 'rye', 'sancreek', 'smokum', 'creepster', 'nosifer', 'eater', 'wallpoet', 'plaster', 'megrim', 'zen dots'].some(x => lower.includes(x))) category = 'display';
+        if (/[\u4e00-\u9fff]/.test(name) || lower.includes('noto sans sc') || lower.includes('noto serif sc') || lower.includes('noto serif tc') || lower.includes('noto serif hk') || lower.includes('shippori mincho') || lower.includes('yuji syuku') || lower.includes('kaiti') || lower.includes('heiti') || lower.includes('song') || lower.includes('wenkai')) category = 'cjk';
 
         const regions = [];
         if (lower.includes('arabic') || ['cairo', 'tajawal', 'amiri', 'almarai', 'kufi', 'naskh'].some(x => lower.includes(x))) regions.push('arabic');
@@ -949,6 +993,106 @@ class ReelsFontManager {
             'Lobster': 'Lobster (手写)', 'Satisfy': 'Satisfy (手写)',
             'Permanent Marker': 'Permanent Marker (手写)',
             'Press Start 2P': 'Press Start 2P (像素)',
+            'Syne': 'Syne (先锋几何无衬线)',
+            'League Spartan': 'League Spartan (爆款粗黑无衬线)',
+            'Hanken Grotesk': 'Hanken Grotesk (现代新怪诞)',
+            'Be Vietnam Pro': 'Be Vietnam Pro (高清口播无衬线)',
+            'Gabarito': 'Gabarito (圆润几何无衬线)',
+            'Chakra Petch': 'Chakra Petch (赛博机甲切角)',
+            'Rajdhani': 'Rajdhani (电竞窄体无衬线)',
+            'Michroma': 'Michroma (科幻宽体无衬线)',
+            'Syncopate': 'Syncopate (电影预告宽体)',
+            'Lexend Deca': 'Lexend Deca (高易读字幕体)',
+            'Spline Sans': 'Spline Sans (现代科技UI)',
+            'Epilogue': 'Epilogue (现代人文无衬线)',
+            'Cinzel': 'Cinzel (古典罗马碑刻衬线)',
+            'Cinzel Decorative': 'Cinzel Decorative (华丽罗马装饰衬线)',
+            'Castoro Titling': 'Castoro Titling (古典精雕标题衬线)',
+            'Marcellus': 'Marcellus (古罗马电影衬线)',
+            'Vidaloka': 'Vidaloka (时尚水滴衬线)',
+            'Rozha One': 'Rozha One (高对比海报粗衬线)',
+            'Gloock': 'Gloock (摩登杂志高对比衬线)',
+            'Bellefair': 'Bellefair (文艺复兴优雅衬线)',
+            'Caudex': 'Caudex (中世纪古典书卷衬线)',
+            'Mate SC': 'Mate SC (古典小型大写衬线)',
+            'Titan One': 'Titan One (3D圆润爆款卡通)',
+            'Luckiest Guy': 'Luckiest Guy (美式综艺街头粗黑)',
+            'Boogaloo': 'Boogaloo (复古摇滚活力标题)',
+            'Carter One': 'Carter One (斜切美式运动海报)',
+            'Paytone One': 'Paytone One (厚重圆角强冲击)',
+            'Calistoga': 'Calistoga (复古报刊圆润粗衬线)',
+            'Racing Sans One': 'Racing Sans One (极速赛车斜体)',
+            'Black Han Sans': 'Black Han Sans (超粗黑重锤标题)',
+            'Dela Gothic One': 'Dela Gothic One (日系潮流扁平超粗黑)',
+            'Bungee Spice': 'Bungee Spice (立体炽热渐变展示体)',
+            'Chewy': 'Chewy (Q弹果冻零食风)',
+            'Rowdies': 'Rowdies (粗犷街头展示体)',
+            'Parisienne': 'Parisienne (法式浪漫连笔手写)',
+            'Italianno': 'Italianno (意式贵族纤细书法)',
+            'Mrs Saint Delafield': 'Mrs Saint Delafield (古典羽毛笔签名)',
+            'Petit Formal Script': 'Petit Formal Script (精致请柬手写)',
+            'Sriracha': 'Sriracha (自然马克笔手写)',
+            'Mali': 'Mali (可爱治愈手账圆体)',
+            'Nanum Pen Script': 'Nanum Pen Script (清新钢笔手写)',
+            'Sedgwick Ave Display': 'Sedgwick Ave Display (街头涂鸦刷子手写)',
+            'Courier Prime': 'Courier Prime (标准电影剧本打字机)',
+            'Special Elite': 'Special Elite (旧色带斑驳打字机)',
+            'VT323': 'VT323 (复古CRT终端像素等宽)',
+            'DM Mono': 'DM Mono (极简设计感等宽)',
+            'Noto Serif TC': 'Noto Serif TC (思源宋体繁体)',
+            'Noto Serif HK': 'Noto Serif HK (思源宋体香港)',
+            'Shippori Mincho': 'Shippori Mincho (日系映画高级明朝体)',
+            'Yuji Syuku': 'Yuji Syuku (佑字宿毛笔书道汉字)',
+            'Antonio': 'Antonio (美式高瘦窄体无衬线)',
+            'Six Caps': 'Six Caps (超极窄高挑大写标题)',
+            'Fjalla One': 'Fjalla One (北欧硬朗展示无衬线)',
+            'Akshar': 'Akshar (现代锐利几何无衬线)',
+            'Cabin Condensed': 'Cabin Condensed (紧凑人文窄体无衬线)',
+            'Saira Condensed': 'Saira Condensed (竞技赛车窄体无衬线)',
+            'Saira Stencil One': 'Saira Stencil One (军事工业镂空喷漆)',
+            'Aldrich': 'Aldrich (圆角科幻机甲无衬线)',
+            'Electrolize': 'Electrolize (赛博电子几何无衬线)',
+            'Quantico': 'Quantico (战术特工切角无衬线)',
+            'Audiowide': 'Audiowide (宽体电音未来科技)',
+            'Oxanium': 'Oxanium (电竞HUD方形科幻)',
+            'Gruppo': 'Gruppo (极简纤细未来宽体)',
+            'Julius Sans One': 'Julius Sans One (纤细轻奢全大写无衬线)',
+            'Cormorant Upright': 'Cormorant Upright (古典诗意直立斜体衬线)',
+            'Playfair Display SC': 'Playfair Display SC (高定杂志小型大写衬线)',
+            'Chonburi': 'Chonburi (复古高对比粗衬线标题)',
+            'Antic Didone': 'Antic Didone (Vogue高定极细对比衬线)',
+            'Rufina': 'Rufina (现代刀锋艺术衬线)',
+            'Trirong': 'Trirong (古典丝滑叙事衬线)',
+            'Taviraj': 'Taviraj (学院派书卷衬线)',
+            'Alike Angular': 'Alike Angular (棱角雕刻人文衬线)',
+            'Bentham': 'Bentham (19世纪英伦古典印刷衬线)',
+            'Radley': 'Radley (温润手工雕刻衬线)',
+            'Fanwood Text': 'Fanwood Text (经典美式小说电影衬线)',
+            'Italiana': 'Italiana (意式极细奢华高定衬线)',
+            'Sigmar One': 'Sigmar One (超厚重美式卡通爆款)',
+            'Wendy One': 'Wendy One (灵动粗犷街头大字)',
+            'Ceviche One': 'Ceviche One (动感笔刷粗黑展示体)',
+            'Fredericka the Great': 'Fredericka the Great (复古手绘粉笔蚀刻体)',
+            'Rye': 'Rye (西部牛仔木刻海报体)',
+            'Sancreek': 'Sancreek (19世纪美式复古招牌)',
+            'Smokum': 'Smokum (西部通缉令复古粗衬线)',
+            'Creepster': 'Creepster (美式惊悚怪诞滴落体)',
+            'Nosifer': 'Nosifer (暗黑哥特溶蚀特效体)',
+            'Eater': 'Eater (暗夜诡谲惊悚标题体)',
+            'Wallpoet': 'Wallpoet (街头硬核工业涂鸦体)',
+            'Plaster': 'Plaster (先锋几何块面超宽体)',
+            'Megrim': 'Megrim (前卫几何折线艺术体)',
+            'Zen Dots': 'Zen Dots (未来主义圆点科技体)',
+            'Mr De Haviland': 'Mr De Haviland (好莱坞复古贵族签名)',
+            'Herr Von Muellerhoff': 'Herr Von Muellerhoff (古典皇家铜版画花体)',
+            'Miss Fajardose': 'Miss Fajardose (华丽纤长羽毛笔花体)',
+            'Rochester': 'Rochester (维多利亚英伦优雅书法)',
+            'Niconne': 'Niconne (柔美复古斜体手写)',
+            'Yesteryear': 'Yesteryear (美式复古画报连笔字)',
+            'Rancho': 'Rancho (美式阳光复古手刷体)',
+            'Nova Mono': 'Nova Mono (几何圆润科幻等宽)',
+            'Syne Mono': 'Syne Mono (先锋艺术实验等宽)',
+            'Overpass Mono': 'Overpass Mono (工业仪表盘高清等宽)',
         };
 
         const googleFontsSet = this._googleFontsFull || new Set(GOOGLE_FONTS);
@@ -1759,7 +1903,7 @@ class ReelsFontManager {
                 return mB - mA;
             });
             
-            const toRender = filtered.slice(0, 150);
+            const toRender = filtered.slice(0, 450);
             
             for (const font of toRender) {
                 const meta = getMetadata(font);
