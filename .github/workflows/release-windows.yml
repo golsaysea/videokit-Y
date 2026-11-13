@@ -153,7 +153,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-15
+            runner: macos-26
           - arch: x64
             runner: macos-15-intel
     steps:
