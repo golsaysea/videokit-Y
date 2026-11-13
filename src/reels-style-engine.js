@@ -584,7 +584,7 @@ function prepareSubtitlePresetBatchImport(bundles, existingPresets = {}) {
 const PRESET_STORAGE_KEY = 'reels_subtitle_presets';
 let _lastSubtitlePresetSaveError = '';
 function getLastPresetSaveError() { return _lastSubtitlePresetSaveError; }
-const MAX_PRESETS = 200;
+const MAX_PRESETS = 500;
 
 const BUILTIN_PRESETS = {
     // ── 爆贴底框系列 ──
@@ -4878,6 +4878,125 @@ const PRESET_CATEGORIES = {
         '红橙渐变_硬阴影',
         '霓虹双色发光',
     ],
+    '🌟 网络爆款 · 达人同款 (2025-2026)': [
+        '💥 Hormozi_黄金双词强冲击',
+        '🟢 Hormozi_电光绿胶囊跳词',
+        '🔴 Hormozi_白底红高亮硬核词',
+        '💎 Iman_黑奢极简白金微发光',
+        '📒 AliAbdaal_纸张高亮荧光笔',
+        '🦍 MrBeast_超级爆贴漫画黄',
+        '🦁 Belmar_黑金老钱细衬线',
+        '🔥 Goggins_铁血粗犷撕裂红',
+        '✨ Submagic_冰蓝胶囊弹跳',
+        '🚀 Opus_病毒三词渐变闪切',
+    ],
+    '🎬 电影纪录 · 杂志美学': [
+        '📰 Vox_暖黄信息条高亮显字',
+        '🌍 NatGeo_国家地理黄框纪实',
+        '🎥 Netflix_暗夜剧集经典白字',
+        '🎞️ Criterion_艺术电影暖黄衬线',
+        '🗞️ NYT_时报黑白衬线社论',
+        '📻 BBC_新闻底部深蓝播报条',
+        '🌺 Vogue_高定黑红斜体大片',
+        '🧱 Economist_锐利红框时评体',
+        '🔬 Wired_未来科技等宽黑条',
+        '📼 IMAX_宽银幕柔光纪实灰蓝',
+    ],
+    '⚡ 动能焦点 · 高保留排印': [
+        '👑 三词叠排_神圣金白对比',
+        '🧊 三词叠排_极地冰钻蓝白',
+        '🍒 三词叠排_黑糖樱桃脉冲',
+        '🔍 双行焦点_薄荷冰绿放大',
+        '🍷 双行焦点_酒红玫瑰丝绒',
+        '⚡ 辉光叠排_电光青夜幕聚光',
+        '🌋 辉光叠排_熔岩金橙暗角',
+        '🍇 辉光叠排_暗夜葡萄霓虹紫',
+        '📐 方阵排版_块状高张力拼图',
+        '🎯 独词重击_全屏巨字快切',
+        '🪜 动态混排_霓虹阶梯错位',
+        '🫧 随机气泡_马卡龙立体弹卡',
+    ],
+    '🕹️ 赛博霓虹 · Y2K电竞故障': [
+        '🤖 赛博2077_霓虹青黄双描边',
+        '🌇 合成波80s_落日紫粉渐变',
+        '👾 Y2K千禧_液态银蓝镀铬字',
+        '🎮 像素街机_复古8Bit绿萤屏',
+        '🎯 瓦罗兰特_战术猩红极速线',
+        '⚡ 矩阵终端_骇客代码光束',
+        '🌈 故障RGB_三色错层爆闪',
+        '💿 蒸汽波_梦幻粉青玻璃光',
+        '🔮 全息镭射_多色光晕炫彩',
+        '🏁 极速电竞_荧光青白幻影拖尾',
+    ],
+    '💎 奢华3D立体 · 电影柔光': [
+        '🪙 白金浮雕3D_羽化冷冽显字',
+        '💚 翡翠玉金3D_帝王雕琢立体',
+        '🌸 玫瑰金绸3D_优雅高级浮雕',
+        '🔮 曜石极紫3D_深邃立体金属',
+        '🕯️ 圣光烛火_暖金背景泛光',
+        '🌌 星空聚光_深蓝暗角舞台光',
+        '🍷 红酒丝绒_暗红宝石圣光',
+        '🥂 香槟星辉_金粉渐变慢漂移',
+        '❄️ 极地水晶_蓝白透亮双扩边',
+        '☀️ 烈阳余晖_琥珀橙光晕消融',
+    ],
+    '🎼 多行滚动 · 灵修抒情': [
+        '🌈 滚词2.0_马卡龙彩虹四行跟读',
+        '🔥 滚词2.0_盛夏烈焰彩虹累积',
+        '🌿 滚词_森林晨露绿金羽跟读',
+        '🕊️ 滚词_晨曦白鸽珍珠白金跟读',
+        '✝️ 滚词_圣殿鎏金十字光跟读',
+        '🌙 午夜祈祷_深靛蓝月光渐亮',
+        '🌅 日出盼望_珊瑚粉金三行歌词',
+        '🌧️ LoFi雨夜_靛灰温柔三行滚',
+        '🎸 民谣木吉他_暖棕奶油歌词滚动',
+        '🔥 励志晨跑_暗黑深灰滚词点亮',
+        '🖋️ 诗歌墨韵_钢笔落墨逐词浮现',
+        '🌸 樱花物语_花瓣粉紫三行诗',
+    ],
+    '✂️ 拼贴剪报 · 手账笔刷底衬': [
+        '📰 头条快讯_大号斜体剪报撕纸',
+        '🕰️ 复古档案_暖褐打字机剪报',
+        '🍵 日式手账_奶油宣纸墨绿字',
+        '📦 快递标签_牛皮纸白边黑粗字',
+        '✂️ 悬疑档案_杂志混乱剪贴块',
+        '📐 学霸笔记_方格便签红蓝批注',
+        '👑 皇室谕令_烫金羊皮深红朱批',
+        '🚨 突发新闻_红底白字剪报贴',
+        '🎞️ 暗夜导演_黑金胶片贴纸框',
+        '🌟 鎏金半底条_高定金刷衬字',
+        '🌷 莫兰迪玫瑰_手绘半透笔刷',
+        '🖍️ 荧光马克笔_重点标黄划重点',
+    ],
+    '✨ 物理动效 · 激光打字机': [
+        '🫧 果冻Q弹_青柠糖果逐字挤压',
+        '🏄 海洋浪潮_碧蓝浪花逐字律动',
+        '🏀 街球灌篮_橙黑重锤逐字落弹',
+        '🎆 礼花绽放_玫瑰紫金逐字弹裂',
+        '☁️ 云朵轻飘_奶油温柔逐字上浮',
+        '💥 舞台中央_电蓝白字中心扩散',
+        '⌨️ 机械键盘_暗绿黑框敲击光标',
+        '🔭 推进打字_大银幕缩放特写',
+        '📷 虚实对焦_浅景深模糊转清晰',
+        '⚡ 金色激光_底线极速扫描显字',
+        '❄️ 极光碧蓝_底线冰晶扫光显字',
+        '📊 红金进度条_连体横擦进场',
+        '🔥 节奏闪光_电音节拍闪亮高光',
+        '🪶 轻羽消融_温柔斜体逐段羽擦',
+        '✝️ 启示粗斜刷_人声逐字羽化显字',
+    ],
+    '🎧 播客口播 · 极简商业': [
+        '🍎 苹果极简_纯白小字高质感',
+        '🎙️ JoeRogan_硬核播客金边黑底',
+        '💼 创始人访谈_深蓝磨砂圆角卡片',
+        '🍃 清新vlog_薄荷绿白胶囊小字',
+        '🍑 蜜桃甜心_温柔粉橘美妆口播',
+        '☕ 咖啡日常_拿铁棕底暖白文青',
+        '⚡ 短视频科普_黑白极简高反差',
+        '📈 财商干货_华尔街深绿流金词',
+        '🎧 双语对照_柔青紫渐变高级词',
+        '🌙 深夜故事_温暖低饱和奶杏跟读',
+    ],
 };
 
 function getPresetsByCategory() {
@@ -5035,7 +5154,7 @@ function exportSubtitlePresets() {
     return JSON.stringify({ default: data.default || {}, presets: userPresets }, null, 2);
 }
 
-function importSubtitlePresets(jsonString, overwriteConflicts = false) {
+function importSubtitlePresets(jsonString, overwriteConflicts = false, defaultGroup = '') {
     const result = { added: [], conflicts: [], skipped: [], duplicates: [] };
     try {
         const incoming = JSON.parse(jsonString);
@@ -5045,6 +5164,8 @@ function importSubtitlePresets(jsonString, overwriteConflicts = false) {
             data.default = extractStyleKeys(incoming.default);
         }
         const presets = data.presets || {};
+        data.presetGroups = data.presetGroups || {};
+        const groupLabel = String(defaultGroup || '').trim();
         const allExistingPresets = loadSubtitlePresets().presets || {};
         const existingContent = new Map();
         for (const [existingName, existingStyle] of Object.entries(allExistingPresets)) {
@@ -5052,7 +5173,10 @@ function importSubtitlePresets(jsonString, overwriteConflicts = false) {
             if (!existingContent.has(fingerprint)) existingContent.set(fingerprint, existingName);
         }
         // 收集内置预设名，导入时跳过纯内置预设（避免污染用户存储）
-        const builtinNames = new Set(Object.keys(BUILTIN_PRESETS));
+        const builtinNames = new Set([
+            ...Object.keys(BUILTIN_PRESETS),
+            ...((typeof window !== 'undefined' && window.REELS_BUILTIN_PRESETS) ? Object.keys(window.REELS_BUILTIN_PRESETS) : []),
+        ]);
         for (const [name, style] of Object.entries(incoming.presets || {})) {
             const normalizedStyle = extractStyleKeys(style);
             const fingerprint = subtitleStyleFingerprint(normalizedStyle);
@@ -5076,6 +5200,7 @@ function importSubtitlePresets(jsonString, overwriteConflicts = false) {
                 }
                 if (overwriteConflicts) {
                     presets[name] = normalizedStyle;
+                    if (groupLabel) data.presetGroups[name] = groupLabel;
                     allExistingPresets[name] = normalizedStyle;
                     existingContent.clear();
                     for (const [existingName, existingStyle] of Object.entries(allExistingPresets)) {
@@ -5093,6 +5218,7 @@ function importSubtitlePresets(jsonString, overwriteConflicts = false) {
                 continue;
             }
             presets[name] = normalizedStyle;
+            if (groupLabel) data.presetGroups[name] = groupLabel;
             allExistingPresets[name] = normalizedStyle;
             existingContent.set(fingerprint, name);
             result.added.push(name);

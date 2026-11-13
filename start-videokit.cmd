@@ -20,14 +20,12 @@ call npm.cmd ci --no-audit --no-fund
 if errorlevel 1 goto failed
 :ready
 if /i "%~1"=="--check" goto check
-echo Starting VideoKit on port %VITE_PORT%...
-echo Close the application to stop the development server.
-call node_modules\.bin\concurrently.cmd --kill-others --success first "node node_modules/vite/bin/vite.js --host localhost" "node node_modules/wait-on/bin/wait-on --timeout 60000 http://localhost:%VITE_PORT% && node scripts/run-electron-dev.js"
+node scripts\dev-desktop.cjs
 if errorlevel 1 goto failed
 popd
 exit /b 0
 :check
-node -e "const fs=require('fs');for(const p of ['electron','vite','concurrently','wait-on'])require.resolve(p);if(!fs.existsSync(require('electron')))throw Error('Electron executable missing');console.log('VideoKit dependencies OK')"
+node -e "const fs=require('fs');for(const p of ['electron','vite'])require.resolve(p);if(!fs.existsSync(require('electron')))throw Error('Electron executable missing');console.log('VideoKit dependencies OK')"
 if errorlevel 1 goto failed
 popd
 exit /b 0

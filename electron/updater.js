@@ -443,21 +443,7 @@ async function portableUpdate(info) {
             version,
         });
 
-        // 提示重启
-        const { response } = await dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: '绿色版更新完成',
-            message: `v${version} 已准备就绪`,
-            detail: '重启应用即可使用新版本。是否立即重启？',
-            buttons: ['立即重启', '稍后'],
-            defaultId: 0,
-            cancelId: 1,
-        });
-
-        if (response === 0) {
-            await prepareForUpdateRestart();
-            launchPortableRestart();
-        }
+        // 不再弹出阻塞式重启提示窗，由渲染层右上角更新提醒卡片引导用户重启
     } catch (err) {
         log(`[Updater-Portable] 更新失败: ${err.message}`);
         sendToRenderer('update-status', {
@@ -499,25 +485,11 @@ async function portableCheckForUpdates() {
             message: `发现新版本 v${info.version} (${channelLabel})`,
             version: info.version,
             isBeta,
+            zipSize: info.zipSize || 0,
             releaseNotes: info.releaseNotes,
         });
 
-        // 弹窗提示
-        const cautionNotice = '【温馨提醒】\n新版本可能包含较多新特性或存在未预期的不稳定因素。如果当前老版本使用顺畅且满足日常制作需求，不建议频繁更新；若升级新版本后遇到任何异常，请换回老版本继续制作。\n';
-        const detail = `${cautionNotice}\n绿色版将直接覆盖当前目录更新。\n下载大小: ${(info.zipSize / 1024 / 1024).toFixed(1)} MB\n\n更新内容：\n${info.releaseNotes || '无更新说明'}\n\n是否立即下载更新？`;
-        const { response } = await dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: `发现${isBeta ? '测试' : '新'}版本`,
-            message: `${channelLabel} v${info.version} 可用！`,
-            detail,
-            buttons: ['下载更新', '稍后提醒'],
-            defaultId: 0,
-            cancelId: 1,
-        });
-
-        if (response === 0) {
-            await portableUpdate(info);
-        }
+        // 不再弹出阻塞式更新询问框，由渲染层右上角更新提醒卡片非阻塞提示
 
         return { success: true, version: info.version };
     } catch (err) {
@@ -576,8 +548,13 @@ function initAutoUpdater(win, logFn) {
 
         // IPC: 安装更新并重启（绿色版直接重启）
         ipcMain.handle('install-update', async () => {
-            await prepareForUpdateRestart();
-            launchPortableRestart();
+            try {
+                await prepareForUpdateRestart();
+                launchPortableRestart();
+                return { success: true };
+            } catch (error) {
+                return { success: false, error: error?.message || String(error) };
+            }
         });
 
         // IPC: 获取/设置通道
@@ -660,24 +637,7 @@ function initAutoUpdater(win, logFn) {
             releaseDate: info.releaseDate || '',
         });
 
-        // 弹窗提示用户
-        const cautionNotice = '【温馨提醒】\n新版本可能包含较多新特性或存在未预期的不稳定因素。如果当前老版本使用顺畅且满足日常制作需求，不建议频繁更新；若升级新版本后遇到任何异常，请换回老版本继续制作。\n';
-        const detail = (isBeta
-            ? '🧪 这是一个测试版本，可能包含未完善的功能。\n\n'
-            : '') + `${cautionNotice}\n更新内容：\n${notesText}\n\n是否立即下载更新？`;
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: `发现${isBeta ? '测试' : '新'}版本`,
-            message: `${channelLabel} v${info.version} 可用！`,
-            detail,
-            buttons: ['下载更新', '稍后提醒'],
-            defaultId: 0,
-            cancelId: 1,
-        }).then(({ response }) => {
-            if (response === 0) {
-                autoUpdater.downloadUpdate();
-            }
-        });
+        // 不再弹出阻塞式更新询问框，由渲染层右上角更新提醒卡片非阻塞引导下载
     });
 
     autoUpdater.on('update-not-available', (info) => {
@@ -708,21 +668,7 @@ function initAutoUpdater(win, logFn) {
             isBeta,
         });
 
-        // 弹窗提示重启
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: '更新已就绪',
-            message: `v${info.version} 已下载完成`,
-            detail: '重启应用即可完成更新。是否立即重启？',
-            buttons: ['立即重启', '稍后'],
-            defaultId: 0,
-            cancelId: 1,
-        }).then(async ({ response }) => {
-            if (response === 0) {
-                await prepareForUpdateRestart();
-                autoUpdater.quitAndInstall(false, true);
-            }
-        });
+        // 不再弹出阻塞式重启提示窗，由渲染层右上角更新提醒卡片引导重启
     });
 
     autoUpdater.on('error', (error) => {
@@ -757,8 +703,13 @@ function initAutoUpdater(win, logFn) {
 
     // 安装更新并重启
     ipcMain.handle('install-update', async () => {
-        await prepareForUpdateRestart();
-        autoUpdater.quitAndInstall(false, true);
+        try {
+            await prepareForUpdateRestart();
+            autoUpdater.quitAndInstall(false, true);
+            return { success: true };
+        } catch (error) {
+            return { success: false, error: error?.message || String(error) };
+        }
     });
 
     // 获取/设置更新通道

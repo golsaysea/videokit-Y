@@ -36,7 +36,7 @@ const REELS_TASK_EXTRA_FIELDS = [
     'customDuration', 'duration', 'alignSource', '_autoEditSource',
     // 文案自动剪辑送入 Reels 时保留来源工程、原片和审核快照，供以后追溯和二剪。
     'autoEditProject',
-    '_overlayPresetName', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName',
+    '_overlayPresetName', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName', '_batchTabGroup',
     'firstSubtitleStyleOverride',
     'writingTitle', 'writingSplit',
 ];
@@ -47,7 +47,7 @@ function _clonePlain(value) {
         // 使用 replacer 过滤掉 _ 开头的运行时临时属性
         // (如 _allOverlays 造成循环引用, _renderedX/_renderedY 等渲染缓存)
         return JSON.parse(JSON.stringify(value, (key, val) => {
-            if (key && key.startsWith('_') && !['_subtitlePreset', '_overlayPresetName', '_autoEditSource', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName'].includes(key)) return undefined;
+            if (key && key.startsWith('_') && !['_subtitlePreset', '_overlayPresetName', '_autoEditSource', '_exportSelected', '_folderQueueId', '_folderQueueName', '_batchTabId', '_batchTabName', '_batchTabGroup'].includes(key)) return undefined;
             return val;
         }));
     } catch (e) {
@@ -70,7 +70,7 @@ function _clonePlain(value) {
  * @returns {object} 项目数据
  */
 function collectProjectData(state) {
-    const { tasks = [], backgroundLibrary = [], style = {}, exportOpts = {}, selectedIdx = -1 } = state;
+    const { tasks = [], backgroundLibrary = [], style = {}, exportOpts = {}, selectedIdx = -1, watermarks } = state;
 
     const tasksData = tasks.map(task => {
         const taskData = {
@@ -134,12 +134,19 @@ function collectProjectData(state) {
         return taskData;
     });
 
+    const resolvedWatermarks = Array.isArray(watermarks) && watermarks.length > 0
+        ? watermarks
+        : (typeof window !== 'undefined' && Array.isArray(window._reelsState?.watermarks) && window._reelsState.watermarks.length > 0
+            ? window._reelsState.watermarks
+            : null);
+
     return {
         version: PROJECT_VERSION,
         createdAt: new Date().toISOString(),
         app: 'VideoKit',
         style: JSON.parse(JSON.stringify(style)),
         exportOpts: JSON.parse(JSON.stringify(exportOpts)),
+        ...(resolvedWatermarks ? { watermarks: JSON.parse(JSON.stringify(resolvedWatermarks)) } : {}),
         tasks: tasksData,
         backgroundLibrary: JSON.parse(JSON.stringify(backgroundLibrary || [])),
         selectedIdx: selectedIdx,
@@ -228,6 +235,13 @@ function applyProjectData(data) {
         style: normalized.style || {},
         exportOpts: normalized.exportOpts || normalized.export_opts || {},
         selectedIdx: normalized.selectedIdx || normalized.curr_idx || 0,
+        ...(Array.isArray(normalized.tabs) && normalized.tabs.length > 0 ? {
+            tabs: normalized.tabs,
+            activeTabId: normalized.activeTabId || normalized.tabs[0]?.id || '',
+            nextTabId: normalized.nextTabId,
+            collapsedTabGroups: normalized.collapsedTabGroups || {},
+        } : {}),
+        ...(Array.isArray(normalized.watermarks) ? { watermarks: normalized.watermarks } : {}),
         warnings,
     };
 }
@@ -239,6 +253,26 @@ function applyProjectData(data) {
 function _normalizeProjectData(data) {
     const version = data.version || '1.0.0';
     const result = JSON.parse(JSON.stringify(data));
+    // 当工程文件采用多标签(tabs)结构而无顶级 tasks 列表时，展开各标签任务以便兼容单列表恢复。
+    if (!Array.isArray(result.tasks) && Array.isArray(result.tabs) && result.tabs.length > 0) {
+        const flatTasks = [];
+        result.tabs.forEach((tab, tabOrder) => {
+            if (!tab || !Array.isArray(tab.tasks)) return;
+            tab.tasks.forEach((rawTask, taskOrder) => {
+                if (!rawTask || typeof rawTask !== 'object') return;
+                flatTasks.push({
+                    ...rawTask,
+                    _batchProjection: true,
+                    _batchTabId: rawTask._batchTabId || tab.id || ('tab_' + (tabOrder + 1)),
+                    _batchTabName: rawTask._batchTabName || tab.name || ('??' + (tabOrder + 1)),
+                    _batchTabGroup: rawTask._batchTabGroup || tab.group || '',
+                    _batchTabOrder: tabOrder,
+                    _batchTaskOrder: taskOrder,
+                });
+            });
+        });
+        result.tasks = flatTasks;
+    }
 
     // 普通打字机过去没有独立的“未现字透明度”控件，却把缺失值当成
     // 100/255（或样式引擎的 0.4）来画。旧工程因此会露出后续灰字。

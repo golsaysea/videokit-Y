@@ -6,6 +6,10 @@ function resolveDefaultPythonPath(){
  const candidates=[
   path.join(__dirname,'vendor/python/python.exe'),
   path.join(__dirname,'..','vendor','windows','python','python.exe'),
+  path.join(__dirname,'..','vendor','python','python.exe'),
+  path.join(__dirname,'..','dist-electron','win-unpacked','resources','vendor','python','python.exe'),
+  // Mirror ffmpeg.js installed-vendor fallback for unpackaged dev/source runs on Windows.
+  process&&process.platform==='win32'&&process.env&&process.env.LOCALAPPDATA?path.join(process.env.LOCALAPPDATA,'Programs','videokit','resources','vendor','python','python.exe'):'',
   process.resourcesPath?path.join(process.resourcesPath,'vendor','python','python.exe'):'',
  ].filter(Boolean);
  return candidates.find(p=>fs.existsSync(p))||path.join(__dirname,'vendor/python/python.exe');

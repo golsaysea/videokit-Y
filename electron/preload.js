@@ -585,6 +585,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // 扫描本地字体
     scanFonts: () => ipcRenderer.invoke('scan-fonts'),
     fetchGoogleFonts: () => ipcRenderer.invoke('fetch-google-fonts'),
+    fetchRemotePresetPack: (url) => ipcRenderer.invoke('fetch-remote-preset-pack', url),
 
     // 读取文件内容（支持跨安装版/绿色版共享目录解析）
     readFileText: (filePath) => {
@@ -832,6 +833,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // 模板多窗口
     openTemplateWindow: (templateId, templateName) => ipcRenderer.invoke('open-template-window', templateId, templateName),
+    setTitlebarTheme: (themeInfo) => ipcRenderer.invoke('window:set-titlebar-theme', themeInfo),
     triggerSystemShutdown: () => ipcRenderer.invoke('system:shutdown-now'),
     cancelSystemShutdown: () => ipcRenderer.invoke('system:cancel-shutdown'),
 });

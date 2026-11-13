@@ -3245,7 +3245,7 @@ async function autoEditByScript(opts = {}) {
             const args = ['-y'];
             args.push('-ss', plan.start.toFixed(3));
             args.push('-to', plan.end.toFixed(3));
-            args.push('-i', clipPath);
+            args.push('-reinit_filter', '0', '-i', clipPath);
 
             const clipSpeeds = opts.clipSpeeds || opts.clip_speeds || {};
             const targetClipPath = plan.realClipPath || clipPath;
@@ -3279,19 +3279,21 @@ async function autoEditByScript(opts = {}) {
             }
 
             let filterComplex;
+            const colorNormalizeFilter = ffmpegService.buildStandardBt709Filter(clipPath);
             const keepSourceAudio = hasAudio && !(plan.isOpeningHook && plan.hookKeepAudio === false);
             if (keepSourceAudio) {
                 // 每段在输入寻址后必须清零 PTS 并用 aresample 对齐音画起点，防止 VFR/AI 生成视频在拼接后口型偏移或视频轨提前结束。
-                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},settb=1/${fps},setsar=1[v];[0:a]aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS,${atempoFilter},aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},${colorNormalizeFilter},fps=${fps},settb=1/${fps},setsar=1[v];[0:a]aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS,${atempoFilter},aformat=sample_rates=48000:channel_layouts=stereo[a]`;
             } else {
                 args.push('-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000');
-                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},fps=${fps},settb=1/${fps},setsar=1[v];[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a]`;
+                filterComplex = `[0:v]${videoRemoveFilter}setpts=${vPts}*(PTS-STARTPTS),${videoFitFilter}${scaleFilter ? `,${scaleFilter}` : ''},${colorNormalizeFilter},fps=${fps},settb=1/${fps},setsar=1[v];[1:a]asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo[a]`;
             }
 
             args.push(
                 '-filter_complex', filterComplex,
                 '-map', '[v]', '-map', '[a]',
-                '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
+                '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+                ...ffmpegService.STANDARD_BT709_ENCODER_ARGS,
                 '-video_track_timescale', '90000',
                 '-c:a', 'aac', '-b:a', '192k',
                 '-avoid_negative_ts', 'make_zero',
@@ -3304,7 +3306,7 @@ async function autoEditByScript(opts = {}) {
             // 未变，就直接复制上次已编码的片段到本次临时拼接目录。
             const sourceForCache = plan.realClipPath || clipPath;
             const cacheKeyPayload = {
-                version: 4,
+                version: 5,
                 source: path.resolve(sourceForCache),
                 source_fingerprint: getAutoEditClipFingerprint(sourceForCache),
                 start: Number(plan.start.toFixed(3)),
@@ -3606,10 +3608,12 @@ async function autoEditByScript(opts = {}) {
                 total: 1,
                 message: '正在生成最终视频',
             });
+            const singleColorFilter = ffmpegService.buildStandardBt709Filter(tempClips[0]);
             await ffmpegService.runCommand('ffmpeg', [
-                '-y', '-i', tempClips[0],
-                '-vf', `${videoFitFilter},fps=${fps},setsar=1`,
+                '-y', '-reinit_filter', '0', '-i', tempClips[0],
+                '-vf', `${videoFitFilter},${singleColorFilter},fps=${fps},setsar=1`,
                 '-c:v', 'libx264', '-crf', String(crf), '-preset', preset,
+                ...ffmpegService.STANDARD_BT709_ENCODER_ARGS,
                 '-c:a', 'aac', '-b:a', '192k',
                 outputPath,
             ], { timeout: 1800000 });

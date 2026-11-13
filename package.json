@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.6.0-beta.2",
+  "version": "4.6.0",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -19,7 +19,7 @@
     "start:web": "node bin/videokit-web-server.cjs",
     "build:desktop": "npm run build && electron-builder",
     "build:all": "npm run build && echo '✅ 网站版本已生成到 dist/' && electron-builder && echo '✅ 桌面版本已生成到 dist-electron/'",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:${VITE_PORT:-5173} && node scripts/run-electron-dev.js\"",
+    "electron:dev": "node scripts/dev-desktop.cjs",
     "electron:build": "npm run build && electron-builder",
     "start": "npm run electron:dev",
     "test": "node --test tests/*.test.js",
@@ -69,7 +69,8 @@
       "electron/**/*",
       "bin/**/*",
       "src/reels-subtitle-processor.js",
-      "scripts/cloudflare-hub-worker.js"
+      "scripts/cloudflare-hub-worker.js",
+      "scripts/cloudflare-hub-simple-worker.js"
     ],
     "mac": {
       "target": [

@@ -40,10 +40,7 @@ if errorlevel 1 (
 )
 
 :ready
-echo [启动] 正在启动 VideoKit (端口 %VITE_PORT%)...
-echo [提示] 关闭软件窗口即可自动停止此后台服务。
-echo.
-call node_modules\.bin\concurrently.cmd --kill-others --success first "node node_modules/vite/bin/vite.js --host localhost" "node node_modules/wait-on/bin/wait-on --timeout 60000 http://localhost:%VITE_PORT% && node scripts/run-electron-dev.js"
+node scripts\dev-desktop.cjs
 if errorlevel 1 goto failed
 popd
 exit /b 0

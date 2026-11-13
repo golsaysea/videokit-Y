@@ -133,6 +133,7 @@ const ANIM_TYPE_LABELS = [
     ['双行焦点放大', 'line_focus'],
     ['底线扫描显字', 'underline_sweep'],
     ['羽化擦除显字', 'feather_wipe'],
+    ['人声逐字羽化', 'speech_feather_wipe'],
     ['三词叠排(中词放大)', 'three_word_focus_stack'],
     ['四行滚词(彩虹跟读)', 'rolling_rainbow_karaoke'],
     ['三行滚词(金羽跟读)', 'rolling_quill_karaoke'],
@@ -1008,31 +1009,31 @@ function computeFeatherWipeState(currentTime, segStart, segEnd, lineWidths, opts
     };
 }
 
-/**
- * Per-character reveal state for `feather_wipe`.
- * - White fill (`fillAlpha`) leads slightly at the feather front as a soft white mist.
- * - 3D extrusion & stroke (`strokeAlpha`, `shadowAlpha`) solidify right behind the white mist.
- */
-function computeFeatherWipeCharReveal(charCenterDist, sweepState) {
+function _computeLinearFeatherReveal(charCenterDist, sweepState, opts = {}) {
     if (!sweepState || !sweepState.active || sweepState.sweepProgress >= 0.999) {
         return { revealProgress: 1.0, fillAlpha: 1.0, strokeAlpha: 1.0, shadowAlpha: 1.0, dy: 0 };
     }
-    const win = Math.max(24, Number(sweepState.transitionWindow) || 96);
+    const win = Math.max(16, Number(sweepState.transitionWindow) || 96);
     const swept = Number(sweepState.sweptDist) || 0;
+    const leadRatio = opts.leadRatio ?? 0.55;
+    const strokeShift = opts.strokeShift ?? 0.10;
+    const fillPower = opts.fillPower ?? 0.70;
+    const strokePower = opts.strokePower ?? 1.65;
+    const shadowPower = opts.shadowPower ?? 1.75;
 
-    // Leading edge reaches character when swept >= charCenterDist - win * 0.55
-    const raw = (swept - (charCenterDist - win * 0.55)) / win;
+    const raw = (swept - (charCenterDist - win * leadRatio)) / win;
     if (raw <= 0.001) {
         return { revealProgress: 0.0, fillAlpha: 0.0, strokeAlpha: 0.0, shadowAlpha: 0.0, dy: 0 };
     }
     const clamped = Math.max(0.0, Math.min(1.0, raw));
     const revealProgress = easeOutCubic(clamped);
 
-    // White fill leads slightly (misty white front), while 3D outline/extrusion trails slightly and locks in
-    const fillAlpha = Math.min(1.0, Math.pow(revealProgress, 0.70));
-    const strokeRaw = Math.max(0.0, Math.min(1.0, (clamped - 0.10) / 0.90));
-    const strokeAlpha = Math.pow(strokeRaw, 1.65);
-    const shadowAlpha = Math.pow(strokeRaw, 1.75);
+    const fillAlpha = Math.min(1.0, Math.pow(revealProgress, fillPower));
+    const strokeDenom = Math.max(0.1, 1.0 - strokeShift);
+    const strokeRaw = Math.max(0.0, Math.min(1.0, (clamped - strokeShift) / strokeDenom));
+    const strokeBase = opts.useEasedStroke ? easeOutCubic(strokeRaw) : strokeRaw;
+    const strokeAlpha = Math.pow(strokeBase, strokePower);
+    const shadowAlpha = Math.pow(strokeBase, shadowPower);
 
     return {
         revealProgress,
@@ -1041,6 +1042,119 @@ function computeFeatherWipeCharReveal(charCenterDist, sweepState) {
         shadowAlpha,
         dy: 0,
     };
+}
+
+/**
+ * Per-character reveal state for `feather_wipe`.
+ * - White fill (`fillAlpha`) leads slightly at the feather front as a soft white mist.
+ * - 3D extrusion & stroke (`strokeAlpha`, `shadowAlpha`) solidify right behind the white mist.
+ */
+function computeFeatherWipeCharReveal(charCenterDist, sweepState) {
+    return _computeLinearFeatherReveal(charCenterDist, sweepState, {
+        leadRatio: 0.55,
+        strokeShift: 0.10,
+        fillPower: 0.70,
+        strokePower: 1.65,
+        shadowPower: 1.75,
+    });
+}
+
+/**
+ * Speech-Synced Character Feather Reveal (`speech_feather_wipe` / 人声逐字羽化).
+ * Matches viral bold-italic scripture Reels (e.g., Facebook Reel 1109400195335683):
+ * - Follows per-word spoken timestamps across fixed centered lines (falls back to smooth full-segment pace).
+ * - Uses a tight ~1-char transition band with synchronized white fill + thick black outline (no blurry white haze).
+ */
+function computeSpeechFeatherWipeState(currentTime, segStart, segEnd, lineWidths, opts = {}) {
+    const safeWidths = Array.isArray(lineWidths)
+        ? lineWidths.map(w => Math.max(0, Number(w) || 0))
+        : [];
+    const totalWidth = safeWidths.reduce((acc, w) => acc + w, 0);
+    const segDur = Math.max(0.05, (Number(segEnd) || 0) - (Number(segStart) || 0));
+    const now = Number(currentTime) || 0;
+    const elapsed = Math.max(0, now - (Number(segStart) || 0));
+
+    const fontSize = Math.max(16, Number(opts.fontSize) || 52);
+    const featherScale = Number(opts.featherWidth) > 0
+        ? Math.max(0.4, Math.min(2.2, Number(opts.featherWidth) * 3.0))
+        : 1.0;
+    const transitionWindow = Math.max(18, Math.min(56, fontSize * 0.72 * featherScale));
+
+    const anchors = Array.isArray(opts.wordAnchors) ? opts.wordAnchors : [];
+    let anchorDist = 0;
+    let sweepProgress = 0;
+
+    if (anchors.length > 0 && totalWidth > 0) {
+        const first = anchors[0];
+        const last = anchors[anchors.length - 1];
+        const tailSettling = Math.min(segEnd, last.end + 0.08);
+        if (now <= first.start) {
+            anchorDist = 0;
+            sweepProgress = 0;
+        } else if (now >= tailSettling || now >= segEnd - 1e-4) {
+            anchorDist = totalWidth;
+            sweepProgress = 1.0;
+        } else {
+            let matched = false;
+            for (let i = 0; i < anchors.length; i++) {
+                const a = anchors[i];
+                if (now >= a.start && now <= a.end) {
+                    const wf = a.end > a.start ? Math.max(0, Math.min(1, (now - a.start) / (a.end - a.start))) : 1;
+                    anchorDist = a.startDist + wf * Math.max(0, a.endDist - a.startDist);
+                    matched = true;
+                    break;
+                }
+                if (i < anchors.length - 1 && now > a.end && now < anchors[i + 1].start) {
+                    anchorDist = a.endDist;
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                anchorDist = totalWidth;
+            }
+            sweepProgress = Math.max(0, Math.min(0.998, anchorDist / totalWidth));
+        }
+    } else {
+        const customDur = Number(opts.sweepDuration);
+        const effectiveDur = (Number.isFinite(customDur) && customDur > 0)
+            ? Math.min(segDur, Math.max(0.2, customDur))
+            : Math.max(0.2, segDur * 0.92);
+        sweepProgress = effectiveDur > 0 ? Math.min(1.0, Math.max(0.0, elapsed / effectiveDur)) : 1.0;
+        anchorDist = sweepProgress * totalWidth;
+    }
+
+    const sweptDist = anchorDist
+        + sweepProgress * (transitionWindow * 0.55)
+        - (1 - sweepProgress) * (transitionWindow * 0.45);
+
+    return {
+        active: true,
+        isFeatherWipe: true,
+        isSpeechFeatherWipe: true,
+        sweepProgress,
+        rawProgress: sweepProgress,
+        sweptDist,
+        totalWidth,
+        transitionWindow,
+        ghostAlpha: 0.0,
+        activeLineIdx: -1,
+        barLocalLeft: 0,
+        barLocalRight: 0,
+        barAlpha: 0,
+        fontSize,
+    };
+}
+
+function computeSpeechFeatherWipeCharReveal(charCenterDist, sweepState) {
+    return _computeLinearFeatherReveal(charCenterDist, sweepState, {
+        leadRatio: 0.45,
+        strokeShift: 0.0,
+        useEasedStroke: true,
+        fillPower: 0.95,
+        strokePower: 1.0,
+        shadowPower: 1.08,
+    });
 }
 
 // Spectrum shape types
@@ -1097,6 +1211,8 @@ const ReelsAnimEngine = {
     computeUnderlineSweepCharReveal,
     computeFeatherWipeState,
     computeFeatherWipeCharReveal,
+    computeSpeechFeatherWipeState,
+    computeSpeechFeatherWipeCharReveal,
 };
 
 // Browser global

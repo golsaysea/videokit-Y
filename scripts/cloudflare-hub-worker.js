@@ -62,14 +62,17 @@ async function loadData(env) {
 }
 
 async function saveData(env, data) {
+  if (!env?.HUB_KV) {
+    const err = new Error('Worker 尚未绑定 KV 命名空间 HUB_KV，修改无法持久化保存。请在 Cloudflare Worker -> Settings -> Bindings 中添加 KV Namespace，Variable name 填 HUB_KV。');
+    err.status = 503;
+    throw err;
+  }
   const next = {
     ...DEFAULT_HUB_DATA,
     ...data,
     updated_at: new Date().toISOString(),
   };
-  if (env?.HUB_KV) {
-    await env.HUB_KV.put(KV_KEY, JSON.stringify(next, null, 2));
-  }
+  await env.HUB_KV.put(KV_KEY, JSON.stringify(next, null, 2));
   return next;
 }
 
@@ -112,7 +115,10 @@ function renderAdminHtml() {
   <div class="card">
     <h1>☁️ VideoKit 云端中控台 & 每日工程分发中心</h1>
     <div style="font-size:13px;color:#94a3b8;">将当前网页地址填进 VideoKit 客户端「☁️ 云端中控 · 日期贴」，即可一键同步全部 API Key 池并拉取每日 Google Drive 工程。</div>
-    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+    <div id="kv-warning" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(239,68,68,0.16);border:1px solid rgba(248,113,113,0.55);color:#fecaca;font-size:12.5px;line-height:1.5;">
+      ⚠️ <strong>未检测到 KV 绑定 (HUB_KV)</strong>：当前修改无法保存到云端！请前往 Cloudflare 控制台 → 你的 Worker → <b>Settings → Bindings → Add binding → KV Namespace</b>，Variable name 必须填写 <code>HUB_KV</code>，保存后刷新本页。
+    </div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
       <input id="token" type="password" placeholder="访问密码 HUB_TOKEN (如未设置可留空)" style="max-width:300px;">
       <button class="btn" onclick="loadConfig()">🔄 读取当前配置</button>
       <button class="btn btn-green" onclick="saveConfig()">💾 保存全部修改到云端</button>
@@ -134,26 +140,37 @@ function renderAdminHtml() {
 
   <div class="card">
     <h2>🔑 2. 远程 API Key 池配置（一行一个 Key，客户端自动并发轮询）</h2>
-    <div style="margin-bottom:12px;max-width:260px;">
-      <label>默认首选转录引擎</label>
-      <select id="primary_transcription">
-        <option value="groq">Groq (极速推荐)</option>
-        <option value="gladia">Gladia</option>
-        <option value="deepgram">Deepgram</option>
-      </select>
+    <div class="grid2" style="margin-bottom:12px;">
+      <div>
+        <label>默认首选转录引擎</label>
+        <select id="primary_transcription">
+          <option value="groq">Groq (极速推荐)</option>
+          <option value="gladia">Gladia</option>
+          <option value="deepgram">Deepgram</option>
+        </select>
+      </div>
+      <div>
+        <label>Gemini 默认文本模型</label>
+        <input id="gemini_model" placeholder="gemini-3.5-flash-lite">
+      </div>
     </div>
     <div class="grid2">
       <div><label>Groq Keys (一行一个)</label><textarea id="groq_keys" rows="5"></textarea></div>
       <div><label>Gladia Keys (一行一个)</label><textarea id="gladia_keys" rows="5"></textarea></div>
       <div><label>Deepgram Keys (一行一个)</label><textarea id="deepgram_keys" rows="4"></textarea></div>
-      <div><label>Gemini Keys (AI文案/命名/TTS，一行一个)</label><textarea id="gemini_keys" rows="4"></textarea></div>
-      <div style="grid-column:1 / -1;"><label>ElevenLabs Keys (配音 Key 池，一行一个)</label><textarea id="elevenlabs_keys" rows="4"></textarea></div>
+      <div><label>Gemini Keys (AI文案/命名，一行一个)</label><textarea id="gemini_keys" rows="4"></textarea></div>
+      <div><label>Gemini TTS Keys (可选·留空则共用 Gemini Keys)</label><textarea id="gemini_tts_keys" rows="4"></textarea></div>
+      <div><label>ElevenLabs Keys (配音 Key 池，一行一个)</label><textarea id="elevenlabs_keys" rows="4"></textarea></div>
     </div>
   </div>
 </div>
 <script>
 let state = { daily_projects: [] };
 document.getElementById('new-date').value = new Date().toISOString().slice(0, 10);
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function getHeaders() {
   const t = document.getElementById('token').value.trim();
@@ -170,9 +187,9 @@ function renderProjects() {
   box.innerHTML = list.map((p, idx) => \`
     <div class="proj-row">
       <div style="min-width:0;flex:1;">
-        <div style="font-weight:700;color:#fde047;">📅 \${p.date || ''} — <span style="color:#f8fafc;">\${p.title || '未命名工程'}</span></div>
-        <div style="font-size:12px;color:#38bdf8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🔗 \${p.url || ''}</div>
-        \${p.note ? \`<div style="font-size:11.5px;color:#94a3b8;">📝 \${p.note}</div>\` : ''}
+        <div style="font-weight:700;color:#fde047;">📅 \${esc(p.date || '')} — <span style="color:#f8fafc;">\${esc(p.title || '未命名工程')}</span></div>
+        <div style="font-size:12px;color:#38bdf8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🔗 \${esc(p.url || '')}</div>
+        \${p.note ? \`<div style="font-size:11.5px;color:#94a3b8;">📝 \${esc(p.note)}</div>\` : ''}
       </div>
       <button class="btn btn-red" onclick="removeProject(\${idx})">删除</button>
     </div>
@@ -185,7 +202,8 @@ function addProject() {
   const url = document.getElementById('new-url').value.trim();
   const note = document.getElementById('new-note').value.trim();
   if (!url) { alert('请填写 Google Drive 工程链接'); return; }
-  state.daily_projects = [{ date, title, url, note, updated_at: new Date().toISOString() }, ...(state.daily_projects || [])];
+  const id = 'dp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  state.daily_projects = [{ id, date, title, url, note, updated_at: new Date().toISOString() }, ...(state.daily_projects || [])];
   document.getElementById('new-title').value = '';
   document.getElementById('new-url').value = '';
   document.getElementById('new-note').value = '';
@@ -196,22 +214,26 @@ function addProject() {
 function removeProject(idx) {
   state.daily_projects.splice(idx, 1);
   renderProjects();
+  saveConfig();
 }
 
 async function loadConfig() {
   const st = document.getElementById('status');
+  const kvWarn = document.getElementById('kv-warning');
   st.textContent = '读取中...';
   try {
     const res = await fetch('?format=json', { headers: getHeaders() });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '读取失败');
     state = data;
+    if (kvWarn) kvWarn.style.display = data.kv_bound === false ? 'block' : 'none';
     document.getElementById('primary_transcription').value = data.primary_transcription || 'groq';
-    ['groq_keys','gladia_keys','deepgram_keys','gemini_keys','elevenlabs_keys'].forEach(k => {
+    document.getElementById('gemini_model').value = data.gemini_model || 'gemini-3.5-flash-lite';
+    ['groq_keys','gladia_keys','deepgram_keys','gemini_keys','gemini_tts_keys','elevenlabs_keys'].forEach(k => {
       document.getElementById(k).value = (data[k] || []).join('\\n');
     });
     renderProjects();
-    st.textContent = '✅ 已同步最新云端数据';
+    st.textContent = data.kv_bound === false ? '⚠️ 已读取默认配置（未绑定 HUB_KV）' : '✅ 已同步最新云端数据';
   } catch (e) {
     st.textContent = '❌ ' + e.message;
   }
@@ -224,8 +246,9 @@ async function saveConfig() {
     const payload = {
       ...state,
       primary_transcription: document.getElementById('primary_transcription').value,
+      gemini_model: document.getElementById('gemini_model').value.trim() || 'gemini-3.5-flash-lite',
     };
-    ['groq_keys','gladia_keys','deepgram_keys','gemini_keys','elevenlabs_keys'].forEach(k => {
+    ['groq_keys','gladia_keys','deepgram_keys','gemini_keys','gemini_tts_keys','elevenlabs_keys'].forEach(k => {
       payload[k] = document.getElementById(k).value.split(/\\r?\\n/).map(s => s.trim()).filter(Boolean);
     });
     const res = await fetch('', { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
@@ -251,6 +274,7 @@ export default {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Hub-Token',
+      'Cache-Control': 'no-store',
     };
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
@@ -276,9 +300,11 @@ export default {
       });
     }
 
+    const kvBound = Boolean(env?.HUB_KV);
+
     if (request.method === 'GET') {
       const data = await loadData(env);
-      return new Response(JSON.stringify({ ok: true, ...data }, null, 2), {
+      return new Response(JSON.stringify({ ok: true, kv_bound: kvBound, ...data }, null, 2), {
         headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders },
       });
     }
@@ -293,14 +319,15 @@ export default {
             id: body.project.id || ('dp_' + Date.now().toString(36)),
             date: String(body.project.date || new Date().toISOString().slice(0, 10)).trim(),
             title: String(body.project.title || '每日云端工程').trim(),
-            url: String(body.project.url || '').trim(),
+            url: String(body.project.url || body.project.drive_url || '').trim(),
             note: String(body.project.note || '').trim(),
+            material_folder_hint: String(body.project.material_folder_hint || '').trim(),
             updated_at: new Date().toISOString(),
           };
           const list = Array.isArray(current.daily_projects) ? current.daily_projects : [];
           current.daily_projects = [proj, ...list.filter(item => !(item.date === proj.date && item.title === proj.title && item.url === proj.url))];
           const saved = await saveData(env, current);
-          return new Response(JSON.stringify({ ok: true, data: saved }), {
+          return new Response(JSON.stringify({ ok: true, kv_bound: kvBound, data: saved }), {
             headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders },
           });
         }
@@ -314,7 +341,7 @@ export default {
             return true;
           });
           const saved = await saveData(env, current);
-          return new Response(JSON.stringify({ ok: true, data: saved }), {
+          return new Response(JSON.stringify({ ok: true, kv_bound: kvBound, data: saved }), {
             headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders },
           });
         }
@@ -332,12 +359,13 @@ export default {
           daily_projects: Array.isArray(body.daily_projects) ? body.daily_projects : current.daily_projects,
         };
         const saved = await saveData(env, next);
-        return new Response(JSON.stringify({ ok: true, data: saved }), {
+        return new Response(JSON.stringify({ ok: true, kv_bound: kvBound, data: saved }), {
           headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders },
         });
       } catch (err) {
-        return new Response(JSON.stringify({ ok: false, error: err?.message || '请求格式错误' }), {
-          status: 400,
+        const status = err?.status || 400;
+        return new Response(JSON.stringify({ ok: false, kv_bound: kvBound, error: err?.message || '请求格式错误' }), {
+          status,
           headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders },
         });
       }

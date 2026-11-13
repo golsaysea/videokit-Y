@@ -8,7 +8,7 @@ if (process.argv.includes('--headless') && !process.argv.includes('--headless-wy
     return;
 }
 
-const { app, BrowserWindow, ipcMain, MessageChannelMain, dialog, powerSaveBlocker, protocol, shell, net, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, MessageChannelMain, dialog, powerSaveBlocker, protocol, shell, net, screen, desktopCapturer, nativeTheme, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
@@ -784,16 +784,26 @@ if (!_workspaceInstanceOwner && app.isPackaged) {
     }
 }
 if (!_workspaceInstanceOwner) {
-    if (!app.isPackaged) {
-        dialog.showMessageBoxSync({
-            type: 'info',
-            title: '源码测试版未启动',
-            message: '已有 VideoKit 正在运行，本次源码测试版没有启动。',
-            detail: `程序会唤起已有窗口，因此该窗口可能没有本文件夹的新功能。\n请先保存工程并退出已有 VideoKit，再运行本文件夹的启动脚本。\n\n本次源码目录：${path.resolve(__dirname, '..')}`,
-            buttons: ['知道了'],
-        });
+    if (app.isPackaged) {
+        app.exit(0);
+        return;
     }
-    app.exit(0);
+    // Electron dialog API can only be called after app emits ready
+    app.whenReady().then(() => {
+        try {
+            dialog.showMessageBoxSync({
+                type: 'info',
+                title: '源码测试版未启动',
+                message: '已有 VideoKit 正在运行，本次源码测试版没有启动。',
+                detail: `程序会唤起已有窗口，因此该窗口可能没有本文件夹的新功能。\n请先保存工程并退出已有 VideoKit，再运行本文件夹的启动脚本。\n\n本次源码目录：${path.resolve(__dirname, '..')}`,
+                buttons: ['知道了'],
+            });
+        } catch (err) {
+            console.error('源码测试版未启动:', err && err.message ? err.message : err);
+        }
+        app.exit(0);
+    });
+    return;
 }
 app.on('second-instance', () => {
     if (isQuitting || app.isQuitting) return;
@@ -989,6 +999,70 @@ function setupFFmpegPath() {
 }
 
 // 创建主窗口
+const WINDOW_CHROME_HEIGHT = 38;
+let _currentTitlebarTheme = {
+    isLight: false,
+    color: '#050811',
+    symbolColor: '#eef2fb',
+};
+
+function sanitizeOverlayHex(raw, fallback) {
+    const val = String(raw || '').trim();
+    return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(val) ? val : fallback;
+}
+
+/**
+ * Configure native window chrome consistently across macOS, Windows, and Linux.
+ * On Windows, merges the top bar with dark/themed titleBarOverlay and suppresses the white menu bar.
+ */
+function applyPlatformWindowChrome(winOpts, opts = {}) {
+    if (process.platform === 'darwin') {
+        winOpts.titleBarStyle = 'hiddenInset';
+        winOpts.trafficLightPosition = { x: 15, y: 15 };
+        return winOpts;
+    }
+    winOpts.autoHideMenuBar = true;
+    if (process.platform === 'win32') {
+        winOpts.titleBarStyle = 'hidden';
+        winOpts.titleBarOverlay = {
+            color: sanitizeOverlayHex(opts.color, _currentTitlebarTheme.color),
+            symbolColor: sanitizeOverlayHex(opts.symbolColor, _currentTitlebarTheme.symbolColor),
+            height: WINDOW_CHROME_HEIGHT,
+        };
+    }
+    return winOpts;
+}
+
+/** Preserve standard DevTools / Reload / Fullscreen hotkeys on Windows after removing the white menu strip. */
+function attachWindowShortcuts(win) {
+    if (!win || win.isDestroyed() || process.platform === 'darwin') return;
+    try {
+        win.setMenuBarVisibility(false);
+        if (typeof win.removeMenu === 'function') win.removeMenu();
+    } catch (_) {}
+    win.webContents.on('before-input-event', (event, input) => {
+        if (input.type !== 'keyDown') return;
+        const key = String(input.key || '').toLowerCase();
+        const hasMod = Boolean(input.control && !input.alt && !input.meta);
+        if (input.key === 'F12' || (hasMod && input.shift && key === 'i')) {
+            event.preventDefault();
+            if (win.webContents.isDevToolsOpened()) win.webContents.closeDevTools();
+            else win.webContents.openDevTools({ mode: 'detach' });
+            return;
+        }
+        if (input.key === 'F11') {
+            event.preventDefault();
+            win.setFullScreen(!win.isFullScreen());
+            return;
+        }
+        if (!app.isPackaged && (input.key === 'F5' || (hasMod && key === 'r'))) {
+            event.preventDefault();
+            if (input.shift) win.webContents.reloadIgnoringCache();
+            else win.webContents.reload();
+        }
+    });
+}
+
 function createWindow() {
     if (mainWindow) {
         mainWindow.focus();
@@ -1002,6 +1076,7 @@ function createWindow() {
         height: 800,
         minWidth: 900,
         minHeight: 700,
+        backgroundColor: '#060913',
         title: app.isPackaged ? 'VideoKit' : 'VideoKit — 源码测试版',
         icon: getResourcePath(process.platform === 'win32' ? 'assets/icon.ico' : (process.platform === 'darwin' ? 'assets/icon.icns' : 'assets/icon.png')),
         webPreferences: {
@@ -1016,11 +1091,8 @@ function createWindow() {
         },
     };
 
-    // macOS 专用：隐藏标题栏 + 红绿灯按钮位置
-    if (process.platform === 'darwin') {
-        windowOptions.titleBarStyle = 'hiddenInset';
-        windowOptions.trafficLightPosition = { x: 15, y: 15 };
-    }
+    // 按平台配置深色无白边标题栏与快捷键支持
+    applyPlatformWindowChrome(windowOptions);
 
     mainWindow = new BrowserWindow(windowOptions);
     if (process.platform === 'win32' && windowOptions.icon && fs.existsSync(windowOptions.icon)) {
@@ -1028,6 +1100,7 @@ function createWindow() {
             mainWindow.setIcon(windowOptions.icon);
         } catch (_) {}
     }
+    attachWindowShortcuts(mainWindow);
     attachTemplateLibraryNavigation(mainWindow);
     if (!app.isPackaged) {
         mainWindow.webContents.on('page-title-updated', event => {
@@ -2098,6 +2171,32 @@ app.whenReady().then(async () => {
             : dialog.showMessageBox(options);
     });
 
+    handleTrusted('window:set-titlebar-theme', (event, payload = {}) => {
+        const isLight = Boolean(payload?.isLight);
+        const color = sanitizeOverlayHex(payload?.color, isLight ? '#e2ebe0' : '#050811');
+        const symbolColor = sanitizeOverlayHex(payload?.symbolColor, isLight ? '#1b2e1b' : '#eef2fb');
+        _currentTitlebarTheme = { isLight, color, symbolColor };
+        try {
+            nativeTheme.themeSource = isLight ? 'light' : 'dark';
+        } catch (_) {}
+        const targetWin = BrowserWindow.fromWebContents(event.sender);
+        const windowsToSync = new Set(BrowserWindow.getAllWindows());
+        if (targetWin && !targetWin.isDestroyed()) windowsToSync.add(targetWin);
+        if (process.platform === 'win32') {
+            for (const w of windowsToSync) {
+                if (!w || w.isDestroyed() || typeof w.setTitleBarOverlay !== 'function') continue;
+                try {
+                    w.setTitleBarOverlay({
+                        color,
+                        symbolColor,
+                        height: WINDOW_CHROME_HEIGHT,
+                    });
+                } catch (_) {}
+            }
+        }
+        return { ok: true, isLight, color, symbolColor };
+    });
+
     // 每个队列任务使用一次性隐藏 renderer。任务完成后销毁窗口，Chromium 会把
     // 该任务的 Canvas、图片与媒体解码缓存整体归还，不再累积到主界面进程。
     handleTrusted('isolated-wysiwyg-export', async (event, opts = {}) => {
@@ -2406,133 +2505,11 @@ app.whenReady().then(async () => {
         }
     });
 
-    // Reels 最终导出可选择在最终成片旁再复制一份工程包。只复制，不移动源工程；
-    // 这样既保留自动剪辑输出处的原工程，也方便把成片和二剪资料一起交付或归档。
+    // Reels 工程包打包 / 导出旁复制：统一支持普通批量 Reels 任务与文案自动剪辑任务。只复制，不移动源素材；
+    // 既可在“导出后复制工程包”勾选时把可二剪工程放到成片旁，也可通过“仅打包工程”免渲染直接打包。
     handleTrusted('copy-reels-project-package', async (event, payload = {}) => {
-        const sourceProjectDir = String(payload.sourceProjectDir || '');
-        const outputPath = String(payload.outputPath || '');
-        if (!sourceProjectDir || !path.isAbsolute(sourceProjectDir) || !fs.existsSync(sourceProjectDir) || !fs.statSync(sourceProjectDir).isDirectory()) {
-            return { ok: false, error: '原工程文件夹不存在' };
-        }
-        if (!outputPath || !path.isAbsolute(outputPath)) return { ok: false, error: '缺少有效的最终成片路径' };
-        const baseName = path.basename(outputPath, path.extname(outputPath)) || '成片';
-        const targetProjectDir = path.join(path.dirname(outputPath), `${baseName}-工程`);
-        try {
-            const sourceResolved = await fs.promises.realpath(sourceProjectDir);
-            const targetResolved = path.resolve(targetProjectDir);
-            if (sourceResolved !== targetResolved) {
-                await fs.promises.mkdir(targetProjectDir, { recursive: true });
-                await fs.promises.cp(sourceProjectDir, targetProjectDir, { recursive: true, force: true });
-            }
-            const overlayAssets = Array.isArray(payload.overlayAssets) ? payload.overlayAssets : [];
-            const overlayDir = path.join(targetProjectDir, '覆层素材');
-            const overlayPathMap = new Map();
-            const usedOverlayNames = new Set();
-            for (const sourcePath of overlayAssets) {
-                if (!sourcePath || !path.isAbsolute(sourcePath) || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) continue;
-                await fs.promises.mkdir(overlayDir, { recursive: true });
-                const sourceName = path.basename(sourcePath).replace(/[\\/:*?"<>|]/g, '_') || '覆层素材';
-                const ext = path.extname(sourceName);
-                const stem = path.basename(sourceName, ext);
-                let targetName = sourceName;
-                let sequence = 2;
-                while (usedOverlayNames.has(targetName)) targetName = `${stem}_${sequence++}${ext}`;
-                usedOverlayNames.add(targetName);
-                const targetPath = path.join(overlayDir, targetName);
-                await fs.promises.copyFile(sourcePath, targetPath);
-                overlayPathMap.set(sourcePath, targetPath);
-            }
-            // 旧工程包可能在“分析文件自动收集”上线前创建。仅打包时仍要从
-            // 当前任务记录的原始路径补齐分析工程/报告，不能只相信源工程夹。
-            const analysisAssets = Array.isArray(payload.analysisAssets) ? payload.analysisAssets : [];
-            const analysisDir = path.join(targetProjectDir, '自动剪辑分析');
-            const portablePathMap = new Map();
-            const originalDir = path.join(targetProjectDir, '原始片段');
-            const usedOriginalNames = new Set();
-            for (const sourcePath of (Array.isArray(payload.originalClips) ? payload.originalClips : [])) {
-                if (!sourcePath || !path.isAbsolute(sourcePath) || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) continue;
-                await fs.promises.mkdir(originalDir, { recursive: true });
-                const sourceName = path.basename(sourcePath);
-                const ext = path.extname(sourceName);
-                const stem = path.basename(sourceName, ext);
-                let targetName = sourceName;
-                let sequence = 2;
-                while (usedOriginalNames.has(targetName)) targetName = `${stem}_${sequence++}${ext}`;
-                usedOriginalNames.add(targetName);
-                const targetPath = path.join(originalDir, targetName);
-                await fs.promises.copyFile(sourcePath, targetPath);
-                portablePathMap.set(sourcePath, targetPath);
-            }
-            for (const sourcePath of analysisAssets) {
-                if (!sourcePath || !path.isAbsolute(sourcePath) || !fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) continue;
-                await fs.promises.mkdir(analysisDir, { recursive: true });
-                await fs.promises.copyFile(sourcePath, path.join(analysisDir, path.basename(sourcePath)));
-            }
-            // 一次自动剪辑的每片段转录 txt/json 都在 auto_edit_… 输出目录中。
-            // 打包必须带上整个分析目录，不能只抽取总工程 JSON，否则无法回看
-            // 单片段的识别证据。已独立收集的“成片名-工程”子目录不再嵌套复制。
-            const analysisOutputDir = String(payload.analysisOutputDir || '');
-            let analysisTargetDir = '';
-            if (analysisOutputDir && path.isAbsolute(analysisOutputDir) && fs.existsSync(analysisOutputDir) && fs.statSync(analysisOutputDir).isDirectory()) {
-                analysisTargetDir = path.join(analysisDir, path.basename(path.resolve(analysisOutputDir)) || '本次分析');
-                const sourceResolved = await fs.promises.realpath(analysisOutputDir);
-                const targetResolved = path.resolve(analysisTargetDir);
-                if (!targetResolved.startsWith(`${sourceResolved}${path.sep}`) && targetResolved !== sourceResolved) {
-                    await fs.promises.cp(analysisOutputDir, analysisTargetDir, {
-                        recursive: true,
-                        force: true,
-                        filter: source => !String(source).endsWith('-工程'),
-                    });
-                    portablePathMap.set(analysisOutputDir, analysisTargetDir);
-                }
-            }
-            const rebasePath = value => {
-                if (typeof value !== 'string') return value;
-                for (const [from, to] of portablePathMap) {
-                    if (value === from) return to;
-                    if (value.startsWith(`${from}${path.sep}`)) return `${to}${value.slice(from.length)}`;
-                }
-                return value;
-            };
-            const rebaseJson = value => {
-                if (Array.isArray(value)) return value.map(rebaseJson);
-                if (!value || typeof value !== 'object') return rebasePath(value);
-                Object.keys(value).forEach(key => { value[key] = rebaseJson(value[key]); });
-                return value;
-            };
-            if (analysisTargetDir && fs.existsSync(analysisTargetDir)) {
-                const files = await fs.promises.readdir(analysisTargetDir, { recursive: true });
-                for (const relativePath of files) {
-                    if (!String(relativePath).toLowerCase().endsWith('.json')) continue;
-                    const jsonPath = path.join(analysisTargetDir, relativePath);
-                    try {
-                        const data = JSON.parse(await fs.promises.readFile(jsonPath, 'utf8'));
-                        await fs.promises.writeFile(jsonPath, JSON.stringify(rebaseJson(data), null, 2), 'utf8');
-                    } catch (_) { /* 非工程 JSON 或格式异常时保留原文件 */ }
-                }
-            }
-            await fs.promises.writeFile(path.join(targetProjectDir, '文案.txt'), String(payload.scriptText || ''), 'utf8');
-            if (payload.reelsProjectData && typeof payload.reelsProjectData === 'object') {
-                const projectData = JSON.parse(JSON.stringify(payload.reelsProjectData));
-                const remapPaths = value => {
-                    if (Array.isArray(value)) return value.map(remapPaths);
-                    if (!value || typeof value !== 'object') return overlayPathMap.get(value) || rebasePath(value);
-                    Object.keys(value).forEach(key => { value[key] = remapPaths(value[key]); });
-                    return value;
-                };
-                remapPaths(projectData);
-                const reelsDir = path.join(targetProjectDir, 'Reels工程');
-                await fs.promises.mkdir(reelsDir, { recursive: true });
-                await fs.promises.writeFile(
-                    path.join(reelsDir, `${baseName}.reels-project.json`),
-                    JSON.stringify(projectData, null, 2),
-                    'utf8'
-                );
-            }
-            return { ok: true, projectDir: targetProjectDir };
-        } catch (error) {
-            return { ok: false, error: error.message || String(error), projectDir: targetProjectDir };
-        }
+        const { packageReelsProject } = require('./services/projectPackager');
+        return packageReelsProject(payload);
     });
 
     // IPC: 获取媒体时长
@@ -2636,6 +2613,55 @@ app.whenReady().then(async () => {
             console.error('[Fonts] fetch-google-fonts failed:', err.message);
             throw err;
         }
+    });
+
+    // IPC: 安全获取公开 HTTPS 免费/开源字幕预设包（.json / .ass），防止 SSRF
+    const _assertSafePublicHttpsUrl = (rawUrl) => {
+        const parsed = new URL(String(rawUrl || '').trim());
+        if (parsed.protocol !== 'https:') throw new Error('仅支持 HTTPS 公开链接');
+        if (parsed.username || parsed.password) throw new Error('不允许包含认证信息的链接');
+        const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+        if (!host || host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) {
+            throw new Error('不允许访问本地或内网地址');
+        }
+        if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) {
+            throw new Error('不允许访问私有网段地址');
+        }
+        if (/^(::1$|::$|fe80:|f[cd][0-9a-f]{2}:|::ffff:)/i.test(host)) {
+            throw new Error('不允许访问本地或私有 IPv6 地址');
+        }
+        return parsed;
+    };
+    handleTrusted('fetch-remote-preset-pack', async (_event, rawUrl) => {
+        const { net } = require('electron');
+        let currentUrl = _assertSafePublicHttpsUrl(rawUrl).toString();
+        let response = null;
+        for (let hop = 0; hop <= 3; hop++) {
+            response = await net.fetch(currentUrl, {
+                redirect: 'manual',
+                signal: AbortSignal.timeout(8000),
+            });
+            if ([301, 302, 303, 307, 308].includes(response.status)) {
+                const location = response.headers.get('location');
+                if (!location) throw new Error('重定向缺少目标地址');
+                currentUrl = _assertSafePublicHttpsUrl(new URL(location, currentUrl).toString()).toString();
+                continue;
+            }
+            break;
+        }
+        if (!response || !response.ok) {
+            throw new Error(`HTTP ${response ? response.status : 'unknown'}`);
+        }
+        const text = await response.text();
+        if (Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) {
+            throw new Error('预设文件体积超过 2MB 上限');
+        }
+        return {
+            ok: true,
+            url: currentUrl,
+            contentType: response.headers.get('content-type') || '',
+            text,
+        };
     });
 
     // IPC: 扫描本地字体目录 + 系统字体（缓存系统字体，避免重复扫描 Windows 字体；本地字体目录变化时自动更新）
@@ -2980,12 +3006,10 @@ app.whenReady().then(async () => {
             },
         };
 
-        if (process.platform === 'darwin') {
-            winOpts.titleBarStyle = 'hiddenInset';
-            winOpts.trafficLightPosition = { x: 15, y: 15 };
-        }
+        applyPlatformWindowChrome(winOpts);
 
         const win = new BrowserWindow(winOpts);
+        attachWindowShortcuts(win);
         attachTemplateLibraryNavigation(win);
         win.webContents.on('will-navigate', (event, url) => {
             if (!isTrustedRendererUrl(url, { packaged: app.isPackaged, port: DEV_SERVER_PORT })) event.preventDefault();
@@ -3075,6 +3099,9 @@ app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
         powerSaveId = powerSaveBlocker.start('prevent-app-suspension');
         log(`PowerSaveBlocker started: ${powerSaveId}`);
+    } else {
+        try { nativeTheme.themeSource = 'dark'; } catch (_) {}
+        try { Menu.setApplicationMenu(null); } catch (_) {}
     }
 
     // 直接创建窗口（不需要等待后端启动了！）

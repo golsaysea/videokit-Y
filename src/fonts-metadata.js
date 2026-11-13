@@ -3048,6 +3048,24 @@ window.FONTS_METADATA = {
       "popularity": 92,
       "source": "google",
       "aliases": ["工业", "仪表盘", "数据", "极客", "等宽"]
+    },
+    {
+      "family": "Shrikhand",
+      "category": "display",
+      "regions": ["us", "europe", "india"],
+      "useCases": ["viral", "poster", "scripture"],
+      "popularity": 95,
+      "source": "google",
+      "aliases": ["粗斜刷", "复古", "手写标题", "爆款", "经文"]
+    },
+    {
+      "family": "Knewave",
+      "category": "display",
+      "regions": ["us", "europe"],
+      "useCases": ["viral", "poster", "comic"],
+      "popularity": 94,
+      "source": "google",
+      "aliases": ["马克笔", "粗斜体", "漫画刷字", "爆款口播"]
     }
   ]
 };

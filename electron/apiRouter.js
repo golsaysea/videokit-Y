@@ -561,7 +561,10 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
             return await cloudHubService.downloadCloudProject(data);
 
         case 'settings/cloud-hub/worker-code':
-            return { code: cloudHubService.getWorkerTemplateCode() };
+            return {
+                code: cloudHubService.getWorkerTemplateCode(data.variant),
+                variant: data.variant === 'simple' ? 'simple' : 'kv',
+            };
 
         case 'languages':
             return { languages: settingsService.getLanguages() };

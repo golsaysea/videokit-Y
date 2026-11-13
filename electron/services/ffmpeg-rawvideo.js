@@ -760,6 +760,7 @@ async function prepareBg(opts) {
                     const requiredInputDur = clip.duration / Math.max(ptsFactor, 0.0001);
                     const rawDur = clip.rawDuration || requiredInputDur;
                     const shouldLoop = requiredInputDur > rawDur + 0.1;
+                    args.push(...videoInputStabilizeArgs(clip.path));
                     if (shouldLoop) {
                         args.push('-stream_loop', '-1');
                     }
@@ -1022,7 +1023,7 @@ async function prepareBg(opts) {
         if (segCount >= 2) {
             const args = ['-y'];
             for (let i = 0; i < segCount; i++) {
-                args.push('-i', backgroundPath);
+                args.push(...videoInputStabilizeArgs(backgroundPath), '-i', backgroundPath);
             }
 
             const filterParts = [normalizedDirectBackgroundFilter(0, scaleCropFilter, ptsFilter, safeFps, 'v0', 2, backgroundPath)];
@@ -1093,7 +1094,7 @@ async function extractSimpleLoopWithTrim(ffmpeg, backgroundPath, framesDir, scal
     if (!isImg) {
         vf = `${vf},framerate=fps=${safeFps}:interp_start=0:interp_end=255:scene=8.2,fps=${safeFps}`;
     }
-    const args = ['-y'];
+    const args = ['-y', ...(isImg ? [] : videoInputStabilizeArgs(backgroundPath))];
     if (shouldLoop) {
         args.push('-stream_loop', '-1');
     }
@@ -1134,7 +1135,7 @@ async function extractSimpleLoop(ffmpeg, backgroundPath, framesDir, scaleCropFil
     }
     const args = ['-y'];
     if (!isImg) {
-        args.push('-fflags', '+genpts');
+        args.push(...videoInputStabilizeArgs(backgroundPath), '-fflags', '+genpts');
     }
     if (shouldLoop) {
         args.push('-stream_loop', '-1');
@@ -1206,6 +1207,16 @@ function runFFmpegSync(ffmpeg, args, options = {}) {
  */
 function normalizeDisplayAspectFilter() {
     return 'scale=trunc(iw*sar/2)*2:ih:flags=lanczos,setsar=1';
+}
+
+/**
+ * 防止拼接成片或混合视频在中途切换色彩元数据（如 smpte170m <-> bt709）时触发
+ * FFmpeg buffersrc 重建滤镜图并重置 setpts/fps 时间戳，导致成片被中途截断。
+ */
+function videoInputStabilizeArgs(sourcePath = '') {
+    return (sourcePath && !isImageMedia(sourcePath) && !/\.gif$/i.test(sourcePath))
+        ? ['-reinit_filter', '0']
+        : [];
 }
 
 function probeVideoColorProfile(filePath) {
@@ -1504,6 +1515,7 @@ async function prepareOverlay(opts) {
         : '';
 
     args.push(
+        ...(isAnimatedGif ? [] : videoInputStabilizeArgs(overlayPath)),
         '-i', overlayPath,
         '-t', String(duration),
         '-r', String(fps),
@@ -1687,13 +1699,18 @@ async function startSession(opts) {
         let bgInputCount = 1;
         if (useDirectLoopFade) {
             bgInputCount = loopFadePlan.segCount;
-            for (let i = 0; i < bgInputCount; i++) args.push('-fflags', '+genpts', '-i', opts.alphaOverlayBgPath);
+            for (let i = 0; i < bgInputCount; i++) {
+                args.push(...videoInputStabilizeArgs(opts.alphaOverlayBgPath));
+                args.push('-fflags', '+genpts', '-i', opts.alphaOverlayBgPath);
+            }
             console.log(`[WYSIWYG] 背景直通 xfade 循环: ${bgInputCount} 段, rawVideoDur=${rawBgDuration.toFixed(3)}s, step=${step.toFixed(3)}s, fade=${fadeDur.toFixed(3)}s`);
         } else if (isAlphaBgImage) {
             args.push('-loop', '1', '-t', String(maxBgReadDuration), '-i', opts.alphaOverlayBgPath);
         } else if (needAlphaStreamLoop) {
+            args.push(...videoInputStabilizeArgs(opts.alphaOverlayBgPath));
             args.push('-fflags', '+genpts', '-stream_loop', '-1', '-t', String(maxBgReadDuration), '-i', opts.alphaOverlayBgPath);
         } else {
+            args.push(...videoInputStabilizeArgs(opts.alphaOverlayBgPath));
             args.push('-fflags', '+genpts', '-i', opts.alphaOverlayBgPath);
         }
         
@@ -2262,11 +2279,13 @@ async function mixAudio(session) {
 
     if (session.reverbEnabled || (session.stereoWidth && session.stereoWidth !== 100)) {
        const fxT = session.audioFxTarget || 'all';
+       const wantBgAudioRender = typeof bgVolume !== 'number' || bgVolume > 0.001;
+       const wantBgmAudioRender = typeof bgmVolume !== 'number' || bgmVolume > 0.001;
        if ((fxT === 'voice' || fxT === 'all') && voicePath) {
            targetPathToRender = voicePath; targetKey = 'voice';
-       } else if ((fxT === 'bg' || fxT === 'all') && backgroundPath) {
+       } else if ((fxT === 'bg' || fxT === 'all') && backgroundPath && wantBgAudioRender) {
            targetPathToRender = backgroundPath; targetKey = 'bg';
-       } else if ((fxT === 'bgm' || fxT === 'all') && bgmPath) {
+       } else if ((fxT === 'bgm' || fxT === 'all') && bgmPath && wantBgmAudioRender) {
            targetPathToRender = bgmPath; targetKey = 'bgm';
        }
     }
@@ -2284,7 +2303,7 @@ async function mixAudio(session) {
             if (wavResult) {
                 if (targetKey === 'voice') {
                     voicePath = wavResult;
-                    voiceVolume = 1.0;
+                    voiceVolume = typeof voiceVolume === 'number' ? voiceVolume : 1.0;
                     session._renderedVoiceCleanup = wavResult;
                 } else if (targetKey === 'bg') {
                     // 重要: backgroundPath 同时是视频源，不能替换为 WAV！
@@ -2330,7 +2349,7 @@ async function mixAudio(session) {
 
         // 收集所有音频源
         let audioInputs = []; // [{path, volume, loop, durationScale}]
-        if (renderedBgAudio) {
+        if (renderedBgAudio && wantBgAudio) {
             // 渲染后的背景音频（已含特效），不需要 loop
             audioInputs.push({ path: renderedBgAudio, volume: bgVolumeVal, loop: false, durationScale: session.bgDurScale });
         } else if (bgReallyHasAudio) {
@@ -2389,9 +2408,9 @@ async function mixAudio(session) {
         let nextInputIdx = 2;
         const bgVolumeVal2 = typeof bgVolume === 'number' ? bgVolume : 0.1;
 
-        // 渲染后的背景音频（优先于原始背景音轨）
+        // 渲染后的背景音频（优先于原始背景音轨；bgVolume 为 0 时不混入静音轨）
         let renderedBgInputIdx = -1;
-        if (renderedBgAudio) {
+        if (renderedBgAudio && bgVolumeVal2 > 0.001) {
             args.push('-i', renderedBgAudio);
             renderedBgInputIdx = nextInputIdx;
             nextInputIdx++;
@@ -3174,6 +3193,8 @@ module.exports = {
     attachFramePipeline,
     renderChromiumAudioWav,
     parallelExport,
+    videoInputStabilizeArgs,
+    buildInputBt709ConvertFilter,
     _test: {
         activeSessionCount: () => sessions.size,
         stableJpegEncoderArgs,
@@ -3186,9 +3207,11 @@ module.exports = {
         validateRawFrameSize,
         validateFrameCompletion,
         normalizeDisplayAspectFilter,
+        videoInputStabilizeArgs,
         normalizedDirectBackgroundFilter,
         computeLoopFadePlan,
         probeVideoColorProfile,
         buildInputBt709ConvertFilter,
+        mixAudio,
     },
 };

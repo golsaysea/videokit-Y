@@ -1247,7 +1247,7 @@ function _checkHashForTemplate() {
     const hash = window.location.hash; // e.g. #template=tpl_xxxxx
     const match = hash.match(/template=([^&]+)/);
     if (!match) {
-        openTemplateLibrary();
+        // 默认启动不自动弹出视频模板库（由用户点击“模板库”按钮再按需打开）
         return;
     }
 

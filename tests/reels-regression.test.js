@@ -987,7 +987,7 @@ test('Mixed typography presets retain settings, reveal cumulatively, and keep st
     assert.equal(wavBuf.subarray(0, 4).toString('ascii'), 'RIFF', 'wrapPcm16ToWav should produce valid RIFF WAV header');
     assert.equal(wavBuf.length, 4844, 'wrapPcm16ToWav should add 44-byte WAV header');
     const indexHtml = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
-    assert.ok(indexHtml.includes('data-tab="google-tts"'), 'index.html should include the 谷歌配音 tab button');
+    assert.ok(indexHtml.includes('data-suite-tab="google-tts"'), 'index.html should include the 谷歌配音 sidebar tab button');
     assert.ok(indexHtml.includes('id="google-tts-panel"'), 'index.html should include the #google-tts-panel container');
     assert.ok(indexHtml.includes('id="gemini-tts-keys"'), 'index.html should include the dedicated #gemini-tts-keys setting in Settings');
     assert.ok(indexHtml.includes('id="gg-api-keys"'), 'index.html should include the inline #gg-api-keys drawer in Google Voice Studio');
@@ -3449,10 +3449,10 @@ test('BatchCut & AutoEdit clip cutting/concatenation fix: default precise mode, 
     assert.ok(ffmpegSrc.includes('检测到直拼视频轨时长'), 'concatClips must verify output video stream duration against container duration and auto-recover if video ended early');
     assert.ok(ffmpegSrc.includes('timelineDur - tDur - frameStep * 0.5'), 'concatClipsWithTransitions must keep safety margin before EOF on xfade offset so video never freezes into a static frame');
 
-    // 3. autoEdit.js aligns audio PTS, guards against sub-frame micro-cuts, and invalidates old cut cache via version: 4
+    // 3. autoEdit.js aligns audio PTS, guards against sub-frame micro-cuts, and invalidates old cut cache via version: 5
     assert.ok(autoEditSrc.includes('aresample=async=1:first_pts=0,${audioRemoveFilter}asetpts=PTS-STARTPTS'), 'autoEdit.js must use aresample=async=1:first_pts=0 when cutting segments');
     assert.ok(autoEditSrc.includes('plan.end - plan.start < 0.35'), 'autoEdit.js must guard against sub-0.35s micro-cut segments');
-    assert.match(autoEditSrc, /const cacheKeyPayload = \{\s*version: 4,/, 'autoEdit.js must bump cacheKeyPayload version to 4 so pre-4.5.8 cut caches are re-cut with timescale 90000 and PTS sync');
+    assert.match(autoEditSrc, /const cacheKeyPayload = \{\s*version: 5,/, 'autoEdit.js must bump cacheKeyPayload version to 5 so earlier cut caches are re-cut cleanly with timescale 90000, PTS sync, and uniform BT.709 color');
 
     // 4. AutoEdit batch task script synchronization & recovery from skipped/sendToReels=false state
     assert.ok(appSrc.includes('function syncAutoEditBatchPendingScriptInputs()'), 'app.js must define syncAutoEditBatchPendingScriptInputs to flush pending script inputs before analysis/smart-pairing');
@@ -4004,7 +4004,2763 @@ test('20 new innovative presets (sub-78..sub-97), zero duplicate presets across 
         const meta = fm._getFontMetadata(fontName);
         assert.ok(meta && meta.source === 'google' && Array.isArray(meta.aliases) && meta.aliases.length > 0, `FONTS_METADATA should provide rich metadata for ${fontName}`);
     }
+
+    // 5) Verify _applyGoogleCatalogItems parses full Google Fonts API metadata (1960+ catalog items)
+    const parsedFamilies = fm._applyGoogleCatalogItems([
+        {
+            family: 'Aboreto',
+            category: 'Display',
+            subsets: ['menu', 'latin', 'latin-ext'],
+            popularity: 120,
+            trending: 45,
+            dateAdded: '2022-08-10',
+            fonts: { '400': {} },
+        },
+        {
+            family: 'Zen Maru Gothic',
+            category: 'Sans Serif',
+            subsets: ['menu', 'japanese', 'latin'],
+            popularity: 85,
+            trending: 30,
+            dateAdded: '2021-10-01',
+            fonts: { '300': {}, '400': {}, '500': {}, '700': {}, '900': {} },
+        },
+    ]);
+    assert.deepEqual([...parsedFamilies], ['Aboreto', 'Zen Maru Gothic']);
+    const aboretoMeta = fm._getFontMetadata('Aboreto');
+    assert.equal(aboretoMeta.category, 'display');
+    assert.equal(aboretoMeta.trendingRank, 45);
+    const zenMeta = fm._getFontMetadata('Zen Maru Gothic');
+    assert.equal(zenMeta.category, 'cjk');
+    assert.equal(zenMeta.subCategory, 'sans');
+    assert.ok(fm.getFontWeightOptions('Zen Maru Gothic').includes('900'), 'Registered Google Font variants should include weight 900');
 });
+
+test('100 new viral/aesthetic presets (sub-128..sub-227), unique fingerprints, ASS/JSON preset studio parser & custom group import', async () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+
+    // 1) Load style engine & all 260 builtin presets (160 existing + 100 new sub-128..sub-227)
+    const styleSandbox = loadBrowserScript('src/reels-style-engine.js');
+    loadBrowserScript('src/reels-presets-init.js', styleSandbox);
+    const engine = styleSandbox.window.ReelsStyleEngine;
+    const resolveBuiltinPreset = styleSandbox.window.resolveBuiltinPreset;
+
+    assert.ok(engine.MAX_PRESETS >= 500, 'MAX_PRESETS should accommodate 260+ builtins plus user/online packs');
+
+    // 2) Verify zero duplicate preset names across PRESET_CATEGORIES & getPresetsByCategory()
+    const { categorized, presetsMap } = engine.getPresetsByCategory();
+    const seenAcrossCategories = new Map();
+    for (const group of categorized) {
+        for (const name of group.names) {
+            assert.ok(
+                !seenAcrossCategories.has(name),
+                `Preset "${name}" must not appear in multiple categories (both "${seenAcrossCategories.get(name)}" and "${group.category}")`
+            );
+            seenAcrossCategories.set(name, group.category);
+        }
+    }
+
+    // Check fingerprint uniqueness across ALL presets in presetsMap
+    const allFingerprints = new Map();
+    for (const [name, style] of Object.entries(presetsMap)) {
+        const fp = engine.subtitleStyleFingerprint(style);
+        assert.ok(!allFingerprints.has(fp), `Preset "${name}" duplicates style fingerprint of "${allFingerprints.get(fp)}"`);
+        allFingerprints.set(fp, name);
+    }
+
+    // 3) Verify every new preset sub-128 through sub-227 resolves, is categorized, and renders cleanly
+    const mockCtx = {
+        canvas: { width: 1080, height: 1920 },
+        font: '',
+        direction: 'ltr',
+        textBaseline: 'top',
+        textAlign: 'left',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        fillStyle: '#fff',
+        strokeStyle: '#000',
+        lineWidth: 1,
+        lineJoin: 'round',
+        lineCap: 'round',
+        miterLimit: 2,
+        shadowBlur: 0,
+        shadowColor: 'transparent',
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        save() {},
+        restore() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        beginPath() {},
+        closePath() {},
+        rect() {},
+        roundRect() {},
+        fillRect() {},
+        strokeRect() {},
+        clearRect() {},
+        clip() {},
+        moveTo() {},
+        lineTo() {},
+        arcTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        fill() {},
+        stroke() {},
+        setLineDash() {},
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+        measureText: (txt) => ({ width: String(txt || '').length * 22 }),
+        fillText() { fillCount++; },
+        strokeText() {},
+    };
+    let fillCount = 0;
+    const rendererSandbox = loadBrowserScript('src/reels-canvas-renderer.js', {
+        document: {
+            createElement: () => ({
+                width: 1080,
+                height: 1920,
+                getContext: () => mockCtx,
+            }),
+        },
+    });
+    const ReelsCanvasRenderer = rendererSandbox.window.ReelsCanvasRenderer;
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => mockCtx });
+    const sampleSeg = {
+        start: 0,
+        end: 2.0,
+        text: 'Viral Glow 爆款测试',
+        words: [
+            { word: 'Viral', start: 0, end: 0.6 },
+            { word: 'Glow', start: 0.6, end: 1.2 },
+            { word: '爆款测试', start: 1.2, end: 2.0 },
+        ],
+    };
+    renderer.setContextSegments([sampleSeg]);
+
+    for (let i = 128; i <= 227; i++) {
+        const code = `sub-${i}`;
+        const resolved = resolveBuiltinPreset(code);
+        assert.ok(resolved && resolved.kind === 'subtitle', `${code} must resolve as builtin subtitle preset`);
+        assert.ok(presetsMap[resolved.name], `${code} (${resolved.name}) must exist in presetsMap`);
+        assert.ok(seenAcrossCategories.has(resolved.name), `${code} (${resolved.name}) must be categorized`);
+
+        fillCount = 0;
+        const merged = engine.mergeStyle(presetsMap[resolved.name]);
+        renderer.renderSubtitle(merged, sampleSeg, 0.75, 1080, 1920);
+        assert.ok(fillCount > 0, `${code} (${resolved.name}) must render visible text draws`);
+    }
+
+    // 4) Load reels-preset-library.js and verify ASS / JSON / community pack parsing + prototype pollution protection
+    loadBrowserScript('src/reels-preset-library.js', styleSandbox);
+    const lib = styleSandbox.window.ReelsPresetLibrary;
+    assert.ok(lib, 'ReelsPresetLibrary should attach to window');
+    assert.ok(Array.isArray(lib.BUILTIN_COMMUNITY_PACKS) && lib.BUILTIN_COMMUNITY_PACKS.length >= 3, 'BUILTIN_COMMUNITY_PACKS should provide curated packs');
+
+    // Check community JSON feed file on disk
+    const feedPath = path.join(__dirname, '..', 'presets', 'community-viral-presets.json');
+    const feedRaw = fs.readFileSync(feedPath, 'utf8');
+    const feedParsed = lib.parsePresetBundlePayload(feedRaw, 'community-feed');
+    assert.equal(feedParsed.format, 'community-packs');
+    assert.ok(feedParsed.packs.length >= 3, 'Community JSON feed should parse at least 3 packs');
+    assert.ok(Object.keys(feedParsed.presets).length >= 10, 'Community JSON feed should contain at least 10 presets');
+
+    // ASS color conversion (&HAABBGGRR & &HBBGGRR)
+    const goldColor = lib.parseAssColorToHex('&H0000D7FF');
+    assert.equal(goldColor.hex, '#FFD700');
+    assert.equal(goldColor.opacity255, 255);
+    const semiBlue = lib.parseAssColorToHex('&H80FF8800');
+    assert.equal(semiBlue.hex, '#0088FF');
+    assert.equal(semiBlue.opacity255, 127);
+
+    // Aegisub .ass parser
+    const sampleAss = [
+        '[Script Info]',
+        'Title: Demo',
+        '',
+        '[V4+ Styles]',
+        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+        'Style: TopCard,Montserrat,56,&H0000FFFF,&H000000FF,&H00111111,&H40000000,-1,0,0,0,100,100,2,0,3,4,2,8,20,20,40,1',
+        'Style: __proto__,Arial,40,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1',
+        '',
+        '[Events]',
+        'Dialogue: 0,0:00:00.00,0:00:02.00,TopCard,,0,0,0,,{\\k30\\blur3\\fad(100,100)}Hello World',
+    ].join('\n');
+    const assParsed = lib.parseAssStylesToPresets(sampleAss, '🎭 ASS');
+    assert.ok(!Object.prototype.hasOwnProperty.call(assParsed.presets, '__proto__'), '__proto__ style name must be filtered');
+    const topCard = assParsed.presets['🎭 ASS_TopCard'];
+    assert.ok(topCard, 'Parsed ASS style should preserve Name with prefix');
+    assert.equal(topCard.font_family, 'Montserrat');
+    assert.equal(topCard.color_text, '#FFFF00');
+    assert.equal(topCard.color_high, '#FF0000');
+    assert.equal(topCard.use_box, true);
+    assert.equal(topCard.pos_y, 0.22);
+    assert.equal(topCard.text_align, 'center');
+    assert.equal(assParsed.eventHints.hasKaraokeTags, true);
+    assert.equal(assParsed.eventHints.hasBlurTags, true);
+    assert.equal(assParsed.eventHints.hasFadeTags, true);
+
+    // CamelCase external JSON normalization & prototype pollution stripping
+    const maliciousJson = '{"__proto__":{"color_text":"#123456"},"Viral Card":{"fontFamily":"Bangers","textColor":"#FFFFFF","highlightColor":"#00FF88","backgroundColor":"#111111","strokeWidth":4,"borderRadius":14,"glowColor":"#FF00AA","glowRadius":16}}';
+    const jsonParsed = lib.parsePresetBundlePayload(maliciousJson, 'external');
+    assert.ok(!Object.prototype.hasOwnProperty.call(jsonParsed.presets, '__proto__'));
+    const viralCard = jsonParsed.presets['Viral Card'];
+    assert.ok(viralCard);
+    assert.equal(viralCard.font_family, 'Bangers');
+    assert.equal(viralCard.color_text, '#FFFFFF');
+    assert.equal(viralCard.color_high, '#00FF88');
+    assert.equal(viralCard.color_bg, '#111111');
+    assert.equal(viralCard.use_box, true);
+    assert.equal(viralCard.use_stroke, true);
+    assert.equal(viralCard.border_width, 4);
+    assert.equal(viralCard.box_radius, 14);
+    assert.equal(viralCard.holy_glow_color, '#FF00AA');
+    assert.equal(viralCard.holy_glow_radius, 16);
+
+    const feat = lib.getEffectFeatureTags(viralCard);
+    assert.ok(feat.keys.has('glow') && feat.keys.has('box'), 'Feature tagger should detect glow and box attributes');
+
+    // Remote fetcher must reject non-HTTPS URLs upfront
+    await assert.rejects(() => lib.fetchRemotePresetSource('http://127.0.0.1/test.json'), /https/i);
+    await assert.rejects(() => lib.fetchRemotePresetSource('javascript:alert(1)'), /https/i);
+
+    // 5) Import community presets into custom group without mutating built-ins
+    const importRes = engine.importSubtitlePresets(JSON.stringify({ presets: feedParsed.presets }), false, '🌐 社区免费预设');
+    assert.ok(importRes && importRes.added.length >= 10, `Expected >= 10 imported community presets, got ${JSON.stringify(importRes)}`);
+    const afterImport = engine.getPresetsByCategory();
+    const communityGroup = afterImport.categorized.find(g => g.category === '💾 🌐 社区免费预设');
+    assert.ok(communityGroup && communityGroup.names.length >= 10, 'Imported presets should appear under target custom category');
+});
+
+test('starry-lantern theme, Chinese flower lantern SVG, command palette, and file:// Vite bundle integrity', async () => {
+    const { pathToFileURL } = require('node:url');
+
+    const lanternMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/chinese-lantern.js')).href);
+    const paletteMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/command-palette.js')).href);
+    const starryMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/starry-canvas.js')).href);
+    const perfMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/perf-bridge.js')).href);
+
+    // 1) Chinese flower lantern SVG generator (palace + lotus variants, unique gradient IDs, safe static markup)
+    assert.ok(lanternMod.LANTERN_MODES.lit && lanternMod.LANTERN_MODES.calm && lanternMod.LANTERN_MODES.off);
+    const svgPalace = lanternMod.buildChineseLanternSvg({ variant: 'palace', width: 50, height: 96, cordLength: 18 });
+    const svgLotus = lanternMod.buildChineseLanternSvg({ variant: 'lotus', width: 38, height: 74, cordLength: 10 });
+    assert.match(svgPalace, /^<svg\s[\s\S]*<\/svg>$/);
+    assert.match(svgLotus, /^<svg\s[\s\S]*<\/svg>$/);
+    assert.ok(!/<script/i.test(svgPalace) && !/<script/i.test(svgLotus));
+    const palaceIdMatch = svgPalace.match(/id="(vkl\d+)-core"/);
+    const lotusIdMatch = svgLotus.match(/id="(vkl\d+)-core"/);
+    assert.ok(palaceIdMatch && lotusIdMatch && palaceIdMatch[1] !== lotusIdMatch[1], 'Each SVG should emit distinct gradient IDs');
+
+    // Mount stage & test poetic empty placeholder + lantern mode attributes
+    const makeEl = (tag) => {
+        const attrs = {};
+        const el = {
+            tagName: tag.toUpperCase(),
+            id: '',
+            className: '',
+            style: {},
+            children: [],
+            textContent: '',
+            _html: '',
+            set innerHTML(val) { this._html = String(val); },
+            get innerHTML() { return this._html; },
+            setAttribute(k, v) { attrs[k] = String(v); },
+            getAttribute(k) { return attrs[k] ?? null; },
+            appendChild(child) { this.children.push(child); return child; },
+            insertBefore(child) { this.children.unshift(child); return child; },
+            querySelector() { return null; },
+            addEventListener() {},
+            removeEventListener() {},
+            remove() { this._removed = true; },
+            getContext() {
+                const grad = { addColorStop() {} };
+                return {
+                    fillStyle: '',
+                    strokeStyle: '',
+                    globalAlpha: 1,
+                    lineWidth: 1,
+                    save() {},
+                    restore() {},
+                    scale() {},
+                    createLinearGradient: () => grad,
+                    createRadialGradient: () => grad,
+                    fillRect() {},
+                    beginPath() {},
+                    arc() {},
+                    fill() {},
+                    stroke() {},
+                    moveTo() {},
+                    lineTo() {},
+                };
+            },
+        };
+        return el;
+    };
+    const mockElementsById = new Map();
+    const bodyClasses = new Set(['theme-starry-lantern']);
+    const placeholderEl = makeEl('div');
+    placeholderEl.id = 'reels-preview-placeholder';
+    mockElementsById.set('reels-preview-placeholder', placeholderEl);
+
+    const listeners = new Map();
+    const mockDoc = {
+        hidden: false,
+        body: {
+            children: [],
+            classList: {
+                contains: (c) => bodyClasses.has(c),
+                toggle: (c, force) => (force === undefined ? (bodyClasses.has(c) ? bodyClasses.delete(c) : bodyClasses.add(c)) : (force ? bodyClasses.add(c) : bodyClasses.delete(c))),
+            },
+            setAttribute(k, v) { this[k] = String(v); },
+            appendChild(child) { if (child.id) mockElementsById.set(child.id, child); this.children.push(child); return child; },
+            insertBefore(child) { if (child.id) mockElementsById.set(child.id, child); this.children.unshift(child); return child; },
+        },
+        getElementById: (id) => mockElementsById.get(id) || null,
+        createElement: (tag) => makeEl(tag),
+        querySelectorAll: (sel) => {
+            if (sel === '.titlebar .tab[data-tab]') {
+                return [{ getAttribute: () => 'batch-reels', textContent: '🎬 字幕工作台', click() {} }];
+            }
+            return [];
+        },
+        addEventListener(evt, fn) { listeners.set(evt, fn); },
+        removeEventListener(evt) { listeners.delete(evt); },
+    };
+
+    const lanternStage = lanternMod.mountChineseLanternStage(mockDoc);
+    assert.ok(mockElementsById.has('vk-lantern-stage'), 'Lantern corner stage should mount');
+    assert.match(mockElementsById.get('vk-lantern-stage').innerHTML, /vk-lantern-eave-right/);
+    assert.strictEqual(placeholderEl.children.length, 1, 'Empty preview placeholder should show poetic starry greeting');
+    lanternStage.setMode('calm');
+    assert.strictEqual(mockDoc.body['data-lantern-mode'], 'calm');
+    lanternStage.setMode('invalid-fallback');
+    assert.strictEqual(mockDoc.body['data-lantern-mode'], 'lit');
+
+    // 2) Starry canvas backdrop init, mode change, and cleanup
+    let rafCounter = 0;
+    const mockWin = {
+        devicePixelRatio: 1,
+        innerWidth: 1280,
+        innerHeight: 800,
+        requestAnimationFrame() { return ++rafCounter; },
+        cancelAnimationFrame() {},
+        addEventListener() {},
+        removeEventListener() {},
+        matchMedia: () => ({ matches: false }),
+    };
+    const starry = starryMod.createStarryBackdrop({ document: mockDoc, window: mockWin, mode: 'lit' });
+    assert.ok(mockElementsById.has('vk-starry-canvas'), 'Starry night canvas should mount');
+    assert.strictEqual(mockElementsById.get('vk-starry-canvas').getAttribute('aria-hidden'), 'true');
+    assert.ok(rafCounter >= 1, 'Initial frame should schedule animation when lit');
+    starry.setMode('calm');
+    starry.renderOnce();
+    starry.destroy();
+    assert.strictEqual(mockElementsById.get('vk-starry-canvas')._removed, true);
+
+    // 3) Frame coalescer & HTML escaping + command palette indexing
+    let coalescedRuns = 0;
+    const timers = [];
+    const fakeWin = {
+        requestAnimationFrame(fn) { const id = timers.push(fn); return id; },
+        cancelAnimationFrame(id) { timers[id - 1] = null; },
+    };
+    const coalescer = perfMod.createFrameCoalescer(fakeWin);
+    coalescer.schedule('list', () => { coalescedRuns += 1; });
+    coalescer.schedule('list', () => { coalescedRuns += 10; });
+    for (const fn of timers) { if (typeof fn === 'function') fn(); }
+    assert.strictEqual(coalescedRuns, 10, 'Coalescer should cancel superseded rAF work for the same key');
+
+    assert.strictEqual(paletteMod.escapeHtml('<script>"a&b"</script>'), '&lt;script&gt;&quot;a&amp;b&quot;&lt;/script&gt;');
+    const styleSandbox = loadBrowserScript('src/reels-style-engine.js');
+    loadBrowserScript('src/reels-presets-init.js', styleSandbox);
+    const styleEngine = styleSandbox.window.ReelsStyleEngine;
+    const cmdItems = paletteMod.buildCommandItems({
+        document: mockDoc,
+        window: { ReelsStyleEngine: styleEngine, getSubtitlePresetCode: (n) => n.slice(0, 4) },
+    });
+    assert.ok(cmdItems.some(i => i.id === 'theme-starry-lantern'));
+    assert.ok(cmdItems.some(i => i.id === 'lantern-calm'));
+    assert.ok(cmdItems.some(i => i.id === 'tab-batch-reels'));
+    assert.ok(cmdItems.filter(i => i.id.startsWith('preset-')).length >= 220, 'Command palette should index all subtitle presets');
+
+    // 4) app.js theme presets + one-time starry default upgrade without overriding explicit dark preference
+    const appSrc = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+    const themeStart = appSrc.indexOf("const THEME_KEY = 'videokit-theme';");
+    assert.ok(themeStart !== -1, 'src/app.js should define THEME_KEY');
+    const initCallIdx = appSrc.indexOf('initTheme();', themeStart);
+    assert.ok(initCallIdx !== -1, 'src/app.js should invoke initTheme()');
+    const themeBlock = appSrc.slice(themeStart, initCallIdx + 'initTheme();'.length);
+
+    function runThemeSandbox(initialStorage = {}) {
+        const store = { ...initialStorage };
+        const cssVars = {};
+        const rootClasses = new Set();
+        const bodyClassesSet = new Set();
+        let studioThemeNotified = null;
+        const sandbox = {
+            window: {
+                VideoKitStudio: { onThemeChange(id) { studioThemeNotified = id; } },
+                applyCustomThemeFromAccent: () => {},
+            },
+            localStorage: {
+                getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+                setItem: (k, v) => { store[k] = String(v); },
+            },
+            document: {
+                documentElement: {
+                    style: { setProperty: (k, v) => { cssVars[k] = v; } },
+                    classList: { toggle: (c, f) => (f ? rootClasses.add(c) : rootClasses.delete(c)) },
+                },
+                body: {
+                    classList: {
+                        add: (c) => bodyClassesSet.add(c),
+                        remove: (c) => bodyClassesSet.delete(c),
+                        toggle: (c, f) => (f ? bodyClassesSet.add(c) : bodyClassesSet.delete(c)),
+                        contains: (c) => bodyClassesSet.has(c),
+                    },
+                },
+                querySelectorAll: () => [],
+            },
+            applyThemeCardsSelection() {},
+        };
+        vm.runInNewContext(themeBlock, sandbox);
+        return { sandbox, store, cssVars, rootClasses, bodyClassesSet, getStudioTheme: () => studioThemeNotified };
+    }
+
+    const freshBoot = runThemeSandbox({});
+    assert.ok(freshBoot.sandbox.window.THEME_PRESETS['starry-lantern'], 'THEME_PRESETS should include starry-lantern');
+    assert.ok(freshBoot.sandbox.window.THEME_PRESETS['starry-ink'], 'THEME_PRESETS should include starry-ink');
+    for (const existing of ['dark', 'light', 'eyecare', 'midnight', 'contrast']) {
+        assert.ok(freshBoot.sandbox.window.THEME_PRESETS[existing], `Existing theme '${existing}' must be preserved`);
+    }
+    assert.strictEqual(freshBoot.store['videokit-theme'], 'starry-lantern', 'Fresh boot should default to starry-lantern');
+    assert.strictEqual(freshBoot.store['vk_starry_default_v1'], '1');
+    assert.ok(freshBoot.bodyClassesSet.has('theme-starry-lantern'));
+    assert.strictEqual(freshBoot.getStudioTheme(), 'starry-lantern');
+
+    const explicitDarkBoot = runThemeSandbox({ 'videokit-theme': 'dark', 'vk_starry_default_v1': '1' });
+    assert.strictEqual(explicitDarkBoot.store['videokit-theme'], 'dark', 'Explicit dark preference after migration must stay dark');
+    assert.ok(!explicitDarkBoot.bodyClassesSet.has('theme-starry-lantern'));
+
+    // 5) Electron instant dark window background & packaged dist file:// compatibility
+    const mainJs = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
+    assert.match(mainJs, /backgroundColor:\s*'#060913'/, 'Electron mainWindow should pre-paint deep starry dark background');
+    const distHtmlPath = path.join(ROOT, 'dist/index.html');
+    if (fs.existsSync(distHtmlPath)) {
+        const distHtml = fs.readFileSync(distHtmlPath, 'utf8');
+        assert.ok(!/<script[^>]+type="module"[^>]+src="\.\/assets\//i.test(distHtml), 'Packaged dist/index.html must not emit ES module script tags on file://');
+        assert.ok(!/crossorigin[^>]+assets\//i.test(distHtml), 'Packaged dist/index.html assets must not emit crossorigin attribute on file://');
+    }
+});
+
+test('electron/main.js waits for app.whenReady() before calling dialog when single-instance lock is already held', async () => {
+    const Module = require('node:module');
+    const os = require('node:os');
+    const mainPath = path.resolve(ROOT, 'electron/main.js');
+    const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-lock-test-'));
+
+    const origLoad = Module._load;
+    let isReady = false;
+    let resolveReady;
+    const readyPromise = new Promise((res) => { resolveReady = res; });
+    const dialogCalls = [];
+    const exitCodes = [];
+    const ipcOn = () => {};
+
+    const mockElectron = {
+        app: {
+            isPackaged: false,
+            commandLine: { appendSwitch() {} },
+            getPath: () => tmpUserData,
+            setPath() {},
+            requestSingleInstanceLock: () => false,
+            whenReady: () => readyPromise,
+            exit: (code) => { exitCodes.push(code); },
+            on() {},
+        },
+        BrowserWindow: class {},
+        ipcMain: { on: ipcOn, handle: ipcOn },
+        MessageChannelMain: class {},
+        dialog: {
+            showMessageBoxSync(opts) {
+                if (!isReady) {
+                    throw new Error('dialog module can only be used after app is ready');
+                }
+                dialogCalls.push(opts);
+                return 0;
+            },
+        },
+        powerSaveBlocker: { start: () => 0, stop() {} },
+        protocol: { registerSchemesAsPrivileged() {} },
+        shell: {},
+        net: {},
+        screen: {},
+        desktopCapturer: {},
+    };
+
+    delete require.cache[mainPath];
+    Module._load = function patchedLoad(request, parent, isMain) {
+        if (request === 'electron') return mockElectron;
+        return origLoad.apply(this, arguments);
+    };
+
+    try {
+        // Must NOT throw synchronously before app is ready
+        require(mainPath);
+        assert.strictEqual(dialogCalls.length, 0, 'dialog must not be invoked before app.whenReady()');
+        assert.strictEqual(exitCodes.length, 0, 'dev secondary instance must wait to show warning dialog before exiting');
+
+        isReady = true;
+        resolveReady();
+        await new Promise((r) => setImmediate(r));
+
+        assert.strictEqual(dialogCalls.length, 1, 'dialog should show once app is ready');
+        assert.strictEqual(dialogCalls[0].title, '源码测试版未启动');
+        assert.deepStrictEqual(exitCodes, [0]);
+    } finally {
+        Module._load = origLoad;
+        delete require.cache[mainPath];
+        try { fs.rmSync(tmpUserData, { recursive: true, force: true }); } catch (_) {}
+    }
+});
+
+test('dev-desktop launcher skips busy Vite port automatically and wires cmd/npm entrypoints', async () => {
+    const net = require('node:net');
+    const devDesktop = require(path.join(ROOT, 'scripts/dev-desktop.cjs'));
+
+    const blocker = net.createServer();
+    await new Promise((resolve) => blocker.listen({ port: 0, host: '127.0.0.1' }, resolve));
+    const occupiedPort = blocker.address().port;
+
+    try {
+        assert.strictEqual(await devDesktop.isPortAvailable(occupiedPort), false, 'Occupied localhost port must be detected');
+        const nextPort = await devDesktop.findAvailablePort(occupiedPort, 10);
+        assert.ok(nextPort > occupiedPort && nextPort <= occupiedPort + 10, `Expected fallback port > ${occupiedPort}, got ${nextPort}`);
+    } finally {
+        await new Promise((resolve) => blocker.close(resolve));
+    }
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+    assert.strictEqual(pkg.scripts['electron:dev'], 'node scripts/dev-desktop.cjs');
+    const startCmd = fs.readFileSync(path.join(ROOT, 'start-videokit.cmd'), 'utf8');
+    assert.match(startCmd, /node scripts\\dev-desktop\.cjs/);
+    const cnCmd = fs.readFileSync(path.join(ROOT, '双击启动测试.cmd'), 'utf8');
+    assert.match(cnCmd, /node scripts\\dev-desktop\.cjs/);
+});
+
+test('Facebook Reel 1109400195335683 style: speech_feather_wipe + sub-228 Shrikhand preset + word pause sync & stationary layout', () => {
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    assert.ok(indexHtmlSrc.includes('<option value="speech_feather_wipe">人声逐字羽化</option>'));
+
+    const batchReelsSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    assert.ok(batchReelsSrc.includes("anim_in_type: 'speech_feather_wipe'"), 'batch-reels should expose speech_feather_wipe quick preset');
+
+    const presetLibSrc = fs.readFileSync(path.join(ROOT, 'src/reels-preset-library.js'), 'utf8');
+    assert.ok(presetLibSrc.includes("'speech_feather_wipe'"), 'preset library should preserve/tag speech_feather_wipe');
+
+    // Verify Shrikhand (offline bundled + metadata) and Knewave (Google Font) registration
+    assert.ok(fs.existsSync(path.join(ROOT, 'assets/fonts/Shrikhand/Shrikhand-Regular.ttf')), 'Bundled Shrikhand-Regular.ttf should exist offline');
+    const metaSandbox = loadBrowserScript('src/fonts-metadata.js');
+    const fontSandbox = loadBrowserScript('src/reels-font-manager.js', {
+        window: { FONTS_METADATA: metaSandbox.window.FONTS_METADATA },
+    });
+    assert.ok(fontSandbox.window.GOOGLE_FONTS.includes('Shrikhand'));
+    assert.ok(fontSandbox.window.GOOGLE_FONTS.includes('Knewave'));
+    const fm = fontSandbox.window.getFontManager();
+    const fontsArr = metaSandbox.window.FONTS_METADATA.fonts;
+    assert.ok(Array.isArray(fontsArr));
+    assert.ok(fontsArr.some(f => f && f.family === 'Shrikhand'), 'FONTS_METADATA should include Shrikhand');
+    assert.ok(fontsArr.some(f => f && f.family === 'Knewave'), 'FONTS_METADATA should include Knewave');
+    assert.ok(fm._getFontMetadata('Shrikhand'), 'FontManager metadata lookup should return Shrikhand');
+    assert.ok(fm._getFontMetadata('Knewave'), 'FontManager metadata lookup should return Knewave');
+
+    // Verify sub-228 preset resolution, category membership, and unique fingerprint
+    const sandbox = loadBrowserScript('src/reels-style-engine.js', { window: { addEventListener() {} } });
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+    loadBrowserScript('src/reels-anim-engine.js', sandbox);
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+
+    const { ReelsStyleEngine, ReelsAnimEngine, ReelsCanvasRenderer, resolveBuiltinPreset } = sandbox.window;
+    const resolved = resolveBuiltinPreset('sub-228');
+    assert.ok(resolved && resolved.preset, 'sub-228 must resolve to Reel 1109400195335683 preset');
+    assert.equal(resolved.name, '✝️ 启示粗斜刷_人声逐字羽化显字');
+
+    const style = ReelsStyleEngine.applySubtitlePreset(resolved.name);
+    assert.equal(style.font_family, 'Shrikhand');
+    assert.equal(style.color_text, '#FFFFFF');
+    assert.equal(style.color_outline, '#000000');
+    assert.equal(style.border_width, 6.5);
+    assert.equal(style.highlight_enabled, false);
+    assert.equal(style.karaoke_highlight, false);
+    assert.equal(style.use_box, false);
+    assert.equal(style.anim_in_type, 'speech_feather_wipe');
+    assert.equal(style.pos_y, 0.56);
+
+    const { categorized, presetsMap } = ReelsStyleEngine.getPresetsByCategory();
+    const laserGroup = categorized.find(g => g.category === '✨ 物理动效 · 激光打字机');
+    assert.ok(laserGroup && laserGroup.names.includes(resolved.name), 'sub-228 must be categorized under 物理动效 · 激光打字机');
+    const targetFp = ReelsStyleEngine.subtitleStyleFingerprint(presetsMap[resolved.name]);
+    const dupCount = Object.values(presetsMap).filter(st => ReelsStyleEngine.subtitleStyleFingerprint(st) === targetFp).length;
+    assert.equal(dupCount, 1, 'sub-228 must have a unique style fingerprint');
+
+    // Verify CLI routing forces wysiwyg Canvas engine
+    const cliMod = require('../bin/videokit-cli.cjs');
+    assert.ok(cliMod.CANVAS_EXCLUSIVE_ANIMATIONS.has('speech_feather_wipe'));
+    const route = cliMod.resolveTaskEngine({}, style, [], {}, 'reel-1109400195335683-test');
+    assert.equal(route.engine, 'wysiwyg');
+
+    // Verify computeSpeechFeatherWipeState word-anchor sync, pause hold, synchronized stroke/fill, and fallback
+    const wordAnchors = [
+        { start: 0.0, end: 0.5, startDist: 0, endDist: 180 },
+        { start: 1.0, end: 1.6, startDist: 205, endDist: 420 },
+    ];
+    const statePauseStart = ReelsAnimEngine.computeSpeechFeatherWipeState(0.55, 0.0, 2.5, [420], { fontSize: 64, wordAnchors });
+    const statePauseEnd = ReelsAnimEngine.computeSpeechFeatherWipeState(0.95, 0.0, 2.5, [420], { fontSize: 64, wordAnchors });
+    assert.equal(statePauseStart.active, true);
+    assert.equal(statePauseStart.isSpeechFeatherWipe, true);
+    assert.equal(statePauseStart.barAlpha, 0);
+    assert.ok(Math.abs(statePauseStart.sweptDist - statePauseEnd.sweptDist) < 0.001, 'Sweep must hold steady during inter-word silence');
+
+    const firstWordChar = ReelsAnimEngine.computeSpeechFeatherWipeCharReveal(20, statePauseStart);
+    const futureWordChar = ReelsAnimEngine.computeSpeechFeatherWipeCharReveal(320, statePauseStart);
+    assert.ok(firstWordChar.fillAlpha > 0.95 && firstWordChar.strokeAlpha > 0.95, 'Spoken word must be solidly revealed');
+    assert.equal(futureWordChar.fillAlpha, 0, 'Unspoken word after pause must stay hidden');
+    assert.equal(futureWordChar.strokeAlpha, 0);
+
+    // Synchronized white fill + black outline (tight transition window ~0.72em vs 2.15em wide mist)
+    assert.ok(statePauseStart.transitionWindow < 64, 'Speech feather transition window should be tight (<1em)');
+    const frontRev = ReelsAnimEngine.computeSpeechFeatherWipeCharReveal(statePauseStart.sweptDist, statePauseStart);
+    assert.ok(frontRev.strokeAlpha > 0.25 && Math.abs(frontRev.fillAlpha - frontRev.strokeAlpha) < 0.25, 'Fill and outline must reveal synchronously');
+
+    // Linear full-segment fallback when no word anchors are available
+    const fallbackEarly = ReelsAnimEngine.computeSpeechFeatherWipeState(0.2, 0.0, 2.0, [400], { fontSize: 64 });
+    const fallbackLate = ReelsAnimEngine.computeSpeechFeatherWipeState(1.5, 0.0, 2.0, [400], { fontSize: 64 });
+    assert.ok(fallbackLate.sweptDist > fallbackEarly.sweptDist);
+
+    // End-to-end multi-line word-timed render test: stationary layout & progressive partial reveal
+    const drawOps = [];
+    const alphaStack = [];
+    const ctx = {
+        font: '400 64px Shrikhand',
+        globalAlpha: 1,
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        save() { alphaStack.push(this.globalAlpha); },
+        restore() { if (alphaStack.length) this.globalAlpha = alphaStack.pop(); },
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        arcTo() {},
+        rect() {},
+        roundRect() {},
+        clip() {},
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        strokeRect() {},
+        clearRect() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        setLineDash() {},
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+        measureText(txt) { return { width: String(txt || '').length * 22, actualBoundingBoxAscent: 46, actualBoundingBoxDescent: 12 }; },
+        fillText(txt, x, y) { drawOps.push({ op: 'fill', text: String(txt), x, y, style: this.fillStyle, alpha: this.globalAlpha }); },
+        strokeText(txt, x, y) { drawOps.push({ op: 'stroke', text: String(txt), x, y, style: this.strokeStyle, alpha: this.globalAlpha }); },
+    };
+
+    const renderer = new ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const timedSeg = {
+        start: 0.0,
+        end: 3.2,
+        text: 'If you ask me what to do\nwhen life stops making sense,\nthis is what I would say:',
+        words: [
+            { word: 'If', start: 0.05, end: 0.22 },
+            { word: 'you', start: 0.22, end: 0.38 },
+            { word: 'ask', start: 0.38, end: 0.58 },
+            { word: 'me', start: 0.58, end: 0.72 },
+            { word: 'what', start: 0.72, end: 0.90 },
+            { word: 'to', start: 0.90, end: 1.04 },
+            { word: 'do', start: 1.04, end: 1.25 },
+            { word: 'when', start: 1.45, end: 1.65 },
+            { word: 'life', start: 1.65, end: 1.85 },
+            { word: 'stops', start: 1.85, end: 2.05 },
+            { word: 'making', start: 2.05, end: 2.25 },
+            { word: 'sense,', start: 2.25, end: 2.45 },
+            { word: 'this', start: 2.55, end: 2.68 },
+            { word: 'is', start: 2.68, end: 2.78 },
+            { word: 'what', start: 2.78, end: 2.90 },
+            { word: 'I', start: 2.90, end: 2.98 },
+            { word: 'would', start: 2.98, end: 3.10 },
+            { word: 'say:', start: 3.10, end: 3.20 },
+        ],
+    };
+
+    const collectFills = (t) => {
+        drawOps.length = 0;
+        renderer.renderSubtitle(style, timedSeg, t, 1080, 1920);
+        return drawOps.slice();
+    };
+
+    const opsEarly = collectFills(0.35);
+    const opsMid = collectFills(1.32); // pause after 'do' on line 1; line 3 not spoken yet
+    const opsFull = collectFills(3.20);
+
+    const strokeIdx = opsMid.findIndex(d => d.op === 'stroke');
+    const firstFillIdx = opsMid.findIndex(d => d.op === 'fill');
+    assert.ok(strokeIdx >= 0 && firstFillIdx > strokeIdx, 'Black contour strokes must render before white character fills');
+
+    const midText = opsMid.filter(d => d.op === 'fill').map(d => d.text).join('');
+    assert.ok(midText.includes('If'), 'Earlier spoken characters must be drawn at mid-sentence');
+    assert.ok(!midText.includes('say:'), 'Unspoken final line must stay completely invisible during earlier pause');
+
+    const fullText = opsFull.filter(d => d.op === 'fill').map(d => d.text).join('');
+    assert.ok(fullText.includes('say:'), 'Final line must be fully drawn at end of segment');
+
+    // Stationary layout anchor check for the first character 'I' of 'If'
+    const isWhiteFaceI = (d) => d.op === 'fill' && d.text === 'I' && d.style === '#FFFFFF' && d.alpha > 0.9;
+    const firstI_early = opsEarly.find(isWhiteFaceI);
+    const firstI_mid = opsMid.find(isWhiteFaceI);
+    const firstI_full = opsFull.find(isWhiteFaceI);
+    assert.ok(firstI_early && firstI_mid && firstI_full);
+    assert.ok(Math.abs(firstI_early.x - firstI_full.x) < 0.01, 'Earlier word X position must remain stationary as later words appear');
+    assert.ok(Math.abs(firstI_mid.y - firstI_full.y) < 0.01, 'Earlier word Y position must remain stationary');
+});
+
+test('Windows frameless titleBarOverlay chrome, November seasonal themes (autumn/snow/christmas), and layout styling integrity', async () => {
+    const { pathToFileURL } = require('node:url');
+
+    // 1) Electron Main & Preload Windows chromeless menu + dark titleBarOverlay contract
+    const mainJs = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
+    const preloadJs = fs.readFileSync(path.join(ROOT, 'electron/preload.js'), 'utf8');
+    assert.match(mainJs, /nativeTheme,\s*Menu/, 'electron/main.js must import nativeTheme and Menu');
+    assert.match(mainJs, /Menu\.setApplicationMenu\(null\)/, 'Non-darwin platforms must hide native File/Edit white menu bar');
+    assert.match(mainJs, /titleBarStyle\s*[:=]\s*'hidden'/, 'Windows/Linux must use hidden titleBarStyle');
+    assert.match(mainJs, /autoHideMenuBar\s*[:=]\s*true/, 'Windows must set autoHideMenuBar: true');
+    assert.match(mainJs, /titleBarOverlay\s*[:=]\s*\{/, 'Windows must configure dark titleBarOverlay');
+    assert.match(mainJs, /handleTrusted\('window:set-titlebar-theme'/, 'Must expose window:set-titlebar-theme trusted IPC handler');
+    assert.match(mainJs, /applyPlatformWindowChrome\([\s\S]*?'open-template-window'|open-template-window[\s\S]*?applyPlatformWindowChrome/, 'Template window must also receive platform window chrome');
+    assert.match(preloadJs, /setTitlebarTheme:\s*\(themeInfo\)\s*=>\s*ipcRenderer\.invoke\('window:set-titlebar-theme',\s*themeInfo\)/);
+
+    // 2) app.js THEME_PRESETS includes autumn-night, snow-night, christmas-eve & syncs Electron titleBarOverlay
+    const appSrc = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+    const themeStart = appSrc.indexOf("const THEME_KEY = 'videokit-theme';");
+    const initCallIdx = appSrc.indexOf('initTheme();', themeStart);
+    assert.ok(themeStart !== -1 && initCallIdx > themeStart);
+    const themeBlock = appSrc.slice(themeStart, initCallIdx + 'initTheme();'.length);
+
+    const store = {};
+    const bodyClassesSet = new Set();
+    const ipcThemeCalls = [];
+    const studioCalls = [];
+    const sandbox = {
+        window: {
+            electronAPI: {
+                setTitlebarTheme(payload) { ipcThemeCalls.push(payload); },
+            },
+            VideoKitStudio: {
+                onThemeChange(id, meta) { studioCalls.push({ id, meta }); },
+            },
+            applyCustomThemeFromAccent: () => {},
+        },
+        localStorage: {
+            getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+            setItem: (k, v) => { store[k] = String(v); },
+        },
+        document: {
+            documentElement: {
+                style: { setProperty() {} },
+                classList: { toggle() {} },
+            },
+            body: {
+                classList: {
+                    add: (c) => bodyClassesSet.add(c),
+                    remove: (c) => bodyClassesSet.delete(c),
+                    toggle: (c, f) => (f ? bodyClassesSet.add(c) : bodyClassesSet.delete(c)),
+                    contains: (c) => bodyClassesSet.has(c),
+                },
+            },
+            querySelectorAll: () => [],
+        },
+        applyThemeCardsSelection() {},
+    };
+    vm.runInNewContext(themeBlock, sandbox);
+    const presets = sandbox.window.THEME_PRESETS;
+    for (const id of ['starry-lantern', 'starry-ink', 'autumn-night', 'snow-night', 'christmas-eve', 'dark', 'light', 'eyecare', 'midnight', 'contrast']) {
+        assert.ok(presets[id], `THEME_PRESETS must define '${id}'`);
+    }
+    for (const seasonalId of ['autumn-night', 'snow-night', 'christmas-eve']) {
+        sandbox.window.applyTheme(seasonalId);
+        assert.ok(bodyClassesSet.has(`theme-${seasonalId}`), `Applying ${seasonalId} must add body.theme-${seasonalId}`);
+        assert.strictEqual(store['videokit-theme'], seasonalId);
+        assert.strictEqual(studioCalls[studioCalls.length - 1]?.id, seasonalId);
+        assert.strictEqual(ipcThemeCalls[ipcThemeCalls.length - 1]?.isLight, false);
+        assert.match(ipcThemeCalls[ipcThemeCalls.length - 1]?.color || '', /^#[0-9a-f]{6}$/i);
+    }
+    sandbox.window.applyTheme('light');
+    assert.strictEqual(ipcThemeCalls[ipcThemeCalls.length - 1]?.isLight, true);
+
+    // 3) Seasonal stage ornaments & canvas particles render cleanly across autumn/snow/christmas/starry
+    const lanternMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/chinese-lantern.js')).href);
+    const starryMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/starry-canvas.js')).href);
+    const paletteMod = await import(pathToFileURL(path.join(ROOT, 'src/studio/command-palette.js')).href);
+
+    const byId = new Map();
+    const sceneClasses = new Set(['theme-starry-lantern']);
+    const makeEl = (tag) => ({
+        tagName: tag.toUpperCase(),
+        id: '',
+        className: '',
+        style: {},
+        children: [],
+        innerHTML: '',
+        textContent: '',
+        setAttribute() {},
+        appendChild(c) { this.children.push(c); return c; },
+        insertBefore(c) { this.children.unshift(c); return c; },
+        querySelector() { return null; },
+        remove() {},
+        getContext() {
+            const grad = { addColorStop() {} };
+            return {
+                fillStyle: '', strokeStyle: '', globalAlpha: 1, lineWidth: 1,
+                save() {}, restore() {}, scale() {},
+                createLinearGradient: () => grad, createRadialGradient: () => grad,
+                fillRect() {}, beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {}, closePath() {},
+            };
+        },
+    });
+    const ph = makeEl('div');
+    ph.id = 'reels-preview-placeholder';
+    byId.set(ph.id, ph);
+    const mockDoc = {
+        hidden: false,
+        body: {
+            children: [],
+            classList: {
+                contains: (c) => sceneClasses.has(c),
+                toggle: (c, f) => (f === undefined ? (sceneClasses.has(c) ? sceneClasses.delete(c) : sceneClasses.add(c)) : (f ? sceneClasses.add(c) : sceneClasses.delete(c))),
+            },
+            setAttribute() {},
+            appendChild(c) { if (c.id) byId.set(c.id, c); this.children.push(c); return c; },
+            insertBefore(c) { if (c.id) byId.set(c.id, c); this.children.unshift(c); return c; },
+        },
+        getElementById: (id) => byId.get(id) || null,
+        createElement: (t) => makeEl(t),
+        querySelectorAll: () => [],
+        addEventListener() {},
+        removeEventListener() {},
+    };
+    const stage = lanternMod.mountChineseLanternStage(mockDoc);
+    const backdrop = starryMod.createStarryBackdrop({
+        document: mockDoc,
+        window: { innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1, addEventListener() {}, removeEventListener() {}, requestAnimationFrame: () => 1, cancelAnimationFrame() {} },
+        mode: 'lit',
+    });
+    for (const sId of ['autumn-night', 'snow-night', 'christmas-eve', 'starry-ink', 'starry-lantern']) {
+        for (const k of Array.from(sceneClasses)) sceneClasses.delete(k);
+        sceneClasses.add(`theme-${sId}`);
+        stage.setSceneTheme(sId);
+        backdrop.renderOnce();
+        const stHtml = byId.get('vk-lantern-stage').innerHTML;
+        assert.ok(stHtml.includes('<svg') && !/<script/i.test(stHtml), `${sId} corner ornament SVG must be valid & safe`);
+    }
+    backdrop.destroy();
+    stage.destroy();
+
+    // 4) Command palette & CSS selectors verify seasonal entries & Windows inset layout
+    const cmdItems = paletteMod.buildCommandItems({ document: mockDoc, window: {} });
+    assert.ok(cmdItems.some(i => i.id === 'theme-autumn-night'));
+    assert.ok(cmdItems.some(i => i.id === 'theme-snow-night'));
+    assert.ok(cmdItems.some(i => i.id === 'theme-christmas-eve'));
+
+    const starryCss = fs.readFileSync(path.join(ROOT, 'src/studio/starry-theme.css'), 'utf8');
+    const mainCss = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+    assert.match(starryCss, /body\.theme-autumn-night/);
+    assert.match(starryCss, /body\.theme-snow-night/);
+    assert.match(starryCss, /body\.theme-christmas-eve/);
+    assert.match(starryCss, /\.vk-theme-popover/);
+    assert.match(starryCss, /body\.theme-light\s+\.vk-pill-btn/);
+    assert.match(mainCss, /body\.platform-win32\s+\.titlebar[\s\S]*?--vk-win-controls-inset/);
+    assert.match(mainCss, /#reels-batch-table-container[\s\S]*?--window-chrome-height/);
+    assert.match(mainCss, /\.rop-scroll-accordion/);
+});
+
+test('Scroll subtitle inspector organizes controls into clean collapsibles while preserving all IDs and badge updates', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const startIdx = panelSrc.indexOf('<div id="rop-scroll-props"');
+    const endIdx = panelSrc.indexOf('<div id="rop-textcard-props"');
+    assert.ok(startIdx !== -1 && endIdx > startIdx, 'Must locate #rop-scroll-props block before #rop-textcard-props');
+    const scrollBlock = panelSrc.slice(startIdx, endIdx);
+
+    // Outer accordions: title + body open by default; effects, tw, motion, feather, bgadv collapsed by default
+    assert.match(scrollBlock, /<details class="rop-scroll-accordion" id="rop-scroll-acc-title" open>/);
+    assert.match(scrollBlock, /<details class="rop-scroll-accordion" id="rop-scroll-acc-body" open>/);
+    for (const collapsedId of ['rop-scroll-acc-effects', 'rop-scroll-acc-tw', 'rop-scroll-acc-motion', 'rop-scroll-acc-feather', 'rop-scroll-acc-bgadv']) {
+        assert.match(scrollBlock, new RegExp(`<details class="rop-scroll-accordion" id="${collapsedId}">`), `${collapsedId} must be collapsed by default`);
+    }
+    assert.match(scrollBlock, /<details class="rop-scroll-subacc" id="rop-scroll-acc-corner-badge">/);
+    assert.match(scrollBlock, /<details class="rop-scroll-subacc" id="rop-scroll-acc-ribbon">/);
+    assert.match(scrollBlock, /<details class="rop-scroll-subacc" id="rop-scroll-acc-tw-presets">/);
+    assert.match(scrollBlock, /<details class="rop-scroll-subacc" id="rop-scroll-acc-tw-icons">/);
+
+    // All preset/button counts remain intact inside accordions
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-card-bg-preset/g) || []).length, 25);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-corner-badge-quick/g) || []).length, 13);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-body-bg-preset/g) || []).length, 13);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-tw-style-preset/g) || []).length, 14);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-tw-icon-chip/g) || []).length, 27);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-feather-preset/g) || []).length, 5);
+
+    // Critical DOM element IDs remain identically addressable
+    const requiredIds = [
+        'rop-scroll-apply-all', 'rop-scroll-style-picker-btn', 'rop-scroll-style-preset-select',
+        'rop-scroll-title', 'rop-scroll-title-deco-opacity', 'rop-scroll-content', 'rop-scroll-body-bg-pad-bottom',
+        'rop-scroll-bg-width-quick', 'rop-scroll-bg-height-quick-num', 'rop-scroll-bg-opacity-quick',
+        'rop-scroll-bg-scroll-follow-quick', 'rop-scroll-bg-body-only-quick',
+        'rop-scroll-body-bg-pad-h-quick', 'rop-scroll-body-bg-pad-v-quick', 'rop-scroll-body-bg-opacity-quick',
+        'rop-scroll-tw-enabled', 'rop-scroll-tw-details', 'rop-scroll-tw-icon-grid', 'rop-scroll-tw-cursor-image-row',
+        'rop-scroll-show-end', 'rop-scroll-speed', 'rop-scroll-focus-flow-enabled',
+        'rop-scroll-feather-mode', 'rop-scroll-feather-right-offset',
+        'rop-scroll-bg-enabled', 'rop-scroll-bg-style', 'rop-scroll-bg-top-mascot', 'rop-scroll-bg-blur-amount',
+    ];
+    for (const id of requiredIds) {
+        assert.ok(scrollBlock.includes(`id="${id}"`), `Preserved scroll control ID missing: #${id}`);
+    }
+
+    // Verify _updateScrollAccordionBadges method exists and updates badge text cleanly
+    const methodMatch = panelSrc.match(/_updateScrollAccordionBadges\(ov\)\s*\{[\s\S]*?\n    \}/);
+    assert.ok(methodMatch, '_updateScrollAccordionBadges(ov) helper should be defined on ReelsOverlayPanel');
+    const badgeEls = new Map();
+    const makeBadgeEl = () => ({
+        textContent: '',
+        classes: new Set(),
+        classList: { toggle(c, f) { f ? this._owner.classes.add(c) : this._owner.classes.delete(c); } },
+    });
+    for (const id of [
+        'rop-scroll-acc-title-badge', 'rop-scroll-acc-body-badge', 'rop-scroll-acc-effects-badge',
+        'rop-scroll-acc-corner-badge-val', 'rop-scroll-acc-ribbon-val', 'rop-scroll-acc-tw-badge',
+        'rop-scroll-acc-motion-badge', 'rop-scroll-acc-feather-badge', 'rop-scroll-acc-bgadv-badge',
+    ]) {
+        const b = makeBadgeEl();
+        b.classList._owner = b;
+        badgeEls.set(`#${id}`, b);
+    }
+    const fn = new Function('ov', `return (function ${methodMatch[0].replace(/^_updateScrollAccordionBadges/, '_updateScrollAccordionBadges')}).call(this, ov);`);
+    fn.call({ container: { querySelector: (sel) => badgeEls.get(sel) || null } }, {
+        scroll_title: 'Autumn',
+        fontsize: 48,
+        content: 'Line 1\nLine 2',
+        scroll_bg_enabled: true,
+        scroll_body_bg_enabled: true,
+        scroll_body_bg_style: 'newspaper_cutout',
+        scroll_bg_bookmark_enabled: true,
+        scroll_bg_bookmark_style: 'swallowtail',
+        scroll_typewriter_enabled: true,
+        scroll_focus_flow_enabled: true,
+        scroll_feather_top: 90,
+        scroll_feather_bottom: 60,
+    });
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-title-badge').textContent, '已填 6字');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-body-badge').textContent, '48px · 2行');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-effects-badge').textContent, '画板+底衬');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-tw-badge').textContent, '已开启');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-motion-badge').textContent, '焦点起停');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-feather-badge').textContent, '上90 / 下60');
+    assert.strictEqual(badgeEls.get('#rop-scroll-acc-bgadv-badge').textContent, '已启用');
+});
+
+test('Top nav groups subtitle tools and voice tools into sidebars and renames Media Tools', () => {
+    const html = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+    const appJs = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+    const paletteJs = fs.readFileSync(path.join(ROOT, 'src/studio/command-palette.js'), 'utf8');
+
+    const navMatch = html.match(/<nav class="tabs">[\s\S]*?<\/nav>/);
+    assert.ok(navMatch, 'index.html must contain top <nav class="tabs">');
+    const navHtml = navMatch[0];
+    assert.ok(navHtml.includes('data-tab="subtitle-suite">字幕工具<'));
+    assert.ok(navHtml.includes('data-tab="voice-suite">声音工具<'));
+    assert.ok(navHtml.includes('data-tab="media">媒体工具<'));
+    assert.ok(!navHtml.includes('媒体转换'));
+    for (const removedTopTab of ['voiceover-workflow', 'elevenlabs', 'microsoft-tts', 'google-tts', 'subtitle', 'srt-tools']) {
+        assert.ok(!navHtml.includes(`data-tab="${removedTopTab}"`), `Top nav should no longer expose standalone tab ${removedTopTab}`);
+    }
+
+    assert.ok(html.includes('<section id="subtitle-suite-panel" class="panel vk-suite-panel"'));
+    assert.ok(html.includes('<aside class="vk-suite-sidebar" data-suite="subtitle-suite">'));
+    assert.ok(html.includes('data-suite-tab="voiceover-workflow"'));
+    assert.ok(html.includes('data-suite-tab="subtitle"'));
+    assert.ok(html.includes('data-suite-tab="srt-tools"'));
+
+    assert.ok(html.includes('<section id="voice-suite-panel" class="panel vk-suite-panel"'));
+    assert.ok(html.includes('<aside class="vk-suite-sidebar" data-suite="voice-suite">'));
+    assert.ok(html.includes('data-suite-tab="elevenlabs"'));
+    assert.ok(html.includes('data-suite-tab="microsoft-tts"'));
+    assert.ok(html.includes('data-suite-tab="google-tts"'));
+
+    // Every original panel stays intact with unique ID and balanced <section> tags
+    assert.strictEqual((html.match(/<section\b/g) || []).length, (html.match(/<\/section>/g) || []).length);
+    for (const id of [
+        'voiceover-workflow-panel',
+        'subtitle-panel',
+        'srt-tools-panel',
+        'elevenlabs-panel',
+        'microsoft-tts-panel',
+        'google-tts-panel',
+    ]) {
+        assert.strictEqual((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `Expected unique panel ${id}`);
+    }
+
+    assert.match(css, /\.vk-suite-panel > \.panel-content/);
+    assert.match(css, /\.vk-suite-sidebar/);
+    assert.match(css, /\.vk-suite-workbench/);
+
+    assert.ok(appJs.includes('PANEL_SUITE_PARENTS'));
+    assert.ok(appJs.includes('function activateSuiteSubtab('));
+    assert.ok(appJs.includes('function initSuiteSidebars()'));
+    assert.ok(paletteJs.includes('.vk-suite-sidebar[data-suite] .sidebar-item[data-suite-tab]'));
+
+    // Bespoke VideoKit checkmark SVG logo lockup + standalone asset
+    assert.ok(html.includes('class="vk-brand-lockup"') && html.includes('class="vk-brand-logo"'));
+    assert.ok(css.includes('.vk-brand-lockup') && css.includes('.vk-brand-logo'));
+    const logoSvg = fs.readFileSync(path.join(ROOT, 'assets/videokit-logo.svg'), 'utf8');
+    assert.ok(logoSvg.includes('<path d="M8.2 16.4 L13.5 21.8 L24.0 10.0"'));
+});
+
+test('Decor panel & inline decor inspector organize controls into collapsibles while preserving all IDs and live badges', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const cssSrc = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+
+    // 1) Inline #rop-decor-props accordions inside ReelsOverlayPanel
+    const ropDecorStart = panelSrc.indexOf('<div id="rop-decor-props"');
+    const ropDecorEnd = panelSrc.indexOf('<!-- 滚动字幕属性');
+    assert.ok(ropDecorStart !== -1 && ropDecorEnd > ropDecorStart, 'Must locate #rop-decor-props block');
+    const ropDecorBlock = panelSrc.slice(ropDecorStart, ropDecorEnd);
+
+    for (const id of ['rop-decor-acc-dark', 'rop-decor-acc-grain', 'rop-decor-acc-effects', 'rop-decor-acc-layout']) {
+        assert.match(ropDecorBlock, new RegExp(`<details class="rop-scroll-accordion" id="${id}">`), `${id} must be collapsed by default`);
+        assert.ok(ropDecorBlock.includes(`id="${id}-badge"`), `${id}-badge must exist`);
+    }
+    for (const controlId of [
+        'rop-open-dedicated-decor-tab', 'rop-decor-apply-all', 'rop-decor-fit-fullscreen', 'rop-decor-fit-card',
+        'rop-decor-style', 'rop-decor-layout', 'rop-decor-dark-vignette', 'rop-decor-vignette-spread', 'rop-decor-dark-tint',
+        'rop-decor-grain-intensity', 'rop-decor-grain-size', 'rop-decor-grain-warmth', 'rop-decor-film-scratches', 'rop-decor-light-leak',
+        'rop-decor-floating-particles', 'rop-decor-particle-mode', 'rop-decor-glow-stars', 'rop-decor-snowflakes',
+        'rop-decor-corner-ornaments', 'rop-decor-edge-garland', 'rop-decor-density', 'rop-decor-size', 'rop-decor-glow',
+        'rop-decor-speed', 'rop-decor-margin', 'rop-decor-center-clear', 'rop-decor-color1', 'rop-decor-color2',
+    ]) {
+        assert.ok(ropDecorBlock.includes(`id="${controlId}"`), `Preserved inline decor control missing: #${controlId}`);
+    }
+
+    // 2) Standalone ReelsDecorPanel accordions & Phone CTA collapsible structure
+    const rdpStart = panelSrc.indexOf('class ReelsDecorPanel');
+    assert.ok(rdpStart !== -1, 'ReelsDecorPanel class must exist');
+    const rdpBlock = panelSrc.slice(rdpStart);
+
+    assert.match(rdpBlock, /<details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-presets" open>/);
+    for (const collapsedId of ['rdp-acc-effects', 'rdp-acc-dark', 'rdp-acc-grain', 'rdp-acc-layout']) {
+        assert.match(rdpBlock, new RegExp(`<details class="rop-scroll-accordion rdp-accordion" id="${collapsedId}">`), `${collapsedId} must be collapsed by default`);
+    }
+    assert.match(rdpBlock, /<details class="rop-scroll-subacc rdp-cta-subacc" id="rdp-acc-cta">/);
+    assert.match(rdpBlock, /<details class="rop-scroll-subacc" id="rdp-acc-cta-timing" open>/);
+    assert.match(rdpBlock, /<details class="rop-scroll-subacc" id="rdp-acc-cta-anim">/);
+
+    for (const id of [
+        'rdp-master-bar', 'rdp-master-enable', 'rdp-master-status-badge',
+        'rdp-style-scope', 'rdp-apply-all', 'rdp-add-layer-btn', 'rdp-fit-full-btn', 'rdp-fit-card-btn', 'rdp-clear-layers-btn', 'rdp-layer-list',
+        'rdp-style-select', 'rdp-preset-grid',
+        'rdp-floating-particles', 'rdp-particle-mode', 'rdp-glow-stars', 'rdp-snowflakes', 'rdp-corner-ornaments', 'rdp-edge-garland',
+        'rdp-dark-enabled', 'rdp-dark-vignette', 'rdp-vignette-spread', 'rdp-dark-tint',
+        'rdp-grain-enabled', 'rdp-grain-intensity', 'rdp-grain-size', 'rdp-grain-warmth', 'rdp-film-scratches', 'rdp-light-leak',
+        'rdp-layout', 'rdp-density', 'rdp-size', 'rdp-glow', 'rdp-speed', 'rdp-margin', 'rdp-center-clear', 'rdp-opacity', 'rdp-color1', 'rdp-color2',
+        'rdp-phone-cta-card', 'rdp-cta-enable', 'rdp-cta-status-badge', 'rdp-cta-preview-btn', 'rdp-cta-delete-btn',
+        'rdp-cta-mode-image', 'rdp-cta-mode-text', 'rdp-cta-image-section', 'rdp-cta-upload-btn', 'rdp-cta-reuse-last-btn',
+        'rdp-cta-file-input', 'rdp-cta-img-dropzone', 'rdp-cta-img-thumb', 'rdp-cta-img-name', 'rdp-cta-clear-img-btn',
+        'rdp-cta-img-width', 'rdp-cta-img-scale', 'rdp-cta-text-section', 'rdp-cta-style', 'rdp-cta-body', 'rdp-cta-title',
+        'rdp-cta-mask-mode', 'rdp-cta-mask-color', 'rdp-cta-mask-opacity', 'rdp-cta-mask-radius', 'rdp-cta-pad-h',
+        'rdp-cta-text-color', 'rdp-cta-phone-color', 'rdp-cta-fontsize', 'rdp-cta-text-width',
+        'rdp-cta-x', 'rdp-cta-y', 'rdp-cta-start', 'rdp-cta-end', 'rdp-cta-end-full',
+        'rdp-cta-anim-in', 'rdp-cta-anim-dur', 'rdp-cta-anim-out', 'rdp-cta-loop-anim',
+    ]) {
+        assert.ok(rdpBlock.includes(`id="${id}"`), `Preserved ReelsDecorPanel control missing: #${id}`);
+    }
+    assert.strictEqual((rdpBlock.match(/class="rdp-cat-btn/g) || []).length, 7, 'All 7 decor category filter pills must remain');
+    assert.strictEqual((rdpBlock.match(/class="rdp-tint-chip"/g) || []).length, 5, 'All 5 dark tint chips must remain');
+    assert.strictEqual((rdpBlock.match(/class="rop-btn rdp-cta-pos-btn"/g) || []).length, 5, 'All 5 Phone CTA position quick buttons must remain');
+    assert.strictEqual((rdpBlock.match(/class="rop-btn rdp-cta-time-chip"/g) || []).length, 9, 'All 9 Phone CTA quick timing chips must remain');
+
+    // 3) CSS styling classes for Decor Panel accordions & light mode overrides
+    for (const selector of ['.rdp-root', '.rdp-master-bar', '.rdp-layer-card', '.rdp-preset-grid', '.rdp-cta-card', '.rdp-cta-header']) {
+        assert.ok(cssSrc.includes(selector), `styles.css must define ${selector}`);
+    }
+
+    // 4) Live summary badge computation check via _computeDecorSummaryBadges
+    const helperMatch = panelSrc.match(/function _computeDecorSummaryBadges\(ov\)\s*\{[\s\S]*?\n\}/);
+    assert.ok(helperMatch, '_computeDecorSummaryBadges(ov) helper must be defined');
+    const sandbox = {
+        window: {
+            ReelsOverlay: {
+                DECOR_OVERLAY_STYLES: {
+                    dark_starlight_mist: { name: '🌌 暗夜星空黑底 + 呼吸星芒微粒' },
+                },
+            },
+        },
+    };
+    vm.runInNewContext(`${helperMatch[0]}; this._computeDecorSummaryBadges = _computeDecorSummaryBadges;`, sandbox);
+    const activeSummary = sandbox._computeDecorSummaryBadges({
+        decor_style: 'dark_starlight_mist',
+        decor_dark_enabled: true,
+        decor_dark_vignette: 72,
+        decor_grain_enabled: true,
+        decor_grain_intensity: 28,
+        decor_film_scratches: true,
+        decor_floating_particles: true,
+        decor_glow_stars: true,
+        decor_snowflakes: true,
+        decor_layout: 'edges_and_float',
+        decor_density: 90,
+    });
+    assert.strictEqual(activeSummary.presetLabel, '暗夜星空黑底 + 呼吸星芒微粒');
+    assert.strictEqual(activeSummary.presetActive, true);
+    assert.strictEqual(activeSummary.darkLabel, '已启用 · 72%');
+    assert.strictEqual(activeSummary.darkActive, true);
+    assert.strictEqual(activeSummary.grainLabel, '颗粒28%·划痕');
+    assert.strictEqual(activeSummary.grainActive, true);
+    assert.strictEqual(activeSummary.effectsLabel, '粒子·星芒 +1');
+    assert.strictEqual(activeSummary.effectsActive, true);
+    assert.strictEqual(activeSummary.layoutLabel, '边缘+漂浮 · 密度90');
+
+    const emptySummary = sandbox._computeDecorSummaryBadges(null);
+    assert.strictEqual(emptySummary.presetLabel, '未选择');
+    assert.strictEqual(emptySummary.darkLabel, '已关闭');
+    assert.strictEqual(emptySummary.grainLabel, '已关闭');
+});
+
+test('startup disables auto-opening template library and converts update prompts to top-right non-blocking toast', () => {
+    const templatesSrc = fs.readFileSync(path.join(ROOT, 'src/reels-templates.js'), 'utf8');
+    const updaterSrc = fs.readFileSync(path.join(ROOT, 'electron/updater.js'), 'utf8');
+    const cssSrc = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+
+    // 1) Template library must NOT auto-open when location.hash lacks #template=...
+    const hashFnMatch = templatesSrc.match(/function _checkHashForTemplate\(\)\s*\{[\s\S]*?const templateId = match\[1\];/);
+    assert.ok(hashFnMatch, '_checkHashForTemplate must remain defined');
+    assert.ok(
+        !/\bopenTemplateLibrary\s*\(/.test(hashFnMatch[0]),
+        '_checkHashForTemplate must not auto-open Template Library on normal launch'
+    );
+    assert.ok(
+        templatesSrc.includes('function openTemplateLibrary('),
+        'Manual openTemplateLibrary() API must still exist'
+    );
+
+    // 2) Electron updater must NOT show blocking dialog.showMessageBox prompts for update notifications
+    const dialogMatches = updaterSrc.match(/dialog\.showMessageBox\s*\(/g) || [];
+    assert.strictEqual(
+        dialogMatches.length,
+        1,
+        'Only prepareForUpdateRestart multi-window safety guard should keep dialog.showMessageBox'
+    );
+    const prepareGuardMatch = updaterSrc.match(/async function prepareForUpdateRestart\(\)\s*\{[\s\S]*?\n\}/);
+    assert.ok(prepareGuardMatch && prepareGuardMatch[0].includes('dialog.showMessageBox('), 'Safety guard inside prepareForUpdateRestart must remain');
+    assert.strictEqual(
+        (updaterSrc.match(/catch \(error\) \{\s*return \{ success: false, error: error\?\.message/g) || []).length,
+        2,
+        'Both portable and NSIS install-update handlers must return structured failure objects'
+    );
+
+    // 3) CSS defines fixed top-right corner update toast styling + light mode support
+    assert.ok(cssSrc.includes('.vk-update-toast {'), 'styles.css must define .vk-update-toast');
+    assert.ok(cssSrc.includes('top: calc(var(--window-chrome-height, 38px) + 10px);'), 'Update toast must dock cleanly below top titlebar');
+    assert.ok(cssSrc.includes('body.theme-light .vk-update-toast {'), 'styles.css must theme update toast for light mode');
+
+    // 4) Runtime behavior of top-right corner update toast helper in sandboxed VM
+    const escMatch = appSrc.match(/function escapeHtml\(str\)\s*\{[\s\S]*?\n\}/);
+    const helperMatch = appSrc.match(/const _appUpdateUiState = \{[\s\S]*?async function _installDownloadedAppUpdate\(\)\s*\{[\s\S]*?\n\}/);
+    assert.ok(escMatch && helperMatch, 'Renderer corner update toast helpers must be present in src/app.js');
+
+    const created = new Map();
+    const makeClassList = () => {
+        const set = new Set();
+        return {
+            add: (...cls) => cls.forEach((c) => set.add(c)),
+            remove: (...cls) => cls.forEach((c) => set.delete(c)),
+            contains: (c) => set.has(c),
+        };
+    };
+    const makeElement = (tag) => {
+        const attrs = {};
+        const cl = makeClassList();
+        const el = {
+            tagName: tag.toUpperCase(),
+            id: '',
+            className: '',
+            classList: cl,
+            dataset: {},
+            innerHTML: '',
+            setAttribute: (k, v) => { attrs[k] = String(v); },
+            getAttribute: (k) => attrs[k] || null,
+            querySelectorAll: () => [],
+            querySelector: () => null,
+        };
+        return el;
+    };
+
+    const sandbox = {
+        requestAnimationFrame: (fn) => fn(),
+        window: { electronAPI: { downloadUpdate: async () => ({ success: true }), installUpdate: async () => ({ success: true }) } },
+        document: {
+            body: {
+                appendChild(el) {
+                    if (el.id) created.set(el.id, el);
+                },
+            },
+            getElementById(id) {
+                return created.get(id) || null;
+            },
+            createElement: makeElement,
+            querySelector: () => null,
+        },
+        showToast: () => {},
+    };
+    vm.runInNewContext(
+        `${escMatch[0]}\n${helperMatch[0]}\nthis._handleAppUpdateStatusEvent = _handleAppUpdateStatusEvent;\nthis._dismissUpdateCornerToast = _dismissUpdateCornerToast;\nthis._appUpdateUiState = _appUpdateUiState;`,
+        sandbox
+    );
+
+    // Silent background checking / error should NOT create or show corner toast
+    sandbox._handleAppUpdateStatusEvent({ status: 'checking' });
+    sandbox._handleAppUpdateStatusEvent({ status: 'error', message: 'offline timeout' });
+    assert.strictEqual(created.get('vk-update-toast'), undefined, 'Background checking/error must stay silent in corner toast');
+
+    // Available update surfaces corner toast and escapes XSS payloads
+    sandbox._handleAppUpdateStatusEvent({
+        status: 'available',
+        version: '4.6.0<img src=x onerror=alert(1)>',
+        releaseNotes: '<script>evil()</script>优化速度',
+        zipSize: 52428800,
+    });
+    const toast = created.get('vk-update-toast');
+    assert.ok(toast, 'Available update must create #vk-update-toast');
+    assert.ok(toast.classList.contains('is-visible'), 'Available update must show #vk-update-toast');
+    assert.ok(!toast.innerHTML.includes('<script>'), 'Release notes must be HTML-escaped');
+    assert.ok(!toast.innerHTML.includes('<img src=x'), 'Version string must be HTML-escaped');
+    assert.ok(toast.innerHTML.includes('50.0 MB'), 'Portable download size should format cleanly');
+
+    // Dismissing hides toast and mutes repeated background notification for the same version
+    sandbox._dismissUpdateCornerToast(true);
+    assert.ok(!toast.classList.contains('is-visible'), 'Dismissing must hide toast');
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.0<img src=x onerror=alert(1)>' });
+    assert.ok(!toast.classList.contains('is-visible'), 'Dismissed version should not re-open automatically');
+
+    // Downloaded update resurfaces toast with restart action
+    sandbox._handleAppUpdateStatusEvent({ status: 'downloaded', version: '4.6.0' });
+    assert.ok(toast.classList.contains('is-visible'), 'Downloaded state must surface corner toast');
+    assert.strictEqual(toast.dataset.status, 'downloaded');
+    assert.ok(toast.innerHTML.includes('立即重启安装'), 'Downloaded toast must offer restart-and-install button');
+
+    // Up-to-date closes any visible toast
+    sandbox._handleAppUpdateStatusEvent({ status: 'up-to-date' });
+    assert.ok(!toast.classList.contains('is-visible'), 'up-to-date should hide toast');
+});
+
+test('Mixed color-space auto-edit clips do not truncate Reels exports via mid-stream filtergraph reconfig', async (t) => {
+    const os = require('node:os');
+    const { spawnSync } = require('node:child_process');
+    const ffmpegService = require('../electron/services/ffmpeg');
+    const rawvideo = require('../electron/services/ffmpeg-rawvideo');
+    const autoEditSrc = fs.readFileSync(path.join(ROOT, 'electron/services/autoEdit.js'), 'utf8');
+    const rawvideoSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'), 'utf8');
+    const ffmpegSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg.js'), 'utf8');
+
+    assert.deepEqual(rawvideo.videoInputStabilizeArgs(path.join(os.tmpdir(), 'auto_edit.mp4')), ['-reinit_filter', '0']);
+    assert.deepEqual(rawvideo.videoInputStabilizeArgs(path.join(os.tmpdir(), 'poster.png')), []);
+    assert.deepEqual(rawvideo.videoInputStabilizeArgs(path.join(os.tmpdir(), 'overlay.gif')), []);
+    assert.ok(rawvideoSrc.includes('videoInputStabilizeArgs('), 'ffmpeg-rawvideo must pass videoInputStabilizeArgs before decoded video inputs');
+    assert.ok(ffmpegSrc.includes("'-reinit_filter', '0'"), 'ffmpeg.js composeReel/concat normalization must keep filtergraphs stable across mid-stream metadata switches');
+    assert.ok(autoEditSrc.includes('STANDARD_BT709_ENCODER_ARGS'), 'autoEdit.js must stamp uniform BT.709 color tags onto every cut segment');
+
+    const ffmpegBin = ffmpegService.resolveCommand('ffmpeg');
+    const ffprobeBin = ffmpegService.resolveCommand('ffprobe');
+    if (spawnSync(ffmpegBin, ['-version'], { encoding: 'utf8' }).status !== 0) {
+        return t.skip('ffmpeg binary unavailable in test environment');
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk_colorspace_trunc_'));
+    t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+    const clipA = path.join(tmpDir, 'clip_smpte170m.mp4');
+    const clipB = path.join(tmpDir, 'clip_bt709.mp4');
+    const mixedLegacy = path.join(tmpDir, 'legacy_mixed.mp4');
+    const normalizedOut = path.join(tmpDir, 'concat_normalized.mp4');
+
+    const mkClip = (outPath, colorArgs) => {
+        const res = spawnSync(ffmpegBin, [
+            '-y',
+            '-f', 'lavfi', '-i', 'color=c=navy:s=360x640:r=30:d=2',
+            '-f', 'lavfi', '-i', 'anullsrc=cl=stereo:r=48000:d=2',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+            ...colorArgs,
+            '-video_track_timescale', '90000',
+            '-c:a', 'aac', '-shortest',
+            outPath,
+        ], { encoding: 'utf8' });
+        assert.equal(res.status, 0, `failed to synthesize test clip ${path.basename(outPath)}: ${res.stderr}`);
+    };
+
+    mkClip(clipA, ['-color_range', 'tv', '-colorspace', 'smpte170m', '-color_primaries', 'bt709', '-color_trc', 'iec61966-2-1']);
+    mkClip(clipB, ['-color_range', 'tv', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709']);
+
+    const mismatch = await ffmpegService.hasConcatStreamMismatch([clipA, clipB]);
+    assert.equal(mismatch.mismatched, true, 'hasConcatStreamMismatch must detect smpte170m vs bt709 clips');
+
+    // Create a legacy mixed-color MP4 via stream copy (simulates pre-fix auto-edit output)
+    const listFile = path.join(tmpDir, 'list.txt');
+    fs.writeFileSync(listFile, [clipA, clipB].map(p => `file '${p.replace(/'/g, "'\\''")}'`).join('\n'));
+    const concatRes = spawnSync(ffmpegBin, [
+        '-y', '-fflags', '+genpts', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', mixedLegacy,
+    ], { encoding: 'utf8' });
+    assert.equal(concatRes.status, 0, concatRes.stderr);
+
+    // Control without -reinit_filter 0 truncates at the color switch boundary (~2s / <=70 frames)
+    const truncatedOut = path.join(tmpDir, 'truncated_overlay.mp4');
+    const bgFilter = rawvideo._test.normalizedDirectBackgroundFilter(
+        0,
+        'scale=360:640:force_original_aspect_ratio=increase,crop=360:640,setsar=1',
+        'setpts=PTS-STARTPTS',
+        30,
+        'bg',
+        5,
+        mixedLegacy
+    );
+    const graphArgs = [
+        '-f', 'lavfi', '-i', 'color=c=black@0.0:s=360x640:r=30:d=4,format=rgba',
+        '-filter_complex', `${bgFilter};[1:v]settb=1/30,setpts=N[fg];[bg][fg]overlay=0:0:format=auto:shortest=1,fps=30,format=yuv420p[outv]`,
+        '-map', '[outv]', '-c:v', 'libx264', '-preset', 'ultrafast', '-frames:v', '120',
+    ];
+    const unstabilizedRes = spawnSync(ffmpegBin, [
+        '-y', '-v', 'info', '-fflags', '+genpts', '-i', mixedLegacy, ...graphArgs, truncatedOut,
+    ], { encoding: 'utf8' });
+    assert.equal(unstabilizedRes.status, 0);
+    assert.ok(unstabilizedRes.stderr.includes('Reconfiguring filter graph'), 'control run should trigger filtergraph reconfiguration on color switch');
+    const unstabProbe = JSON.parse(spawnSync(ffprobeBin, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=nb_frames,duration', '-of', 'json', truncatedOut], { encoding: 'utf8' }).stdout);
+    assert.ok(Number(unstabProbe.streams[0].nb_frames) <= 70, `expected unstabilized export to truncate near 60 frames, got ${unstabProbe.streams[0].nb_frames}`);
+
+    // Consumer guarantee: -reinit_filter 0 keeps full ~4.0s (>=118 frames) when overlaying onto legacy mixed MP4
+    const stabilizedOut = path.join(tmpDir, 'stabilized_overlay.mp4');
+    const overlayRes = spawnSync(ffmpegBin, [
+        '-y', '-v', 'info',
+        ...rawvideo.videoInputStabilizeArgs(mixedLegacy), '-fflags', '+genpts', '-i', mixedLegacy, ...graphArgs, stabilizedOut,
+    ], { encoding: 'utf8' });
+    assert.equal(overlayRes.status, 0, overlayRes.stderr);
+    assert.ok(!overlayRes.stderr.includes('Reconfiguring filter graph'), 'stabilized export must not reconfig filtergraph mid-stream');
+    const stabProbe = JSON.parse(spawnSync(ffprobeBin, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=nb_frames,duration', '-of', 'json', stabilizedOut], { encoding: 'utf8' }).stdout);
+    assert.ok(Number(stabProbe.streams[0].nb_frames) >= 118, `stabilized export must retain full ~4s (>=118 frames) across color switch, got ${stabProbe.streams[0].nb_frames}`);
+    assert.ok(Number(stabProbe.streams[0].duration) >= 3.9, `stabilized export must retain full ~4s duration, got ${stabProbe.streams[0].duration}`);
+
+    // Producer guarantee: concatClips auto-normalizes mismatched clips even with skipNormalization: true
+    const concatFixed = await ffmpegService.concatClips({
+        clips: [clipA, clipB],
+        outputPath: normalizedOut,
+        targetWidth: 360,
+        targetHeight: 640,
+        fps: 30,
+        preset: 'ultrafast',
+        skipNormalization: true,
+    });
+    assert.equal(concatFixed.success, true);
+    assert.ok(concatFixed.duration >= 3.85, `auto-normalized concatClips duration=${concatFixed.duration}`);
+    const frameColors = (JSON.parse(spawnSync(ffprobeBin, [
+        '-v', 'error', '-select_streams', 'v:0', '-show_frames',
+        '-show_entries', 'frame=color_space,color_transfer,color_primaries,color_range', '-of', 'json', normalizedOut,
+    ], { encoding: 'utf8' }).stdout || '{}').frames || []).map(
+        f => `${f.color_range}|${f.color_space}|${f.color_transfer}|${f.color_primaries}`
+    );
+    assert.deepEqual([...new Set(frameColors)], ['tv|bt709|bt709|bt709'], `expected uniform BT.709 frame color tags after concatClips`);
+});
+
+test('auto-edit and voiced_bg preview/export keep audible dialogue when bg volume is 0 and project lacks voiced_bg workMode', async () => {
+    const batchReelsSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const previewV2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const rawvideoSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'), 'utf8');
+
+    // 1. HTML and V2 preview media elements declare crossorigin="anonymous" for WebAudio local-media routing
+    for (const id of ['reels-preview-video', 'reels-preview-hook-video', 'reels-preview-contentvideo', 'reels-preview-audio']) {
+        const re = new RegExp(`id="${id}"[^>]*crossorigin="anonymous"`, 'i');
+        assert.match(indexHtmlSrc, re, `${id} must declare crossorigin="anonymous"`);
+    }
+    assert.match(previewV2Src, /data-role="bg-video"[^>]*crossorigin="anonymous"/i);
+    assert.match(previewV2Src, /data-role="audio"[^>]*crossorigin="anonymous"/i);
+
+    // 2. Project save/history snapshot persists workMode and project restore infers voiced_bg for auto-edit projects
+    assert.ok(batchReelsSrc.includes('workMode: _getWorkMode(),'), 'batch-reels project state must save workMode');
+    assert.ok(batchReelsSrc.includes('const inferredAutoEditMode = (!explicitWorkMode'), 'applyRestoredProject must infer voiced_bg for auto-edit tasks');
+    assert.ok(batchReelsSrc.includes('function _hasTaskVoiceAudio(task, audioEl)'), 'batch-reels must define _hasTaskVoiceAudio');
+    assert.ok(batchReelsSrc.includes('function _getEffectiveTaskVoiceDurScale(task, explicitBgPath, explicitWorkMode)'), 'batch-reels must define _getEffectiveTaskVoiceDurScale');
+    assert.ok(batchReelsSrc.includes('const resolvedVoiceSource = voiceSource || (isAutoEditVoiceBg ? bgPath : null);'), 'reelsStartBatch must pass resolvedVoiceSource for auto-edit tasks even in default srt mode');
+
+    // 3. Execute real batch-reels helper logic inside VM to verify volume & bgAsVoice resolution
+    const extractFn = (name) => {
+        const start = batchReelsSrc.indexOf(`function ${name}(`);
+        assert.ok(start >= 0, `expected ${name} in batch-reels.js`);
+        const sigEnd = batchReelsSrc.indexOf(') {', start);
+        assert.ok(sigEnd >= 0, `expected ) { for ${name}`);
+        const openBrace = sigEnd + 2;
+        let depth = 0;
+        for (let i = openBrace; i < batchReelsSrc.length; i++) {
+            if (batchReelsSrc[i] === '{') depth++;
+            else if (batchReelsSrc[i] === '}') {
+                depth--;
+                if (depth === 0) return batchReelsSrc.slice(start, i + 1);
+            }
+        }
+        throw new Error(`unclosed function ${name}`);
+    };
+    const domValues = new Map([
+        ['reels-work-mode', { value: 'srt' }],
+        ['reels-voice-volume', { value: '100' }],
+        ['reels-bg-volume', { value: '0' }],
+    ]);
+    const helperCtx = {
+        window: {},
+        document: { getElementById: (id) => domValues.get(id) || null },
+        _reelsState: { tasks: [], selectedIdx: 0 },
+        _getSelectedTask: () => helperCtx._reelsState.tasks[helperCtx._reelsState.selectedIdx] || null,
+        _resolvePreviewBackgroundPath: (task) => ({ path: (task && (task.bgPath || task.videoPath)) || '', isMulti: task?.bgMode === 'multi' }),
+        _isImagePath: (p) => /\.(png|jpe?g|webp|bmp)$/i.test(String(p || '')),
+        _getGlobalVoiceVolumePercent: () => parseFloat(domValues.get('reels-voice-volume').value),
+        _getGlobalBgVolumePercent: () => parseFloat(domValues.get('reels-bg-volume').value),
+    };
+    vm.createContext(helperCtx);
+    const fnNames = [
+        '_getWorkMode',
+        '_getEffectiveBgClipPool',
+        '_getEffectiveBgVolumePercent',
+        '_getEffectiveVoiceVolumePercent',
+        '_isSingleAutoEditTask',
+        '_isTaskUsingBgAsVoice',
+        '_getEffectiveTaskVoiceDurScale',
+        '_resolveTaskVoiceVolumePercent',
+    ];
+    vm.runInContext(fnNames.map(extractFn).join('\n'), helperCtx);
+
+    const os = require('node:os');
+    const autoEditTask = {
+        _autoEditSource: true,
+        alignSource: 'auto_edit',
+        audioPath: '',
+        bgPath: path.join(os.tmpdir(), 'auto_edit_sample.mp4'),
+        bgDurScale: 115,
+    };
+    assert.equal(helperCtx._isTaskUsingBgAsVoice(autoEditTask), true, 'auto-edit task without audioPath uses bg as voice even when workMode is srt');
+    assert.equal(helperCtx._resolveTaskVoiceVolumePercent(autoEditTask), 100, 'auto-edit task uses voice volume (100) even when global bg volume is 0');
+    assert.equal(helperCtx._getEffectiveTaskVoiceDurScale(autoEditTask), 115, 'auto-edit task uses bgDurScale for voice playbackRate');
+
+    const regularSrtBrollTask = { audioPath: '', bgPath: path.join(os.tmpdir(), 'broll.mp4') };
+    assert.equal(helperCtx._isTaskUsingBgAsVoice(regularSrtBrollTask), false, 'regular B-roll in srt mode does not become voice');
+
+    domValues.get('reels-work-mode').value = 'voiced_bg';
+    const voicedBgTask = { audioPath: '', bgPath: path.join(os.tmpdir(), 'voiced.mp4') };
+    assert.equal(helperCtx._resolveTaskVoiceVolumePercent(voicedBgTask), 100, 'voiced_bg task falls back to voice volume when global bg volume is 0 and task is not muted');
+    assert.equal(helperCtx._resolveTaskVoiceVolumePercent({ ...voicedBgTask, bgVideoVolume: 0 }), 0, 'explicit task bgVideoVolume=0 stays muted');
+    domValues.get('reels-bg-volume').value = '65';
+    assert.equal(helperCtx._resolveTaskVoiceVolumePercent(voicedBgTask), 65, 'voiced_bg task uses non-zero global bg volume');
+
+    const sampleClip = path.join(os.tmpdir(), 'clip_a.mp4');
+    const multiClipTask = { audioPath: '', bgMode: 'multi', bgClipPool: [sampleClip], bgPath: sampleClip };
+    assert.equal(helperCtx._isTaskUsingBgAsVoice(multiClipTask), false, 'multi-clip task does not alias single bgPath as voice');
+
+    // 4. Preview V2 runtime safety guards
+    assert.ok(previewV2Src.includes('const gainNode = routed && state.mediaSources.has(media) && state.gainNodes.get(media);'), 'V2 applyVolume must verify mediaSources.has(media)');
+    assert.ok(previewV2Src.includes('function resolvedVoicedBgVolume(task)'), 'V2 must resolve voiced_bg/auto-edit volume on bgVideo');
+    assert.ok(previewV2Src.includes('if (state.audioCtx && state.audioCtx.state === \'suspended\')'), 'V2 must resume suspended AudioContext');
+
+    // 5. ffmpeg-rawvideo mixAudio source & real FFmpeg behavior test
+    assert.ok(rawvideoSrc.includes('voiceVolume = typeof voiceVolume === \'number\' ? voiceVolume : 1.0;'), 'renderAudio voice output must preserve configured voiceVolume');
+    assert.ok(rawvideoSrc.includes('if (renderedBgAudio && wantBgAudio)'), 'rawvideo !voicePath branch must not mix renderedBgAudio at volume 0');
+    assert.ok(rawvideoSrc.includes('if (renderedBgAudio && bgVolumeVal2 > 0.001)'), 'rawvideo voicePath branch must guard renderedBgAudio with bgVolumeVal2 > 0.001');
+
+    const rawvideo = require('../electron/services/ffmpeg-rawvideo');
+    const ffmpegService = require('../electron/services/ffmpeg');
+    const ffmpegBin = ffmpegService.resolveCommand('ffmpeg');
+    const { spawnSync } = require('node:child_process');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-audio-reg-'));
+    try {
+        const tempVideo = path.join(tmpDir, 'video_only.mp4');
+        const tempVideo2 = path.join(tmpDir, 'video_only_2.mp4');
+        const audibleBg = path.join(tmpDir, 'audible_bg.mp4');
+        const renderedWav = path.join(tmpDir, 'rendered_voice.wav');
+        const outAudible = path.join(tmpDir, 'out_audible.mp4');
+        const outSilentSkipped = path.join(tmpDir, 'out_no_silent_bg.mp4');
+
+        let r = spawnSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'color=c=black:s=320x180:d=1.2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', tempVideo], { encoding: 'utf8' });
+        assert.equal(r.status, 0, r.stderr);
+        fs.copyFileSync(tempVideo, tempVideo2);
+        r = spawnSync(ffmpegBin, [
+            '-y',
+            '-f', 'lavfi', '-i', 'color=c=navy:s=320x180:d=1.2',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.2',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', audibleBg,
+        ], { encoding: 'utf8' });
+        assert.equal(r.status, 0, r.stderr);
+        r = spawnSync(ffmpegBin, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.2', '-c:a', 'pcm_s16le', renderedWav], { encoding: 'utf8' });
+        assert.equal(r.status, 0, r.stderr);
+
+        const renderCalls = [];
+        rawvideo.configureExportRuntime({
+            renderAudio: async (opts) => {
+                renderCalls.push(opts);
+                const copyWav = path.join(tmpDir, `render_${renderCalls.length}.wav`);
+                fs.copyFileSync(renderedWav, copyWav);
+                return copyWav;
+            },
+        });
+
+        await rawvideo._test.mixAudio({
+            tempVideo,
+            outputPath: outAudible,
+            voicePath: audibleBg,
+            backgroundPath: audibleBg,
+            voiceVolume: 1.0,
+            bgVolume: 0,
+            bgHasAudio: false,
+            bgmVolume: 0,
+            reverbEnabled: true,
+            reverbPreset: 'hall',
+            reverbMix: 15,
+            stereoWidth: 100,
+            audioFxTarget: 'all',
+            duration: 1.2,
+            outputDuration: 1.2,
+        });
+        assert.equal(renderCalls.length, 1, 'auto-edit session with voicePath + reverb renders voice once');
+
+        const volDetect = spawnSync(ffmpegBin, ['-i', outAudible, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+        const meanMatch = volDetect.stderr.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/);
+        assert.ok(meanMatch, `expected volumedetect output, got: ${volDetect.stderr}`);
+        assert.ok(parseFloat(meanMatch[1]) > -30, `exported voice audio must be audible (> -30 dB), got ${meanMatch[1]} dB`);
+
+        renderCalls.length = 0;
+        await rawvideo._test.mixAudio({
+            tempVideo: tempVideo2,
+            outputPath: outSilentSkipped,
+            voicePath: null,
+            backgroundPath: audibleBg,
+            voiceVolume: 1.0,
+            bgVolume: 0,
+            bgHasAudio: false,
+            bgmVolume: 0,
+            reverbEnabled: true,
+            audioFxTarget: 'all',
+            duration: 1.2,
+            outputDuration: 1.2,
+        });
+        assert.equal(renderCalls.length, 0, 'muted bg (bgVolume=0) without voicePath must not run renderAudio on backgroundPath');
+    } finally {
+        rawvideo.configureExportRuntime({ renderAudio: null });
+        await require('../resources/export-cpu-budget').close();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('Cloudflare Hub Worker handles KV binding guard, token auth, and round-trips keys and daily projects with cloud-hub service', async () => {
+    const cloudHub = require('../electron/services/cloud-hub');
+    const settingsService = require('../electron/services/settings');
+    const os = require('node:os');
+
+    const workerSrc = cloudHub.getWorkerTemplateCode();
+    assert.ok(workerSrc.includes('export default'), 'Worker template must export default fetch handler');
+
+    // Load ES module Worker cleanly using dynamic import data URL
+    const dataUrl = `data:text/javascript;base64,${Buffer.from(workerSrc, 'utf8').toString('base64')}`;
+    const workerMod = await import(dataUrl);
+    const worker = workerMod.default;
+    assert.equal(typeof worker?.fetch, 'function');
+
+    // 1. Unbound HUB_KV must refuse writes with HTTP 503 and surface kv_bound: false on GET
+    const unboundGetRes = await worker.fetch(new Request('https://hub.example.workers.dev/?format=json'), {});
+    assert.equal(unboundGetRes.status, 200);
+    const unboundGetJson = await unboundGetRes.json();
+    assert.equal(unboundGetJson.kv_bound, false);
+
+    const unboundPostRes = await worker.fetch(new Request('https://hub.example.workers.dev/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groq_keys: ['gsk_test'] }),
+    }), {});
+    assert.equal(unboundPostRes.status, 503);
+    const unboundPostJson = await unboundPostRes.json();
+    assert.equal(unboundPostJson.ok, false);
+    assert.equal(unboundPostJson.kv_bound, false);
+
+    // 2. HTML Admin page serves without JSON auth barrier and includes escaping + KV check UI
+    const htmlRes = await worker.fetch(new Request('https://hub.example.workers.dev/', {
+        headers: { Accept: 'text/html' },
+    }), { HUB_TOKEN: 'team-secret' });
+    assert.equal(htmlRes.status, 200);
+    const html = await htmlRes.text();
+    assert.ok(html.includes('VideoKit 云端中控台') && html.includes('gemini_tts_keys') && html.includes('kv-warning'));
+
+    // 3. Full authenticated round-trip using in-memory KV + isolated fake settings store
+    const kvMap = new Map();
+    const env = {
+        HUB_TOKEN: 'team-secret',
+        HUB_KV: {
+            get: async (k) => kvMap.get(k) ?? null,
+            put: async (k, v) => { kvMap.set(k, String(v)); },
+        },
+    };
+
+    const unauthRes = await worker.fetch(new Request('https://hub.example.workers.dev/?format=json'), env);
+    assert.equal(unauthRes.status, 401);
+
+    const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cloudhub-e2e-'));
+    const fakeState = {
+        transcription: { primary: 'groq', providers: { groq: { keys: ['gsk_push_1', 'gsk_push_2'] }, gladia: { keys: ['gl_1'] }, deepgram: { keys: [] } } },
+        gemini: { keys: ['AIza_1'], tts_keys: ['AIza_tts_1'], model: 'gemini-3.5-flash-lite', prompt: '' },
+        elevenlabs: { api_keys: ['sk_el_1'] },
+    };
+
+    const settingsResolved = require.resolve('../electron/services/settings');
+    const cloudHubResolved = require.resolve('../electron/services/cloud-hub');
+    const origMethods = {
+        getBackendDir: settingsService.getBackendDir,
+        loadTranscriptionProviders: settingsService.loadTranscriptionProviders,
+        saveTranscriptionProviders: settingsService.saveTranscriptionProviders,
+        loadGeminiKeys: settingsService.loadGeminiKeys,
+        saveGeminiKeys: settingsService.saveGeminiKeys,
+        loadElevenLabsSettings: settingsService.loadElevenLabsSettings,
+        saveElevenLabsSettings: settingsService.saveElevenLabsSettings,
+    };
+    const origFetch = globalThis.fetch;
+
+    try {
+        settingsService.getBackendDir = () => storeDir;
+        settingsService.loadTranscriptionProviders = () => JSON.parse(JSON.stringify(fakeState.transcription));
+        settingsService.saveTranscriptionProviders = (inp) => {
+            fakeState.transcription = {
+                primary: inp.primary || fakeState.transcription.primary,
+                providers: {
+                    groq: { keys: [...(inp.groq_keys || [])] },
+                    gladia: { keys: [...(inp.gladia_keys || [])] },
+                    deepgram: { keys: [...(inp.deepgram_keys || [])] },
+                },
+            };
+        };
+        settingsService.loadGeminiKeys = () => JSON.parse(JSON.stringify(fakeState.gemini));
+        settingsService.saveGeminiKeys = (inp) => {
+            fakeState.gemini = { ...fakeState.gemini, ...inp };
+        };
+        settingsService.loadElevenLabsSettings = () => JSON.parse(JSON.stringify(fakeState.elevenlabs));
+        settingsService.saveElevenLabsSettings = (inp) => {
+            fakeState.elevenlabs = { api_keys: [...(inp.api_keys || [])] };
+        };
+        delete require.cache[cloudHubResolved];
+        const isolatedHub = require('../electron/services/cloud-hub');
+
+        globalThis.fetch = async (url, init = {}) => {
+            return await worker.fetch(new Request(String(url), init), env);
+        };
+
+        const pushRes = await isolatedHub.pushToCloudHub({
+            hub_url: 'https://hub.example.workers.dev',
+            access_token: 'team-secret',
+            action: 'push_local_all',
+        });
+        assert.equal(pushRes.ok, true);
+
+        const addRes = await isolatedHub.pushToCloudHub({
+            action: 'add_daily_project',
+            project: {
+                date: '2026-11-13',
+                title: '11月13日祷告任务',
+                url: 'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz123456/view',
+                note: '测试备注',
+            },
+        });
+        assert.equal(addRes.ok, true);
+
+        // Wipe local keys, then pull fresh from Worker via syncFromCloudHub
+        fakeState.transcription.providers = { groq: { keys: [] }, gladia: { keys: [] }, deepgram: { keys: [] } };
+        fakeState.gemini.keys = [];
+        fakeState.gemini.tts_keys = [];
+        fakeState.elevenlabs.api_keys = [];
+
+        const syncRes = await isolatedHub.syncFromCloudHub({
+            hub_url: 'https://hub.example.workers.dev',
+            access_token: 'team-secret',
+            sync_mode: 'overwrite',
+        });
+        assert.equal(syncRes.ok, true);
+        assert.deepEqual(fakeState.transcription.providers.groq.keys, ['gsk_push_1', 'gsk_push_2']);
+        assert.deepEqual(fakeState.transcription.providers.gladia.keys, ['gl_1']);
+        assert.deepEqual(fakeState.gemini.keys, ['AIza_1']);
+        assert.deepEqual(fakeState.gemini.tts_keys, ['AIza_tts_1']);
+        assert.deepEqual(fakeState.elevenlabs.api_keys, ['sk_el_1']);
+        assert.equal(syncRes.settings.daily_projects.length, 1);
+        assert.equal(syncRes.settings.daily_projects[0].title, '11月13日祷告任务');
+
+        const projId = syncRes.settings.daily_projects[0].id;
+        const delRes = await isolatedHub.pushToCloudHub({
+            action: 'delete_daily_project',
+            id: projId,
+        });
+        assert.equal(delRes.ok, true);
+        const syncAfterDel = await isolatedHub.syncFromCloudHub({ sync_mode: 'overwrite' });
+        assert.equal(syncAfterDel.settings.daily_projects.length, 0);
+    } finally {
+        globalThis.fetch = origFetch;
+        Object.assign(settingsService, origMethods);
+        delete require.cache[cloudHubResolved];
+        require.cache[settingsResolved].exports = settingsService;
+        fs.rmSync(storeDir, { recursive: true, force: true });
+    }
+});
+
+test('Simple Cloudflare Worker template and single Google Drive folder/project URL sync end-to-end', async () => {
+    const os = require('node:os');
+    const vm = require('node:vm');
+    const settingsService = require('../electron/services/settings');
+    const cloudHub = require('../electron/services/cloud-hub');
+
+    // 1. Verify simple worker template load & execution with zero KV setup
+    const simpleSrc = cloudHub.getWorkerTemplateCode('simple');
+    const kvSrc = cloudHub.getWorkerTemplateCode('kv');
+    assert.ok(simpleSrc.includes('google_drive_url') && simpleSrc.includes('groq_keys'));
+    assert.ok(kvSrc.includes('HUB_KV'));
+
+    const simpleWorker = vm.runInNewContext(
+        simpleSrc.replace(/export\s+default\s+\{/, 'module.exports = {'),
+        { module: { exports: {} }, Response, URL }
+    );
+    const defaultResp = await simpleWorker.fetch(new Request('https://simple.example.workers.dev/'), {});
+    assert.equal(defaultResp.status, 200);
+    const defaultJson = await defaultResp.json();
+    assert.ok(Array.isArray(defaultJson.groq_keys) && typeof defaultJson.google_drive_url === 'string');
+
+    // Verify URL extractors for Google Drive folders & Docs
+    assert.equal(
+        cloudHub.extractGoogleDriveFolderId('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrSt?usp=sharing'),
+        '1AbCdEfGhIjKlMnOpQrSt'
+    );
+    assert.equal(
+        cloudHub.extractGoogleDriveFileId('https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrSt?usp=sharing'),
+        null
+    );
+    assert.equal(
+        cloudHub.resolveCloudDownloadUrl('https://docs.google.com/document/d/1DocId1234567890AbC/edit'),
+        'https://docs.google.com/document/d/1DocId1234567890AbC/export?format=txt'
+    );
+
+    // 2. End-to-end sync using simple Worker payload with keys + ONE Google Drive folder URL
+    const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-simplehub-'));
+    const matDir = path.join(storeDir, 'materials');
+    const pkgSub1 = path.join(matDir, '103_task', '人声音频');
+    const pkgSub2 = path.join(matDir, '127_task', '人声音频');
+    const wmSub = path.join(matDir, '103_task', '覆层素材');
+    fs.mkdirSync(pkgSub1, { recursive: true });
+    fs.mkdirSync(pkgSub2, { recursive: true });
+    fs.mkdirSync(wmSub, { recursive: true });
+    const fakeClipPath = path.join(matDir, 'sermon_cut_01.mp4');
+    const dupVoice1 = path.join(pkgSub1, 'shared_voice.mp3');
+    const dupVoice2 = path.join(pkgSub2, 'shared_voice.mp3');
+    const timelineExtraClip = path.join(matDir, 'broll_timeline.mp4');
+    const wmImgPath = path.join(wmSub, 'brand_logo.png');
+    fs.writeFileSync(fakeClipPath, 'video');
+    fs.writeFileSync(dupVoice1, 'voice-103');
+    fs.writeFileSync(dupVoice2, 'voice-127');
+    fs.writeFileSync(timelineExtraClip, 'broll');
+    fs.writeFileSync(wmImgPath, 'png');
+
+    const settingsResolved = require.resolve('../electron/services/settings');
+    const cloudHubResolved = require.resolve('../electron/services/cloud-hub');
+    const fakeState = {
+        transcription: { primary: 'groq', providers: { groq: { keys: [] }, gladia: { keys: [] }, deepgram: { keys: [] } } },
+        gemini: { keys: [], tts_keys: [], model: 'gemini-3.5-flash-lite', prompt: '' },
+        elevenlabs: { api_keys: [] },
+    };
+    const origMethods = {
+        getBackendDir: settingsService.getBackendDir,
+        loadTranscriptionProviders: settingsService.loadTranscriptionProviders,
+        saveTranscriptionProviders: settingsService.saveTranscriptionProviders,
+        loadGeminiKeys: settingsService.loadGeminiKeys,
+        saveGeminiKeys: settingsService.saveGeminiKeys,
+        loadElevenLabsSettings: settingsService.loadElevenLabsSettings,
+        saveElevenLabsSettings: settingsService.saveElevenLabsSettings,
+    };
+    const origFetch = globalThis.fetch;
+
+    const rootFolderHtml = `
+      <div class="flip-entry" id="entry-1ProjFileRoot12345">
+        <a href="https://drive.google.com/file/d/1ProjFileRoot12345/view?usp=drivesdk">
+          <div class="flip-entry-title">2026-11-13_今日主日工程.reels-project.json</div>
+          <div class="flip-entry-last-modified">Nov 13, 2026</div>
+        </a>
+      </div>
+      <div class="flip-entry" id="entry-1RawMediaIgnored12">
+        <a href="https://drive.google.com/file/d/1RawMediaIgnored12/view?usp=drivesdk">
+          <div class="flip-entry-title">sermon_cut_01.mp4</div>
+        </a>
+      </div>
+      <div class="flip-entry" id="entry-1SubFolderNov12345">
+        <a href="https://drive.google.com/drive/folders/1SubFolderNov12345?usp=drivesdk">
+          <div class="flip-entry-title">2026-11-12</div>
+        </a>
+      </div>`;
+    const subFolderHtml = `
+      <div class="flip-entry" id="entry-1ProjFileSub123456">
+        <a href="https://drive.google.com/file/d/1ProjFileSub123456/view?usp=drivesdk">
+          <div class="flip-entry-title">福音短片批量.json</div>
+        </a>
+      </div>
+      <div class="flip-entry" id="entry-1ManifestIgnored12">
+        <a href="https://drive.google.com/file/d/1ManifestIgnored12/view?usp=drivesdk">
+          <div class="flip-entry-title">工程清单.json</div>
+        </a>
+      </div>`;
+    const sampleReelsProject = {
+        version: '2.0.0',
+        style: { fontSize: 68, fontColor: '#ffffff' },
+        exportOpts: { workMode: 'voiced_bg', voiceVolume: 100, bgVolume: 0 },
+        watermarks: [{ type: 'image', imagePath: 'local-media:///Z:/missing/103_task/覆层素材/brand_logo.png', enabled: true }],
+        tasks: [{
+            baseName: 'sermon_cut_01',
+            bgPath: path.join('D:', 'other_machine', 'sermon_cut_01.mp4'),
+            audioPath: path.join('D:', 'other_machine', '127_task', '人声音频', 'shared_voice.mp3'),
+            insertClips: [{ path: path.join('D:', 'other_machine', 'broll_timeline.mp4') }],
+            introMedia: { path: path.join('D:', 'other_machine', 'sermon_cut_01.mp4') },
+            timeline: {
+                sources: { src1: { id: 'src1', path: path.join('D:', 'other_machine', 'broll_timeline.mp4') } },
+                backgroundSegmentKey: path.join('D:', 'other_machine', 'sermon_cut_01.mp4') + '|0|5|0|5|1|0',
+            },
+            segments: [{ start: 0, end: 2.5, text: 'Test line' }],
+        }],
+    };
+
+    try {
+        settingsService.getBackendDir = () => storeDir;
+        settingsService.loadTranscriptionProviders = () => JSON.parse(JSON.stringify(fakeState.transcription));
+        settingsService.saveTranscriptionProviders = (inp) => {
+            fakeState.transcription = {
+                primary: inp.primary || 'groq',
+                providers: {
+                    groq: { keys: [...(inp.groq_keys || [])] },
+                    gladia: { keys: [...(inp.gladia_keys || [])] },
+                    deepgram: { keys: [...(inp.deepgram_keys || [])] },
+                },
+            };
+        };
+        settingsService.loadGeminiKeys = () => JSON.parse(JSON.stringify(fakeState.gemini));
+        settingsService.saveGeminiKeys = (inp) => { fakeState.gemini = { ...fakeState.gemini, ...inp }; };
+        settingsService.loadElevenLabsSettings = () => JSON.parse(JSON.stringify(fakeState.elevenlabs));
+        settingsService.saveElevenLabsSettings = (inp) => { fakeState.elevenlabs = { api_keys: [...(inp.api_keys || [])] }; };
+
+        delete require.cache[cloudHubResolved];
+        const isolatedHub = require('../electron/services/cloud-hub');
+
+        globalThis.fetch = async (url) => {
+            const u = String(url);
+            if (u.startsWith('https://simple.example.workers.dev')) {
+                return new Response(JSON.stringify({
+                    primary_transcription: 'groq',
+                    groq_keys: ['gsk_simple_1'],
+                    gemini_keys: ['AIza_simple_1'],
+                    elevenlabs_keys: ['sk_simple_1'],
+                    google_drive_url: 'https://drive.google.com/drive/folders/1RootFolder123456?usp=sharing',
+                }), { headers: { 'Content-Type': 'application/json' } });
+            }
+            if (u.includes('embeddedfolderview?id=1RootFolder123456')) {
+                return new Response(rootFolderHtml, { status: 200 });
+            }
+            if (u.includes('embeddedfolderview?id=1SubFolderNov12345')) {
+                return new Response(subFolderHtml, { status: 200 });
+            }
+            if (u.includes('id=1ProjFileRoot12345')) {
+                return new Response(JSON.stringify(sampleReelsProject), { status: 200 });
+            }
+            return new Response('not found', { status: 404 });
+        };
+
+        const syncRes = await isolatedHub.syncFromCloudHub({
+            hub_url: 'https://simple.example.workers.dev',
+            local_material_root: matDir,
+        });
+        assert.equal(syncRes.ok, true);
+        assert.equal(syncRes.folder_warning, '');
+        assert.deepEqual(fakeState.transcription.providers.groq.keys, ['gsk_simple_1']);
+        assert.deepEqual(fakeState.gemini.keys, ['AIza_simple_1']);
+        assert.deepEqual(fakeState.elevenlabs.api_keys, ['sk_simple_1']);
+        assert.equal(syncRes.settings.single_google_drive_url, 'https://drive.google.com/drive/folders/1RootFolder123456?usp=sharing');
+        assert.equal(syncRes.settings.daily_projects.length, 2, 'should ignore .mp4 media and list both .json projects across root and subfolder');
+        assert.equal(syncRes.settings.daily_projects[0].date, '2026-11-13');
+        assert.equal(syncRes.settings.daily_projects[1].date, '2026-11-12');
+
+        // Direct folder URL in downloadCloudProject lists all editable projects rather than failing JSON parse
+        const folderListRes = await isolatedHub.downloadCloudProject({
+            url: 'https://drive.google.com/drive/folders/1RootFolder123456?usp=sharing',
+        });
+        assert.equal(folderListRes.status, 'folder_listed');
+        assert.equal(folderListRes.projects.length, 2);
+
+        // Downloading .reels-project.json preserves style, exportOpts, and relinks local media
+        const dlRes = await isolatedHub.downloadCloudProject({
+            url: syncRes.settings.daily_projects[0].url,
+            title: syncRes.settings.daily_projects[0].title,
+            local_material_root: matDir,
+        });
+        assert.equal(dlRes.status, 'success');
+        assert.equal(dlRes.tasks_count, 1);
+        assert.equal(dlRes.project.exportOpts.workMode, 'voiced_bg');
+        assert.equal(dlRes.project.style.fontSize, 68);
+        assert.equal(dlRes.project.tabs[0].tasks[0].bgPath, fakeClipPath);
+        assert.equal(dlRes.project.tabs[0].tasks[0].audioPath, dupVoice2, 'suffix match should distinguish duplicate basenames across task folders');
+        assert.equal(dlRes.project.tabs[0].tasks[0].insertClips[0].path, timelineExtraClip);
+        assert.equal(dlRes.project.tabs[0].tasks[0].introMedia.path, fakeClipPath);
+        assert.equal(dlRes.project.tabs[0].tasks[0].timeline.sources.src1.path, timelineExtraClip);
+        assert.equal(dlRes.project.tabs[0].tasks[0].timeline.backgroundSegmentKey, `${fakeClipPath}|0|5|0|5|1|0`);
+        assert.ok(dlRes.project.watermarks[0].imagePath.startsWith('local-media:///'));
+        assert.ok(dlRes.project.watermarks[0].imagePath.endsWith(wmImgPath.replace(/\\/g, '/')));
+        assert.equal(dlRes.project.tabs[0].tasks[0].subtitleStyle.fontSize, 68);
+    } finally {
+        globalThis.fetch = origFetch;
+        Object.assign(settingsService, origMethods);
+        delete require.cache[cloudHubResolved];
+        require.cache[settingsResolved].exports = settingsService;
+        fs.rmSync(storeDir, { recursive: true, force: true });
+    }
+});
+
+test('Reels package-only and export-copy bundle regular batch tasks and remap paths', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-packager-'));
+    try {
+        const srcMediaDir = path.join(tmpRoot, 'source-media');
+        const outDir = path.join(tmpRoot, 'output-packages');
+        fs.mkdirSync(srcMediaDir, { recursive: true });
+        fs.mkdirSync(outDir, { recursive: true });
+
+        const bgFile = path.join(srcMediaDir, 'bg_loop.mp4');
+        const audioFile = path.join(srcMediaDir, 'voice_001.mp3');
+        const srtFile = path.join(srcMediaDir, 'sub_001.srt');
+        const bgmFile = path.join(srcMediaDir, 'bgm_calm.mp3');
+        const overlayImg = path.join(srcMediaDir, 'sticker.png');
+        const insertClip = path.join(srcMediaDir, 'broll.mp4');
+        const missingAsset = path.join(srcMediaDir, 'deleted_later.png');
+        fs.writeFileSync(bgFile, 'bg-video-bytes');
+        fs.writeFileSync(audioFile, 'mp3-bytes');
+        fs.writeFileSync(srtFile, '1\n00:00:00,000 --> 00:00:02,000\nHello world\n');
+        fs.writeFileSync(bgmFile, 'bgm-bytes');
+        fs.writeFileSync(overlayImg, 'png-bytes');
+        fs.writeFileSync(insertClip, 'broll-bytes');
+
+        const { packageReelsProject } = require(path.join(ROOT, 'electron/services/projectPackager.js'));
+        const result = await packageReelsProject({
+            sourceProjectDir: '',
+            outputPath: path.join(outDir, '001_RegularTask.mp4'),
+            scriptText: 'Hello world',
+            taskAssets: [
+                { role: 'background', path: bgFile },
+                { role: 'background', path: bgFile }, // duplicate reference must copy only once
+                { role: 'audio', path: audioFile },
+                { role: 'subtitle', path: srtFile },
+                { role: 'bgm', path: bgmFile },
+                { role: 'media', path: insertClip },
+                { role: 'overlay', path: overlayImg },
+                { role: 'overlay', path: missingAsset },
+            ],
+            reelsProjectData: {
+                version: '2.0.0',
+                app: 'VideoKit',
+                watermarks: [{ type: 'image', imagePath: overlayImg }],
+                tasks: [
+                    {
+                        id: 'task_regular_1',
+                        baseName: '001_RegularTask',
+                        bgPath: bgFile,
+                        videoPath: bgFile,
+                        bgSrcUrl: 'file:///C:/stale/bg_loop.mp4',
+                        srcUrl: 'file:///C:/stale/bg_loop.mp4',
+                        audioPath: audioFile,
+                        srtPath: srtFile,
+                        bgmPath: bgmFile,
+                        insertClips: [{ id: 'ins_1', path: insertClip }],
+                        overlays: [
+                            { type: 'image', src: overlayImg },
+                            { type: 'text', content: 'Keep plain text content untouched' },
+                        ],
+                    },
+                ],
+            },
+        });
+
+        assert.equal(result.ok, true);
+        assert.equal(result.copiedCount, 6);
+        assert.equal(result.missing.length, 1);
+        assert.equal(result.missing[0].path, missingAsset);
+
+        const pkgDir = result.projectDir;
+        assert.equal(fs.existsSync(path.join(pkgDir, '背景素材', 'bg_loop.mp4')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '背景素材', 'bg_loop_2.mp4')), false);
+        assert.equal(fs.existsSync(path.join(pkgDir, '人声音频', 'voice_001.mp3')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '字幕', 'sub_001.srt')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '背景音乐', 'bgm_calm.mp3')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '辅助素材', 'broll.mp4')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '覆层素材', 'sticker.png')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '文案.txt')), true);
+        assert.equal(fs.existsSync(path.join(pkgDir, '工程清单.json')), true);
+
+        const savedProject = JSON.parse(fs.readFileSync(result.projectJsonPath, 'utf8'));
+        const savedTask = savedProject.tasks[0];
+        assert.equal(savedTask.bgPath, path.join(pkgDir, '背景素材', 'bg_loop.mp4'));
+        assert.equal(savedTask.videoPath, path.join(pkgDir, '背景素材', 'bg_loop.mp4'));
+        assert.equal(savedTask.bgSrcUrl, undefined);
+        assert.equal(savedTask.srcUrl, undefined);
+        assert.equal(savedTask.audioPath, path.join(pkgDir, '人声音频', 'voice_001.mp3'));
+        assert.equal(savedTask.srtPath, path.join(pkgDir, '字幕', 'sub_001.srt'));
+        assert.equal(savedTask.insertClips[0].path, path.join(pkgDir, '辅助素材', 'broll.mp4'));
+        assert.equal(savedTask.overlays[0].src, path.join(pkgDir, '覆层素材', 'sticker.png'));
+        assert.equal(savedTask.overlays[1].content, 'Keep plain text content untouched');
+        assert.equal(savedProject.watermarks[0].imagePath, path.join(pkgDir, '覆层素材', 'sticker.png'));
+
+        // Verify button ID & batch packaging wiring in HTML + batch-reels.js + main.js
+        const html = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+        assert.match(html, /id="reels-package-project-btn"[^>]*onclick="reelsPackageSelectedProjects\(\)"/);
+        assert.doesNotMatch(html, /id="reels-package-project-btn"[^>]*onclick="reelsSelectOutputDir\(\)"/);
+
+        const batchJs = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+        assert.doesNotMatch(batchJs, /filter\(task\s*=>\s*task\._exportSelected\s*!==\s*false\s*&&\s*task\.autoEditProject\)/);
+        assert.match(batchJs, /function _collectReelsTaskMediaAssets\(task\)/);
+        assert.match(batchJs, /if \(copyProjectToOutput && doMp4\)/);
+        assert.match(batchJs, /批量工程_\$\{packedTasks\.length\}个任务\.json/);
+
+        const mainJs = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
+        assert.match(mainJs, /handleTrusted\('copy-reels-project-package'[\s\S]*?projectPackager/);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('Tab small-groups, grouped batch packaging subfolders, and multi-group restore round-trip', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-tabgroup-pkg-'));
+    const writtenFiles = new Map();
+    const { packageReelsProject } = require(path.join(ROOT, 'electron/services/projectPackager.js'));
+
+    try {
+        const srcMedia = path.join(tmpRoot, 'source');
+        const outBase = path.join(tmpRoot, 'out');
+        fs.mkdirSync(srcMedia, { recursive: true });
+        fs.mkdirSync(outBase, { recursive: true });
+
+        const bg1 = path.join(srcMedia, 'bg1.mp4');
+        const bg2 = path.join(srcMedia, 'bg2.mp4');
+        const bg3 = path.join(srcMedia, 'bg3.mp4');
+        const v1 = path.join(srcMedia, 'v1.mp3');
+        const v2 = path.join(srcMedia, 'v2.mp3');
+        const v3 = path.join(srcMedia, 'v3.mp3');
+        for (const f of [bg1, bg2, bg3, v1, v2, v3]) fs.writeFileSync(f, 'media-bytes');
+
+        const makeEl = (overrides = {}) => ({
+            value: '',
+            checked: false,
+            disabled: false,
+            textContent: '',
+            innerHTML: '',
+            style: {},
+            dataset: {},
+            options: [],
+            classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+            appendChild() {},
+            removeChild() {},
+            remove() {},
+            contains: () => false,
+            addEventListener() {},
+            setAttribute() {},
+            focus() {},
+            click() {},
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0 }),
+            getContext: () => ({
+                font: '', globalAlpha: 1, save() {}, restore() {}, beginPath() {}, closePath() {},
+                moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {}, arc() {}, arcTo() {},
+                rect() {}, clip() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {}, clearRect() {},
+                fillText() {}, strokeText() {}, translate() {}, rotate() {}, scale() {}, setLineDash() {},
+                createPattern: () => ({}), createLinearGradient: () => ({ addColorStop() {} }),
+                createRadialGradient: () => ({ addColorStop() {} }),
+                measureText: (txt) => ({ width: String(txt || '').length * 10 }),
+            }),
+            ...overrides,
+        });
+        const domElements = new Map([
+            ['reels-output-dir', makeEl({ value: outBase })],
+            ['reels-download-mode', makeEl({ value: 'all' })],
+            ['reels-download-range', makeEl({ value: '' })],
+            ['reels-export-naming-mode-outer', makeEl({ value: 'text' })],
+            ['reels-naming-mode', makeEl({ value: 'text' })],
+            ['reels-package-project-btn', makeEl({ textContent: '📦 仅打包工程' })],
+            ['reels-export-status', makeEl()],
+            ['reels-quality', makeEl({ value: 'medium' })],
+            ['reels-export-engine', makeEl({ value: 'precise' })],
+            ['reels-suffix', makeEl({ value: '_subtitled' })],
+        ]);
+        const documentStub = {
+            head: makeEl(),
+            body: makeEl(),
+            createElement: () => makeEl(),
+            getElementById: (id) => domElements.get(id) || null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {},
+            removeEventListener() {},
+        };
+        const sandbox = loadBrowserScript('src/reels-project.js', {
+            window: {
+                innerWidth: 1280,
+                innerHeight: 800,
+                location: { hash: '' },
+                addEventListener() {},
+                removeEventListener() {},
+                electronAPI: {
+                    toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/'),
+                    ensureDirectory: async (dir) => {
+                        fs.mkdirSync(dir, { recursive: true });
+                        return { ok: true };
+                    },
+                    writeFileText: async (filePath, content) => {
+                        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                        fs.writeFileSync(filePath, content, 'utf8');
+                        writtenFiles.set(filePath, content);
+                        return true;
+                    },
+                    copyReelsProjectPackage: async (payload) => packageReelsProject(payload),
+                    getDefaultProjectDir: () => tmpRoot,
+                    saveBatchWorkspace: () => true,
+                    readBatchWorkspace: () => '',
+                },
+            },
+            document: documentStub,
+            setTimeout: () => 0,
+            clearTimeout: () => {},
+            setInterval: () => 0,
+            clearInterval: () => {},
+            requestAnimationFrame: () => 0,
+            getComputedStyle: () => ({ display: 'none', height: '0px' }),
+            getWritingVisualStyle: (s) => s,
+            reelsRefreshWritingTitleEditor: () => {},
+            reelsRefreshSpeechWritingImageUI: () => {},
+            showToast: () => {},
+            alert: () => {},
+            confirm: () => true,
+        });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8'), sandbox, { filename: 'src/reels-batch-table.js' });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8'), sandbox, { filename: 'src/batch-reels.js' });
+
+        // Initialize two tabs and assign small-groups
+        vm.runInContext(`
+            _batchTableState.tabs = [
+                {
+                    id: 'tab_3',
+                    name: '标签3',
+                    group: '',
+                    materialDir: '',
+                    tasks: [
+                        { id: 't3_1', baseName: '103_task1', bgPath: ${JSON.stringify(bg1)}, videoPath: ${JSON.stringify(bg1)}, audioPath: ${JSON.stringify(v1)}, _exportSelected: true },
+                        { id: 't3_2', baseName: '104_task2', bgPath: ${JSON.stringify(bg2)}, videoPath: ${JSON.stringify(bg2)}, audioPath: ${JSON.stringify(v2)}, _exportSelected: true }
+                    ]
+                },
+                {
+                    id: 'tab_41',
+                    name: '标签25',
+                    group: '晚祷组',
+                    materialDir: '',
+                    tasks: [
+                        { id: 't25_1', baseName: '201_task3', bgPath: ${JSON.stringify(bg3)}, videoPath: ${JSON.stringify(bg3)}, audioPath: ${JSON.stringify(v3)}, _exportSelected: true }
+                    ]
+                }
+            ];
+            _batchTableState.activeTabId = 'tab_3';
+            _batchTableState.nextTabId = 42;
+            _setTabsGroup(['tab_3'], '早祷组');
+            _toggleTabGroupCollapse('晚祷组');
+            _restoreGroupedProjectionFromTabs(['tab_3', 'tab_41']);
+        `, sandbox);
+
+        // Verify small-group metadata, collapse state, capture/restore snapshot, and rendered HTML segments
+        const groupInfo = JSON.parse(vm.runInContext(`JSON.stringify({
+            segments: _buildOrderedTabSegments().map(s => ({ type: s.type, groupName: s.groupName, tabIds: (s.tabs || [s.tab]).map(t => t.id) })),
+            collapsed: _batchTableState.collapsedTabGroups,
+            projGroups: window._reelsState.tasks.map(t => ({ id: t.id, tabId: t._batchTabId, tabName: t._batchTabName, tabGroup: t._batchTabGroup })),
+            snap: window.reelsCaptureBatchTableState(),
+        })`, sandbox));
+
+        assert.equal(groupInfo.segments.length, 2);
+        assert.equal(groupInfo.segments[0].groupName, '早祷组');
+        assert.equal(groupInfo.segments[1].groupName, '晚祷组');
+        assert.equal(groupInfo.collapsed['晚祷组'], true);
+        assert.equal(groupInfo.projGroups[0].tabGroup, '早祷组');
+        assert.equal(groupInfo.projGroups[2].tabGroup, '晚祷组');
+        assert.equal(groupInfo.snap.collapsedTabGroups['晚祷组'], true);
+        assert.equal(groupInfo.snap.tabs[0].group, '早祷组');
+
+        // Execute grouped batch packaging!
+        await sandbox.window.reelsPackageSelectedProjects();
+
+        const batchPkgDirs = fs.readdirSync(outBase).filter(name => name.endsWith('_工程包'));
+        assert.equal(batchPkgDirs.length, 1, 'should create timestamped batch package directory');
+        const pkgRoot = path.join(outBase, batchPkgDirs[0]);
+
+        // Must create separate group subfolders for the 2 checked groups
+        const group1Dir = path.join(pkgRoot, '标签3');
+        const group2Dir = path.join(pkgRoot, '标签25');
+        assert.equal(fs.existsSync(group1Dir), true, 'must create 标签3 group subfolder');
+        assert.equal(fs.existsSync(group2Dir), true, 'must create 标签25 group subfolder');
+        const g1Projects = fs.readdirSync(group1Dir).filter(d => d.endsWith('-工程'));
+        const g2Projects = fs.readdirSync(group2Dir).filter(d => d.endsWith('-工程'));
+        assert.equal(g1Projects.length, 2, '标签3 subfolder should contain 2 task project dirs');
+        assert.equal(g2Projects.length, 1, '标签25 subfolder should contain 1 task project dir');
+
+        // Root batch JSON must include 2 tabs + all 3 remapped tasks
+        const rootJsonPath = path.join(pkgRoot, '批量工程_3个任务.json');
+        assert.equal(fs.existsSync(rootJsonPath), true);
+        const packagedJson = JSON.parse(fs.readFileSync(rootJsonPath, 'utf8'));
+        assert.equal(packagedJson.version, '2.0');
+        assert.equal(packagedJson.tabs.length, 2);
+        assert.equal(packagedJson.tabs[0].name, '标签3');
+        assert.equal(packagedJson.tabs[0].group, '早祷组');
+        assert.equal(packagedJson.tabs[0].tasks.length, 2);
+        assert.equal(packagedJson.tabs[1].name, '标签25');
+        assert.equal(packagedJson.tabs[1].group, '晚祷组');
+        assert.equal(packagedJson.tabs[1].tasks.length, 1);
+        assert.ok(packagedJson.tabs[0].tasks[0].bgPath.includes(`${path.sep}标签3${path.sep}`));
+        assert.ok(packagedJson.tabs[1].tasks[0].bgPath.includes(`${path.sep}标签25${path.sep}`));
+
+        // Round-trip A: load packaged multi-tab JSON via ReelsProject.applyProjectData -> applyRestoredProject
+        vm.runInContext(`
+            _batchTableState.tabs = [{ id: 'tab_1', name: '默认', group: '', materialDir: '', tasks: [] }];
+            _batchTableState.activeTabId = 'tab_1';
+            _batchTableState.appliedTabIds = [];
+            window._reelsState.tasks = [];
+            const loadedRes = window.ReelsProject.applyProjectData(${JSON.stringify(packagedJson)});
+            applyRestoredProject(loadedRes);
+        `, sandbox);
+        const restoredMulti = JSON.parse(vm.runInContext(`JSON.stringify({
+            tabs: _batchTableState.tabs.map(t => ({ name: t.name, group: t.group, count: t.tasks.length })),
+            projTabIds: [...new Set(window._reelsState.tasks.map(t => t._batchTabId))],
+            projCount: window._reelsState.tasks.length,
+        })`, sandbox));
+        assert.equal(restoredMulti.tabs.length, 2);
+        assert.equal(restoredMulti.tabs[0].name, '标签3');
+        assert.equal(restoredMulti.tabs[0].group, '早祷组');
+        assert.equal(restoredMulti.tabs[0].count, 2);
+        assert.equal(restoredMulti.tabs[1].name, '标签25');
+        assert.equal(restoredMulti.tabs[1].group, '晚祷组');
+        assert.equal(restoredMulti.projTabIds.length, 2, 'projected left task list must contain 2 distinct group headers');
+        assert.equal(restoredMulti.projCount, 3);
+
+        // Round-trip B: legacy flat JSON WITHOUT tabs array (like pre-fix 批量工程_64个任务.json)
+        // must ALSO split into 2 tabs & 2 projected groups when imported via Cloud Hub / BatchTable / Load Project
+        const legacyFlatJson = { ...packagedJson };
+        delete legacyFlatJson.tabs;
+        delete legacyFlatJson.activeTabId;
+        legacyFlatJson.version = '2.0.0';
+        const applyCloudFn = vm.runInContext('_applyDownloadedCloudProjectToBatchTable', sandbox);
+        const cloudApplied = await applyCloudFn(legacyFlatJson, rootJsonPath, 'replace', '导入包');
+        assert.equal(cloudApplied.tabsCount, 2);
+        assert.equal(cloudApplied.tasksCount, 3);
+        const restoredFlat = JSON.parse(vm.runInContext(`JSON.stringify({
+            tabs: _batchTableState.tabs.map(t => ({ name: t.name, group: t.group, count: t.tasks.length })),
+            projTabNames: [...new Set(window._reelsState.tasks.map(t => t._batchTabName))],
+        })`, sandbox));
+        assert.deepEqual(restoredFlat.tabs, [
+            { name: '标签3', group: '早祷组', count: 2 },
+            { name: '标签25', group: '晚祷组', count: 1 },
+        ]);
+        assert.deepEqual(restoredFlat.projTabNames, ['标签3', '标签25']);
+
+        // Round-trip C: ReelsProject -> applyRestoredProject on flat grouped JSON, plus auto-save/auto-restore of tab.group & collapsedTabGroups
+        vm.runInContext(`
+            _batchTableState.collapsedTabGroups = { '早祷组': true };
+            _batchAutoSave({ skipSync: true, forceFullSerialize: true });
+            _batchTableState.tabs = [{ id: 'tab_1', name: '默认', group: '', materialDir: '', tasks: [] }];
+            _batchTableState.collapsedTabGroups = {};
+            _batchAutoRestore();
+        `, sandbox);
+        const restoredAuto = JSON.parse(vm.runInContext(`JSON.stringify({
+            tabs: _batchTableState.tabs.map(t => ({ name: t.name, group: t.group, count: t.tasks.length })),
+            collapsed: _batchTableState.collapsedTabGroups,
+        })`, sandbox));
+        assert.equal(restoredAuto.tabs.length, 2);
+        assert.equal(restoredAuto.tabs[0].group, '早祷组');
+        assert.equal(restoredAuto.collapsed['早祷组'], true);
+
+        const restoredViaProject = JSON.parse(vm.runInContext(`(() => {
+            _batchTableState.tabs = [{ id: 'tab_1', name: '默认', group: '', materialDir: '', tasks: [] }];
+            _batchTableState.appliedTabIds = [];
+            window._reelsState.tasks = [];
+            const res = window.ReelsProject.applyProjectData(${JSON.stringify(legacyFlatJson)});
+            applyRestoredProject(res);
+            return JSON.stringify({
+                tabs: _batchTableState.tabs.map(t => ({ name: t.name, group: t.group, count: t.tasks.length })),
+                projTabNames: [...new Set(window._reelsState.tasks.map(t => t._batchTabName))],
+            });
+        })()`, sandbox));
+        assert.deepEqual(restoredViaProject.tabs, [
+            { name: '标签3', group: '早祷组', count: 2 },
+            { name: '标签25', group: '晚祷组', count: 1 },
+        ]);
+        assert.deepEqual(restoredViaProject.projTabNames, ['标签3', '标签25']);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('Cloud Hub downloadCloudProject splits flat grouped batch JSON into multiple tabs and relinks nested group folders', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cloud-multigroup-'));
+    const storeDir = path.join(tmpRoot, 'backend');
+    const matDir = path.join(tmpRoot, 'downloaded_pkg');
+    const g1AssetDir = path.join(matDir, '标签3', '103_task-工程', '背景素材');
+    const g2AssetDir = path.join(matDir, '标签25', '201_task-工程', '背景素材');
+    fs.mkdirSync(storeDir, { recursive: true });
+    fs.mkdirSync(g1AssetDir, { recursive: true });
+    fs.mkdirSync(g2AssetDir, { recursive: true });
+
+    const localBg1 = path.join(g1AssetDir, 'clip_g1.mp4');
+    const localBg2 = path.join(g2AssetDir, 'clip_g2.mp4');
+    fs.writeFileSync(localBg1, 'g1');
+    fs.writeFileSync(localBg2, 'g2');
+
+    const settingsResolved = require.resolve('../electron/services/settings');
+    const cloudHubResolved = require.resolve('../electron/services/cloud-hub');
+    const settingsService = require(settingsResolved);
+    const origGetBackendDir = settingsService.getBackendDir;
+    const origFetch = globalThis.fetch;
+
+    const flatPackagedJson = {
+        version: '2.0.0',
+        app: 'VideoKit',
+        tasks: [
+            {
+                baseName: '103_task',
+                _batchTabId: 'tab_3',
+                _batchTabName: '标签3',
+                _batchTabGroup: '早祷组',
+                bgPath: 'C:\\MacOther\\2026-11-13_0617_工程包\\标签3\\103_task-工程\\背景素材\\clip_g1.mp4',
+            },
+            {
+                baseName: '201_task',
+                _batchTabId: 'tab_41',
+                _batchTabName: '标签25',
+                _batchTabGroup: '晚祷组',
+                bgPath: 'C:\\MacOther\\2026-11-13_0617_工程包\\标签25\\201_task-工程\\背景素材\\clip_g2.mp4',
+            },
+        ],
+    };
+
+    try {
+        settingsService.getBackendDir = () => storeDir;
+        delete require.cache[cloudHubResolved];
+        const isolatedHub = require('../electron/services/cloud-hub');
+        globalThis.fetch = async (url) => {
+            if (String(url).includes('1FlatBatchMultiGrp')) {
+                return new Response(JSON.stringify(flatPackagedJson), { status: 200 });
+            }
+            return new Response('not found', { status: 404 });
+        };
+
+        const res = await isolatedHub.downloadCloudProject({
+            url: 'https://drive.google.com/file/d/1FlatBatchMultiGrp/view?usp=sharing',
+            local_material_root: matDir,
+        });
+        assert.equal(res.status, 'success');
+        assert.equal(res.tabs_count, 2);
+        assert.equal(res.tasks_count, 2);
+        assert.equal(res.project.tabs[0].name, '标签3');
+        assert.equal(res.project.tabs[0].group, '早祷组');
+        assert.equal(res.project.tabs[1].name, '标签25');
+        assert.equal(res.project.tabs[1].group, '晚祷组');
+        assert.equal(res.relink_stats.fixed, 2);
+        assert.equal(res.relink_stats.missing, 0);
+        assert.equal(res.project.tabs[0].tasks[0].bgPath, localBg1);
+        assert.equal(res.project.tabs[1].tasks[0].bgPath, localBg2);
+    } finally {
+        globalThis.fetch = origFetch;
+        settingsService.getBackendDir = origGetBackendDir;
+        delete require.cache[cloudHubResolved];
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('Project packager & loader preserve watermarks (attribution), persist to localStorage, and sanitize unsafe JSON keys', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-wm-attr-'));
+    try {
+        const srcMedia = path.join(tmpRoot, 'media');
+        const outDir = path.join(tmpRoot, 'out');
+        fs.mkdirSync(srcMedia, { recursive: true });
+        fs.mkdirSync(outDir, { recursive: true });
+
+        const sigLogo = path.join(srcMedia, 'author_sig.png');
+        fs.writeFileSync(sigLogo, 'png-signature-bytes');
+
+        const { packageReelsProject } = require(path.join(ROOT, 'electron/services/projectPackager.js'));
+        const localMediaUrl = 'local-media:///' + sigLogo.replace(/\\/g, '/');
+        const maliciousPayload = JSON.parse(`{
+            "version": "2.0.0",
+            "app": "VideoKit",
+            "__proto__": { "pollutedPackager": true },
+            "watermarks": [
+                { "id": "wm_sig", "type": "text", "text": "@AuthorSignature", "enabled": true, "position": "bottom-right" },
+                { "id": "wm_img", "type": "image", "imagePath": ${JSON.stringify(localMediaUrl)}, "enabled": true, "position": "top-left" }
+            ],
+            "tasks": [{ "id": "t1", "baseName": "001_sig" }]
+        }`);
+
+        const packed = await packageReelsProject({
+            outputPath: path.join(outDir, '001_sig.mp4'),
+            taskAssets: [{ role: 'overlay', path: sigLogo }],
+            reelsProjectData: maliciousPayload,
+        });
+        assert.equal(packed.ok, true);
+        assert.equal(({}).pollutedPackager, undefined);
+
+        const saved = JSON.parse(fs.readFileSync(packed.projectJsonPath, 'utf8'));
+        assert.equal(saved.watermarks[0].text, '@AuthorSignature');
+        assert.equal(saved.watermarks[1].imagePath, path.join(packed.projectDir, '覆层素材', 'author_sig.png'));
+        assert.equal(Object.prototype.hasOwnProperty.call(saved, '__proto__'), false);
+
+        // Verify ReelsProject.collectProjectData, _batchExportConfig, _applyImportedTabsToState, and applyRestoredProject round-trip
+        const wmListEl = { innerHTML: '', querySelectorAll: () => [], appendChild() {} };
+        const storage = new Map();
+        const localStorageStub = {
+            getItem: (k) => (storage.has(k) ? storage.get(k) : null),
+            setItem: (k, v) => storage.set(k, String(v)),
+            removeItem: (k) => storage.delete(k),
+        };
+        const sandbox = loadBrowserScript('src/reels-project.js', {
+            window: {
+                innerWidth: 1280,
+                innerHeight: 800,
+                location: { hash: '' },
+                addEventListener() {},
+                removeEventListener() {},
+                localStorage: localStorageStub,
+                electronAPI: {
+                    toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/'),
+                    saveBatchWorkspace: () => true,
+                    readBatchWorkspace: () => '',
+                },
+            },
+            localStorage: localStorageStub,
+            document: {
+                head: { appendChild() {} },
+                body: { appendChild() {}, querySelectorAll: () => [] },
+                createElement: () => ({ style: {}, classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [], addEventListener() {} }),
+                getElementById: (id) => (id === 'reels-watermark-list' ? wmListEl : null),
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                addEventListener() {},
+                removeEventListener() {},
+            },
+            setTimeout: () => 0,
+            clearTimeout: () => {},
+            setInterval: () => 0,
+            clearInterval: () => {},
+            requestAnimationFrame: () => 0,
+            getComputedStyle: () => ({ display: 'none', height: '0px' }),
+            getWritingVisualStyle: (s) => s,
+            reelsRefreshWritingTitleEditor: () => {},
+            reelsRefreshSpeechWritingImageUI: () => {},
+            showToast: () => {},
+            alert: () => {},
+            confirm: () => true,
+        });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8'), sandbox, { filename: 'src/reels-batch-table.js' });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8'), sandbox, { filename: 'src/batch-reels.js' });
+
+        const collected = vm.runInContext(`(() => {
+            window._reelsState.watermarks = [
+                { id: 'wm_brand', type: 'text', text: '@TeamBrand', enabled: true, position: 'bottom-left' }
+            ];
+            return JSON.stringify(window.ReelsProject.collectProjectData({
+                tasks: [{ id: 't1', baseName: '001' }],
+                style: {},
+                exportOpts: {},
+                watermarks: window._reelsState.watermarks,
+            }));
+        })()`, sandbox);
+        const collectedObj = JSON.parse(collected);
+        assert.equal(collectedObj.watermarks[0].text, '@TeamBrand');
+
+        // Recipient imports Cloud package in append mode while only having factory-disabled watermarks
+        const importedRes = await vm.runInContext(`(async () => {
+            window._reelsState.watermarks = [{ id: 'wm_default', type: 'text', text: 'AI Generated', enabled: false }];
+            window.localStorage.setItem('reels_watermarks', JSON.stringify(window._reelsState.watermarks));
+            await _applyDownloadedCloudProjectToBatchTable(${JSON.stringify(saved)}, '', 'append', '带署名工程');
+            return JSON.stringify({
+                stateWms: window._reelsState.watermarks,
+                lsWms: JSON.parse(window.localStorage.getItem('reels_watermarks') || '[]'),
+                wmHtml: document.getElementById('reels-watermark-list').innerHTML,
+            });
+        })()`, sandbox);
+        const parsedAfterCloud = JSON.parse(importedRes);
+        assert.equal(parsedAfterCloud.stateWms[0].text, '@AuthorSignature');
+        assert.equal(parsedAfterCloud.lsWms[0].text, '@AuthorSignature');
+        assert.match(parsedAfterCloud.wmHtml, /@AuthorSignature/);
+
+        // Recipient opens single project snapshot via applyRestoredProject -> persists & refreshes UI
+        const restoredSingle = JSON.parse(vm.runInContext(`(() => {
+            window._reelsState.watermarks = [{ id: 'wm_old', type: 'text', text: 'OldLocal', enabled: true }];
+            applyRestoredProject({
+                success: true,
+                tasks: [{ id: 't_single', baseName: '002' }],
+                style: {},
+                exportOpts: {},
+                watermarks: [{ id: 'wm_next', type: 'text', text: '@SingleSnapSig', enabled: true, position: 'top-right' }],
+                selectedIdx: -1,
+            });
+            return JSON.stringify({
+                stateWms: window._reelsState.watermarks,
+                lsWms: JSON.parse(window.localStorage.getItem('reels_watermarks') || '[]'),
+                wmHtml: document.getElementById('reels-watermark-list').innerHTML,
+            });
+        })()`, sandbox));
+        assert.equal(restoredSingle.stateWms[0].text, '@SingleSnapSig');
+        assert.equal(restoredSingle.lsWms[0].text, '@SingleSnapSig');
+        assert.match(restoredSingle.wmHtml, /@SingleSnapSig/);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('Tab visibility project manager (open vs background) and duplicate cloud project prevention', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-projmgr-'));
+    let persistedWorkspace = '';
+    try {
+        const containerStub = {
+            innerHTML: '',
+            style: {},
+            addEventListener() {},
+            removeEventListener() {},
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            cloneNode() {
+                const clone = {
+                    ...containerStub,
+                    style: {},
+                    parentNode: null,
+                    addEventListener() {},
+                    removeEventListener() {},
+                };
+                clone.parentNode = { replaceChild() {} };
+                return clone;
+            },
+        };
+        containerStub.parentNode = {
+            replaceChild(nextNode) {
+                containerStub.innerHTML = nextNode.innerHTML || containerStub.innerHTML;
+            },
+        };
+        const sandbox = loadBrowserScript('src/reels-project.js', {
+            window: {
+                innerWidth: 1280,
+                innerHeight: 800,
+                location: { hash: '' },
+                addEventListener() {},
+                removeEventListener() {},
+                electronAPI: {
+                    toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/'),
+                    saveBatchWorkspace: (s) => { persistedWorkspace = s; return true; },
+                    readBatchWorkspace: () => persistedWorkspace,
+                    getDefaultProjectDir: () => tmpRoot,
+                },
+            },
+            document: {
+                head: { appendChild() {} },
+                body: { appendChild() {}, querySelectorAll: () => [] },
+                createElement: () => ({ style: {}, classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} }),
+                getElementById: (id) => (id === 'reels-batch-table-container' ? containerStub : null),
+                querySelector: () => null,
+                querySelectorAll: () => [],
+                addEventListener() {},
+                removeEventListener() {},
+            },
+            setTimeout: () => 0,
+            clearTimeout: () => {},
+            setInterval: () => 0,
+            clearInterval: () => {},
+            requestAnimationFrame: () => 0,
+            getComputedStyle: () => ({ display: 'none', height: '0px' }),
+            getWritingVisualStyle: (s) => s,
+            reelsRefreshWritingTitleEditor: () => {},
+            reelsRefreshSpeechWritingImageUI: () => {},
+            showToast: () => {},
+            alert: () => {},
+            confirm: () => true,
+        });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8'), sandbox, { filename: 'src/reels-batch-table.js' });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8'), sandbox, { filename: 'src/batch-reels.js' });
+
+        // Setup 3 tabs: 2 visible, 1 moved to background via reelsSetVisibleBatchTabs
+        const visResult = JSON.parse(vm.runInContext(`(() => {
+            _batchTableState.container = document.getElementById('reels-batch-table-container');
+            _batchTableState.tabs = [
+                { id: 'tab_1', name: '早祷工程', group: '祈祷组', hidden: false, tasks: [{ id: 't1', baseName: 'm1' }] },
+                { id: 'tab_2', name: '晚祷工程', group: '祈祷组', hidden: false, tasks: [{ id: 't2', baseName: 'e1' }] },
+                { id: 'tab_3', name: '备用老工程', group: '存档', hidden: false, tasks: [{ id: 't3', baseName: 'old1' }] },
+            ];
+            _batchTableState.activeTabId = 'tab_1';
+            _batchTableState.nextTabId = 4;
+            window.reelsSetVisibleBatchTabs(['tab_1', 'tab_2']);
+            return JSON.stringify({
+                tabStates: _batchTableState.tabs.map(t => ({ id: t.id, hidden: !!t.hidden })),
+                projectedTaskIds: window._reelsState.tasks.map(t => t.id),
+                activeTabId: _batchTableState.activeTabId,
+            });
+        })()`, sandbox));
+        assert.deepEqual(visResult.tabStates, [
+            { id: 'tab_1', hidden: false },
+            { id: 'tab_2', hidden: false },
+            { id: 'tab_3', hidden: true },
+        ]);
+        assert.deepEqual(visResult.projectedTaskIds, ['t1', 't2']);
+
+        // Auto-restore after restart must preserve hidden flag and keep background tab out of left workspace list
+        const afterRestart = JSON.parse(vm.runInContext(`(() => {
+            _batchTableState.tabs = [{ id: 'tab_x', name: '默认', tasks: [] }];
+            window._reelsState.tasks = [];
+            _batchAutoRestore();
+            return JSON.stringify({
+                tabStates: _batchTableState.tabs.map(t => ({ id: t.id, hidden: !!t.hidden })),
+                projectedTaskIds: window._reelsState.tasks.map(t => t.id),
+            });
+        })()`, sandbox));
+        assert.deepEqual(afterRestart.tabStates, [
+            { id: 'tab_1', hidden: false },
+            { id: 'tab_2', hidden: false },
+            { id: 'tab_3', hidden: true },
+        ]);
+        assert.deepEqual(afterRestart.projectedTaskIds, ['t1', 't2']);
+
+        // Cloud Hub duplicate detection & in-place replace vs skip
+        const dupTest = await vm.runInContext(`(async () => {
+            const url = 'https://drive.google.com/file/d/1DupProjectABC123/view?usp=sharing';
+            const cKey = _extractCloudSourceKey(url);
+            await _applyDownloadedCloudProjectToBatchTable(
+                { version: '2.0.0', tasks: [{ id: 'c1', baseName: 'v1_task' }] },
+                '', 'append', '2026-11-13_测试重名工程',
+                { cloudKey: cKey, cloudUrl: url }
+            );
+            const countAfterFirst = _batchTableState.tabs.length;
+
+            // Even if moved to background, _findExistingTabsForCloudEntry must detect it with ?usp=drive_link variant
+            const cloudTab = _batchTableState.tabs[_batchTableState.tabs.length - 1];
+            cloudTab.hidden = true;
+            const foundInBg = _findExistingTabsForCloudEntry({
+                title: '测试重名工程',
+                date: '2026-11-13',
+                url: 'https://drive.google.com/file/d/1DupProjectABC123/view?usp=drive_link',
+            });
+
+            // Re-apply with skip -> must NOT append duplicate tab
+            const skipRes = await _applyDownloadedCloudProjectToBatchTable(
+                { version: '2.0.0', tasks: [{ id: 'c2', baseName: 'v2_skip' }] },
+                '', 'append', '2026-11-13_测试重名工程',
+                { cloudKey: cKey, cloudUrl: url, duplicateStrategy: 'skip' }
+            );
+            const countAfterSkip = _batchTableState.tabs.length;
+
+            // Re-apply with replace -> must update existing tab in place without adding duplicate tab
+            const replaceRes = await _applyDownloadedCloudProjectToBatchTable(
+                { version: '2.0.0', tasks: [{ id: 'c3', baseName: 'v3_updated' }] },
+                '', 'append', '2026-11-13_测试重名工程',
+                { cloudKey: cKey, cloudUrl: url, duplicateStrategy: 'replace' }
+            );
+            const countAfterReplace = _batchTableState.tabs.length;
+            const updatedTab = _batchTableState.tabs.find(t => t.id === cloudTab.id);
+
+            return JSON.stringify({
+                countAfterFirst,
+                foundMatchedCount: foundInBg.matchedTabs.length,
+                countAfterSkip,
+                skipRes,
+                countAfterReplace,
+                replaceRes,
+                updatedTaskBase: updatedTab?.tasks?.[0]?.baseName || '',
+                updatedHidden: !!updatedTab?.hidden,
+            });
+        })()`, sandbox);
+        const dupParsed = JSON.parse(dupTest);
+        assert.equal(dupParsed.foundMatchedCount, 1);
+        assert.equal(dupParsed.countAfterSkip, dupParsed.countAfterFirst);
+        assert.equal(dupParsed.skipRes.skippedDuplicates, 1);
+        assert.equal(dupParsed.skipRes.tabsAdded, 0);
+        assert.equal(dupParsed.countAfterReplace, dupParsed.countAfterFirst);
+        assert.equal(dupParsed.replaceRes.tabsUpdated, 1);
+        assert.equal(dupParsed.replaceRes.tabsAdded, 0);
+        assert.equal(dupParsed.updatedTaskBase, 'v3_updated');
+        assert.equal(dupParsed.updatedHidden, false);
+    } finally {
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+test('Cloud Hub SSRF & unsafe protocol/prototype guards reject dangerous inputs', async () => {
+    const os = require('node:os');
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-hub-sec-'));
+    const settingsResolved = require.resolve('../electron/services/settings');
+    const cloudHubResolved = require.resolve('../electron/services/cloud-hub');
+    const settingsService = require(settingsResolved);
+    const origGetBackendDir = settingsService.getBackendDir;
+    const origFetch = globalThis.fetch;
+    try {
+        settingsService.getBackendDir = () => tmpRoot;
+        delete require.cache[cloudHubResolved];
+        const hub = require('../electron/services/cloud-hub');
+
+        await assert.rejects(() => hub.syncFromCloudHub({ hub_url: 'file:///C:/Windows/win.ini' }), /http\/https/);
+        await assert.rejects(() => hub.syncFromCloudHub({ hub_url: 'https://user:secret@example.com/hub' }), /凭据/);
+        await assert.rejects(() => hub.downloadCloudProject({ url: 'file:///etc/passwd' }), /http\/https/);
+
+        const docText = [
+            '恶意本地探测 http://127.0.0.1:9999/?q=drive.google.com',
+            '合法工程 https://drive.google.com/file/d/1SafeGoogleDocLink/view?usp=sharing',
+        ].join('\n');
+        globalThis.fetch = async () => new Response(docText, { status: 200 });
+        const docEntries = await hub.fetchGoogleDocProjects('https://docs.google.com/document/d/1TestDocListId/edit');
+        assert.equal(docEntries.length, 1);
+        assert.match(docEntries[0].url, /1SafeGoogleDocLink/);
+
+        // Verify syncFromCloudHub rejects prototype pollution in daily_projects map & deduplicates Drive variants
+        const protoPayloadJson = '{"daily_projects":{"__proto__":"https://evil.example/p.json","2026-11-13":"https://drive.google.com/file/d/1DupFileXyz123/view?usp=sharing"},"projects":[{"date":"2026-11-13","title":"dup","url":"https://drive.google.com/file/d/1DupFileXyz123/view?usp=drive_link"}]}';
+        globalThis.fetch = async () => new Response(protoPayloadJson, { status: 200 });
+        const syncRes = await hub.syncFromCloudHub({ hub_url: 'https://hub.example.workers.dev' });
+        assert.equal(syncRes.ok, true);
+        assert.equal(({}).polluted, undefined);
+        assert.equal(syncRes.settings.daily_projects.length, 1);
+    } finally {
+        globalThis.fetch = origFetch;
+        settingsService.getBackendDir = origGetBackendDir;
+        delete require.cache[cloudHubResolved];
+        fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+});
+
+
+
+
 
 
 

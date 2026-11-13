@@ -16,6 +16,90 @@ function _ropRound(v) {
     return Math.round((parseFloat(v) || 0) * 10) / 10;
 }
 
+function _setAccBadge(container, id, text, active = false) {
+    const el = container?.querySelector(`#${id}`);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('is-active', Boolean(active));
+}
+
+function _computeDecorSummaryBadges(ov) {
+    if (!ov) {
+        return {
+            presetLabel: '未选择',
+            presetActive: false,
+            darkLabel: '已关闭',
+            darkActive: false,
+            grainLabel: '已关闭',
+            grainActive: false,
+            effectsLabel: '未开启',
+            effectsActive: false,
+            layoutLabel: '默认',
+            layoutActive: false,
+        };
+    }
+    const st = ov.decor_style || 'dark_floating_dust';
+    const preset = (typeof window !== 'undefined' && window.ReelsOverlay?.DECOR_OVERLAY_STYLES?.[st]) || {};
+    const rawName = String(preset.name || st || '');
+    const presetLabel = rawName.replace(/^[^\u4e00-\u9fa5A-Za-z0-9]+/, '').trim() || rawName;
+    const presetActive = !ov.disabled;
+
+    const darkVig = Number(ov.decor_dark_vignette ?? preset.dark_vignette ?? 0);
+    const darkEn = ov.decor_dark_enabled !== undefined ? Boolean(ov.decor_dark_enabled) : (darkVig > 0);
+    const darkActive = darkEn && darkVig > 0;
+    const darkLabel = darkActive ? `已启用 · ${darkVig}%` : (darkEn ? '已启用 · 0%' : '已关闭');
+
+    const grainInt = Number(ov.decor_grain_intensity ?? preset.grain_intensity ?? 0);
+    const grainWarm = Number(ov.decor_grain_warmth ?? preset.grain_warmth ?? 0);
+    const grainEn = ov.decor_grain_enabled !== undefined ? Boolean(ov.decor_grain_enabled) : (grainInt > 0 || grainWarm > 0);
+    const scratches = ov.decor_film_scratches !== undefined ? Boolean(ov.decor_film_scratches) : Boolean(preset.film_scratches);
+    const lightLeak = ov.decor_light_leak !== undefined ? Boolean(ov.decor_light_leak) : Boolean(preset.light_leak);
+    const grainParts = [];
+    if (grainEn && grainInt > 0) grainParts.push(`颗粒${grainInt}%`);
+    else if (grainEn && grainWarm > 0) grainParts.push(`暖调${grainWarm}%`);
+    if (scratches) grainParts.push('划痕');
+    if (lightLeak) grainParts.push('漏光');
+    const grainActive = grainParts.length > 0;
+    const grainLabel = grainActive ? grainParts.join('·') : '已关闭';
+
+    const effectFlags = [
+        [ov.decor_floating_particles !== undefined ? Boolean(ov.decor_floating_particles) : Boolean(preset.floating_particles), '粒子'],
+        [ov.decor_glow_stars !== undefined ? Boolean(ov.decor_glow_stars) : Boolean(preset.glow_stars), '星芒'],
+        [ov.decor_snowflakes !== undefined ? Boolean(ov.decor_snowflakes) : Boolean(preset.snowflakes), '飘雪'],
+        [ov.decor_corner_ornaments !== undefined ? Boolean(ov.decor_corner_ornaments) : Boolean(preset.corner_ornaments), '角饰'],
+        [ov.decor_edge_garland !== undefined ? Boolean(ov.decor_edge_garland) : Boolean(preset.edge_garland), '边缘'],
+    ];
+    const activeEffects = effectFlags.filter(([on]) => on).map(([, name]) => name);
+    const effectsActive = activeEffects.length > 0;
+    const effectsLabel = !effectsActive
+        ? '全部关闭'
+        : (activeEffects.length <= 2 ? activeEffects.join('·') : `${activeEffects.slice(0, 2).join('·')} +${activeEffects.length - 2}`);
+
+    const layoutMap = {
+        edges_and_float: '边缘+漂浮',
+        edges_only: '仅边缘',
+        corners_only: '仅四角',
+        top_bottom: '仅上下',
+        full_scatter: '全屏',
+    };
+    const layoutKey = ov.decor_layout || preset.layout || 'edges_and_float';
+    const density = Number(ov.decor_density ?? preset.density ?? 55);
+    const layoutLabel = `${layoutMap[layoutKey] || '边缘+漂浮'} · 密度${density}`;
+
+    return {
+        presetLabel,
+        presetActive,
+        darkLabel,
+        darkActive,
+        grainLabel,
+        grainActive,
+        effectsLabel,
+        effectsActive,
+        layoutLabel,
+        layoutActive: true,
+    };
+}
+
 const ROP_TEXTCARD_DEFAULT_TRANSFORM = {
     // Center-coordinate defaults (0,0 in UI) converted to top-left for 1080x1920 canvas.
     x: 85,
@@ -685,7 +769,7 @@ class ReelsOverlayPanel {
                         <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-fit-card" style="flex:1;padding:4px 6px;font-size:11px;" title="让点缀框缩小贴合在中间字幕/卡片四周 (940×1260)">🎯 贴合中间字幕框 (940×1260)</button>
                     </div>
 
-                    <div class="rop-grid">
+                    <div class="rop-grid" style="margin-bottom:6px;">
                         <label>34款主题</label>
                         <select id="rop-decor-style" class="rop-select">
                             <optgroup label="🖤 黑色氛围模板 & 飘浮粒子 (7款)">
@@ -744,68 +828,104 @@ class ReelsOverlayPanel {
                             <option value="top_bottom">仅上下边缘点缀 (顶部+底部)</option>
                             <option value="full_scatter">全画面均匀漫天分布 (适合颗粒/微尘)</option>
                         </select>
-
-                        <div style="grid-column: span 2; font-size:11px; color:#f87171; margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🖤 黑色氛围模板 & 电影暗角</div>
-                        <label title="四周暗黑遮罩与上下宽银幕暗角浓度">黑色模板浓度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-dark-vignette" class="rop-range" min="0" max="100" step="2" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-dark-vignette" min="0" max="100" step="2" value="0"></div>
-                        <label title="暗角向画面中心聚拢扩散的范围">暗角扩散范围%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-vignette-spread" class="rop-range" min="10" max="95" step="5" value="55"><input type="number" class="rop-num-readout" data-link="rop-decor-vignette-spread" min="10" max="95" step="5" value="55"></div>
-                        <label title="黑色模板底色或怀旧暗褐色">暗底色调</label><input type="color" id="rop-decor-dark-tint" class="rop-color" value="#05070B">
-
-                        <div style="grid-column: span 2; font-size:11px; color:#fbbf24; margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🎞️ 电影颗粒 & 回忆颗粒感</div>
-                        <label title="35mm/8mm胶片噪点与回忆颗粒感强度">电影颗粒强度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-intensity" class="rop-range" min="0" max="100" step="2" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-intensity" min="0" max="100" step="2" value="0"></div>
-                        <label title="胶片颗粒的粗细大小">颗粒粗细%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-size" class="rop-range" min="50" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-size" min="50" max="250" step="5" value="100"></div>
-                        <label title="老照片泛黄暖调回忆感">怀旧泛黄暖调%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-warmth" class="rop-range" min="0" max="100" step="5" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-warmth" min="0" max="100" step="5" value="0"></div>
-                        <label>老电影划痕/扫描线</label><input type="checkbox" id="rop-decor-film-scratches">
-                        <label>胶片边缘漏光</label><input type="checkbox" id="rop-decor-light-leak">
-
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">✨ 飘浮粒子 & 组合装饰开关</div>
-                        <label>开启飘浮粒子</label><input type="checkbox" id="rop-decor-floating-particles">
-                        <label>粒子形态模式</label>
-                        <select id="rop-decor-particle-mode" class="rop-select">
-                            <option value="dust">🖤 悬浮微尘粒子 (Dust)</option>
-                            <option value="embers">🔥 升腾火星余烬 (Embers)</option>
-                            <option value="fireflies">✨ 森林萤火虫 (Fireflies)</option>
-                            <option value="ash">🌨️ 银白灰烬细雪 (Ash)</option>
-                            <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
-                            <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
-                            <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
-                        </select>
-                        <label>发光闪烁星芒</label><input type="checkbox" id="rop-decor-glow-stars" checked>
-                        <label>飘落雪花/冰晶</label><input type="checkbox" id="rop-decor-snowflakes">
-                        <label>四角主题挂饰</label><input type="checkbox" id="rop-decor-corner-ornaments" checked>
-                        <label>边缘花环/串灯/框</label><input type="checkbox" id="rop-decor-edge-garland" checked>
-
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">📐 大小 / 密度 / 发光 / 边距调节</div>
-                        <label title="粒子、星星、光斑或雪花的数量密度">数量密度</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-density" class="rop-range" min="5" max="180" step="5" value="55"><input type="number" class="rop-num-readout" data-link="rop-decor-density" min="5" max="200" step="5" value="55"></div>
-
-                        <label title="点缀元素、粒子、角花、挂球与星星的整体尺寸缩放">点缀大小%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-size" class="rop-range" min="30" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-size" min="20" max="300" step="5" value="100"></div>
-
-                        <label title="粒子、星星与串灯周围放射光晕的强弱">发光强度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-glow" class="rop-range" min="0" max="200" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-glow" min="0" max="200" step="5" value="100"></div>
-
-                        <label title="0% = 完全静止；大于0% = 粒子飘动、星星呼吸、雪花飘落">动态速度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-speed" class="rop-range" min="0" max="250" step="10" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-speed" min="0" max="300" step="10" value="100"></div>
-
-                        <label title="边缘画框与角花距离图层四边的内缩距离">边缘内缩px</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-margin" class="rop-range" min="0" max="220" step="4" value="36"><input type="number" class="rop-num-readout" data-link="rop-decor-margin" min="0" max="300" step="4" value="36"></div>
-
-                        <label title="中心区域留空比例，越大则点缀越集中在四周边缘">中心留空%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-decor-center-clear" class="rop-range" min="0" max="90" step="5" value="65"><input type="number" class="rop-num-readout" data-link="rop-decor-center-clear" min="0" max="95" step="5" value="65"></div>
-
-                        <label>主色调</label><input type="color" id="rop-decor-color1" class="rop-color" value="#FFD700">
-                        <label>副色/星核色</label><input type="color" id="rop-decor-color2" class="rop-color" value="#FFFDF5">
                     </div>
+
+                    <details class="rop-scroll-accordion" id="rop-decor-acc-dark">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🖤 黑色氛围模板 & 电影暗角</span></span>
+                            <span class="rop-acc-badge" id="rop-decor-acc-dark-badge">已关闭</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label title="四周暗黑遮罩与上下宽银幕暗角浓度">黑色模板浓度%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-dark-vignette" class="rop-range" min="0" max="100" step="2" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-dark-vignette" min="0" max="100" step="2" value="0"></div>
+                                <label title="暗角向画面中心聚拢扩散的范围">暗角扩散范围%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-vignette-spread" class="rop-range" min="10" max="95" step="5" value="55"><input type="number" class="rop-num-readout" data-link="rop-decor-vignette-spread" min="10" max="95" step="5" value="55"></div>
+                                <label title="黑色模板底色或怀旧暗褐色">暗底色调</label><input type="color" id="rop-decor-dark-tint" class="rop-color" value="#05070B">
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="rop-scroll-accordion" id="rop-decor-acc-grain">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎞️ 电影颗粒 & 回忆颗粒感</span></span>
+                            <span class="rop-acc-badge" id="rop-decor-acc-grain-badge">已关闭</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label title="35mm/8mm胶片噪点与回忆颗粒感强度">电影颗粒强度%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-intensity" class="rop-range" min="0" max="100" step="2" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-intensity" min="0" max="100" step="2" value="0"></div>
+                                <label title="胶片颗粒的粗细大小">颗粒粗细%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-size" class="rop-range" min="50" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-size" min="50" max="250" step="5" value="100"></div>
+                                <label title="老照片泛黄暖调回忆感">怀旧泛黄暖调%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-grain-warmth" class="rop-range" min="0" max="100" step="5" value="0"><input type="number" class="rop-num-readout" data-link="rop-decor-grain-warmth" min="0" max="100" step="5" value="0"></div>
+                                <label>老电影划痕/扫描线</label><input type="checkbox" id="rop-decor-film-scratches">
+                                <label>胶片边缘漏光</label><input type="checkbox" id="rop-decor-light-leak">
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="rop-scroll-accordion" id="rop-decor-acc-effects">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>✨ 飘浮粒子 & 组合装饰开关</span></span>
+                            <span class="rop-acc-badge" id="rop-decor-acc-effects-badge">默认</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label>开启飘浮粒子</label><input type="checkbox" id="rop-decor-floating-particles">
+                                <label>粒子形态模式</label>
+                                <select id="rop-decor-particle-mode" class="rop-select">
+                                    <option value="dust">🖤 悬浮微尘粒子 (Dust)</option>
+                                    <option value="embers">🔥 升腾火星余烬 (Embers)</option>
+                                    <option value="fireflies">✨ 森林萤火虫 (Fireflies)</option>
+                                    <option value="ash">🌨️ 银白灰烬细雪 (Ash)</option>
+                                    <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
+                                    <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
+                                    <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
+                                </select>
+                                <label>发光闪烁星芒</label><input type="checkbox" id="rop-decor-glow-stars" checked>
+                                <label>飘落雪花/冰晶</label><input type="checkbox" id="rop-decor-snowflakes">
+                                <label>四角主题挂饰</label><input type="checkbox" id="rop-decor-corner-ornaments" checked>
+                                <label>边缘花环/串灯/框</label><input type="checkbox" id="rop-decor-edge-garland" checked>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="rop-scroll-accordion" id="rop-decor-acc-layout">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>📐 大小 / 密度 / 发光 / 边距与配色</span></span>
+                            <span class="rop-acc-badge" id="rop-decor-acc-layout-badge">密度55</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label title="粒子、星星、光斑或雪花的数量密度">数量密度</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-density" class="rop-range" min="5" max="180" step="5" value="55"><input type="number" class="rop-num-readout" data-link="rop-decor-density" min="5" max="200" step="5" value="55"></div>
+
+                                <label title="点缀元素、粒子、角花、挂球与星星的整体尺寸缩放">点缀大小%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-size" class="rop-range" min="30" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-size" min="20" max="300" step="5" value="100"></div>
+
+                                <label title="粒子、星星与串灯周围放射光晕的强弱">发光强度%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-glow" class="rop-range" min="0" max="200" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-glow" min="0" max="200" step="5" value="100"></div>
+
+                                <label title="0% = 完全静止；大于0% = 粒子飘动、星星呼吸、雪花飘落">动态速度%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-speed" class="rop-range" min="0" max="250" step="10" value="100"><input type="number" class="rop-num-readout" data-link="rop-decor-speed" min="0" max="300" step="10" value="100"></div>
+
+                                <label title="边缘画框与角花距离图层四边的内缩距离">边缘内缩px</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-margin" class="rop-range" min="0" max="220" step="4" value="36"><input type="number" class="rop-num-readout" data-link="rop-decor-margin" min="0" max="300" step="4" value="36"></div>
+
+                                <label title="中心区域留空比例，越大则点缀越集中在四周边缘">中心留空%</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-decor-center-clear" class="rop-range" min="0" max="90" step="5" value="65"><input type="number" class="rop-num-readout" data-link="rop-decor-center-clear" min="0" max="95" step="5" value="65"></div>
+
+                                <label>主色调</label><input type="color" id="rop-decor-color1" class="rop-color" value="#FFD700">
+                                <label>副色/星核色</label><input type="color" id="rop-decor-color2" class="rop-color" value="#FFFDF5">
+                            </div>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- 滚动字幕属性 (scroll覆层独合) -->
                 <div id="rop-scroll-props" class="rop-group" style="display:none;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
                         <div class="rop-group-title" style="margin:0;">滚动字幕</div>
                         <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--text-primary); margin:0;">
                             <input type="checkbox" id="rop-scroll-apply-all" checked>
@@ -814,9 +934,9 @@ class ReelsOverlayPanel {
                     </div>
 
                     <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-47） -->
-                    <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.28);">
+                    <div class="rop-scroll-preset-card">
                         <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🎨 滚动字幕样式预设 (编号 sc-01 ~ sc-47)</span>
+                            <span>🎨 滚动字幕样式预设 (sc-01 ~ sc-47)</span>
                             <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开可视化滚动字幕样式预览库">🎨 样式库预览</button>
                         </div>
                         <div style="display:flex;gap:4px;align-items:center;">
@@ -829,870 +949,949 @@ class ReelsOverlayPanel {
                         </div>
                     </div>
 
-                    <!-- 🎨 滚动字幕背景主题快速选择（始终置顶可见：支持整块大背景画板 & 逐行底衬 & 直接调节长宽与滚动循环） -->
-                    <div style="margin:6px 0 8px 0;padding:8px;border-radius:8px;background:linear-gradient(135deg, rgba(220,38,38,0.10), rgba(21,128,61,0.10), rgba(245,158,11,0.10));border:1px solid rgba(251,191,36,0.28);">
-                        <div style="font-size:11px;font-weight:700;color:#fde68a;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🖼️ 设计师卡片背景 + 左上角小图标角标 (祈祷书签 / 星条金盾 / 火漆章 / 报纸 / 圣诞)</span>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭大背景</button>
-                        </div>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_green" style="flex:1 1 100%;padding:5px 8px;font-size:11px;background:linear-gradient(135deg,#12322E,#1B4641);color:#FFE28A;font-weight:700;border:1px solid #E2B95B;border-radius:5px;cursor:pointer;">🕊️ [sc-39] 祈祷书签松绿卡 + 左上金书签 + 顶部白鸽玫瑰 (爆款同款)</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_brown" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2C1E18,#3A2820);color:#F7D788;font-weight:700;border:1px solid #D9AC42;border-radius:5px;cursor:pointer;">✝️ [sc-40] 祈祷深褐卡+十字书签</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_navy" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#122238,#1B314E);color:#FFE082;font-weight:700;border:1px solid #E5B94E;border-radius:5px;cursor:pointer;">🌌 [sc-41] 祈祷深蓝卡+白鸽橄榄</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="prayer_bookmark_burgundy" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#3A121C,#591C2B);color:#FFE4E6;font-weight:700;border:1px solid #E8C374;border-radius:5px;cursor:pointer;">🌹 [sc-42] 酒红丝绒卡+左上玫瑰章</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="veteran_shield_card" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0E1E38,#1E3A8A);color:#FEF08A;font-weight:700;border:1px solid #FBBF24;border-radius:5px;cursor:pointer;">🇺🇸 [sc-43] 海军深蓝卡+左上星条金盾</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vintage_wax_parchment" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2E2318,#453424);color:#FDE68A;font-weight:700;border:1px solid #D9A74A;border-radius:5px;cursor:pointer;">🏵️ [sc-44] 胡桃古籍卡+左上火漆金章</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="royal_olive_emerald" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#123326,#1B4D39);color:#ECFDF5;font-weight:700;border:1px solid #DEC075;border-radius:5px;cursor:pointer;">🌿 [sc-45] 翡翠金线卡+左上橄榄桂冠</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="editorial_quote_obsidian" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#16181F,#262936);color:#F8FAFC;font-weight:700;border:1px solid #E5C165;border-radius:5px;cursor:pointer;">❝ [sc-46] 曜石黑金线卡+左上双引号标</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="sacred_ivory_crown" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#2B1A24,#442839);color:#FEF3C7;font-weight:700;border:1px solid #F0D580;border-radius:5px;cursor:pointer;">👑 [sc-47] 皇家紫檀卡+左上皇冠金标</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="newspaper_page" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#f3efe6,#dfd7c6);color:#2b1b18;font-weight:700;border:1px solid #cbbba0;border-radius:5px;cursor:pointer;">📰 旧报纸整版</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="newspaper_sepia_page" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#eadbc2,#d4be98);color:#3b2313;font-weight:700;border:1px solid #bfa376;border-radius:5px;cursor:pointer;">🗞️ 泛黄报刊板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="torn_parchment_board" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#f7f1e3,#e6d4a7);color:#422810;font-weight:700;border:1px solid #c59b27;border-radius:5px;cursor:pointer;">📜 烫金羊皮卷</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="kraft_clipboard" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#c8a276,#a67c52);color:#fffdf9;font-weight:700;border:1px solid #e6dec8;border-radius:5px;cursor:pointer;">🏷️ 牛皮纸画板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="grid_notebook_page" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#faf8f2,#e2e8f0);color:#1e293b;font-weight:700;border:1px solid #94a3b8;border-radius:5px;cursor:pointer;">📓 方格手账页</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_candy_frame" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#b91c1c,#7f1d1d);color:#fffdf5;font-weight:700;border:1px solid #fca5a5;border-radius:5px;cursor:pointer;">🍬 圣诞拐杖糖框</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_velvet_gold_board" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#88131b,#4c0519);color:#fde68a;font-weight:700;border:1px solid #f5d061;border-radius:5px;cursor:pointer;">🎅 圣诞红丝绒卡</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_pine_snow_board" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#15803d,#14532d);color:#f0fdf4;font-weight:700;border:1px solid #86efac;border-radius:5px;cursor:pointer;">🎄 圣诞松林覆雪板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_gingerbread_card" style="flex:1 1 30%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#8d4e25,#5c2d10);color:#fffdf9;font-weight:700;border:1px solid #fde68a;border-radius:5px;cursor:pointer;">🍪 圣诞姜饼糖霜卡</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_starry_snow_night" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#bae6fd;font-weight:700;border:1px solid #38bdf8;border-radius:5px;cursor:pointer;">❄️ 圣诞飘雪夜空板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="xmas_cream_holly_letter" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#fcf8ee,#efe6d5);color:#991b1b;font-weight:700;border:1px solid #15803d;border-radius:5px;cursor:pointer;">🦌 圣诞冬青信纸卡</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_stars_stripes_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#0a1931,#1e3a8a,#b91c1c);color:#fffdf5;font-weight:700;border:1px solid #fbbf24;border-radius:5px;cursor:pointer;">🇺🇸 星条旗荣耀板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_honor_medal_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#09152b,#172554);color:#fde68a;font-weight:700;border:1px solid #f59e0b;border-radius:5px;cursor:pointer;">🎖️ 老兵金章礼服板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_dogtag_steel_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#475569,#1e293b);color:#f8fafc;font-weight:700;border:1px solid #cbd5e1;border-radius:5px;cursor:pointer;">🏷️ 美军钢印铭牌板</button>
-                            <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="vet_poppy_memorial_board" style="flex:1 1 45%;padding:4px 6px;font-size:11px;background:linear-gradient(135deg,#fcf8f2,#ede3d2);color:#991b1b;font-weight:700;border:1px solid #dc2626;border-radius:5px;cursor:pointer;">🌺 纪念虞美人花板</button>
-                        </div>
-                        <div style="margin-bottom:6px;padding:5px 6px;border-radius:5px;background:rgba(234,179,8,0.09);border:1px dashed rgba(250,204,21,0.32);">
-                            <div style="font-size:10px;font-weight:700;color:#fde047;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;">
-                                <span>🔖 左上角小图标角标设计 (可任意搭配上方卡片背景)</span>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="off" style="padding:1px 5px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:3px;cursor:pointer;">无角标</button>
+                    <!-- ① 内容：标题（默认展开，保持简洁有序） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-title" open>
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>📝 标题设置</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-title-badge">未设置</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label>标题文字</label>
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <input type="text" id="rop-scroll-title" class="rop-input" placeholder="留空=无标题" style="flex:1;">
+                                    <button class="rop-richtext-btn" data-section="scroll_title" title="逐字样式编辑" style="padding:4px 8px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--accent-primary,#7b8bef);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">✎ 富文本</button>
+                                </div>
+                                <label>固定标题</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-title-fixed" checked>
+                                    <span style="font-size:11px;color:var(--text-muted);">标题不参与滚动</span>
+                                </div>
+                                <label>独立位置</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-title-independent">
+                                    <span style="font-size:11px;color:var(--text-muted);">不挤占正文滚动区</span>
+                                </div>
+                                <label title="标题中心 X；留空时跟随正文中心">标题X</label><input type="number" id="rop-scroll-title-x" class="rop-input" step="10" placeholder="跟随正文">
+                                <label title="标题顶部 Y；留空时使用裁切区顶部">标题Y</label><input type="number" id="rop-scroll-title-y" class="rop-input" step="10" placeholder="裁切顶部">
+                                <label>标题字号</label><input type="number" id="rop-scroll-title-fontsize" class="rop-input" min="8" max="300" value="56">
+                                <label>标题颜色</label><input type="color" id="rop-scroll-title-color" class="rop-color" value="#ffffff">
+                                <label>标题字体</label>
+                                <select id="rop-scroll-title-font" class="rop-select" data-allow-empty="true" data-empty-label="跟随正文"></select>
+                                <label>标题字重</label>
+                                <select id="rop-scroll-title-weight" class="rop-select">
+                                    <option value="400">Regular</option><option value="500">Medium</option>
+                                    <option value="600">SemiBold</option><option value="700" selected>Bold</option>
+                                    <option value="800">ExtraBold</option><option value="900">Black</option>
+                                </select>
+                                <label>标题大写</label><input type="checkbox" id="rop-scroll-title-uppercase" checked>
+                                <label>字符间距</label><input type="number" id="rop-scroll-title-letterspacing" class="rop-input" min="-20" max="100" value="0">
+                                <label>标题对齐</label>
+                                <select id="rop-scroll-title-align" class="rop-select">
+                                    <option value="">跟随正文</option><option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option>
+                                </select>
+                                <label>文字方向</label>
+                                <select id="rop-scroll-text-direction" class="rop-select" title="自动识别阿拉伯语、希伯来语等从右向左文字">
+                                    <option value="auto">自动（阿拉伯语 RTL）</option><option value="ltr">从左向右</option><option value="rtl">从右向左</option>
+                                </select>
+                                <label>标题行距</label><input type="number" id="rop-scroll-title-linespacing" class="rop-input" min="0" max="50" step="1" value="6">
+                                <label>标题文本宽度</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-scroll-title-textw" class="rop-range" min="100" max="1920" step="10" value="900"><input type="number" class="rop-num-readout" data-link="rop-scroll-title-textw" min="100" max="1920" step="10" value="900"></div>
+                                <span style="grid-column: span 2; font-size:10px; color:var(--text-muted);">默认显示当前正文宽度，可单独调整标题宽度</span>
+                                <label>标题间距</label><input type="number" id="rop-scroll-title-gap" class="rop-input" min="0" max="200" step="5" value="20">
+                                <label>标题自动缩放</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-title-auto-fit">
+                                    <span style="font-size:11px;color:var(--text-muted);">超高时自动缩小</span>
+                                </div>
+                                <label>标题最大高</label><input type="number" id="rop-scroll-title-maxh" class="rop-input" min="0" max="1000" step="10" value="0" title="0=不限制">
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题特效</div>
+                                <label>描边颜色</label><input type="color" id="rop-scroll-title-stroke-color" class="rop-color" value="#000000">
+                                <label>描边宽度</label><input type="number" id="rop-scroll-title-stroke-width" class="rop-input" min="0" max="20" step="0.5" value="0">
+                                <label>开启阴影</label><input type="checkbox" id="rop-scroll-title-shadow">
+                                <label>阴影颜色</label><input type="color" id="rop-scroll-title-shadow-color" class="rop-color" value="#000000">
+                                <label>阴影模糊</label><input type="number" id="rop-scroll-title-shadow-blur" class="rop-input" min="0" max="50" value="4">
+                                <label>阴影偏移X</label><input type="number" id="rop-scroll-title-shadow-x" class="rop-input" min="-20" max="20" value="2">
+                                <label>阴影偏移Y</label><input type="number" id="rop-scroll-title-shadow-y" class="rop-input" min="-20" max="20" value="2">
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题独立背景</div>
+                                <label>开启背景</label><input type="checkbox" id="rop-scroll-title-bg-enabled">
+                                <label>底衬样式</label>
+                                <select id="rop-scroll-title-bg-style" class="rop-select">
+                                    <option value="solid">⬛ 纯色底框 (默认)</option>
+                                    <optgroup label="📰 报纸剪报 / 纸张贴条系列">
+                                        <option value="newspaper_cutout">📰 复古旧报纸剪报</option>
+                                        <option value="newspaper_sepia">🗞️ 怀旧泛黄古董报刊</option>
+                                        <option value="torn_cream_paper">📜 奶油手撕宣纸贴</option>
+                                        <option value="kraft_sticker">🏷️ 手撕牛皮纸贴纸</option>
+                                        <option value="gold_parchment">✨ 圣经烫金羊皮书页</option>
+                                        <option value="red_editorial">🔖 报刊红底白边剪报</option>
+                                    </optgroup>
+                                    <optgroup label="🎄 圣诞节限定字幕带 / 礼物签">
+                                        <option value="xmas_candy_ribbon">🍬 圣诞红白拐杖糖字幕带</option>
+                                        <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带</option>
+                                        <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带</option>
+                                        <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签</option>
+                                        <option value="xmas_frost_ice">❄️ 圣诞冰雪极光半高底条</option>
+                                    </optgroup>
+                                    <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌">
+                                        <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带</option>
+                                        <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅</option>
+                                        <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬</option>
+                                        <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条</option>
+                                    </optgroup>
+                                </select>
+                                <label>背景模式</label>
+                                <select id="rop-scroll-title-bg-mode" class="rop-select">
+                                    <option value="block">整块</option><option value="inline">每行独立包裹</option><option value="inline-joined">连体包裹</option>
+                                </select>
+                                <label>背景颜色</label><input type="color" id="rop-scroll-title-bg-color" class="rop-color" value="#000000">
+                                <label>背景透明%</label><input type="number" id="rop-scroll-title-bg-opacity" class="rop-input" min="0" max="100" value="60">
+                                <label>背景圆角</label><input type="number" id="rop-scroll-title-bg-radius" class="rop-input" min="0" max="100" value="12">
+                                <label title="调节标题底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-title-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
+                                <label title="调节标题底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-title-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
+                                <label title="调节标题底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-title-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
                             </div>
-                            <div style="display:flex;gap:3px;flex-wrap:wrap;">
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="swallowtail" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(217,172,66,0.22);color:#fef08a;border:1px solid rgba(234,179,8,0.45);border-radius:4px;cursor:pointer;">🔖 燕尾金书签</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="us_star_shield" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(30,58,138,0.45);color:#fffdf5;border:1px solid rgba(251,191,36,0.55);border-radius:4px;cursor:pointer;">🇺🇸 星条金盾标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="gold_wax_seal" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(180,83,9,0.35);color:#fde68a;border:1px solid rgba(245,158,11,0.5);border-radius:4px;cursor:pointer;">🏵️ 火漆金章标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="rose_emblem" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(159,18,57,0.38);color:#ffe4e6;border:1px solid rgba(251,113,133,0.5);border-radius:4px;cursor:pointer;">🌹 玫瑰金章标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="olive_wreath_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(21,128,61,0.32);color:#dcfce7;border:1px solid rgba(134,239,172,0.45);border-radius:4px;cursor:pointer;">🌿 橄榄桂冠标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="royal_crown_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(161,98,7,0.35);color:#fef3c7;border:1px solid rgba(253,224,71,0.5);border-radius:4px;cursor:pointer;">👑 皇冠鎏金标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="folded_dog_ear" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(202,138,4,0.28);color:#fef9c3;border:1px solid rgba(250,204,21,0.45);border-radius:4px;cursor:pointer;">📄 立体折角页</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="cross_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(120,53,15,0.42);color:#fde68a;border:1px solid rgba(217,119,6,0.5);border-radius:4px;cursor:pointer;">✝️ 十字圣经标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="heart_prayer_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(190,18,60,0.35);color:#ffe4e6;border:1px solid rgba(244,63,94,0.45);border-radius:4px;cursor:pointer;">💛 爱心圣光标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="poppy_honor_tag" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(185,28,28,0.38);color:#fee2e2;border:1px solid rgba(248,113,113,0.5);border-radius:4px;cursor:pointer;">🌺 虞美人章标</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="quote_mark_badge" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(51,65,85,0.55);color:#f8fafc;border:1px solid rgba(226,232,240,0.45);border-radius:4px;cursor:pointer;">❝ 杂志双引号</button>
-                                <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="rounded_tab" style="flex:1 1 22%;padding:3px 4px;font-size:10px;background:rgba(148,163,184,0.22);color:#e2e8f0;border:1px solid rgba(148,163,184,0.4);border-radius:4px;cursor:pointer;">🏷️ 圆角金挂牌</button>
-                            </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 6px;align-items:center;font-size:11px;margin-bottom:5px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,0.22);">
-                            <span style="color:#fde68a;white-space:nowrap;" title="往左拉变窄、往右拉变宽；点“自动”恢复自适应宽度">画板宽度</span>
-                            <div style="display:flex;align-items:center;gap:3px;">
-                                <input type="range" id="rop-scroll-bg-width-quick" class="rop-range" min="120" max="1080" step="10" value="940" style="flex:1;min-width:42px;">
-                                <input type="number" id="rop-scroll-bg-width-quick-num" class="rop-input" min="0" max="1920" step="10" value="940" style="width:48px;padding:1px 3px;font-size:11px;" title="输入具体像素宽度，或输入0恢复自动">
-                                <button type="button" id="rop-scroll-bg-width-auto-btn" class="rop-btn" style="padding:1px 4px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.18);border-radius:3px;cursor:pointer;" title="恢复自动宽度">自动</button>
-                            </div>
-                            <span style="color:#fde68a;white-space:nowrap;" title="往左拉缩短画板与边框上下长度、往右拉加长；点“自动”恢复自适应高度">画板长度</span>
-                            <div style="display:flex;align-items:center;gap:3px;">
-                                <input type="range" id="rop-scroll-bg-height-quick" class="rop-range" min="120" max="1920" step="10" value="500" style="flex:1;min-width:42px;">
-                                <input type="number" id="rop-scroll-bg-height-quick-num" class="rop-input" min="0" max="1920" step="10" value="500" style="width:48px;padding:1px 3px;font-size:11px;" title="输入具体像素长度，或输入0恢复自动">
-                                <button type="button" id="rop-scroll-bg-height-auto-btn" class="rop-btn" style="padding:1px 4px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.18);border-radius:3px;cursor:pointer;" title="恢复自动长度">自动</button>
-                            </div>
-                            <span style="color:#fde68a;white-space:nowrap;" title="调节整块大背景画板（如旧报纸、羊皮卷、圣诞贺卡）的不透明度（0%=完全透明，100%=完全不透明）">背景透明</span>
-                            <div style="grid-column:span 3;display:flex;align-items:center;gap:4px;">
-                                <input type="range" id="rop-scroll-bg-opacity-quick" class="rop-range" min="0" max="100" step="1" value="92" style="flex:1;min-width:60px;">
-                                <input type="number" id="rop-scroll-bg-opacity-quick-num" class="rop-input" min="0" max="100" step="1" value="92" style="width:48px;padding:1px 3px;font-size:11px;" title="背景不透明度百分比 (0-100%)">
-                                <span style="color:#94a3b8;font-size:10px;">%</span>
-                            </div>
-                            <label style="grid-column:span 2;display:flex;align-items:center;gap:4px;cursor:pointer;color:#fef08a;margin:0;" title="开启后，报纸版面、报头线、撕边纹理与圣诞装饰会跟着字幕一起往上循环移动">
-                                <input type="checkbox" id="rop-scroll-bg-scroll-follow-quick" checked>
-                                <span>🔄 背景随字幕向上循环滚动</span>
-                            </label>
-                            <label style="grid-column:span 2;display:flex;align-items:center;gap:4px;cursor:pointer;color:#cbd5e1;margin:0;" title="开启后，大背景/边框只紧凑包裹滚动正文可见区，不遮挡上方空白视频画面">
-                                <input type="checkbox" id="rop-scroll-bg-body-only-quick">
-                                <span>📐 紧凑包裹正文区(不挡上方画面)</span>
-                            </label>
-                        </div>
-                        <div style="font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;border-top:1px dashed rgba(255,255,255,0.14);padding-top:5px;">
-                            <span>✂️ 逐行贴字底衬 (随每行文字向上滚动：剪报条 / 圣诞带 / 🇺🇸退伍军人节)</span>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭行底衬</button>
-                        </div>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="newspaper_cutout" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#f3efe6;color:#2b1b18;font-weight:700;border:1px solid #cbbba0;border-radius:4px;cursor:pointer;">📰 旧报纸条</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="newspaper_sepia" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#eadbc2;color:#3b2313;font-weight:700;border:1px solid #bfa376;border-radius:4px;cursor:pointer;">🗞️ 泛黄报刊条</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="torn_cream_paper" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#faf6ee;color:#2c221e;font-weight:700;border:1px solid #d6cfc2;border-radius:4px;cursor:pointer;">📜 宣纸贴条</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_candy_ribbon" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#991b1b;color:#fff;font-weight:700;border:1px solid #fca5a5;border-radius:4px;cursor:pointer;">🍬 拐杖糖带</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_velvet_gold" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#6e0b16;color:#fde68a;font-weight:700;border:1px solid #f5d061;border-radius:4px;cursor:pointer;">🎅 红丝绒带</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_pine_snow" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#14532d;color:#f0fdf4;font-weight:700;border:1px solid #86efac;border-radius:4px;cursor:pointer;">🎄 松林覆雪带</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_gingerbread_tag" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#7c3f1c;color:#fffdf9;font-weight:700;border:1px solid #fde68a;border-radius:4px;cursor:pointer;">🍪 姜饼糖霜签</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="xmas_frost_ice" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#0369a1;color:#e0f2fe;font-weight:700;border:1px solid #7dd3fc;border-radius:4px;cursor:pointer;">❄️ 冰雪半高条</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_stars_stripes_ribbon" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:linear-gradient(90deg,#0a1931,#b91c1c);color:#fffdf5;font-weight:700;border:1px solid #fbbf24;border-radius:4px;cursor:pointer;">🇺🇸 星条旗绶带</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_honor_medal_banner" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#0b172a;color:#fde68a;font-weight:700;border:1px solid #f59e0b;border-radius:4px;cursor:pointer;">🎖️ 老兵金章带</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_dogtag_steel" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#cbd5e1;color:#1e293b;font-weight:700;border:1px solid #64748b;border-radius:4px;cursor:pointer;">🏷️ 钢印铭牌条</button>
-                            <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="vet_poppy_parchment" style="flex:1 1 22%;padding:3px 5px;font-size:10px;background:#fbf7ef;color:#991b1b;font-weight:700;border:1px solid #dc2626;border-radius:4px;cursor:pointer;">🌺 虞美人花条</button>
-                        </div>
-                        <div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 6px;align-items:center;font-size:11px;padding:4px 6px;border-radius:5px;background:rgba(0,0,0,0.22);">
-                            <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带左右两端的伸出长度（支持负数收窄）">左右长度</span>
-                            <div style="display:flex;align-items:center;gap:3px;">
-                                <input type="range" id="rop-scroll-body-bg-pad-h-quick" class="rop-range" min="-20" max="120" step="1" value="24" style="flex:1;min-width:45px;">
-                                <input type="number" id="rop-scroll-body-bg-pad-h-quick-num" class="rop-input" min="-20" max="200" step="1" value="24" style="width:46px;padding:1px 3px;font-size:11px;">
-                            </div>
-                            <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带上下包裹的厚薄宽度（支持负数变窄）">上下宽度</span>
-                            <div style="display:flex;align-items:center;gap:3px;">
-                                <input type="range" id="rop-scroll-body-bg-pad-v-quick" class="rop-range" min="-15" max="80" step="1" value="11" style="flex:1;min-width:45px;">
-                                <input type="number" id="rop-scroll-body-bg-pad-v-quick-num" class="rop-input" min="-20" max="200" step="1" value="11" style="width:46px;padding:1px 3px;font-size:11px;">
-                            </div>
-                            <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带底衬的不透明度（0%=完全透明，100%=完全不透明）">底衬透明</span>
-                            <div style="grid-column:span 3;display:flex;align-items:center;gap:4px;">
-                                <input type="range" id="rop-scroll-body-bg-opacity-quick" class="rop-range" min="0" max="100" step="1" value="95" style="flex:1;min-width:60px;">
-                                <input type="number" id="rop-scroll-body-bg-opacity-quick-num" class="rop-input" min="0" max="100" step="1" value="95" style="width:48px;padding:1px 3px;font-size:11px;" title="逐行底衬不透明度百分比 (0-100%)">
-                                <span style="color:#94a3b8;font-size:10px;">%</span>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- ① 内容：标题在前，正文在后 -->
-                    <div class="rop-group-title" style="margin-top:4px;">标题</div>
-                    <div class="rop-grid">
-                        <label>标题文字</label>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                            <input type="text" id="rop-scroll-title" class="rop-input" placeholder="留空=无标题" style="flex:1;">
-                            <button class="rop-richtext-btn" data-section="scroll_title" title="逐字样式编辑" style="padding:4px 8px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--accent-primary,#7b8bef);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">✎ 富文本</button>
-                        </div>
-                        <label>固定标题</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-title-fixed" checked>
-                            <span style="font-size:11px;color:var(--text-muted);">标题不参与滚动</span>
-                        </div>
-                        <label>独立位置</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-title-independent">
-                            <span style="font-size:11px;color:var(--text-muted);">不挤占正文滚动区</span>
-                        </div>
-                        <label title="标题中心 X；留空时跟随正文中心">标题X</label><input type="number" id="rop-scroll-title-x" class="rop-input" step="10" placeholder="跟随正文">
-                        <label title="标题顶部 Y；留空时使用裁切区顶部">标题Y</label><input type="number" id="rop-scroll-title-y" class="rop-input" step="10" placeholder="裁切顶部">
-                        <label>标题字号</label><input type="number" id="rop-scroll-title-fontsize" class="rop-input" min="8" max="300" value="56">
-                        <label>标题颜色</label><input type="color" id="rop-scroll-title-color" class="rop-color" value="#ffffff">
-                        <label>标题字体</label>
-                        <select id="rop-scroll-title-font" class="rop-select" data-allow-empty="true" data-empty-label="跟随正文"></select>
-                        <label>标题字重</label>
-                        <select id="rop-scroll-title-weight" class="rop-select">
-                            <option value="400">Regular</option><option value="500">Medium</option>
-                            <option value="600">SemiBold</option><option value="700" selected>Bold</option>
-                            <option value="800">ExtraBold</option><option value="900">Black</option>
-                        </select>
-                        <label>标题大写</label><input type="checkbox" id="rop-scroll-title-uppercase" checked>
-                        <label>字符间距</label><input type="number" id="rop-scroll-title-letterspacing" class="rop-input" min="-20" max="100" value="0">
-                        <label>标题对齐</label>
-                        <select id="rop-scroll-title-align" class="rop-select">
-                            <option value="">跟随正文</option><option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option>
-                        </select>
-                        <label>文字方向</label>
-                        <select id="rop-scroll-text-direction" class="rop-select" title="自动识别阿拉伯语、希伯来语等从右向左文字">
-                            <option value="auto">自动（阿拉伯语 RTL）</option><option value="ltr">从左向右</option><option value="rtl">从右向左</option>
-                        </select>
-                        <label>标题行距</label><input type="number" id="rop-scroll-title-linespacing" class="rop-input" min="0" max="50" step="1" value="6">
-                        <label>标题文本宽度</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-scroll-title-textw" class="rop-range" min="100" max="1920" step="10" value="900"><input type="number" class="rop-num-readout" data-link="rop-scroll-title-textw" min="100" max="1920" step="10" value="900"></div>
-                        <span style="grid-column: span 2; font-size:10px; color:var(--text-muted);">默认显示当前正文宽度，可单独调整标题宽度</span>
-                        <label>标题间距</label><input type="number" id="rop-scroll-title-gap" class="rop-input" min="0" max="200" step="5" value="20">
-                        <label>标题自动缩放</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-title-auto-fit">
-                            <span style="font-size:11px;color:var(--text-muted);">超高时自动缩小</span>
-                        </div>
-                        <label>标题最大高</label><input type="number" id="rop-scroll-title-maxh" class="rop-input" min="0" max="1000" step="10" value="0" title="0=不限制">
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题特效</div>
-                        <label>描边颜色</label><input type="color" id="rop-scroll-title-stroke-color" class="rop-color" value="#000000">
-                        <label>描边宽度</label><input type="number" id="rop-scroll-title-stroke-width" class="rop-input" min="0" max="20" step="0.5" value="0">
-                        <label>开启阴影</label><input type="checkbox" id="rop-scroll-title-shadow">
-                        <label>阴影颜色</label><input type="color" id="rop-scroll-title-shadow-color" class="rop-color" value="#000000">
-                        <label>阴影模糊</label><input type="number" id="rop-scroll-title-shadow-blur" class="rop-input" min="0" max="50" value="4">
-                        <label>阴影偏移X</label><input type="number" id="rop-scroll-title-shadow-x" class="rop-input" min="-20" max="20" value="2">
-                        <label>阴影偏移Y</label><input type="number" id="rop-scroll-title-shadow-y" class="rop-input" min="-20" max="20" value="2">
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题独立背景</div>
-                        <label>开启背景</label><input type="checkbox" id="rop-scroll-title-bg-enabled">
-                        <label>底衬样式</label>
-                        <select id="rop-scroll-title-bg-style" class="rop-select">
-                            <option value="solid">⬛ 纯色底框 (默认)</option>
-                            <optgroup label="📰 报纸剪报 / 纸张贴条系列">
-                                <option value="newspaper_cutout">📰 复古旧报纸剪报</option>
-                                <option value="newspaper_sepia">🗞️ 怀旧泛黄古董报刊</option>
-                                <option value="torn_cream_paper">📜 奶油手撕宣纸贴</option>
-                                <option value="kraft_sticker">🏷️ 手撕牛皮纸贴纸</option>
-                                <option value="gold_parchment">✨ 圣经烫金羊皮书页</option>
-                                <option value="red_editorial">🔖 报刊红底白边剪报</option>
-                            </optgroup>
-                            <optgroup label="🎄 圣诞节限定字幕带 / 礼物签">
-                                <option value="xmas_candy_ribbon">🍬 圣诞红白拐杖糖字幕带</option>
-                                <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带</option>
-                                <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带</option>
-                                <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签</option>
-                                <option value="xmas_frost_ice">❄️ 圣诞冰雪极光半高底条</option>
-                            </optgroup>
-                            <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌">
-                                <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带</option>
-                                <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅</option>
-                                <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬</option>
-                                <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条</option>
-                            </optgroup>
-                        </select>
-                        <label>背景模式</label>
-                        <select id="rop-scroll-title-bg-mode" class="rop-select">
-                            <option value="block">整块</option><option value="inline">每行独立包裹</option><option value="inline-joined">连体包裹</option>
-                        </select>
-                        <label>背景颜色</label><input type="color" id="rop-scroll-title-bg-color" class="rop-color" value="#000000">
-                        <label>背景透明%</label><input type="number" id="rop-scroll-title-bg-opacity" class="rop-input" min="0" max="100" value="60">
-                        <label>背景圆角</label><input type="number" id="rop-scroll-title-bg-radius" class="rop-input" min="0" max="100" value="12">
-                        <label title="调节标题底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-title-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
-                        <label title="调节标题底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-title-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
-                        <label title="调节标题底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-title-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
-                    </div>
-
-                    <div style="font-size:11px; color:var(--accent); margin-top:8px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题装饰线</div>
-                    <div class="rop-grid">
-                        <label>开启装饰线</label><input type="checkbox" id="rop-scroll-title-deco-enabled">
-                        <label>线段位置</label>
-                        <select id="rop-scroll-title-deco-position" class="rop-select">
-                            <option value="top">上方</option><option value="bottom">下方</option><option value="left">左侧</option><option value="right">右侧</option>
-                        </select>
-                        <label>样式</label>
-                        <select id="rop-scroll-title-deco-style" class="rop-select">
-                            <option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option><option value="double">双线</option><option value="gradient">渐变线</option>
-                        </select>
-                        <label>对齐</label>
-                        <select id="rop-scroll-title-deco-align" class="rop-select">
-                            <option value="left">左对齐</option><option value="center" selected>居中</option><option value="right">右对齐</option>
-                        </select>
-                        <label>主颜色</label><input type="color" id="rop-scroll-title-deco-color" class="rop-color" value="#FFD700">
-                        <label title="仅渐变样式生效">次颜色(渐变)</label><input type="color" id="rop-scroll-title-deco-color2" class="rop-color" value="#FF6B35">
-                        <label>粗细</label><input type="number" id="rop-scroll-title-deco-thickness" class="rop-input" min="1" max="20" value="3">
-                        <label title="0表示自动绑定文字本身的宽度/高度">长度(0=自动)</label><input type="number" id="rop-scroll-title-deco-length" class="rop-input" min="0" max="1000" value="0">
-                        <label>距离</label><input type="number" id="rop-scroll-title-deco-gap" class="rop-input" min="-50" max="100" value="12">
-                        <label>透明度%</label><input type="number" id="rop-scroll-title-deco-opacity" class="rop-input" min="0" max="100" value="100">
-                    </div>
-
-                    <div class="rop-group-title" style="margin-top:6px;">正文</div>
-                    <div style="display:flex;gap:6px;align-items:flex-start;">
-                        <textarea id="rop-scroll-content" class="rop-textarea" rows="4" placeholder="滚动文字内容（正文）" style="flex:1;"></textarea>
-                        <button class="rop-richtext-btn" data-section="scroll_body" title="逐字样式编辑" style="padding:4px 8px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--accent-primary,#7b8bef);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">✎ 富文本</button>
-                    </div>
-                    <div class="rop-grid">
-                        <label>字体</label>
-                        <select id="rop-scroll-font" class="rop-select"></select>
-                        <label>字号</label><input type="number" id="rop-scroll-fontsize" class="rop-input" min="8" max="300" value="40">
-                        <label>颜色</label><input type="color" id="rop-scroll-color" class="rop-color" value="#ffffff">
-                        <label>粗体</label><input type="checkbox" id="rop-scroll-bold">
-                        <label>字重</label>
-                        <select id="rop-scroll-weight" class="rop-select">
-                            <option value="100">Thin</option><option value="200">ExtraLight</option><option value="300">Light</option>
-                            <option value="400" selected>Regular</option><option value="500">Medium</option><option value="600">SemiBold</option>
-                            <option value="700">Bold</option><option value="800">ExtraBold</option><option value="900">Black</option>
-                        </select>
-                        <label>正文大写</label><input type="checkbox" id="rop-scroll-uppercase">
-                        <label>字符间距</label><input type="number" id="rop-scroll-letterspacing" class="rop-input" min="-20" max="100" value="0">
-                        <label>对齐</label>
-                        <select id="rop-scroll-align" class="rop-select">
-                            <option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option><option value="smart_left_center">✨ 智能对齐 (主左+重点居中·禁右)</option>
-                        </select>
-                        <label>行距</label><input type="number" id="rop-scroll-linespacing" class="rop-input" min="0" max="50" step="1" value="6">
-                        <label>文本宽度</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-scroll-textw" class="rop-range" min="100" max="1920" step="10" value="900"><input type="number" class="rop-num-readout" data-link="rop-scroll-textw" min="100" max="1920" step="10" value="900"></div>
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">正文特效</div>
-                        <label>描边颜色</label><input type="color" id="rop-scroll-stroke-color" class="rop-color" value="#000000">
-                        <label>描边宽度</label><input type="number" id="rop-scroll-stroke-width" class="rop-input" min="0" max="20" step="0.5" value="0">
-                        <label>开启阴影</label><input type="checkbox" id="rop-scroll-shadow">
-                        <label>阴影颜色</label><input type="color" id="rop-scroll-shadow-color" class="rop-color" value="#000000">
-                        <label>阴影模糊</label><input type="number" id="rop-scroll-shadow-blur" class="rop-input" min="0" max="50" value="4">
-                        <label>阴影偏移X</label><input type="number" id="rop-scroll-shadow-x" class="rop-input" min="-20" max="20" value="2">
-                        <label>阴影偏移Y</label><input type="number" id="rop-scroll-shadow-y" class="rop-input" min="-20" max="20" value="2">
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">正文独立背景 / 报纸剪报底衬</div>
-                        <label>开启背景</label><input type="checkbox" id="rop-scroll-body-bg-enabled">
-                        <label>底衬样式</label>
-                        <select id="rop-scroll-body-bg-style" class="rop-select">
-                            <option value="solid">⬛ 纯色底框 (默认)</option>
-                            <optgroup label="📰 贴字剪报 / 手撕纸轮廓系列">
-                                <option value="newspaper_cutout">📰 复古旧报纸剪报 (爆款同款贴字)</option>
-                                <option value="newspaper_sepia">🗞️ 怀旧泛黄古董报刊 (暖黄剪报)</option>
-                                <option value="torn_cream_paper">📜 奶油手撕宣纸贴 (纯净纸张轮廓)</option>
-                                <option value="kraft_sticker">🏷️ 手撕牛皮纸贴纸 (复古白边牛皮纸)</option>
-                                <option value="ransom_magazine">✂️ 杂志拼贴剪报块 (斜切报刊条)</option>
-                            </optgroup>
-                            <optgroup label="✨ 质感纹理底衬系列">
-                                <option value="grid_note">📓 手账方格便签纸 (清新方格底衬)</option>
-                                <option value="gold_parchment">✨ 圣经烫金羊皮书页 (古典羊皮卷)</option>
-                                <option value="red_editorial">🔖 报刊红底白边剪报 (高冲击红底贴)</option>
-                                <option value="dark_film_matte">🎬 暗夜胶片磨砂贴纸 (黑金胶片底)</option>
-                            </optgroup>
-                            <optgroup label="🌟 文字底部半高托底条系列">
-                                <option value="bottom_gold_bar">🌟 鎏金半高文字底条 (文字下半部金底)</option>
-                                <option value="bottom_rose_brush">🌸 莫兰迪玫瑰手绘底条 (文字底部温柔笔触)</option>
-                                <option value="bottom_neon_marker">🖍️ 荧光马克笔手绘底条 (重点荧光半高托底)</option>
-                                <option value="xmas_frost_ice">❄️ 圣诞冰雪极光半高底条 (冰晶蓝底+六角雪花)</option>
-                            </optgroup>
-                            <optgroup label="🎄 圣诞节限定字幕带 / 装饰系列">
-                                <option value="xmas_candy_ribbon">🍬 圣诞红白拐杖糖字幕带 (斜纹糖果框+冬青红果)</option>
-                                <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带 (金线缝边+伯利恒金星)</option>
-                                <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带 (积雪顶边+冬青彩球)</option>
-                                <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签 (白糖霜花边+冬青果)</option>
-                            </optgroup>
-                            <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌系列">
-                                <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带 (深蓝星区+红白条纹+金星角花)</option>
-                                <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅 (海军蓝礼服+双层烫金绶带+紫心勋章)</option>
-                                <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬 (金属拉丝银灰+铆钉压边+军牌挂孔)</option>
-                                <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条 (复古纪念羊皮纸+红蓝双色线+虞美人花饰)</option>
-                            </optgroup>
-                            <optgroup label="🖼️ 整块主题画板系列 (配合【整块】背景模式)">
-                                <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏+报头线)</option>
-                                <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+双线内框)</option>
-                                <option value="torn_parchment_board">📜 圣经烫金羊皮书卷板 (四角烫金星芒框)</option>
-                                <option value="kraft_clipboard">🏷️ 手撕牛皮纸剪贴画板 (白边牛皮纸+胶带)</option>
-                                <option value="grid_notebook_page">📓 手账方格笔记本页 (清新方格信纸)</option>
-                                <option value="xmas_candy_frame">🍬 圣诞红白拐杖糖画框板 (糖果外框+冬青果)</option>
-                                <option value="xmas_velvet_gold_board">🎅 圣诞红丝绒烫金贺卡板 (皇家红丝绒+八角金星)</option>
-                                <option value="xmas_pine_snow_board">🎄 圣诞松林覆雪木牌板 (森林松绿+顶部厚积雪)</option>
-                                <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (白糖霜裱花框+冬青果)</option>
-                                <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝+漫天雪花星芒)</option>
-                                <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油信纸+红绿金线框)</option>
-                                <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
-                                <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
-                                <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
-                                <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
-                            </optgroup>
-                        </select>
-                        <label>背景模式</label>
-                        <select id="rop-scroll-body-bg-mode" class="rop-select">
-                            <option value="block">整块</option><option value="inline">每行独立包裹</option><option value="inline-joined">连体包裹</option>
-                        </select>
-                        <label>背景颜色</label><input type="color" id="rop-scroll-body-bg-color" class="rop-color" value="#000000">
-                        <label>背景透明%</label><input type="number" id="rop-scroll-body-bg-opacity" class="rop-input" min="0" max="100" value="60">
-                        <label>背景圆角</label><input type="number" id="rop-scroll-body-bg-radius" class="rop-input" min="0" max="100" value="12">
-                        <label title="调节正文底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-body-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
-                        <label title="调节正文底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-body-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
-                        <label title="调节正文底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-body-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
-                    </div>
-
-                    <!-- ②-b 出字效果（朗诵打字机 / 手写跟读） -->
-                    <div class="rop-group-title" style="margin-top:8px;">✍️ 出字效果</div>
-                    <div class="rop-grid">
-                        <label style="font-weight:700;color:#fde68a;">开启出字效果</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-enabled">
-                            <span style="font-size:11px;color:var(--text-muted);">关闭则保持原版正常滚动</span>
-                        </div>
-
-                        <div id="rop-scroll-tw-details" class="rop-grid" style="grid-column:span 2;display:none;">
-                        <div style="grid-column: span 2; display:grid; grid-template-columns:1fr 1fr; gap:5px; margin:2px 0 4px 0;">
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="prayer_dove_green" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #E5B94E;background:linear-gradient(90deg,#153935,#1E4E48);color:#FFE28A;cursor:pointer;">🕊️ 祈祷书签绿卡+白鸽玫瑰+逐行金线跟读 (爆款同款)</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #C8BFA8;background:#F3EFE6;color:#3B2220;cursor:pointer;">📰 复古旧报纸剪报贴字出字 (爆款同款)</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_stars_stripes" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #FBBF24;background:linear-gradient(90deg,#0A1931,#B91C1C);color:#FFFDF5;cursor:pointer;">🇺🇸 星条旗绶带+星盾笔出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="vet_honor_medal" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #F59E0B;background:#0B172A;color:#FDE68A;cursor:pointer;">🎖️ 老兵金章带+紫心勋章出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="xmas_candy" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px dashed #FCA5A5;background:#88131B;color:#FFFDF9;cursor:pointer;">🍬 圣诞拐杖糖带+糖笔出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="xmas_pine" style="padding:4px 6px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid #86EFAC;background:#124229;color:#FFFFFF;cursor:pointer;">🎄 圣诞松林覆雪+圣诞树出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="newspaper_sepia" style="padding:4px 6px;font-size:11px;font-weight:600;border-radius:5px;border:1px solid #C2AE85;background:#EDE2C8;color:#3E2616;cursor:pointer;">🗞️ 泛黄古董报刊出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="torn_paper" style="padding:4px 6px;font-size:11px;font-weight:600;border-radius:5px;border:1px solid #DCD4C4;background:#FAF6EE;color:#2C221E;cursor:pointer;">📜 奶油手撕宣纸出字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="quill" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.12);color:#fde68a;cursor:pointer;">🪶 羽毛笔朗诵写出</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rose" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(244,114,182,0.4);background:rgba(244,114,182,0.12);color:#fbcfe8;cursor:pointer;">🌹 玫瑰花朗诵写出</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="image" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(56,189,248,0.4);background:rgba(56,189,248,0.12);color:#bae6fd;cursor:pointer;">🖼 上传图片朗诵写出</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="readfollow" style="padding:4px 6px;font-size:11px;border-radius:5px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.12);color:#bbf7d0;cursor:pointer;">📖 原文不透明跟读高亮</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="rainbow_karaoke" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(168,85,247,0.55);background:linear-gradient(90deg,rgba(255,56,36,0.22),rgba(255,214,0,0.22),rgba(42,214,72,0.22),rgba(36,107,255,0.22),rgba(155,77,255,0.28));color:#fff;cursor:pointer;">🌈 彩虹渐变逐词跟读 (已读保留彩虹·未读纯白)</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset" data-preset="word_pink_cyan_grad" style="grid-column:span 2;padding:5px 8px;font-size:11px;font-weight:700;border-radius:5px;border:1px solid rgba(0,229,255,0.55);background:linear-gradient(90deg,rgba(255,0,128,0.28),rgba(138,43,226,0.28),rgba(0,229,255,0.28));color:#fff;cursor:pointer;">✨ 单词粉紫青渐变跟读 (Lord Jesus同款·仅当前词渐变)</button>
-                        </div>
-                        <label>开始(S)</label><input type="number" id="rop-scroll-tw-start" class="rop-input" min="0" step="0.1" placeholder="跟随滚动开始">
-                        <label>结束(S)</label><input type="number" id="rop-scroll-tw-end" class="rop-input" min="0" step="0.1" placeholder="跟随滚动结束">
-                        <div style="grid-column:span 2;font-size:11px;color:var(--text-muted);">留空沿用原来的语音时间；填写后仅调整出字时间，不改变滚动运动。</div>
-
-                        <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-speech-sync" checked>
-                            <span style="font-size:11px;color:var(--text-muted);">按语音对齐时间出字(含停顿)</span>
-                        </div>
-
-                        <label>出字粒度</label>
-                        <select id="rop-scroll-tw-reveal-type" class="rop-select">
-                            <option value="char">逐字写出 (字母/单字，如手写)</option>
-                            <option value="word">逐词出现/跟读 (按单词高亮)</option>
-                            <option value="line">📏 逐行跟读高亮 (整行变色+跟随下划线·爆款同款)</option>
-                            <option value="sentence">逐句出现 (按句子)</option>
-                        </select>
-
-                        <label style="font-weight:600;color:#93c5fd;" title="开启后未读到的文字变为透明或半透明（读到才出字）；关闭后全文始终正常显示，读到时触发高亮/放大">未读文字透明</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-hide-unread" checked>
-                            <span style="font-size:11px;color:var(--text-muted);">开启=未读透明(读到才出字) · 关闭=全文直接显示</span>
-                        </div>
-
-                        <label title="0%=未读的字完全透明（像写出来一样）；100%=未读的字完全不透明（正常显示全文，读到哪个词触发效果）">未读字透明度%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-unrevealed-opacity" class="rop-range" min="0" max="100" step="5" value="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-unrevealed-opacity" min="0" max="100" step="5" value="0">
-                        </div>
-                        <div style="grid-column: span 2; display:flex; gap:4px; margin-bottom:2px;">
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="0" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">0% 全透明写出</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="35" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">35% 半透明底字</button>
-                            <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="100" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">100% 不透明跟读</button>
-                        </div>
-
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">读到当前词效果</div>
-                        <label>当前词高亮色</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-active-highlight" checked title="读到该字/词时变色高亮">
-                            <input type="color" id="rop-scroll-tw-active-color" class="rop-color" value="#FFD700" style="flex:1;">
-                        </div>
-                        <label title="开启后已经读过的字/词继续保持高亮色或彩虹渐变色，未读的词保持正文原色（如白色）">已读保留高亮色</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-keep-read-color" title="读过的词继续保留高亮色/渐变色（卡拉OK跟读累积变色）">
-                            <span style="font-size:11px;color:var(--text-muted);">已读词保持高亮/彩虹色 (跟读累积)</span>
-                        </div>
-                        <label title="开启后读到当前字/词时自动放大，增强视觉冲击力">当前词放大</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-active-scale-enabled" title="开启当前朗读词放大效果">
-                            <span style="font-size:11px;color:var(--text-muted);">开启读到放大冲击效果</span>
-                        </div>
-                        <label title="100%=不放大；>100% 时读到该词会放大强调">放大比例%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-active-scale" class="rop-range" min="80" max="220" step="5" value="125">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-active-scale" min="80" max="220" step="5" value="125">
-                        </div>
-
-                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">📏 逐行跟读下划线 & 焦点阅读区 (爆款同款)</div>
-                        <label title="选择整行高亮与下划线跟随的推进方式：焦点区=哪一行滚到卡片黄金阅读区就点亮哪一行；语音/时间=按配音或时间进度逐行点亮">跟读定位</label>
-                        <select id="rop-scroll-tw-line-track-mode" class="rop-select">
-                            <option value="focus_zone">🎯 随卡片焦点阅读区逐行点亮 (爆款同款)</option>
-                            <option value="speech_or_progress">🎙️ 随语音/时间进度逐行点亮</option>
-                        </select>
-                        <label title="开启后在当前高亮行下方绘制一条跟随移动的金色下划线">跟随下划线</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-underline-enabled" title="开启当前朗读行底部跟随下划线">
-                            <input type="color" id="rop-scroll-tw-underline-color" class="rop-color" value="#E2B95B" style="flex:1;" title="下划线颜色">
-                        </div>
-                        <label>下划线样式</label>
-                        <select id="rop-scroll-tw-underline-style" class="rop-select">
-                            <option value="solid">✨ 圆头实线金线 (爆款同款)</option>
-                            <option value="gradient">🌟 两端柔光渐变金线</option>
-                            <option value="double">🏛️ 古典双金线</option>
-                            <option value="dashed">➖ 虚线</option>
-                        </select>
-                        <label>下划线宽模式</label>
-                        <select id="rop-scroll-tw-underline-width-mode" class="rop-select">
-                            <option value="card_ratio">📐 按卡片固定比例宽度 (爆款同款)</option>
-                            <option value="line_text">🔤 跟随当前行文字宽度</option>
-                        </select>
-                        <label title="下划线长度占文本/卡片宽度的百分比">下划线宽%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-underline-width-ratio" class="rop-range" min="20" max="100" step="1" value="68">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-width-ratio" min="10" max="120" step="1" value="68">
-                        </div>
-                        <label title="下划线线条粗细(像素)">下划线粗细</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-underline-thickness" class="rop-range" min="1" max="16" step="0.5" value="3.5">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-thickness" min="0.5" max="30" step="0.5" value="3.5">
-                        </div>
-                        <label title="下划线距离当前行文字底部的垂直偏移(像素)">下划线距字Y</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-underline-offset-y" class="rop-range" min="-20" max="60" step="1" value="10">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-offset-y" min="-60" max="120" step="1" value="10">
-                        </div>
-                        <label title="下划线不透明度百分比">下划线透明%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-tw-underline-opacity" class="rop-range" min="0" max="100" step="1" value="95">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-opacity" min="0" max="100" step="1" value="95">
-                        </div>
-
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">跟随笔尖 / 光标</div>
-                        <label>显示跟随笔尖</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-tw-cursor-enabled" checked>
-                            <span style="font-size:11px;color:var(--text-muted);">在书写位置显示笔尖或光标</span>
-                        </div>
-                        <label>笔尖样式</label>
-                        <select id="rop-scroll-tw-cursor-kind" class="rop-select">
-                            <option value="quill">🪶 复古羽毛笔</option>
-                            <option value="rose">🌹 红玫瑰花</option>
-                            <option value="fountain_pen">🖋️ 黑金钢笔尖</option>
-                            <option value="brush">🖌️ 东方水墨毛笔</option>
-                            <option value="pencil">✏️ 经典木铅笔</option>
-                            <option value="sparkle_wand">✨ 星光魔法棒</option>
-                            <option value="butterfly">🦋 灵动金粉蝴蝶</option>
-                            <option value="candle_flame">🕯️ 温暖摇曳烛火</option>
-                            <option value="dove">🕊️ 圣洁和平白鸽</option>
-                            <option value="heart">❤️ 立体发光红心</option>
-                            <option value="leaf">🍃 清新翠绿嫩叶</option>
-                            <option value="sakura">🌸 浪漫粉白樱花</option>
-                            <option value="crown">👑 璀璨金色皇冠</option>
-                            <option value="music_note">🎵 律动金色音符</option>
-                            <option value="cross_light">✝️ 光芒十字架</option>
-                            <option value="feather_gold">🪽 鎏金神圣金羽</option>
-                            <option value="candy_cane">🍬 圣诞红白拐杖糖笔</option>
-                            <option value="christmas_tree">🎄 璀璨金星圣诞树</option>
-                            <option value="holly_berry">🍒 圣诞冬青红果叶</option>
-                            <option value="snowflake_wand">❄️ 晶莹冰雪魔杖</option>
-                            <option value="santa_feather">🎅 圣诞红金绒毛笔</option>
-                            <option value="jingle_bell">🔔 圣诞金铃铛</option>
-                            <option value="us_flag_shield">🇺🇸 美国星条旗荣耀盾徽</option>
-                            <option value="purple_heart_medal">🎖️ 紫心英勇勋章笔</option>
-                            <option value="bald_eagle_crest">🦅 美国白头海雕金章</option>
-                            <option value="veteran_poppy">🌺 阵亡将士纪念红罂粟花</option>
-                            <option value="military_dog_tag">🏷️ 美军银色纪念狗牌</option>
-                            <option value="image">🖼 自定义图片 (PNG/WebP/GIF)</option>
-                            <option value="char">| 文本光标</option>
-                        </select>
-
-                        <div style="grid-column: span 2; margin: 2px 0 4px 0;">
-                            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;">点选内置笔尖小图标（共27款含🎄圣诞 & 🇺🇸退伍军人节矢量图标 + 自定义传图）：</div>
-                            <div id="rop-scroll-tw-icon-grid" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:4px;">
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="quill" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="quill" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>羽毛笔</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="rose" data-angle="-12" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="rose" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>玫瑰花</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="fountain_pen" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="fountain_pen" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>钢笔尖</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="brush" data-angle="-10" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="brush" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>水墨笔</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="pencil" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="pencil" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>木铅笔</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sparkle_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sparkle_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>魔法棒</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="butterfly" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="butterfly" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金粉蝶</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="candle_flame" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="candle_flame" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>暖烛火</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="dove" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="dove" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>和平鸽</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="heart" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>红心</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="leaf" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="leaf" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>翠绿叶</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sakura" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sakura" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>樱花瓣</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="crown" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="crown" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金皇冠</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="music_note" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="music_note" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金音符</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cross_light" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cross_light" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>十字光</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="feather_gold" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="feather_gold" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣金羽</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="candy_cane" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(248,113,113,0.35);background:rgba(153,27,27,0.18);color:#fecaca;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="candy_cane" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>拐杖糖</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="christmas_tree" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(74,222,128,0.35);background:rgba(20,83,45,0.22);color:#bbf7d0;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="christmas_tree" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣诞树</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="holly_berry" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(74,222,128,0.35);background:rgba(20,83,45,0.22);color:#bbf7d0;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="holly_berry" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>冬青果</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="snowflake_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(56,189,248,0.35);background:rgba(12,74,110,0.22);color:#bae6fd;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="snowflake_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>冰雪杖</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="santa_feather" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(248,113,113,0.35);background:rgba(153,27,27,0.18);color:#fecaca;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="santa_feather" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣诞羽</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="jingle_bell" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(250,204,21,0.35);background:rgba(133,77,14,0.22);color:#fef08a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="jingle_bell" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金铃铛</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_flag_shield" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(251,191,36,0.45);background:rgba(30,58,138,0.28);color:#fde68a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_flag_shield" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>星条盾</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="purple_heart_medal" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(192,132,252,0.45);background:rgba(88,28,135,0.25);color:#f3e8ff;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="purple_heart_medal" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>紫心章</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="bald_eagle_crest" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(251,191,36,0.45);background:rgba(120,53,15,0.25);color:#fef08a;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="bald_eagle_crest" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>白头鹰</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="veteran_poppy" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(248,113,113,0.45);background:rgba(153,27,27,0.22);color:#fecaca;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="veteran_poppy" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>虞美人</span></button>
-                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="military_dog_tag" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(148,163,184,0.45);background:rgba(51,65,85,0.28);color:#e2e8f0;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="military_dog_tag" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>军狗牌</span></button>
+                            <div style="font-size:11px; color:var(--accent); margin-top:8px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题装饰线</div>
+                            <div class="rop-grid">
+                                <label>开启装饰线</label><input type="checkbox" id="rop-scroll-title-deco-enabled">
+                                <label>线段位置</label>
+                                <select id="rop-scroll-title-deco-position" class="rop-select">
+                                    <option value="top">上方</option><option value="bottom">下方</option><option value="left">左侧</option><option value="right">右侧</option>
+                                </select>
+                                <label>样式</label>
+                                <select id="rop-scroll-title-deco-style" class="rop-select">
+                                    <option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option><option value="double">双线</option><option value="gradient">渐变线</option>
+                                </select>
+                                <label>对齐</label>
+                                <select id="rop-scroll-title-deco-align" class="rop-select">
+                                    <option value="left">左对齐</option><option value="center" selected>居中</option><option value="right">右对齐</option>
+                                </select>
+                                <label>主颜色</label><input type="color" id="rop-scroll-title-deco-color" class="rop-color" value="#FFD700">
+                                <label title="仅渐变样式生效">次颜色(渐变)</label><input type="color" id="rop-scroll-title-deco-color2" class="rop-color" value="#FF6B35">
+                                <label>粗细</label><input type="number" id="rop-scroll-title-deco-thickness" class="rop-input" min="1" max="20" value="3">
+                                <label title="0表示自动绑定文字本身的宽度/高度">长度(0=自动)</label><input type="number" id="rop-scroll-title-deco-length" class="rop-input" min="0" max="1000" value="0">
+                                <label>距离</label><input type="number" id="rop-scroll-title-deco-gap" class="rop-input" min="-50" max="100" value="12">
+                                <label>透明度%</label><input type="number" id="rop-scroll-title-deco-opacity" class="rop-input" min="0" max="100" value="100">
                             </div>
                         </div>
+                    </details>
 
-                        <div id="rop-scroll-tw-cursor-image-row" style="grid-column: span 2; display:none; padding:6px; border-radius:6px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);">
-                            <input type="hidden" id="rop-scroll-tw-cursor-image" value="">
-                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                                <button type="button" id="rop-scroll-tw-cursor-upload-btn" class="btn btn-secondary" style="padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer;">📂 选择笔尖图片...</button>
-                                <img id="rop-scroll-tw-cursor-preview" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);display:none;">
-                                <span id="rop-scroll-tw-cursor-name" style="font-size:10px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传图片</span>
+                    <!-- ② 内容：正文（默认展开） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-body" open>
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>📄 正文排版与特效</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-body-badge">40px</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px;">
+                                <textarea id="rop-scroll-content" class="rop-textarea" rows="4" placeholder="滚动文字内容（正文）" style="flex:1;"></textarea>
+                                <button class="rop-richtext-btn" data-section="scroll_body" title="逐字样式编辑" style="padding:4px 8px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--accent-primary,#7b8bef);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">✎ 富文本</button>
                             </div>
-                            <div class="rop-grid" style="margin-top:4px;">
-                                <label title="图片对齐到出字点的水平位置（0=最左，50=居中，100=最右）">笔尖锚点X%</label>
-                                <input type="number" id="rop-scroll-tw-cursor-anchor-x" class="rop-input" min="0" max="100" step="1" value="15">
-                                <label title="图片对齐到出字点的垂直位置（0=最上，50=居中，100=最下）">笔尖锚点Y%</label>
-                                <input type="number" id="rop-scroll-tw-cursor-anchor-y" class="rop-input" min="0" max="100" step="1" value="85">
+                            <div class="rop-grid">
+                                <label>字体</label>
+                                <select id="rop-scroll-font" class="rop-select"></select>
+                                <label>字号</label><input type="number" id="rop-scroll-fontsize" class="rop-input" min="8" max="300" value="40">
+                                <label>颜色</label><input type="color" id="rop-scroll-color" class="rop-color" value="#ffffff">
+                                <label>粗体</label><input type="checkbox" id="rop-scroll-bold">
+                                <label>字重</label>
+                                <select id="rop-scroll-weight" class="rop-select">
+                                    <option value="100">Thin</option><option value="200">ExtraLight</option><option value="300">Light</option>
+                                    <option value="400" selected>Regular</option><option value="500">Medium</option><option value="600">SemiBold</option>
+                                    <option value="700">Bold</option><option value="800">ExtraBold</option><option value="900">Black</option>
+                                </select>
+                                <label>正文大写</label><input type="checkbox" id="rop-scroll-uppercase">
+                                <label>字符间距</label><input type="number" id="rop-scroll-letterspacing" class="rop-input" min="-20" max="100" value="0">
+                                <label>对齐</label>
+                                <select id="rop-scroll-align" class="rop-select">
+                                    <option value="center">居中</option><option value="left">左对齐</option><option value="right">右对齐</option><option value="smart_left_center">✨ 智能对齐 (主左+重点居中·禁右)</option>
+                                </select>
+                                <label>行距</label><input type="number" id="rop-scroll-linespacing" class="rop-input" min="0" max="50" step="1" value="6">
+                                <label>文本宽度</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-scroll-textw" class="rop-range" min="100" max="1920" step="10" value="900"><input type="number" class="rop-num-readout" data-link="rop-scroll-textw" min="100" max="1920" step="10" value="900"></div>
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">正文特效</div>
+                                <label>描边颜色</label><input type="color" id="rop-scroll-stroke-color" class="rop-color" value="#000000">
+                                <label>描边宽度</label><input type="number" id="rop-scroll-stroke-width" class="rop-input" min="0" max="20" step="0.5" value="0">
+                                <label>开启阴影</label><input type="checkbox" id="rop-scroll-shadow">
+                                <label>阴影颜色</label><input type="color" id="rop-scroll-shadow-color" class="rop-color" value="#000000">
+                                <label>阴影模糊</label><input type="number" id="rop-scroll-shadow-blur" class="rop-input" min="0" max="50" value="4">
+                                <label>阴影偏移X</label><input type="number" id="rop-scroll-shadow-x" class="rop-input" min="-20" max="20" value="2">
+                                <label>阴影偏移Y</label><input type="number" id="rop-scroll-shadow-y" class="rop-input" min="-20" max="20" value="2">
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">正文独立背景 / 报纸剪报底衬</div>
+                                <label>开启背景</label><input type="checkbox" id="rop-scroll-body-bg-enabled">
+                                <label>底衬样式</label>
+                                <select id="rop-scroll-body-bg-style" class="rop-select">
+                                    <option value="solid">⬛ 纯色底框 (默认)</option>
+                                    <optgroup label="📰 贴字剪报 / 手撕纸轮廓系列">
+                                        <option value="newspaper_cutout">📰 复古旧报纸剪报 (爆款同款贴字)</option>
+                                        <option value="newspaper_sepia">🗞️ 怀旧泛黄古董报刊 (暖黄剪报)</option>
+                                        <option value="torn_cream_paper">📜 奶油手撕宣纸贴 (纯净纸张轮廓)</option>
+                                        <option value="kraft_sticker">🏷️ 手撕牛皮纸贴纸 (复古白边牛皮纸)</option>
+                                        <option value="ransom_magazine">✂️ 杂志拼贴剪报块 (斜切报刊条)</option>
+                                    </optgroup>
+                                    <optgroup label="✨ 质感纹理底衬系列">
+                                        <option value="grid_note">📓 手账方格便签纸 (清新方格底衬)</option>
+                                        <option value="gold_parchment">✨ 圣经烫金羊皮书页 (古典羊皮卷)</option>
+                                        <option value="red_editorial">🔖 报刊红底白边剪报 (高冲击红底贴)</option>
+                                        <option value="dark_film_matte">🎬 暗夜胶片磨砂贴纸 (黑金胶片底)</option>
+                                    </optgroup>
+                                    <optgroup label="🌟 文字底部半高托底条系列">
+                                        <option value="bottom_gold_bar">🌟 鎏金半高文字底条 (文字下半部金底)</option>
+                                        <option value="bottom_rose_brush">🌸 莫兰迪玫瑰手绘底条 (文字底部温柔笔触)</option>
+                                        <option value="bottom_neon_marker">🖍️ 荧光马克笔手绘底条 (重点荧光半高托底)</option>
+                                        <option value="xmas_frost_ice">❄️ 圣诞冰雪极光半高底条 (冰晶蓝底+六角雪花)</option>
+                                    </optgroup>
+                                    <optgroup label="🎄 圣诞节限定字幕带 / 装饰系列">
+                                        <option value="xmas_candy_ribbon">🍬 圣诞红白拐杖糖字幕带 (斜纹糖果框+冬青红果)</option>
+                                        <option value="xmas_velvet_gold">🎅 圣诞红丝绒烫金挂旗带 (金线缝边+伯利恒金星)</option>
+                                        <option value="xmas_pine_snow">🎄 圣诞松林绿覆雪字幕带 (积雪顶边+冬青彩球)</option>
+                                        <option value="xmas_gingerbread_tag">🍪 圣诞姜饼屋糖霜礼物签 (白糖霜花边+冬青果)</option>
+                                    </optgroup>
+                                    <optgroup label="🇺🇸 美国退伍军人节限定绶带 / 铭牌系列">
+                                        <option value="vet_stars_stripes_ribbon">🇺🇸 美国星条旗荣耀绶带 (深蓝星区+红白条纹+金星角花)</option>
+                                        <option value="vet_honor_medal_banner">🎖️ 退伍军人金章深蓝横幅 (海军蓝礼服+双层烫金绶带+紫心勋章)</option>
+                                        <option value="vet_dogtag_steel">🏷️ 美军拉丝钢印铭牌底衬 (金属拉丝银灰+铆钉压边+军牌挂孔)</option>
+                                        <option value="vet_poppy_parchment">🌺 纪念虞美人花宣纸贴条 (复古纪念羊皮纸+红蓝双色线+虞美人花饰)</option>
+                                    </optgroup>
+                                    <optgroup label="🖼️ 整块主题画板系列 (配合【整块】背景模式)">
+                                        <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏+报头线)</option>
+                                        <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+双线内框)</option>
+                                        <option value="torn_parchment_board">📜 圣经烫金羊皮书卷板 (四角烫金星芒框)</option>
+                                        <option value="kraft_clipboard">🏷️ 手撕牛皮纸剪贴画板 (白边牛皮纸+胶带)</option>
+                                        <option value="grid_notebook_page">📓 手账方格笔记本页 (清新方格信纸)</option>
+                                        <option value="xmas_candy_frame">🍬 圣诞红白拐杖糖画框板 (糖果外框+冬青果)</option>
+                                        <option value="xmas_velvet_gold_board">🎅 圣诞红丝绒烫金贺卡板 (皇家红丝绒+八角金星)</option>
+                                        <option value="xmas_pine_snow_board">🎄 圣诞松林覆雪木牌板 (森林松绿+顶部厚积雪)</option>
+                                        <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (白糖霜裱花框+冬青果)</option>
+                                        <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝+漫天雪花星芒)</option>
+                                        <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油信纸+红绿金线框)</option>
+                                        <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
+                                        <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
+                                        <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
+                                        <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
+                                    </optgroup>
+                                </select>
+                                <label>背景模式</label>
+                                <select id="rop-scroll-body-bg-mode" class="rop-select">
+                                    <option value="block">整块</option><option value="inline">每行独立包裹</option><option value="inline-joined">连体包裹</option>
+                                </select>
+                                <label>背景颜色</label><input type="color" id="rop-scroll-body-bg-color" class="rop-color" value="#000000">
+                                <label>背景透明%</label><input type="number" id="rop-scroll-body-bg-opacity" class="rop-input" min="0" max="100" value="60">
+                                <label>背景圆角</label><input type="number" id="rop-scroll-body-bg-radius" class="rop-input" min="0" max="100" value="12">
+                                <label title="调节正文底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-body-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
+                                <label title="调节正文底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-body-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
+                                <label title="调节正文底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-body-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
                             </div>
                         </div>
+                    </details>
 
-                        <label>笔尖大小</label>
-                        <input type="number" id="rop-scroll-tw-cursor-scale" class="rop-input" min="0.2" max="4" step="0.1" value="1.1">
-                        <label>笔尖偏移X</label>
-                        <input type="number" id="rop-scroll-tw-cursor-offset-x" class="rop-input" min="-300" max="300" step="2" value="0">
-                        <label>笔尖偏移Y</label>
-                        <input type="number" id="rop-scroll-tw-cursor-offset-y" class="rop-input" min="-300" max="300" step="2" value="0">
-                        <label>笔尖角度°</label>
-                        <input type="number" id="rop-scroll-tw-cursor-angle" class="rop-input" min="-180" max="180" step="5" value="-8">
-                        <label>光标字符</label>
-                        <input type="text" id="rop-scroll-tw-cursor-char" class="rop-input" value="|" maxlength="4">
-                        <label>光标颜色</label>
-                        <input type="color" id="rop-scroll-tw-cursor-color" class="rop-color" value="#FFD700">
-                        </div>
-                    </div>
+                    <!-- ③ 设计师卡片画板 · 左上角标 · 逐行底衬（默认收起，界面更清爽） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-effects">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎨 卡片画板 · 角标 · 逐行底衬</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-effects-badge">默认</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-chip-section-head">
+                                <span>🖼️ 设计师卡片画板 (23款)</span>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset" data-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭大背景</button>
+                            </div>
+                            <div class="rop-chip-grid">
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn is-wide" data-bg-preset="prayer_bookmark_green">🕊️ [sc-39] 祈祷书签松绿卡 + 金书签 + 白鸽玫瑰</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="prayer_bookmark_brown">✝️ [sc-40] 祈祷深褐卡+十字</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="prayer_bookmark_navy">🌌 [sc-41] 祈祷深蓝卡+白鸽</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="prayer_bookmark_burgundy">🌹 [sc-42] 酒红丝绒卡+玫瑰</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="veteran_shield_card">🇺🇸 [sc-43] 海军深蓝卡+星盾</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="vintage_wax_parchment">🏵️ [sc-44] 胡桃古籍卡+火漆</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="royal_olive_emerald">🌿 [sc-45] 翡翠金线卡+桂冠</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="editorial_quote_obsidian">❝ [sc-46] 曜石黑金卡+引号</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="sacred_ivory_crown">👑 [sc-47] 皇家紫檀卡+皇冠</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="newspaper_page">📰 旧报纸整版</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="newspaper_sepia_page">🗞️ 泛黄报刊板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="torn_parchment_board">📜 烫金羊皮卷</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="kraft_clipboard">🏷️ 牛皮纸画板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="grid_notebook_page">📓 方格手账页</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_candy_frame">🍬 圣诞拐杖糖框</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_velvet_gold_board">🎅 圣诞红丝绒卡</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_pine_snow_board">🎄 圣诞松林覆雪板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_gingerbread_card">🍪 圣诞姜饼糖霜卡</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_starry_snow_night">❄️ 圣诞飘雪夜空板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="xmas_cream_holly_letter">🦌 圣诞冬青信纸卡</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="vet_stars_stripes_board">🇺🇸 星条旗荣耀板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="vet_honor_medal_board">🎖️ 老兵金章礼服板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="vet_dogtag_steel_board">🏷️ 美军钢印铭牌板</button>
+                                <button type="button" class="rop-btn rop-scroll-card-bg-preset rop-chip-btn" data-bg-preset="vet_poppy_memorial_board">🌺 纪念虞美人花板</button>
+                            </div>
 
-                    <!-- ③ 滚动运动：位置参数 -->
-                    <div class="rop-group-title" style="margin-top:8px;">滚动运动
-                        <button id="rop-scroll-show-end" class="btn btn-secondary" style="float:right;padding:1px 8px;font-size:11px;border-radius:4px;">👁 显示终点</button>
-                    </div>
-                    <div class="rop-grid">
-                        <label title="整体水平位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体X</label><input type="number" id="rop-scroll-offset-x" class="rop-input" step="10" value="0">
-                        <label title="整体垂直位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体Y</label><input type="number" id="rop-scroll-offset-y" class="rop-input" step="10" value="0">
-                        <label>开始(s)</label><input type="number" id="rop-scroll-start-time" class="rop-input" step="0.1" min="0">
-                        <label>结束(s)</label><div style="display:flex;gap:5px;align-items:center;"><input type="number" id="rop-scroll-end-time" class="rop-input" step="0.1" min="0" style="min-width:0;flex:1"><button type="button" id="rop-scroll-end-reset" class="btn btn-secondary" title="仅当前项目：跟随本项目主体时长" style="white-space:nowrap;font-size:11px;padding:3px 6px;">恢复默认时间</button></div>
-                        <label title="文字开始向上滚动时的初始Y坐标">起始Y</label><input type="number" id="rop-scroll-from-y" class="rop-input" step="10" value="960">
-                        <label title="文字向上滚动最终消失或停留的结束Y坐标">结束Y</label><input type="number" id="rop-scroll-to-y" class="rop-input" step="10" value="-200">
-                        <label>结束Y自动适配</label><label style="display:flex;gap:5px;align-items:center;font-size:11px;"><input type="checkbox" id="rop-scroll-end-y-auto" checked>底部羽化上方留 0.4 行</label>
-                        <label title="文字中心轴 X；文本宽度会从这个中心向左右展开">中心X</label><input type="number" id="rop-scroll-from-x" class="rop-input" step="10">
-                        <!-- 速度参数已移除：速度由 距离÷时间 自动决定 -->
-                        <input type="hidden" id="rop-scroll-speed" value="1">
-                        <input type="hidden" id="rop-scroll-speed-num" value="1">
-                    </div>
+                            <details class="rop-scroll-subacc" id="rop-scroll-acc-corner-badge">
+                                <summary>
+                                    <span>🔖 左上角小图标角标 (12款)</span>
+                                    <span class="rop-acc-badge" id="rop-scroll-acc-corner-badge-val">无</span>
+                                </summary>
+                                <div class="rop-scroll-subacc-body">
+                                    <div class="rop-chip-section-head">
+                                        <span>可任意搭配上方卡片画板</span>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick" data-badge-style="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:3px;cursor:pointer;">无角标</button>
+                                    </div>
+                                    <div class="rop-chip-grid cols-3">
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="swallowtail">🔖 燕尾金书签</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="us_star_shield">🇺🇸 星条金盾标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="gold_wax_seal">🏵️ 火漆金章标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="rose_emblem">🌹 玫瑰金章标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="olive_wreath_tag">🌿 橄榄桂冠标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="royal_crown_tag">👑 皇冠鎏金标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="folded_dog_ear">📄 立体折角页</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="cross_tag">✝️ 十字圣经标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="heart_prayer_tag">💛 爱心圣光标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="poppy_honor_tag">🌺 虞美人章标</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="quote_mark_badge">❝ 杂志双引号</button>
+                                        <button type="button" class="rop-btn rop-scroll-corner-badge-quick rop-chip-btn" data-badge-style="rounded_tab">🏷️ 圆角金挂牌</button>
+                                    </div>
+                                </div>
+                            </details>
 
-                    <!-- ④ 智能适配 -->
-                    <div class="rop-group-title" style="margin-top:8px;">智能适配</div>
-                    <div class="rop-grid">
-                        <label>固定显示</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-static">
-                            <span style="font-size:11px;color:var(--text-muted);">关闭滚动，全部文案固定显示</span>
-                        </div>
-                        <label>自动停止</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-auto-stop">
-                            <span style="font-size:11px;color:var(--text-muted);">文字全显示后停止滚动</span>
-                        </div>
-                        <label>提前完成</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="number" id="rop-scroll-auto-stop-lead" class="rop-input" min="0" max="60" step="0.5" value="0" style="width:60px;">
-                            <span style="font-size:11px;color:var(--text-muted);">秒（提前完成滚动，0=不提前）</span>
-                        </div>
-                        <label>正文自动缩放</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-auto-fit">
-                            <span style="font-size:11px;color:var(--text-muted);">自动缩小确保全部显示</span>
-                        </div>
-                        <label>最小字号</label><input type="number" id="rop-scroll-min-fontsize" class="rop-input" min="8" max="200" value="16">
-                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🎯 首尾行焦点区起停 (爆款同款)</div>
-                        <label title="开启后，0秒开场时第1行直接居中停在黄金焦点线（上方留白），结束时最后1行停在焦点线（下方留白），还原爆款祈祷书签滚动节奏">焦点区起停</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-focus-flow-enabled">
-                            <span style="font-size:11px;color:#fde68a;">首行居中起步 · 末行居中停住</span>
-                        </div>
-                        <label title="0秒开始时第1行所在的卡片高度百分比位置 (推荐 40%~48%)">首行起点%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-focus-start-pct" class="rop-range" min="10" max="85" step="1" value="42">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-start-pct" min="5" max="95" step="1" value="42">
-                        </div>
-                        <label title="滚动结束时最后1行停留的卡片高度百分比位置 (推荐 48%~58%)">末行终点%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-focus-end-pct" class="rop-range" min="15" max="90" step="1" value="54">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-end-pct" min="10" max="95" step="1" value="54">
-                        </div>
-                    </div>
+                            <div class="rop-quick-dim-box">
+                                <span style="color:#fde68a;white-space:nowrap;" title="往左拉变窄、往右拉变宽；点“自动”恢复自适应宽度">画板宽度</span>
+                                <div style="display:flex;align-items:center;gap:3px;">
+                                    <input type="range" id="rop-scroll-bg-width-quick" class="rop-range" min="120" max="1080" step="10" value="940" style="flex:1;min-width:42px;">
+                                    <input type="number" id="rop-scroll-bg-width-quick-num" class="rop-input" min="0" max="1920" step="10" value="940" style="width:48px;padding:1px 3px;font-size:11px;" title="输入具体像素宽度，或输入0恢复自动">
+                                    <button type="button" id="rop-scroll-bg-width-auto-btn" class="rop-btn" style="padding:1px 4px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.18);border-radius:3px;cursor:pointer;" title="恢复自动宽度">自动</button>
+                                </div>
+                                <span style="color:#fde68a;white-space:nowrap;" title="往左拉缩短画板与边框上下长度、往右拉加长；点“自动”恢复自适应高度">画板长度</span>
+                                <div style="display:flex;align-items:center;gap:3px;">
+                                    <input type="range" id="rop-scroll-bg-height-quick" class="rop-range" min="120" max="1920" step="10" value="500" style="flex:1;min-width:42px;">
+                                    <input type="number" id="rop-scroll-bg-height-quick-num" class="rop-input" min="0" max="1920" step="10" value="500" style="width:48px;padding:1px 3px;font-size:11px;" title="输入具体像素长度，或输入0恢复自动">
+                                    <button type="button" id="rop-scroll-bg-height-auto-btn" class="rop-btn" style="padding:1px 4px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.18);border-radius:3px;cursor:pointer;" title="恢复自动长度">自动</button>
+                                </div>
+                                <span style="color:#fde68a;white-space:nowrap;" title="调节整块大背景画板（如旧报纸、羊皮卷、圣诞贺卡）的不透明度（0%=完全透明，100%=完全不透明）">背景透明</span>
+                                <div style="grid-column:span 3;display:flex;align-items:center;gap:4px;">
+                                    <input type="range" id="rop-scroll-bg-opacity-quick" class="rop-range" min="0" max="100" step="1" value="92" style="flex:1;min-width:60px;">
+                                    <input type="number" id="rop-scroll-bg-opacity-quick-num" class="rop-input" min="0" max="100" step="1" value="92" style="width:48px;padding:1px 3px;font-size:11px;" title="背景不透明度百分比 (0-100%)">
+                                    <span style="color:#94a3b8;font-size:10px;">%</span>
+                                </div>
+                                <label style="grid-column:span 2;display:flex;align-items:center;gap:4px;cursor:pointer;color:#fef08a;margin:0;" title="开启后，报纸版面、报头线、撕边纹理与圣诞装饰会跟着字幕一起往上循环移动">
+                                    <input type="checkbox" id="rop-scroll-bg-scroll-follow-quick" checked>
+                                    <span>🔄 背景随字幕向上循环滚动</span>
+                                </label>
+                                <label style="grid-column:span 2;display:flex;align-items:center;gap:4px;cursor:pointer;color:#cbd5e1;margin:0;" title="开启后，大背景/边框只紧凑包裹滚动正文可见区，不遮挡上方空白视频画面">
+                                    <input type="checkbox" id="rop-scroll-bg-body-only-quick">
+                                    <span>📐 紧凑包裹正文区(不挡上方画面)</span>
+                                </label>
+                            </div>
 
-                    <!-- ⑤ 羽化 -->
-                    <div class="rop-group-title" style="margin-top:8px;">羽化</div>
-                    <div class="rop-grid">
-                        <label title="裁切框边缘（早期经典羽化）：按裁切框边界计算羽化与偏移，完整兼容早期预设的大小与配置；贴合字幕边缘：在当前可见字幕边缘直接柔化">羽化基准</label>
-                        <select id="rop-scroll-feather-mode" class="rop-select">
-                            <option value="clip">📐 裁切框边缘 (默认·早期经典羽化)</option>
-                            <option value="content_edge">🎯 贴合字幕边缘</option>
-                        </select>
-                        <label>快捷预设</label>
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="off" style="padding:2px 7px;font-size:11px;">🚫 关闭</button>
-                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="v80" style="padding:2px 7px;font-size:11px;">☁️ 上下柔化</button>
-                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="top120" style="padding:2px 7px;font-size:11px;">⬆️ 仅上羽化</button>
-                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="bot120" style="padding:2px 7px;font-size:11px;">⬇️ 仅下羽化</button>
-                            <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="all80" style="padding:2px 7px;font-size:11px;">🖼️ 四周柔边</button>
+                            <details class="rop-scroll-subacc" id="rop-scroll-acc-ribbon">
+                                <summary>
+                                    <span>✂️ 逐行贴字底衬 (剪报条 / 圣诞带 / 荣耀带)</span>
+                                    <span class="rop-acc-badge" id="rop-scroll-acc-ribbon-val">未开启</span>
+                                </summary>
+                                <div class="rop-scroll-subacc-body">
+                                    <div class="rop-chip-section-head">
+                                        <span>随每行文字向上滚动的贴条底衬</span>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset" data-body-bg-preset="off" style="padding:1px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);border-radius:4px;cursor:pointer;">关闭行底衬</button>
+                                    </div>
+                                    <div class="rop-chip-grid cols-3">
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="newspaper_cutout">📰 旧报纸条</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="newspaper_sepia">🗞️ 泛黄报刊条</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="torn_cream_paper">📜 宣纸贴条</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="xmas_candy_ribbon">🍬 拐杖糖带</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="xmas_velvet_gold">🎅 红丝绒带</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="xmas_pine_snow">🎄 松林覆雪带</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="xmas_gingerbread_tag">🍪 姜饼糖霜签</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="xmas_frost_ice">❄️ 冰雪半高条</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="vet_stars_stripes_ribbon">🇺🇸 星条旗绶带</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="vet_honor_medal_banner">🎖️ 老兵金章带</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="vet_dogtag_steel">🏷️ 钢印铭牌条</button>
+                                        <button type="button" class="rop-btn rop-scroll-body-bg-preset rop-chip-btn" data-body-bg-preset="vet_poppy_parchment">🌺 虞美人花条</button>
+                                    </div>
+                                    <div class="rop-quick-dim-box" style="margin-bottom:0;">
+                                        <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带左右两端的伸出长度（支持负数收窄）">左右长度</span>
+                                        <div style="display:flex;align-items:center;gap:3px;">
+                                            <input type="range" id="rop-scroll-body-bg-pad-h-quick" class="rop-range" min="-20" max="120" step="1" value="24" style="flex:1;min-width:45px;">
+                                            <input type="number" id="rop-scroll-body-bg-pad-h-quick-num" class="rop-input" min="-20" max="200" step="1" value="24" style="width:46px;padding:1px 3px;font-size:11px;">
+                                        </div>
+                                        <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带上下包裹的厚薄宽度（支持负数变窄）">上下宽度</span>
+                                        <div style="display:flex;align-items:center;gap:3px;">
+                                            <input type="range" id="rop-scroll-body-bg-pad-v-quick" class="rop-range" min="-15" max="80" step="1" value="11" style="flex:1;min-width:45px;">
+                                            <input type="number" id="rop-scroll-body-bg-pad-v-quick-num" class="rop-input" min="-20" max="200" step="1" value="11" style="width:46px;padding:1px 3px;font-size:11px;">
+                                        </div>
+                                        <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带底衬的不透明度（0%=完全透明，100%=完全不透明）">底衬透明</span>
+                                        <div style="grid-column:span 3;display:flex;align-items:center;gap:4px;">
+                                            <input type="range" id="rop-scroll-body-bg-opacity-quick" class="rop-range" min="0" max="100" step="1" value="95" style="flex:1;min-width:60px;">
+                                            <input type="number" id="rop-scroll-body-bg-opacity-quick-num" class="rop-input" min="0" max="100" step="1" value="95" style="width:48px;padding:1px 3px;font-size:11px;" title="逐行底衬不透明度百分比 (0-100%)">
+                                            <span style="color:#94a3b8;font-size:10px;">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
-                        <label title="顶部边缘柔化渐变宽度；负数相当于向外偏移放行">上羽化</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-top" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top" min="-1000" max="1000" step="1" value="80">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-top" title="恢复默认">↺</button>
-                        </div>
-                        <label title="正数向内推迟羽化起点（压缩可见区），负数向外扩展顶部可见边界">上羽化偏移</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-top-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top-offset" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-top-offset" title="恢复默认">↺</button>
-                        </div>
-                        <label title="底部边缘柔化渐变宽度；负数相当于向外偏移放行">下羽化</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-bottom" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom" min="-1000" max="1000" step="1" value="80">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom" title="恢复默认">↺</button>
-                        </div>
-                        <label title="正数向内推迟羽化起点（提前隐去底部），负数向外扩展底部可见边界">下羽化偏移</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-bottom-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom-offset" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom-offset" title="恢复默认">↺</button>
-                        </div>
-                        <label title="左侧边缘柔化渐变宽度">左羽化</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-left" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-left" title="恢复默认">↺</button>
-                        </div>
-                        <label title="正数向内收缩左侧边界，负数向外扩展左侧边界">左羽化偏移</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-left-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left-offset" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-left-offset" title="恢复默认">↺</button>
-                        </div>
-                        <label title="右侧边缘柔化渐变宽度">右羽化</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-right" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-right" title="恢复默认">↺</button>
-                        </div>
-                        <label title="正数向内收缩右侧边界，负数向外扩展右侧边界">右羽化偏移</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-feather-right-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right-offset" min="-1000" max="1000" step="1" value="0">
-                            <button class="rop-reset-btn" data-target="rop-scroll-feather-right-offset" title="恢复默认">↺</button>
-                        </div>
-                        <div style="grid-column:1 / -1;font-size:11px;color:#8b95a5;line-height:1.35;">
-                            💡 支持直接拉动滑杆，或在右侧数字框直接输入正负数（正数向内裁切/柔化，负数向外放宽边界）。
-                        </div>
-                    </div>
+                    </details>
 
-                    <!-- ⑥ 卡片背景 -->
-                    <div class="rop-group-title" style="margin-top:8px;">🖼️ 卡片背景 (整块大背景画板)</div>
-                    <div class="rop-grid">
-                        <label>启用</label><input type="checkbox" id="rop-scroll-bg-enabled">
-                        <label>背景画板</label>
-                        <select id="rop-scroll-bg-style" class="rop-select">
-                            <option value="solid">⬛ 纯色圆角底板 (默认)</option>
-                            <optgroup label="🕊️ 设计师羽化卡片 + 左上角小图标角标 (爆款系列)">
-                                <option value="prayer_bookmark_green">🕊️ 祈祷书签松石绿卡 (上下柔边渐变+金书签+白鸽玫瑰·爆款同款)</option>
-                                <option value="prayer_bookmark_brown">🔖 祈祷书签复古深褐卡 (古典圣经褐底+上下柔边+十字金书签)</option>
-                                <option value="prayer_bookmark_navy">🌌 祈祷书签静谧深蓝卡 (深夜祈祷蓝底+上下柔边+金书签)</option>
-                                <option value="prayer_bookmark_burgundy">🍷 皇家酒红玫瑰金章卡 (丝绒勃艮第红底+上下柔边+左上玫瑰金章角标)</option>
-                                <option value="veteran_shield_card">🇺🇸 星条旗金盾荣耀深蓝卡 (海军深蓝柔边底+金内边+左上星条金盾角标)</option>
-                                <option value="vintage_wax_parchment">🏵️ 复古火漆金章胡桃木卡 (胡桃暖棕柔边底+左上立体复古火漆金章角标)</option>
-                                <option value="royal_olive_emerald">🌿 橄榄枝桂冠翡翠金线卡 (深祖母绿柔边底+金细边+左上橄榄桂冠角标)</option>
-                                <option value="editorial_quote_obsidian">❝ 曜石黑杂志引号金线卡 (高级曜石黑柔边底+双侧金线+左上双引号金标)</option>
-                                <option value="sacred_ivory_crown">👑 圣洁皇冠鎏金紫檀卡 (皇家紫檀柔边底+金内边+左上皇冠鎏金角标)</option>
-                            </optgroup>
-                            <optgroup label="📰 报纸 / 复古纸张整版背景板">
-                                <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏纹+报头双线+手撕边)</option>
-                                <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+古典双线内框)</option>
-                                <option value="torn_parchment_board">📜 圣经烫金羊皮书卷板 (古典羊皮纸+四角烫金星芒框)</option>
-                                <option value="kraft_clipboard">🏷️ 手撕牛皮纸剪贴画板 (白边牛皮纸卡+半透明胶带贴)</option>
-                                <option value="grid_notebook_page">📓 手账方格笔记本页 (清新方格信纸+红蓝手账线)</option>
-                                <option value="dark_film_board">🎬 暗夜黑金胶片画板 (深邃磨砂底+复古暗金双线框)</option>
-                            </optgroup>
-                            <optgroup label="🎄 圣诞节限定大背景画板 / 贺卡框">
-                                <option value="xmas_candy_frame">🍬 圣诞红白拐杖糖画框板 (红白斜纹糖果外框+深红丝绒底)</option>
-                                <option value="xmas_velvet_gold_board">🎅 圣诞红丝绒烫金贺卡板 (皇家红丝绒+双层金线+八角金星)</option>
-                                <option value="xmas_pine_snow_board">🎄 圣诞松林覆雪木牌板 (森林松绿+顶部厚积雪层+雪花冬青)</option>
-                                <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (暖棕姜饼+白糖霜裱花框+冬青果)</option>
-                                <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝渐变+漫天雪花星芒)</option>
-                                <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油羊皮信纸+红绿金线框+冬青)</option>
-                            </optgroup>
-                            <optgroup label="🇺🇸 美国退伍军人节限定大背景画板 / 荣耀框">
-                                <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
-                                <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
-                                <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
-                                <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
-                            </optgroup>
-                        </select>
-                        <label>颜色</label><input type="color" id="rop-scroll-bg-color" class="rop-color" value="#000000">
-                        <label>透明度%</label><input type="number" id="rop-scroll-bg-opacity" class="rop-input" min="0" max="100" value="75">
-                        <label title="开启后，报纸版面、报头线、撕边纹理与圣诞装饰会跟着字幕一起往上循环移动">随字幕循环滚动</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-bg-scroll-follow" checked>
-                            <span style="font-size:11px;color:#fde68a;">背景随字幕向上循环移动</span>
+                    <!-- ④ 出字效果（朗诵打字机 / 手写跟读，默认收起） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-tw">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>✍️ 出字效果 (打字机 / 手写跟读)</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-tw-badge">已关闭</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label style="font-weight:700;color:#fde68a;">开启出字效果</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-tw-enabled">
+                                    <span style="font-size:11px;color:var(--text-muted);">关闭则保持原版正常滚动</span>
+                                </div>
+
+                                <div id="rop-scroll-tw-details" class="rop-grid" style="grid-column:span 2;display:none;">
+                                    <details class="rop-scroll-subacc" id="rop-scroll-acc-tw-presets">
+                                        <summary>
+                                            <span>✨ 一键出字爆款预设 (14款)</span>
+                                            <span class="rop-acc-badge">点击展开</span>
+                                        </summary>
+                                        <div class="rop-scroll-subacc-body">
+                                            <div class="rop-chip-grid" style="margin-bottom:0;">
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn is-wide" data-preset="prayer_dove_green">🕊️ 祈祷书签绿卡+白鸽玫瑰+逐行金线跟读</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn is-wide" data-preset="newspaper">📰 复古旧报纸剪报贴字出字</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="vet_stars_stripes">🇺🇸 星条旗绶带+星盾笔</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="vet_honor_medal">🎖️ 老兵金章带+紫心勋章</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="xmas_candy">🍬 圣诞拐杖糖带+糖笔</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="xmas_pine">🎄 圣诞松林覆雪+圣诞树</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="newspaper_sepia">🗞️ 泛黄古董报刊出字</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="torn_paper">📜 奶油手撕宣纸出字</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="quill">🪶 羽毛笔朗诵写出</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="rose">🌹 玫瑰花朗诵写出</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="image">🖼 上传图片朗诵写出</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn" data-preset="readfollow">📖 原文不透明跟读高亮</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn is-wide" data-preset="rainbow_karaoke">🌈 彩虹渐变逐词跟读 (已读保留彩虹·未读纯白)</button>
+                                                <button type="button" class="btn btn-secondary rop-scroll-tw-style-preset rop-chip-btn is-wide" data-preset="word_pink_cyan_grad">✨ 单词粉紫青渐变跟读 (仅当前词渐变)</button>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <label>开始(S)</label><input type="number" id="rop-scroll-tw-start" class="rop-input" min="0" step="0.1" placeholder="跟随滚动开始">
+                                    <label>结束(S)</label><input type="number" id="rop-scroll-tw-end" class="rop-input" min="0" step="0.1" placeholder="跟随滚动结束">
+                                    <div style="grid-column:span 2;font-size:11px;color:var(--text-muted);">留空沿用原来的语音时间；填写后仅调整出字时间，不改变滚动运动。</div>
+
+                                    <label title="开启后跟随已对齐的字幕/单词时间戳（含停顿）；无字幕时自动按滚动时长均匀出字">朗诵时间同步</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-speech-sync" checked>
+                                        <span style="font-size:11px;color:var(--text-muted);">按语音对齐时间出字(含停顿)</span>
+                                    </div>
+
+                                    <label>出字粒度</label>
+                                    <select id="rop-scroll-tw-reveal-type" class="rop-select">
+                                        <option value="char">逐字写出 (字母/单字，如手写)</option>
+                                        <option value="word">逐词出现/跟读 (按单词高亮)</option>
+                                        <option value="line">📏 逐行跟读高亮 (整行变色+跟随下划线·爆款同款)</option>
+                                        <option value="sentence">逐句出现 (按句子)</option>
+                                    </select>
+
+                                    <label style="font-weight:600;color:#93c5fd;" title="开启后未读到的文字变为透明或半透明（读到才出字）；关闭后全文始终正常显示，读到时触发高亮/放大">未读文字透明</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-hide-unread" checked>
+                                        <span style="font-size:11px;color:var(--text-muted);">开启=未读透明(读到才出字) · 关闭=全文直接显示</span>
+                                    </div>
+
+                                    <label title="0%=未读的字完全透明（像写出来一样）；100%=未读的字完全不透明（正常显示全文，读到哪个词触发效果）">未读字透明度%</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-unrevealed-opacity" class="rop-range" min="0" max="100" step="5" value="0">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-unrevealed-opacity" min="0" max="100" step="5" value="0">
+                                    </div>
+                                    <div style="grid-column: span 2; display:flex; gap:4px; margin-bottom:2px;">
+                                        <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="0" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">0% 全透明写出</button>
+                                        <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="35" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">35% 半透明底字</button>
+                                        <button type="button" class="btn btn-secondary rop-scroll-tw-opacity-preset" data-opacity="100" style="flex:1;padding:2px 4px;font-size:10px;border-radius:4px;cursor:pointer;">100% 不透明跟读</button>
+                                    </div>
+
+                                    <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">读到当前词效果</div>
+                                    <label>当前词高亮色</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-active-highlight" checked title="读到该字/词时变色高亮">
+                                        <input type="color" id="rop-scroll-tw-active-color" class="rop-color" value="#FFD700" style="flex:1;">
+                                    </div>
+                                    <label title="开启后已经读过的字/词继续保持高亮色或彩虹渐变色，未读的词保持正文原色（如白色）">已读保留高亮色</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-keep-read-color" title="读过的词继续保留高亮色/渐变色（卡拉OK跟读累积变色）">
+                                        <span style="font-size:11px;color:var(--text-muted);">已读词保持高亮/彩虹色 (跟读累积)</span>
+                                    </div>
+                                    <label title="开启后读到当前字/词时自动放大，增强视觉冲击力">当前词放大</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-active-scale-enabled" title="开启当前朗读词放大效果">
+                                        <span style="font-size:11px;color:var(--text-muted);">开启读到放大冲击效果</span>
+                                    </div>
+                                    <label title="100%=不放大；>100% 时读到该词会放大强调">放大比例%</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-active-scale" class="rop-range" min="80" max="220" step="5" value="125">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-active-scale" min="80" max="220" step="5" value="125">
+                                    </div>
+
+                                    <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">📏 逐行跟读下划线 & 焦点阅读区 (爆款同款)</div>
+                                    <label title="选择整行高亮与下划线跟随的推进方式：焦点区=哪一行滚到卡片黄金阅读区就点亮哪一行；语音/时间=按配音或时间进度逐行点亮">跟读定位</label>
+                                    <select id="rop-scroll-tw-line-track-mode" class="rop-select">
+                                        <option value="focus_zone">🎯 随卡片焦点阅读区逐行点亮 (爆款同款)</option>
+                                        <option value="speech_or_progress">🎙️ 随语音/时间进度逐行点亮</option>
+                                    </select>
+                                    <label title="开启后在当前高亮行下方绘制一条跟随移动的金色下划线">跟随下划线</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-underline-enabled" title="开启当前朗读行底部跟随下划线">
+                                        <input type="color" id="rop-scroll-tw-underline-color" class="rop-color" value="#E2B95B" style="flex:1;" title="下划线颜色">
+                                    </div>
+                                    <label>下划线样式</label>
+                                    <select id="rop-scroll-tw-underline-style" class="rop-select">
+                                        <option value="solid">✨ 圆头实线金线 (爆款同款)</option>
+                                        <option value="gradient">🌟 两端柔光渐变金线</option>
+                                        <option value="double">🏛️ 古典双金线</option>
+                                        <option value="dashed">➖ 虚线</option>
+                                    </select>
+                                    <label>下划线宽模式</label>
+                                    <select id="rop-scroll-tw-underline-width-mode" class="rop-select">
+                                        <option value="card_ratio">📐 按卡片固定比例宽度 (爆款同款)</option>
+                                        <option value="line_text">🔤 跟随当前行文字宽度</option>
+                                    </select>
+                                    <label title="下划线长度占文本/卡片宽度的百分比">下划线宽%</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-underline-width-ratio" class="rop-range" min="20" max="100" step="1" value="68">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-width-ratio" min="10" max="120" step="1" value="68">
+                                    </div>
+                                    <label title="下划线线条粗细(像素)">下划线粗细</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-underline-thickness" class="rop-range" min="1" max="16" step="0.5" value="3.5">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-thickness" min="0.5" max="30" step="0.5" value="3.5">
+                                    </div>
+                                    <label title="下划线距离当前行文字底部的垂直偏移(像素)">下划线距字Y</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-underline-offset-y" class="rop-range" min="-20" max="60" step="1" value="10">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-offset-y" min="-60" max="120" step="1" value="10">
+                                    </div>
+                                    <label title="下划线不透明度百分比">下划线透明%</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rop-scroll-tw-underline-opacity" class="rop-range" min="0" max="100" step="1" value="95">
+                                        <input type="number" class="rop-num-readout" data-link="rop-scroll-tw-underline-opacity" min="0" max="100" step="1" value="95">
+                                    </div>
+
+                                    <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">跟随笔尖 / 光标</div>
+                                    <label>显示跟随笔尖</label>
+                                    <div style="display:flex;align-items:center;gap:6px;">
+                                        <input type="checkbox" id="rop-scroll-tw-cursor-enabled" checked>
+                                        <span style="font-size:11px;color:var(--text-muted);">在书写位置显示笔尖或光标</span>
+                                    </div>
+                                    <label>笔尖样式</label>
+                                    <select id="rop-scroll-tw-cursor-kind" class="rop-select">
+                                        <option value="quill">🪶 复古羽毛笔</option>
+                                        <option value="rose">🌹 红玫瑰花</option>
+                                        <option value="fountain_pen">🖋️ 黑金钢笔尖</option>
+                                        <option value="brush">🖌️ 东方水墨毛笔</option>
+                                        <option value="pencil">✏️ 经典木铅笔</option>
+                                        <option value="sparkle_wand">✨ 星光魔法棒</option>
+                                        <option value="butterfly">🦋 灵动金粉蝴蝶</option>
+                                        <option value="candle_flame">🕯️ 温暖摇曳烛火</option>
+                                        <option value="dove">🕊️ 圣洁和平白鸽</option>
+                                        <option value="heart">❤️ 立体发光红心</option>
+                                        <option value="leaf">🍃 清新翠绿嫩叶</option>
+                                        <option value="sakura">🌸 浪漫粉白樱花</option>
+                                        <option value="crown">👑 璀璨金色皇冠</option>
+                                        <option value="music_note">🎵 律动金色音符</option>
+                                        <option value="cross_light">✝️ 光芒十字架</option>
+                                        <option value="feather_gold">🪽 鎏金神圣金羽</option>
+                                        <option value="candy_cane">🍬 圣诞红白拐杖糖笔</option>
+                                        <option value="christmas_tree">🎄 璀璨金星圣诞树</option>
+                                        <option value="holly_berry">🍒 圣诞冬青红果叶</option>
+                                        <option value="snowflake_wand">❄️ 晶莹冰雪魔杖</option>
+                                        <option value="santa_feather">🎅 圣诞红金绒毛笔</option>
+                                        <option value="jingle_bell">🔔 圣诞金铃铛</option>
+                                        <option value="us_flag_shield">🇺🇸 美国星条旗荣耀盾徽</option>
+                                        <option value="purple_heart_medal">🎖️ 紫心英勇勋章笔</option>
+                                        <option value="bald_eagle_crest">🦅 美国白头海雕金章</option>
+                                        <option value="veteran_poppy">🌺 阵亡将士纪念红罂粟花</option>
+                                        <option value="military_dog_tag">🏷️ 美军银色纪念狗牌</option>
+                                        <option value="image">🖼 自定义图片 (PNG/WebP/GIF)</option>
+                                        <option value="char">| 文本光标</option>
+                                    </select>
+
+                                    <details class="rop-scroll-subacc" id="rop-scroll-acc-tw-icons">
+                                        <summary>
+                                            <span>✒️ 内置笔尖小图标库 (27款 · 含自定义传图)</span>
+                                            <span class="rop-acc-badge">点击展开</span>
+                                        </summary>
+                                        <div class="rop-scroll-subacc-body">
+                                            <div id="rop-scroll-tw-icon-grid" class="rop-chip-grid cols-4" style="margin-bottom:0;">
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="quill" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="quill" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>羽毛笔</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="rose" data-angle="-12" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="rose" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>玫瑰花</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="fountain_pen" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="fountain_pen" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>钢笔尖</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="brush" data-angle="-10" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="brush" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>水墨笔</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="pencil" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="pencil" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>木铅笔</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sparkle_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sparkle_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>魔法棒</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="butterfly" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="butterfly" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金粉蝶</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="candle_flame" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="candle_flame" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>暖烛火</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="dove" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="dove" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>和平鸽</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="heart" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>红心</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="leaf" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="leaf" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>翠绿叶</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="sakura" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="sakura" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>樱花瓣</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="crown" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="crown" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金皇冠</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="music_note" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="music_note" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金音符</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cross_light" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cross_light" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>十字光</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="feather_gold" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="feather_gold" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣金羽</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="candy_cane" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="candy_cane" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>拐杖糖</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="christmas_tree" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="christmas_tree" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣诞树</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="holly_berry" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="holly_berry" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>冬青果</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="snowflake_wand" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="snowflake_wand" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>冰雪杖</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="santa_feather" data-angle="-8" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="santa_feather" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣诞羽</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="jingle_bell" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="jingle_bell" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>金铃铛</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_flag_shield" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_flag_shield" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>星条盾</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="purple_heart_medal" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="purple_heart_medal" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>紫心章</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="bald_eagle_crest" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="bald_eagle_crest" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>白头鹰</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="veteran_poppy" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="veteran_poppy" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>虞美人</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="military_dog_tag" data-angle="-6" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="military_dog_tag" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>军狗牌</span></button>
+                                            </div>
+                                        </div>
+                                    </details>
+
+                                    <div id="rop-scroll-tw-cursor-image-row" style="grid-column: span 2; display:none; padding:6px; border-radius:6px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25);">
+                                        <input type="hidden" id="rop-scroll-tw-cursor-image" value="">
+                                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                                            <button type="button" id="rop-scroll-tw-cursor-upload-btn" class="btn btn-secondary" style="padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer;">📂 选择笔尖图片...</button>
+                                            <img id="rop-scroll-tw-cursor-preview" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);display:none;">
+                                            <span id="rop-scroll-tw-cursor-name" style="font-size:10px;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传图片</span>
+                                        </div>
+                                        <div class="rop-grid" style="margin-top:4px;">
+                                            <label title="图片对齐到出字点的水平位置（0=最左，50=居中，100=最右）">笔尖锚点X%</label>
+                                            <input type="number" id="rop-scroll-tw-cursor-anchor-x" class="rop-input" min="0" max="100" step="1" value="15">
+                                            <label title="图片对齐到出字点的垂直位置（0=最上，50=居中，100=最下）">笔尖锚点Y%</label>
+                                            <input type="number" id="rop-scroll-tw-cursor-anchor-y" class="rop-input" min="0" max="100" step="1" value="85">
+                                        </div>
+                                    </div>
+
+                                    <label>笔尖大小</label>
+                                    <input type="number" id="rop-scroll-tw-cursor-scale" class="rop-input" min="0.2" max="4" step="0.1" value="1.1">
+                                    <label>笔尖偏移X</label>
+                                    <input type="number" id="rop-scroll-tw-cursor-offset-x" class="rop-input" min="-300" max="300" step="2" value="0">
+                                    <label>笔尖偏移Y</label>
+                                    <input type="number" id="rop-scroll-tw-cursor-offset-y" class="rop-input" min="-300" max="300" step="2" value="0">
+                                    <label>笔尖角度°</label>
+                                    <input type="number" id="rop-scroll-tw-cursor-angle" class="rop-input" min="-180" max="180" step="5" value="-8">
+                                    <label>光标字符</label>
+                                    <input type="text" id="rop-scroll-tw-cursor-char" class="rop-input" value="|" maxlength="4">
+                                    <label>光标颜色</label>
+                                    <input type="color" id="rop-scroll-tw-cursor-color" class="rop-color" value="#FFD700">
+                                </div>
+                            </div>
                         </div>
-                        <label title="开启后，背景画板和边框只包裹下方滚动正文区，不含顶部固定标题">仅包裹正文区</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-bg-body-only">
-                            <span style="font-size:11px;color:var(--text-muted);">背景/边框不含顶部标题</span>
+                    </details>
+
+                    <!-- ⑤ 滚动运动与智能适配（默认收起） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-motion">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎬 滚动运动与智能适配</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-motion-badge">自动滚动</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-chip-section-head">
+                                <span>滚动起止坐标与时间</span>
+                                <button id="rop-scroll-show-end" class="btn btn-secondary" style="padding:1px 8px;font-size:11px;border-radius:4px;">👁 显示终点</button>
+                            </div>
+                            <div class="rop-grid">
+                                <label title="整体水平位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体X</label><input type="number" id="rop-scroll-offset-x" class="rop-input" step="10" value="0">
+                                <label title="整体垂直位置（裁切区+文字一起移动）" style="font-weight:bold;color:#FF6B35;">整体Y</label><input type="number" id="rop-scroll-offset-y" class="rop-input" step="10" value="0">
+                                <label>开始(s)</label><input type="number" id="rop-scroll-start-time" class="rop-input" step="0.1" min="0">
+                                <label>结束(s)</label><div style="display:flex;gap:5px;align-items:center;"><input type="number" id="rop-scroll-end-time" class="rop-input" step="0.1" min="0" style="min-width:0;flex:1"><button type="button" id="rop-scroll-end-reset" class="btn btn-secondary" title="仅当前项目：跟随本项目主体时长" style="white-space:nowrap;font-size:11px;padding:3px 6px;">恢复默认时间</button></div>
+                                <label title="文字开始向上滚动时的初始Y坐标">起始Y</label><input type="number" id="rop-scroll-from-y" class="rop-input" step="10" value="960">
+                                <label title="文字向上滚动最终消失或停留的结束Y坐标">结束Y</label><input type="number" id="rop-scroll-to-y" class="rop-input" step="10" value="-200">
+                                <label>结束Y自动适配</label><label style="display:flex;gap:5px;align-items:center;font-size:11px;"><input type="checkbox" id="rop-scroll-end-y-auto" checked>底部羽化上方留 0.4 行</label>
+                                <label title="文字中心轴 X；文本宽度会从这个中心向左右展开">中心X</label><input type="number" id="rop-scroll-from-x" class="rop-input" step="10">
+                                <!-- 速度参数已移除：速度由 距离÷时间 自动决定 -->
+                                <input type="hidden" id="rop-scroll-speed" value="1">
+                                <input type="hidden" id="rop-scroll-speed-num" value="1">
+
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">智能适配</div>
+                                <label>固定显示</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-static">
+                                    <span style="font-size:11px;color:var(--text-muted);">关闭滚动，全部文案固定显示</span>
+                                </div>
+                                <label>自动停止</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-auto-stop">
+                                    <span style="font-size:11px;color:var(--text-muted);">文字全显示后停止滚动</span>
+                                </div>
+                                <label>提前完成</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="number" id="rop-scroll-auto-stop-lead" class="rop-input" min="0" max="60" step="0.5" value="0" style="width:60px;">
+                                    <span style="font-size:11px;color:var(--text-muted);">秒（提前完成滚动，0=不提前）</span>
+                                </div>
+                                <label>正文自动缩放</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-auto-fit">
+                                    <span style="font-size:11px;color:var(--text-muted);">自动缩小确保全部显示</span>
+                                </div>
+                                <label>最小字号</label><input type="number" id="rop-scroll-min-fontsize" class="rop-input" min="8" max="200" value="16">
+                                <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:4px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🎯 首尾行焦点区起停 (爆款同款)</div>
+                                <label title="开启后，0秒开场时第1行直接居中停在黄金焦点线（上方留白），结束时最后1行停在焦点线（下方留白），还原爆款祈祷书签滚动节奏">焦点区起停</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-focus-flow-enabled">
+                                    <span style="font-size:11px;color:#fde68a;">首行居中起步 · 末行居中停住</span>
+                                </div>
+                                <label title="0秒开始时第1行所在的卡片高度百分比位置 (推荐 40%~48%)">首行起点%</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-focus-start-pct" class="rop-range" min="10" max="85" step="1" value="42">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-start-pct" min="5" max="95" step="1" value="42">
+                                </div>
+                                <label title="滚动结束时最后1行停留的卡片高度百分比位置 (推荐 48%~58%)">末行终点%</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-focus-end-pct" class="rop-range" min="15" max="90" step="1" value="54">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-focus-end-pct" min="10" max="95" step="1" value="54">
+                                </div>
+                            </div>
                         </div>
-                        <label title="0=自动跟随覆层宽度；设置具体像素可直接控制背景画板与边框的宽度">画板/边框宽(0=自动)</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-scroll-bg-width" class="rop-range" min="120" max="1080" step="10" value="940"><input type="number" class="rop-num-readout" data-link="rop-scroll-bg-width" min="0" max="1920" step="10" value="940"></div>
-                        <label title="0=自动跟随覆层高度；设置具体像素可直接控制背景画板与边框的上下长度">画板/边框长(0=自动)</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-scroll-bg-height" class="rop-range" min="120" max="1920" step="10" value="500"><input type="number" class="rop-num-readout" data-link="rop-scroll-bg-height" min="0" max="1920" step="10" value="500"></div>
-                        <label title="微调背景画板与边框的左右位置">水平偏移X</label><input type="number" id="rop-scroll-bg-offset-x" class="rop-input" min="-1000" max="1000" step="5" value="0">
-                        <label title="微调背景画板与边框的上下位置">垂直偏移Y</label><input type="number" id="rop-scroll-bg-offset-y" class="rop-input" min="-1000" max="1000" step="5" value="0">
-                        <label>圆角</label><input type="number" id="rop-scroll-bg-radius" class="rop-input" min="0" max="200" value="12">
-                        <label title="支持正数外扩或负数内缩">上边距</label><input type="number" id="rop-scroll-bg-pad-top" class="rop-input" min="-400" max="500" value="55">
-                        <label title="支持正数外扩或负数内缩">下边距</label><input type="number" id="rop-scroll-bg-pad-bottom" class="rop-input" min="-400" max="500" value="55">
-                        <label title="支持正数外扩或负数内缩">左边距</label><input type="number" id="rop-scroll-bg-pad-left" class="rop-input" min="-400" max="500" value="16">
-                        <label title="支持正数外扩或负数内缩">右边距</label><input type="number" id="rop-scroll-bg-pad-right" class="rop-input" min="-400" max="500" value="16">
-                        <label>全屏蒙版</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-bg-fullscreen">
-                            <span style="font-size:11px;color:var(--text-muted);">背景铺满整个画面</span>
+                    </details>
+
+                    <!-- ⑥ 边缘羽化（默认收起） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-feather">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🌫️ 边缘羽化</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-feather-badge">上80 / 下80</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label title="裁切框边缘（早期经典羽化）：按裁切框边界计算羽化与偏移，完整兼容早期预设的大小与配置；贴合字幕边缘：在当前可见字幕边缘直接柔化">羽化基准</label>
+                                <select id="rop-scroll-feather-mode" class="rop-select">
+                                    <option value="clip">📐 裁切框边缘 (默认·早期经典羽化)</option>
+                                    <option value="content_edge">🎯 贴合字幕边缘</option>
+                                </select>
+                                <label>快捷预设</label>
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                    <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="off" style="padding:2px 7px;font-size:11px;">🚫 关闭</button>
+                                    <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="v80" style="padding:2px 7px;font-size:11px;">☁️ 上下柔化</button>
+                                    <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="top120" style="padding:2px 7px;font-size:11px;">⬆️ 仅上羽化</button>
+                                    <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="bot120" style="padding:2px 7px;font-size:11px;">⬇️ 仅下羽化</button>
+                                    <button type="button" class="rop-btn-sm rop-scroll-feather-preset" data-feather-preset="all80" style="padding:2px 7px;font-size:11px;">🖼️ 四周柔边</button>
+                                </div>
+                                <label title="顶部边缘柔化渐变宽度；负数相当于向外偏移放行">上羽化</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-top" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top" min="-1000" max="1000" step="1" value="80">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-top" title="恢复默认">↺</button>
+                                </div>
+                                <label title="正数向内推迟羽化起点（压缩可见区），负数向外扩展顶部可见边界">上羽化偏移</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-top-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-top-offset" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-top-offset" title="恢复默认">↺</button>
+                                </div>
+                                <label title="底部边缘柔化渐变宽度；负数相当于向外偏移放行">下羽化</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-bottom" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="80" data-default="80">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom" min="-1000" max="1000" step="1" value="80">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom" title="恢复默认">↺</button>
+                                </div>
+                                <label title="正数向内推迟羽化起点（提前隐去底部），负数向外扩展底部可见边界">下羽化偏移</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-bottom-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-bottom-offset" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-bottom-offset" title="恢复默认">↺</button>
+                                </div>
+                                <label title="左侧边缘柔化渐变宽度">左羽化</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-left" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-left" title="恢复默认">↺</button>
+                                </div>
+                                <label title="正数向内收缩左侧边界，负数向外扩展左侧边界">左羽化偏移</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-left-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-left-offset" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-left-offset" title="恢复默认">↺</button>
+                                </div>
+                                <label title="右侧边缘柔化渐变宽度">右羽化</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-right" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-right" title="恢复默认">↺</button>
+                                </div>
+                                <label title="正数向内收缩右侧边界，负数向外扩展右侧边界">右羽化偏移</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-feather-right-offset" class="rop-range rop-defaultable" min="-300" max="500" step="1" value="0" data-default="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-feather-right-offset" min="-1000" max="1000" step="1" value="0">
+                                    <button class="rop-reset-btn" data-target="rop-scroll-feather-right-offset" title="恢复默认">↺</button>
+                                </div>
+                                <div style="grid-column:1 / -1;font-size:11px;color:#8b95a5;line-height:1.35;">
+                                    💡 支持直接拉动滑杆，或在右侧数字框直接输入正负数（正数向内裁切/柔化，负数向外放宽边界）。
+                                </div>
+                            </div>
                         </div>
-                        <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🔖 卡片上下柔边 & 顶部书签角标 & 白鸽挂饰 (爆款同款)</div>
-                        <label title="让卡片背景上下边缘自然渐隐融合到画面中，左右边缘保持利落齐整 (0=不柔边，推荐 32~48)">卡片上下柔边</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-edge-feather" class="rop-range" min="0" max="200" step="2" value="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-edge-feather" min="0" max="400" step="2" value="0">
+                    </details>
+
+                    <!-- ⑦ 卡片背景 · 书签 · 挂饰 · 边框高级设置（默认收起） -->
+                    <details class="rop-scroll-accordion" id="rop-scroll-acc-bgadv">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🖼️ 卡片画板 · 书签 · 挂饰 · 边框高级设置</span></span>
+                            <span class="rop-acc-badge" id="rop-scroll-acc-bgadv-badge">未启用</span>
+                        </summary>
+                        <div class="rop-scroll-acc-body">
+                            <div class="rop-grid">
+                                <label>启用</label><input type="checkbox" id="rop-scroll-bg-enabled">
+                                <label>背景画板</label>
+                                <select id="rop-scroll-bg-style" class="rop-select">
+                                    <option value="solid">⬛ 纯色圆角底板 (默认)</option>
+                                    <optgroup label="🕊️ 设计师羽化卡片 + 左上角小图标角标 (爆款系列)">
+                                        <option value="prayer_bookmark_green">🕊️ 祈祷书签松石绿卡 (上下柔边渐变+金书签+白鸽玫瑰·爆款同款)</option>
+                                        <option value="prayer_bookmark_brown">🔖 祈祷书签复古深褐卡 (古典圣经褐底+上下柔边+十字金书签)</option>
+                                        <option value="prayer_bookmark_navy">🌌 祈祷书签静谧深蓝卡 (深夜祈祷蓝底+上下柔边+金书签)</option>
+                                        <option value="prayer_bookmark_burgundy">🍷 皇家酒红玫瑰金章卡 (丝绒勃艮第红底+上下柔边+左上玫瑰金章角标)</option>
+                                        <option value="veteran_shield_card">🇺🇸 星条旗金盾荣耀深蓝卡 (海军深蓝柔边底+金内边+左上星条金盾角标)</option>
+                                        <option value="vintage_wax_parchment">🏵️ 复古火漆金章胡桃木卡 (胡桃暖棕柔边底+左上立体复古火漆金章角标)</option>
+                                        <option value="royal_olive_emerald">🌿 橄榄枝桂冠翡翠金线卡 (深祖母绿柔边底+金细边+左上橄榄桂冠角标)</option>
+                                        <option value="editorial_quote_obsidian">❝ 曜石黑杂志引号金线卡 (高级曜石黑柔边底+双侧金线+左上双引号金标)</option>
+                                        <option value="sacred_ivory_crown">👑 圣洁皇冠鎏金紫檀卡 (皇家紫檀柔边底+金内边+左上皇冠鎏金角标)</option>
+                                    </optgroup>
+                                    <optgroup label="📰 报纸 / 复古纸张整版背景板">
+                                        <option value="newspaper_page">📰 复古旧报纸整版画板 (报刊分栏纹+报头双线+手撕边)</option>
+                                        <option value="newspaper_sepia_page">🗞️ 怀旧泛黄古董报刊板 (暖黄旧报+古典双线内框)</option>
+                                        <option value="torn_parchment_board">📜 圣经烫金羊皮书卷板 (古典羊皮纸+四角烫金星芒框)</option>
+                                        <option value="kraft_clipboard">🏷️ 手撕牛皮纸剪贴画板 (白边牛皮纸卡+半透明胶带贴)</option>
+                                        <option value="grid_notebook_page">📓 手账方格笔记本页 (清新方格信纸+红蓝手账线)</option>
+                                        <option value="dark_film_board">🎬 暗夜黑金胶片画板 (深邃磨砂底+复古暗金双线框)</option>
+                                    </optgroup>
+                                    <optgroup label="🎄 圣诞节限定大背景画板 / 贺卡框">
+                                        <option value="xmas_candy_frame">🍬 圣诞红白拐杖糖画框板 (红白斜纹糖果外框+深红丝绒底)</option>
+                                        <option value="xmas_velvet_gold_board">🎅 圣诞红丝绒烫金贺卡板 (皇家红丝绒+双层金线+八角金星)</option>
+                                        <option value="xmas_pine_snow_board">🎄 圣诞松林覆雪木牌板 (森林松绿+顶部厚积雪层+雪花冬青)</option>
+                                        <option value="xmas_gingerbread_card">🍪 圣诞姜饼屋糖霜贺卡 (暖棕姜饼+白糖霜裱花框+冬青果)</option>
+                                        <option value="xmas_starry_snow_night">❄️ 圣诞极光飘雪夜空板 (冰晶深蓝渐变+漫天雪花星芒)</option>
+                                        <option value="xmas_cream_holly_letter">🦌 圣诞暖白信纸冬青贺卡 (奶油羊皮信纸+红绿金线框+冬青)</option>
+                                    </optgroup>
+                                    <optgroup label="🇺🇸 美国退伍军人节限定大背景画板 / 荣耀框">
+                                        <option value="vet_stars_stripes_board">🇺🇸 美国星条旗荣耀画框板 (红白蓝星条旗外框+深海蓝底+金星)</option>
+                                        <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
+                                        <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
+                                        <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
+                                    </optgroup>
+                                </select>
+                                <label>颜色</label><input type="color" id="rop-scroll-bg-color" class="rop-color" value="#000000">
+                                <label>透明度%</label><input type="number" id="rop-scroll-bg-opacity" class="rop-input" min="0" max="100" value="75">
+                                <label title="开启后，报纸版面、报头线、撕边纹理与圣诞装饰会跟着字幕一起往上循环移动">随字幕循环滚动</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-bg-scroll-follow" checked>
+                                    <span style="font-size:11px;color:#fde68a;">背景随字幕向上循环移动</span>
+                                </div>
+                                <label title="开启后，背景画板和边框只包裹下方滚动正文区，不含顶部固定标题">仅包裹正文区</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-bg-body-only">
+                                    <span style="font-size:11px;color:var(--text-muted);">背景/边框不含顶部标题</span>
+                                </div>
+                                <label title="0=自动跟随覆层宽度；设置具体像素可直接控制背景画板与边框的宽度">画板/边框宽(0=自动)</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-scroll-bg-width" class="rop-range" min="120" max="1080" step="10" value="940"><input type="number" class="rop-num-readout" data-link="rop-scroll-bg-width" min="0" max="1920" step="10" value="940"></div>
+                                <label title="0=自动跟随覆层高度；设置具体像素可直接控制背景画板与边框的上下长度">画板/边框长(0=自动)</label>
+                                <div class="rop-slider-combo"><input type="range" id="rop-scroll-bg-height" class="rop-range" min="120" max="1920" step="10" value="500"><input type="number" class="rop-num-readout" data-link="rop-scroll-bg-height" min="0" max="1920" step="10" value="500"></div>
+                                <label title="微调背景画板与边框的左右位置">水平偏移X</label><input type="number" id="rop-scroll-bg-offset-x" class="rop-input" min="-1000" max="1000" step="5" value="0">
+                                <label title="微调背景画板与边框的上下位置">垂直偏移Y</label><input type="number" id="rop-scroll-bg-offset-y" class="rop-input" min="-1000" max="1000" step="5" value="0">
+                                <label>圆角</label><input type="number" id="rop-scroll-bg-radius" class="rop-input" min="0" max="200" value="12">
+                                <label title="支持正数外扩或负数内缩">上边距</label><input type="number" id="rop-scroll-bg-pad-top" class="rop-input" min="-400" max="500" value="55">
+                                <label title="支持正数外扩或负数内缩">下边距</label><input type="number" id="rop-scroll-bg-pad-bottom" class="rop-input" min="-400" max="500" value="55">
+                                <label title="支持正数外扩或负数内缩">左边距</label><input type="number" id="rop-scroll-bg-pad-left" class="rop-input" min="-400" max="500" value="16">
+                                <label title="支持正数外扩或负数内缩">右边距</label><input type="number" id="rop-scroll-bg-pad-right" class="rop-input" min="-400" max="500" value="16">
+                                <label>全屏蒙版</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-bg-fullscreen">
+                                    <span style="font-size:11px;color:var(--text-muted);">背景铺满整个画面</span>
+                                </div>
+                                <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">🔖 卡片上下柔边 & 顶部书签角标 & 白鸽挂饰 (爆款同款)</div>
+                                <label title="让卡片背景上下边缘自然渐隐融合到画面中，左右边缘保持利落齐整 (0=不柔边，推荐 32~48)">卡片上下柔边</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-edge-feather" class="rop-range" min="0" max="200" step="2" value="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-edge-feather" min="0" max="400" step="2" value="0">
+                                </div>
+                                <label title="在卡片顶部边缘悬挂一枚立体金色燕尾书签丝带">顶部书签角标</label>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <input type="checkbox" id="rop-scroll-bg-bookmark-enabled">
+                                    <input type="color" id="rop-scroll-bg-bookmark-color" class="rop-color" value="#D9AC42" style="flex:1;" title="书签颜色">
+                                </div>
+                                <label>书签样式</label>
+                                <select id="rop-scroll-bg-bookmark-style" class="rop-select">
+                                    <option value="swallowtail">🔖 燕尾丝带书签 (爆款同款)</option>
+                                    <option value="us_star_shield">🇺🇸 星条旗金盾角标 (美国星条盾牌)</option>
+                                    <option value="gold_wax_seal">🏵️ 复古火漆金章角标 (立体火漆印章)</option>
+                                    <option value="rose_emblem">🌹 玫瑰金章丝带角标 (盛放红玫瑰章)</option>
+                                    <option value="olive_wreath_tag">🌿 橄榄枝桂冠金章角标 (和平桂冠章)</option>
+                                    <option value="royal_crown_tag">👑 皇冠鎏金铭牌角标 (皇家三尖皇冠)</option>
+                                    <option value="folded_dog_ear">📄 折角书页立体金角 (书页3D折角)</option>
+                                    <option value="cross_tag">✝️ 十字压纹书签 (古典圣经十字)</option>
+                                    <option value="heart_prayer_tag">💛 爱心圣光丝带角标 (祈祷红心章)</option>
+                                    <option value="poppy_honor_tag">🌺 虞美人荣光丝带角标 (纪念虞美人花)</option>
+                                    <option value="quote_mark_badge">❝ 杂志双引号金标 (高级语录角标)</option>
+                                    <option value="rounded_tab">🏷️ 圆角挂牌书签 (简约圆弧金牌)</option>
+                                </select>
+                                <label>书签位置</label>
+                                <select id="rop-scroll-bg-bookmark-pos" class="rop-select">
+                                    <option value="top-left">↖️ 左上角 (爆款同款)</option>
+                                    <option value="top-center">⬆️ 顶部居中</option>
+                                    <option value="top-right">↗️ 右上角</option>
+                                </select>
+                                <label title="书签丝带宽度(像素)">书签宽度</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-bookmark-width" class="rop-range" min="16" max="120" step="1" value="38">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-width" min="10" max="240" step="1" value="38">
+                                </div>
+                                <label title="书签丝带下垂长度(像素)">书签长度</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-bookmark-height" class="rop-range" min="24" max="200" step="1" value="58">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-height" min="16" max="360" step="1" value="58">
+                                </div>
+                                <label title="书签距离卡片左/右侧边缘的内缩距离(像素)">书签边距</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-bookmark-inset" class="rop-range" min="0" max="300" step="2" value="52">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-inset" min="0" max="600" step="2" value="52">
+                                </div>
+                                <label title="在卡片正上方悬浮绘制动态吉祥物/神圣挂饰（如爆款振翅白鸽衔红玫瑰）">卡片顶部挂饰</label>
+                                <select id="rop-scroll-bg-top-mascot" class="rop-select">
+                                    <option value="none">🚫 无顶部挂饰</option>
+                                    <option value="peace_dove_rose">🕊️ 振翅白鸽衔红玫瑰 (爆款同款)</option>
+                                    <option value="peace_dove_olive">🌿 振翅白鸽衔橄榄枝</option>
+                                    <option value="golden_cross_rays">✝️ 圣光十字架光芒</option>
+                                    <option value="praying_hands_halo">🙏 祈祷之手圣光环</option>
+                                </select>
+                                <label title="顶部挂饰缩放比例%">挂饰大小%</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-top-mascot-scale" class="rop-range" min="40" max="220" step="5" value="100">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-scale" min="20" max="400" step="5" value="100">
+                                </div>
+                                <label title="顶部挂饰水平位置微调(像素)">挂饰偏移X</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-top-mascot-offset-x" class="rop-range" min="-400" max="400" step="2" value="0">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-x" min="-800" max="800" step="2" value="0">
+                                </div>
+                                <label title="顶部挂饰距离卡片上边缘的垂直位置(负数在卡片上方，正数在卡片内部)">挂饰偏移Y</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-top-mascot-offset-y" class="rop-range" min="-320" max="260" step="2" value="-68">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-y" min="-800" max="800" step="2" value="-68">
+                                </div>
+                                <label title="白鸽振翅/光芒律动的动画速度 (0%=静止，100%=标准速度)">挂饰动画速%</label>
+                                <div class="rop-slider-combo">
+                                    <input type="range" id="rop-scroll-bg-top-mascot-speed" class="rop-range" min="0" max="250" step="5" value="100">
+                                    <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-speed" min="0" max="500" step="5" value="100">
+                                </div>
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">卡片边框</div>
+                                <label>开启边框</label><input type="checkbox" id="rop-scroll-bg-border-enabled">
+                                <label>边框位置</label>
+                                <select id="rop-scroll-bg-border-sides" class="rop-select">
+                                    <option value="all">四周全包</option>
+                                    <option value="top">仅上方</option>
+                                    <option value="bottom">仅下方</option>
+                                    <option value="left">仅左侧</option>
+                                    <option value="right">仅右侧</option>
+                                    <option value="top-bottom">上下边</option>
+                                    <option value="left-right">左右边</option>
+                                </select>
+                                <label>边框颜色</label><input type="color" id="rop-scroll-bg-border-color" class="rop-color" value="#FFD700">
+                                <label>边框粗细</label><input type="number" id="rop-scroll-bg-border-width" class="rop-input" min="1" max="20" value="3">
+                                <label>边框样式</label>
+                                <select id="rop-scroll-bg-border-style" class="rop-select">
+                                    <option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option>
+                                </select>
+                                <label>边框透明%</label><input type="number" id="rop-scroll-bg-border-opacity" class="rop-input" min="0" max="100" value="100">
+                                <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">磨砂模糊</div>
+                                <label>开启磨砂</label><input type="checkbox" id="rop-scroll-bg-blur-enabled">
+                                <label>模糊强度</label><input type="number" id="rop-scroll-bg-blur-amount" class="rop-input" min="1" max="40" value="10">
+                            </div>
                         </div>
-                        <label title="在卡片顶部边缘悬挂一枚立体金色燕尾书签丝带">顶部书签角标</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <input type="checkbox" id="rop-scroll-bg-bookmark-enabled">
-                            <input type="color" id="rop-scroll-bg-bookmark-color" class="rop-color" value="#D9AC42" style="flex:1;" title="书签颜色">
-                        </div>
-                        <label>书签样式</label>
-                        <select id="rop-scroll-bg-bookmark-style" class="rop-select">
-                            <option value="swallowtail">🔖 燕尾丝带书签 (爆款同款)</option>
-                            <option value="us_star_shield">🇺🇸 星条旗金盾角标 (美国星条盾牌)</option>
-                            <option value="gold_wax_seal">🏵️ 复古火漆金章角标 (立体火漆印章)</option>
-                            <option value="rose_emblem">🌹 玫瑰金章丝带角标 (盛放红玫瑰章)</option>
-                            <option value="olive_wreath_tag">🌿 橄榄枝桂冠金章角标 (和平桂冠章)</option>
-                            <option value="royal_crown_tag">👑 皇冠鎏金铭牌角标 (皇家三尖皇冠)</option>
-                            <option value="folded_dog_ear">📄 折角书页立体金角 (书页3D折角)</option>
-                            <option value="cross_tag">✝️ 十字压纹书签 (古典圣经十字)</option>
-                            <option value="heart_prayer_tag">💛 爱心圣光丝带角标 (祈祷红心章)</option>
-                            <option value="poppy_honor_tag">🌺 虞美人荣光丝带角标 (纪念虞美人花)</option>
-                            <option value="quote_mark_badge">❝ 杂志双引号金标 (高级语录角标)</option>
-                            <option value="rounded_tab">🏷️ 圆角挂牌书签 (简约圆弧金牌)</option>
-                        </select>
-                        <label>书签位置</label>
-                        <select id="rop-scroll-bg-bookmark-pos" class="rop-select">
-                            <option value="top-left">↖️ 左上角 (爆款同款)</option>
-                            <option value="top-center">⬆️ 顶部居中</option>
-                            <option value="top-right">↗️ 右上角</option>
-                        </select>
-                        <label title="书签丝带宽度(像素)">书签宽度</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-bookmark-width" class="rop-range" min="16" max="120" step="1" value="38">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-width" min="10" max="240" step="1" value="38">
-                        </div>
-                        <label title="书签丝带下垂长度(像素)">书签长度</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-bookmark-height" class="rop-range" min="24" max="200" step="1" value="58">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-height" min="16" max="360" step="1" value="58">
-                        </div>
-                        <label title="书签距离卡片左/右侧边缘的内缩距离(像素)">书签边距</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-bookmark-inset" class="rop-range" min="0" max="300" step="2" value="52">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-bookmark-inset" min="0" max="600" step="2" value="52">
-                        </div>
-                        <label title="在卡片正上方悬浮绘制动态吉祥物/神圣挂饰（如爆款振翅白鸽衔红玫瑰）">卡片顶部挂饰</label>
-                        <select id="rop-scroll-bg-top-mascot" class="rop-select">
-                            <option value="none">🚫 无顶部挂饰</option>
-                            <option value="peace_dove_rose">🕊️ 振翅白鸽衔红玫瑰 (爆款同款)</option>
-                            <option value="peace_dove_olive">🌿 振翅白鸽衔橄榄枝</option>
-                            <option value="golden_cross_rays">✝️ 圣光十字架光芒</option>
-                            <option value="praying_hands_halo">🙏 祈祷之手圣光环</option>
-                        </select>
-                        <label title="顶部挂饰缩放比例%">挂饰大小%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-top-mascot-scale" class="rop-range" min="40" max="220" step="5" value="100">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-scale" min="20" max="400" step="5" value="100">
-                        </div>
-                        <label title="顶部挂饰水平位置微调(像素)">挂饰偏移X</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-top-mascot-offset-x" class="rop-range" min="-400" max="400" step="2" value="0">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-x" min="-800" max="800" step="2" value="0">
-                        </div>
-                        <label title="顶部挂饰距离卡片上边缘的垂直位置(负数在卡片上方，正数在卡片内部)">挂饰偏移Y</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-top-mascot-offset-y" class="rop-range" min="-320" max="260" step="2" value="-68">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-offset-y" min="-800" max="800" step="2" value="-68">
-                        </div>
-                        <label title="白鸽振翅/光芒律动的动画速度 (0%=静止，100%=标准速度)">挂饰动画速%</label>
-                        <div class="rop-slider-combo">
-                            <input type="range" id="rop-scroll-bg-top-mascot-speed" class="rop-range" min="0" max="250" step="5" value="100">
-                            <input type="number" class="rop-num-readout" data-link="rop-scroll-bg-top-mascot-speed" min="0" max="500" step="5" value="100">
-                        </div>
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">卡片边框</div>
-                        <label>开启边框</label><input type="checkbox" id="rop-scroll-bg-border-enabled">
-                        <label>边框位置</label>
-                        <select id="rop-scroll-bg-border-sides" class="rop-select">
-                            <option value="all">四周全包</option>
-                            <option value="top">仅上方</option>
-                            <option value="bottom">仅下方</option>
-                            <option value="left">仅左侧</option>
-                            <option value="right">仅右侧</option>
-                            <option value="top-bottom">上下边</option>
-                            <option value="left-right">左右边</option>
-                        </select>
-                        <label>边框颜色</label><input type="color" id="rop-scroll-bg-border-color" class="rop-color" value="#FFD700">
-                        <label>边框粗细</label><input type="number" id="rop-scroll-bg-border-width" class="rop-input" min="1" max="20" value="3">
-                        <label>边框样式</label>
-                        <select id="rop-scroll-bg-border-style" class="rop-select">
-                            <option value="solid">实线</option><option value="dashed">虚线</option><option value="dotted">点线</option>
-                        </select>
-                        <label>边框透明%</label><input type="number" id="rop-scroll-bg-border-opacity" class="rop-input" min="0" max="100" value="100">
-                        <div style="grid-column: span 2; font-size:11px; color:var(--accent); margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">磨砂模糊</div>
-                        <label>开启磨砂</label><input type="checkbox" id="rop-scroll-bg-blur-enabled">
-                        <label>模糊强度</label><input type="number" id="rop-scroll-bg-blur-amount" class="rop-input" min="1" max="40" value="10">
-                    </div>
+                    </details>
                 </div>
 
                 <!-- 文字卡片属性 (textcard覆层独有) -->
@@ -6096,6 +6295,7 @@ class ReelsOverlayPanel {
             this._val('rop-decor-center-clear', ov.decor_center_clear ?? preset.center_clear ?? 65);
             this._val('rop-decor-color1', ov.decor_color1 || preset.color1 || '#FFD700');
             this._val('rop-decor-color2', ov.decor_color2 || preset.color2 || '#FFFDF5');
+            this._updateOverlayDecorAccordionBadges(ov);
         }
 
         if (ov.type === 'image' || ov.type === 'video') {
@@ -6576,6 +6776,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-cursor-color', ov.scroll_tw_cursor_color || '#FFD700');
             this._syncScrollTypewriterCursorImageUI();
             this._refreshScrollStylePresetSelect(ov.scroll_style_preset_id || ov.preset_id || '');
+            this._updateScrollAccordionBadges(ov);
         }
 
         this._val('rop-anim-in', ov.anim_in_type || 'none');
@@ -7281,6 +7482,7 @@ class ReelsOverlayPanel {
             ov.decor_center_clear = Number(this._get('rop-decor-center-clear') ?? 65);
             ov.decor_color1 = this._get('rop-decor-color1') || '#FFD700';
             ov.decor_color2 = this._get('rop-decor-color2') || '#FFFDF5';
+            this._updateOverlayDecorAccordionBadges(ov);
             this._refreshList();
             if (window._reelsState?.decorPanel) window._reelsState.decorPanel.refresh();
         }
@@ -7338,6 +7540,9 @@ class ReelsOverlayPanel {
             const motion = window.ReelsOverlay?.measureScrollMotion?.(ov);
             if (motion) { ov.scroll_to_y = Math.round(motion.endY * 10) / 10; this._val('rop-scroll-to-y', ov.scroll_to_y); }
         }
+        if (ov.type === 'scroll') {
+            this._updateScrollAccordionBadges(ov);
+        }
         if (typeof setTimeout === 'function' && typeof clearTimeout === 'function') {
             if (this._scopeSyncTimer) clearTimeout(this._scopeSyncTimer);
             this._scopeSyncTimer = setTimeout(() => {
@@ -7361,6 +7566,41 @@ class ReelsOverlayPanel {
         }
     }
 
+    _updateScrollAccordionBadges(ov) {
+        if (!ov || !this.container) return;
+        const setBadge = (id, text, active = false) => {
+            const el = this.container.querySelector(`#${id}`);
+            if (!el) return;
+            el.textContent = text;
+            el.classList.toggle('is-active', Boolean(active));
+        };
+        const titleText = String(ov.scroll_title || '').trim();
+        setBadge('rop-scroll-acc-title-badge', titleText ? `已填 ${titleText.length}字` : '未设置', Boolean(titleText));
+        const lineCount = String(ov.content || '').split('\n').filter(Boolean).length;
+        setBadge('rop-scroll-acc-body-badge', `${Number(ov.fontsize || 40)}px${lineCount ? ` · ${lineCount}行` : ''}`, lineCount > 0);
+        const hasCardBg = Boolean(ov.scroll_bg_enabled);
+        const hasBodyBg = Boolean(ov.scroll_body_bg_enabled);
+        const effectsLabel = hasCardBg && hasBodyBg ? '画板+底衬' : (hasCardBg ? '卡片画板' : (hasBodyBg ? '逐行底衬' : '默认'));
+        setBadge('rop-scroll-acc-effects-badge', effectsLabel, hasCardBg || hasBodyBg);
+        setBadge('rop-scroll-acc-corner-badge-val', ov.scroll_bg_bookmark_enabled ? (ov.scroll_bg_bookmark_style || '书签') : '无', Boolean(ov.scroll_bg_bookmark_enabled));
+        setBadge('rop-scroll-acc-ribbon-val', hasBodyBg ? (ov.scroll_body_bg_style || '已开启') : '未开启', hasBodyBg);
+        const twOn = Boolean(ov.scroll_typewriter_enabled);
+        setBadge('rop-scroll-acc-tw-badge', twOn ? '已开启' : '已关闭', twOn);
+        const motionLabel = ov.scroll_static ? '固定显示' : (ov.scroll_focus_flow_enabled ? '焦点起停' : '自动滚动');
+        setBadge('rop-scroll-acc-motion-badge', motionLabel, Boolean(ov.scroll_static || ov.scroll_focus_flow_enabled));
+        setBadge('rop-scroll-acc-feather-badge', `上${Number(ov.scroll_feather_top ?? 80)} / 下${Number(ov.scroll_feather_bottom ?? 80)}`, false);
+        setBadge('rop-scroll-acc-bgadv-badge', hasCardBg ? '已启用' : '未启用', hasCardBg);
+    }
+
+    _updateOverlayDecorAccordionBadges(ov) {
+        if (!ov || !this.container) return;
+        const summary = _computeDecorSummaryBadges(ov);
+        _setAccBadge(this.container, 'rop-decor-acc-dark-badge', summary.darkLabel, summary.darkActive);
+        _setAccBadge(this.container, 'rop-decor-acc-grain-badge', summary.grainLabel, summary.grainActive);
+        _setAccBadge(this.container, 'rop-decor-acc-effects-badge', summary.effectsLabel, summary.effectsActive);
+        _setAccBadge(this.container, 'rop-decor-acc-layout-badge', summary.layoutLabel, false);
+    }
+
     _syncScrollTypewriterCursorImageUI() {
         const ov = this._selectedOv;
         const twEnabled = Boolean(this._get('rop-scroll-tw-enabled') ?? ov?.scroll_typewriter_enabled);
@@ -7368,10 +7608,14 @@ class ReelsOverlayPanel {
         if (detailsEl) {
             const wasHidden = detailsEl.style.display === 'none';
             detailsEl.style.display = twEnabled ? '' : 'none';
-            if (wasHidden && twEnabled && !this._syncing && typeof detailsEl.scrollIntoView === 'function') {
-                setTimeout(() => {
-                    try { detailsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
-                }, 30);
+            if (wasHidden && twEnabled && !this._syncing) {
+                const accTw = this.container?.querySelector('#rop-scroll-acc-tw');
+                if (accTw) accTw.open = true;
+                if (typeof detailsEl.scrollIntoView === 'function') {
+                    setTimeout(() => {
+                        try { detailsEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+                    }, 30);
+                }
             }
         }
         const kind = this._get('rop-scroll-tw-cursor-kind') || ov?.scroll_tw_cursor_kind || 'quill';
@@ -11857,6 +12101,7 @@ class ReelsDecorPanel {
         this._selectedDecorId = null;
         this._activeCategory = 'all';
         this._syncing = false;
+        this._hasSyncedCtaOnce = false;
         this._renderUI();
         this._bindEvents();
         this.refresh();
@@ -11972,6 +12217,8 @@ class ReelsDecorPanel {
         if (typeof window !== 'undefined' && window._reelsState) {
             window._reelsState.overlaySelectedId = ov.id;
         }
+        const ctaAcc = this.container?.querySelector('#rdp-acc-cta');
+        if (ctaAcc) ctaAcc.open = true;
         this._syncPhoneCtaUI(ov);
         this._syncScopeAndRender(ov);
         this._previewPhoneCtaAnim(ov);
@@ -12021,27 +12268,27 @@ class ReelsDecorPanel {
         const styleEntries = Object.entries(styles);
 
         const catBadgeMap = {
-            dark_particles: { bg: 'linear-gradient(135deg,#090d16,#1e293b)', border: '#475569', text: '#e2e8f0', tag: '🖤 黑色&粒子' },
-            film_grain:     { bg: 'linear-gradient(135deg,#271c12,#451a03)', border: '#d97706', text: '#fde68a', tag: '🎞️ 电影颗粒' },
-            stars:          { bg: 'linear-gradient(135deg,#1e1b4b,#3b0764)', border: '#eab308', text: '#fef08a', tag: '🌟 星芒光斑' },
-            xmas:           { bg: 'linear-gradient(135deg,#14532d,#7f1d1d)', border: '#f87171', text: '#fef9c3', tag: '🎄 圣诞限定' },
-            veterans:       { bg: 'linear-gradient(135deg,#0a1931,#7f1d1d)', border: '#fbbf24', text: '#fef08a', tag: '🇺🇸 退伍军人节' },
-            frame:          { bg: 'linear-gradient(135deg,#292524,#44403c)', border: '#d4af37', text: '#fde68a', tag: '⚜️ 复古画框' },
+            dark_particles: { bg: 'linear-gradient(135deg,#090d16,#1e293b)', border: '#475569', text: '#e2e8f0', tag: '🖤黑色' },
+            film_grain:     { bg: 'linear-gradient(135deg,#271c12,#451a03)', border: '#d97706', text: '#fde68a', tag: '🎞️胶片' },
+            stars:          { bg: 'linear-gradient(135deg,#1e1b4b,#3b0764)', border: '#eab308', text: '#fef08a', tag: '🌟星芒' },
+            xmas:           { bg: 'linear-gradient(135deg,#14532d,#7f1d1d)', border: '#f87171', text: '#fef9c3', tag: '🎄圣诞' },
+            veterans:       { bg: 'linear-gradient(135deg,#0a1931,#7f1d1d)', border: '#fbbf24', text: '#fef08a', tag: '🇺🇸退伍' },
+            frame:          { bg: 'linear-gradient(135deg,#292524,#44403c)', border: '#d4af37', text: '#fde68a', tag: '⚜️画框' },
         };
 
         const cardsHtml = styleEntries.map(([id, cfg], idx) => {
             const theme = catBadgeMap[cfg.category] || catBadgeMap.stars;
             return `
                 <button type="button" class="rdp-preset-card" data-style-id="${id}" data-cat="${cfg.category || 'stars'}"
-                    style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:7px 8px;border-radius:7px;background:${theme.bg};border:1px solid ${theme.border};color:${theme.text};cursor:pointer;text-align:left;transition:all 0.15s;">
+                    style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:6px 7px;border-radius:7px;background:${theme.bg};border:1px solid ${theme.border};color:${theme.text};cursor:pointer;text-align:left;transition:all 0.15s;">
                     <div style="display:flex;width:100%;justify-content:space-between;align-items:center;gap:4px;">
-                        <span style="font-size:10px;opacity:0.82;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,0.35);">${idx + 1}. ${theme.tag}</span>
-                        <span style="display:inline-flex;gap:3px;">
+                        <span style="font-size:10px;opacity:0.85;padding:1px 5px;border-radius:4px;background:rgba(0,0,0,0.35);white-space:nowrap;">${idx + 1}. ${theme.tag}</span>
+                        <span style="display:inline-flex;gap:3px;flex-shrink:0;">
                             <i style="width:9px;height:9px;border-radius:50%;background:${cfg.color1 || '#FFD700'};display:inline-block;border:1px solid rgba(255,255,255,0.4);"></i>
                             <i style="width:9px;height:9px;border-radius:50%;background:${cfg.color2 || '#FFFFFF'};display:inline-block;border:1px solid rgba(255,255,255,0.4);"></i>
                         </span>
                     </div>
-                    <div style="font-size:11.5px;font-weight:700;line-height:1.25;word-break:break-word;">${cfg.name}</div>
+                    <div style="font-size:11px;font-weight:700;line-height:1.25;word-break:break-word;">${cfg.name}</div>
                 </button>
             `;
         }).join('');
@@ -12064,407 +12311,452 @@ class ReelsDecorPanel {
         `;
 
         this.container.innerHTML = `
-            <div class="rop-root rdp-root" style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--text-primary,#e2e8f0);">
-                <!-- 顶部独立启用总开关（与 T字幕、🖼️覆层 完全独立，打勾预览并导出，不打勾不显示不导出） -->
-                <div id="rdp-master-bar" style="padding:9px 11px;background:linear-gradient(135deg,rgba(16,185,129,0.18),rgba(59,130,246,0.16));border:1px solid rgba(52,211,153,0.48);border-radius:8px;display:flex;flex-direction:column;gap:5px;">
+            <div class="rop-root rdp-root">
+                <!-- 顶部独立启用总开关 -->
+                <div id="rdp-master-bar" class="rdp-master-bar">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;margin:0;">
                         <span style="display:flex;align-items:center;gap:7px;font-weight:800;font-size:12.5px;color:#ecfdf5;">
-                            <input type="checkbox" id="rdp-master-enable" checked style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;">
-                            <span>启用点缀与颗粒 (打勾=预览并导出 / 不打勾=不显示不导出)</span>
+                            <input type="checkbox" id="rdp-master-enable" checked style="width:15px;height:15px;accent-color:#10b981;cursor:pointer;">
+                            <span>启用点缀与颗粒</span>
                         </span>
                         <span id="rdp-master-status-badge" style="font-size:10.5px;padding:2px 7px;border-radius:999px;background:rgba(16,185,129,0.28);color:#6ee7b7;border:1px solid rgba(52,211,153,0.5);font-weight:700;white-space:nowrap;">已启用·参与导出</span>
                     </label>
-                    <div style="font-size:11px;color:#cbd5e1;line-height:1.35;">
-                        📌 <b>独立中间装饰层</b>：与【T 字幕】【🖼️ 覆层】完全分开控制（关闭覆层预览不影响点缀）；固定位于<b>视频素材前面、T字幕与覆层后面</b>，绝不遮挡字幕。
+                    <div style="font-size:10.5px;color:var(--text-muted,#94a3b8);line-height:1.35;">
+                        📌 独立中间层（视频前、字幕与覆层后，绝不遮挡字幕；不勾选则不显示不导出）
                     </div>
                 </div>
 
                 <!-- 顶部作用范围与多层管理栏 -->
-                <div style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                        <div style="font-weight:800;font-size:13px;color:#fde68a;">✨ 点缀、黑色模板与电影颗粒 (34款)</div>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:11px;color:var(--text-secondary);">样式作用:</span>
-                            <select id="rdp-style-scope" class="rop-select" style="width:auto;padding:2px 6px;font-size:11px;">
+                <div class="rdp-layer-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <div style="font-weight:800;font-size:12px;color:#fde68a;white-space:nowrap;">✨ 图层管理</div>
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <span style="font-size:10.5px;color:var(--text-secondary);white-space:nowrap;">范围:</span>
+                            <select id="rdp-style-scope" class="rop-select" style="width:auto;padding:2px 5px;font-size:10.5px;">
                                 <option value="folder">当前队列</option>
                                 <option value="all">所有队列</option>
                                 <option value="task">仅当前任务</option>
                             </select>
-                            <label style="display:flex;align-items:center;gap:3px;font-size:11px;cursor:pointer;margin:0;">
+                            <label style="display:flex;align-items:center;gap:3px;font-size:10.5px;cursor:pointer;margin:0;white-space:nowrap;">
                                 <input type="checkbox" id="rdp-apply-all" checked>
                                 <span>同步</span>
                             </label>
                         </div>
                     </div>
 
-                    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
-                        <button type="button" id="rdp-add-layer-btn" class="rop-btn" style="flex:1;padding:5px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:1px solid #34d399;border-radius:6px;cursor:pointer;">➕ 叠加新点缀/颗粒层</button>
-                        <button type="button" id="rdp-fit-full-btn" class="rop-btn" style="padding:5px 7px;font-size:11px;background:var(--bg-secondary,#252836);color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;" title="铺满 1080×1920 全画面">📐 全屏</button>
-                        <button type="button" id="rdp-fit-card-btn" class="rop-btn" style="padding:5px 7px;font-size:11px;background:var(--bg-secondary,#252836);color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;" title="贴合中间内容框 940×1260">🎯 贴合中间</button>
-                        <button type="button" id="rdp-clear-layers-btn" class="rop-btn" style="padding:5px 7px;font-size:11px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:6px;cursor:pointer;" title="清除当前任务的全部点缀/颗粒层">🗑️ 清空</button>
+                    <div style="display:flex;gap:4px;flex-wrap:nowrap;">
+                        <button type="button" id="rdp-add-layer-btn" class="rop-btn" style="flex:1;min-width:0;padding:4px 6px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:1px solid #34d399;border-radius:6px;cursor:pointer;white-space:nowrap;">➕ 叠加图层</button>
+                        <button type="button" id="rdp-fit-full-btn" class="rop-btn" style="padding:4px 6px;font-size:10.5px;background:var(--bg-secondary,#252836);color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;white-space:nowrap;" title="铺满 1080×1920 全画面">📐 全屏</button>
+                        <button type="button" id="rdp-fit-card-btn" class="rop-btn" style="padding:4px 6px;font-size:10.5px;background:var(--bg-secondary,#252836);color:#e2e8f0;border:1px solid #475569;border-radius:6px;cursor:pointer;white-space:nowrap;" title="贴合中间内容框 940×1260">🎯 贴合</button>
+                        <button type="button" id="rdp-clear-layers-btn" class="rop-btn" style="padding:4px 6px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:6px;cursor:pointer;white-space:nowrap;" title="清除当前任务的全部点缀/颗粒层">🗑️ 清空</button>
                     </div>
 
                     <div id="rdp-layer-list" style="display:flex;flex-direction:column;gap:4px;"></div>
                 </div>
 
-                <!-- ═══ 独立专区: 📞 邀约电话 (支持上传设计好的电话图片 / 文字蒙版号码) ═══ -->
-                <div id="rdp-phone-cta-card" style="padding:10px 11px;background:linear-gradient(155deg,rgba(6,78,59,0.34),rgba(15,23,42,0.92));border:1px solid rgba(16,185,129,0.55);border-radius:9px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,0.22);">
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
-                        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin:0;">
-                            <input type="checkbox" id="rdp-cta-enable" style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;">
-                            <span style="font-weight:800;font-size:13px;color:#6ee7b7;">📞 邀约电话 (上传电话图 / 文字蒙版)</span>
-                            <span id="rdp-cta-status-badge" style="font-size:10px;padding:1px 7px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;">未启用</span>
-                        </label>
-                        <div style="display:flex;align-items:center;gap:5px;">
-                            <button type="button" id="rdp-cta-preview-btn" class="rop-btn" style="padding:3px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:1px solid #6ee7b7;border-radius:5px;cursor:pointer;" title="在画布上立即演示邀约电话的出场动画与呼吸动态">▶ 预览动画</button>
-                            <button type="button" id="rdp-cta-delete-btn" class="rop-btn" style="padding:3px 7px;font-size:11px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;" title="从当前任务与同步队列中移除邀约电话">🗑️ 移除</button>
-                        </div>
-                    </div>
-
-                    <!-- 模式切换栏: 上传电话图片 vs 文字蒙版号码 -->
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                        <button type="button" id="rdp-cta-mode-image" class="rdp-cta-mode-btn" data-mode="image"
-                            style="padding:6px 8px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(14,116,144,0.35);color:#e0f2fe;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
-                            🖼️ 上传电话图片 (现成设计图)
-                        </button>
-                        <button type="button" id="rdp-cta-mode-text" class="rdp-cta-mode-btn" data-mode="text"
-                            style="padding:6px 8px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.28);color:#ecfdf5;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;">
-                            📝 文字蒙版号码 (自定义文案)
-                        </button>
-                    </div>
-
-                    <!-- 模式A: 🖼️ 上传电话图片专区 -->
-                    <div id="rdp-cta-image-section" style="display:none;flex-direction:column;gap:7px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.68);border:1px solid rgba(56,189,248,0.38);">
-                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                            <button type="button" id="rdp-cta-upload-btn" class="rop-btn"
-                                style="flex:1;padding:6px 10px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#fff;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">
-                                📁 上传电话图片 (PNG / JPG / WEBP / GIF)
-                            </button>
-                            <button type="button" id="rdp-cta-reuse-last-btn" class="rop-btn"
-                                style="display:none;padding:6px 8px;font-size:11px;background:rgba(56,189,248,0.16);color:#bae6fd;border:1px solid rgba(56,189,248,0.45);border-radius:6px;cursor:pointer;"
-                                title="一键加载上次上传过的电话图片">
-                                🕘 用上次电话图
-                            </button>
-                            <input type="file" id="rdp-cta-file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/jpg" style="display:none;">
-                        </div>
-
-                        <div id="rdp-cta-img-dropzone" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:6px;background:rgba(2,6,23,0.65);border:1px dashed rgba(125,211,252,0.45);min-height:52px;">
-                            <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
-                                <img id="rdp-cta-img-thumb" alt="电话图片预览" style="display:none;max-width:110px;max-height:46px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 50% / 10px 10px;">
-                                <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-                                    <div id="rdp-cta-img-name" style="font-size:11px;font-weight:600;color:#e0f2fe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传电话图片（支持点击上方按钮或直接把图片拖进此处）</div>
-                                    <div style="font-size:10px;color:#94a3b8;">💡 上传别人设计好的电话条/联系方式卡片后，可在下方或直接在画面中拖拽调节位置、大小、出场时间与动画</div>
-                                </div>
-                            </div>
-                            <button type="button" id="rdp-cta-clear-img-btn" class="rop-btn" style="display:none;padding:3px 7px;font-size:10.5px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;flex-shrink:0;" title="清除已上传的电话图片并切回文字模式">✕ 清除图片</button>
-                        </div>
-
-                        <div class="rop-grid" style="gap:5px;">
-                            <label style="color:#bae6fd;font-weight:600;">图片宽度(px)</label>
-                            <div class="rop-slider-combo">
-                                <input type="range" id="rdp-cta-img-width" class="rop-range" min="120" max="1080" step="10" value="880">
-                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-width" min="80" max="1080" step="10" value="880">
-                            </div>
-
-                            <label style="color:#bae6fd;font-weight:600;">图片缩放%</label>
-                            <div class="rop-slider-combo">
-                                <input type="range" id="rdp-cta-img-scale" class="rop-range" min="20" max="220" step="2" value="100">
-                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-scale" min="10" max="300" step="2" value="100">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 模式B: 📝 文字蒙版号码专区 -->
-                    <div id="rdp-cta-text-section" style="display:flex;flex-direction:column;gap:6px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.62);border:1px solid rgba(16,185,129,0.35);">
-                        <div class="rop-grid" style="gap:5px;">
-                            <label style="color:#a7f3d0;font-weight:600;">样式模板</label>
-                            <select id="rdp-cta-style" class="rop-select">
-                                ${ctaStyleOptionsHtml}
-                            </select>
-
-                            <label style="color:#a7f3d0;font-weight:600;">邀约电话文案<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(支持多行回车)</span></label>
-                            <textarea id="rdp-cta-body" class="rop-textarea" rows="3" placeholder="Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible study." style="font-size:12.5px;font-weight:700;color:#fde047;line-height:1.35;">Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible&#10;study.</textarea>
-
-                            <label>顶部副标题(可选)</label>
-                            <input type="text" id="rdp-cta-title" class="rop-input" placeholder="默认留空，可填 CALL OR TEXT NOW">
-
-                            <label style="color:#86efac;font-weight:600;">蒙版样式</label>
-                            <select id="rdp-cta-mask-mode" class="rop-select">
-                                <option value="inline-joined">🟩 逐行紧贴连通蒙版 (WhatsApp同款推荐)</option>
-                                <option value="inline">💊 逐行独立圆角胶囊条</option>
-                                <option value="block-fit">📦 整块自适应包裹框</option>
-                                <option value="card">💳 完整横幅卡片底框</option>
-                                <option value="none">🚫 无底框 (纯文字+描边)</option>
-                            </select>
-
-                            <label style="color:#86efac;font-weight:600;">蒙版颜色 & 透明%</label>
-                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                                <input type="color" id="rdp-cta-mask-color" class="rop-color" value="#E0FF14" title="蒙版背景颜色">
-                                <button type="button" class="rdp-cta-mask-chip" data-color="#E0FF14" style="padding:1px 5px;font-size:10px;background:#E0FF14;color:#000;border:1px solid #65a30d;border-radius:4px;cursor:pointer;font-weight:700;">荧光黄绿</button>
-                                <button type="button" class="rdp-cta-mask-chip" data-color="#15803D" style="padding:1px 5px;font-size:10px;background:#15803D;color:#fff;border:1px solid #4ade80;border-radius:4px;cursor:pointer;">翠绿</button>
-                                <button type="button" class="rdp-cta-mask-chip" data-color="#0B1021" style="padding:1px 5px;font-size:10px;background:#0B1021;color:#fde047;border:1px solid #f59e0b;border-radius:4px;cursor:pointer;">黑金底</button>
-                                <button type="button" class="rdp-cta-mask-chip" data-color="#FFFFFF" style="padding:1px 5px;font-size:10px;background:#FFFFFF;color:#000;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;">纯白</button>
-                                <div class="rop-slider-combo" style="flex:1;min-width:110px;">
-                                    <input type="range" id="rdp-cta-mask-opacity" class="rop-range" min="0" max="100" step="2" value="100">
-                                    <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-mask-opacity" min="0" max="100" step="2" value="100">
-                                </div>
-                            </div>
-
-                            <label>蒙版圆角 & 内距</label>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                                <div style="display:flex;align-items:center;gap:4px;">
-                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">圆角</span>
-                                    <input type="number" id="rdp-cta-mask-radius" class="rop-input" min="0" max="80" step="1" value="14">
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;">
-                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">左右内距</span>
-                                    <input type="number" id="rdp-cta-pad-h" class="rop-input" min="0" max="80" step="2" value="22">
-                                </div>
-                            </div>
-
-                            <label style="color:#fda4af;font-weight:600;">文字色 & 号码色</label>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                                <div style="display:flex;align-items:center;gap:5px;">
-                                    <input type="color" id="rdp-cta-text-color" class="rop-color" value="#000000" title="普通文案颜色">
-                                    <span style="font-size:11px;color:var(--text-secondary);">正文色</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:5px;">
-                                    <input type="color" id="rdp-cta-phone-color" class="rop-color" value="#E60039" title="电话号码自动高亮颜色">
-                                    <span style="font-size:11px;color:#fda4af;font-weight:600;">📞 号码高亮色</span>
-                                </div>
-                            </div>
-
-                            <label>字号 & 横幅宽度</label>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                                <div style="display:flex;align-items:center;gap:4px;">
-                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">字号</span>
-                                    <input type="number" id="rdp-cta-fontsize" class="rop-input" min="18" max="130" step="2" value="48">
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;">
-                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">宽度</span>
-                                    <input type="number" id="rdp-cta-text-width" class="rop-input" min="260" max="1080" step="10" value="920">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 公共控制区: 位置调节 + 几秒后出现 + 出场动画与持续动态 (对上传电话图片与文字蒙版同时生效) -->
-                    <div style="display:flex;flex-direction:column;gap:6px;padding:8px 9px;border-radius:7px;background:rgba(15,23,42,0.52);border:1px solid rgba(148,163,184,0.22);">
-                        <div class="rop-grid" style="gap:5px;">
-                            <label style="color:#fde047;font-weight:700;">快速定位<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(可画布直接拖移)</span></label>
-                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="top" style="padding:2px 6px;font-size:10.5px;">⬆️ 顶部横幅</button>
-                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center" style="padding:2px 6px;font-size:10.5px;">🎯 画面正中</button>
-                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="lower" style="padding:2px 6px;font-size:10.5px;border-color:#10b981;color:#6ee7b7;">⬇️ 中下黄金位</button>
-                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="bottom" style="padding:2px 6px;font-size:10.5px;">⬇️ 底部贴边</button>
-                                <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center-x" style="padding:2px 6px;font-size:10.5px;">↔️ 水平居中</button>
-                            </div>
-
-                            <label>水平位置 X</label>
-                            <div class="rop-slider-combo">
-                                <input type="range" id="rdp-cta-x" class="rop-range" min="-540" max="540" step="2" value="0">
-                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-x" min="-1080" max="1080" step="2" value="0">
-                            </div>
-
-                            <label>垂直位置 Y</label>
-                            <div class="rop-slider-combo">
-                                <input type="range" id="rdp-cta-y" class="rop-range" min="-960" max="960" step="2" value="550">
-                                <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-y" min="-1920" max="1920" step="2" value="550">
-                            </div>
-
-                            <label style="color:#fde047;font-weight:700;">几秒后出现</label>
-                            <div style="display:flex;flex-direction:column;gap:4px;">
-                                <div style="display:flex;align-items:center;gap:5px;">
-                                    <input type="number" id="rdp-cta-start" class="rop-input" min="0" max="3600" step="0.5" value="30" style="width:70px;font-weight:700;color:#fde047;">
-                                    <span style="font-size:11px;color:var(--text-secondary);">秒出现 → 结束:</span>
-                                    <input type="number" id="rdp-cta-end" class="rop-input" min="0" max="9999" step="0.5" value="9999" style="width:72px;">
-                                    <button type="button" class="rop-btn" id="rdp-cta-end-full" style="padding:2px 6px;font-size:10px;" title="一直显示到视频结束">全程</button>
-                                </div>
-                                <div style="display:flex;gap:3px;flex-wrap:wrap;">
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="0" style="padding:1px 5px;font-size:10px;">0s立即</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="5" style="padding:1px 5px;font-size:10px;">5s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="10" style="padding:1px 5px;font-size:10px;">10s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="15" style="padding:1px 5px;font-size:10px;">15s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="20" style="padding:1px 5px;font-size:10px;">20s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="25" style="padding:1px 5px;font-size:10px;">25s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="30" style="padding:1px 5px;font-size:10px;border-color:#10b981;color:#6ee7b7;font-weight:700;">30s(默认)</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="45" style="padding:1px 5px;font-size:10px;">45s</button>
-                                    <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="60" style="padding:1px 5px;font-size:10px;">60s</button>
-                                </div>
-                            </div>
-
-                            <label style="color:#a7f3d0;font-weight:600;">出场动画</label>
-                            <select id="rdp-cta-anim-in" class="rop-select">
-                                <option value="ring_shake">📳 来电震动弹出 (最吸睛推荐)</option>
-                                <option value="pop">💥 弹跳放大 (Pop)</option>
-                                <option value="elastic_pop">🍮 Q弹果冻弹出 (Elastic)</option>
-                                <option value="zoom_bounce">🚀 冲刺回弹放大 (Bounce)</option>
-                                <option value="slide_up">⬆️ 底部上滑推入</option>
-                                <option value="slide_down">⬇️ 顶部下滑落入</option>
-                                <option value="slide_left">⬅️ 右侧滑入</option>
-                                <option value="slide_right">➡️ 左侧滑入</option>
-                                <option value="fade">✨ 柔和渐显 (Fade)</option>
-                                <option value="none">无入场动画</option>
-                            </select>
-
-                            <label>动画时长 & 退场</label>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                                <div style="display:flex;align-items:center;gap:4px;">
-                                    <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">入场(s)</span>
-                                    <input type="number" id="rdp-cta-anim-dur" class="rop-input" value="0.55" min="0.1" max="3" step="0.05">
-                                </div>
-                                <select id="rdp-cta-anim-out" class="rop-select">
-                                    <option value="fade">退场: 渐隐</option>
-                                    <option value="pop">退场: 缩回</option>
-                                    <option value="slide_down">退场: 下滑</option>
-                                    <option value="none">退场: 无</option>
-                                </select>
-                            </div>
-
-                            <label style="color:#a7f3d0;font-weight:600;">出现后动态</label>
-                            <select id="rdp-cta-loop-anim" class="rop-select">
-                                <option value="pulse">💓 持续呼吸放大脉冲 (推荐)</option>
-                                <option value="ring">🔔 间歇来电震动提醒</option>
-                                <option value="float">🎈 持续柔和上下轻浮</option>
-                                <option value="none">⏸️ 保持静止</option>
+                <!-- 折叠区 ①: 🎨 预设模板库（默认展开，点击即用） -->
+                <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-presets" open>
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎨 预设模板库 (${styleEntries.length}款)</span></span>
+                        <span class="rop-acc-badge" id="rdp-acc-presets-badge">未选择</span>
+                    </summary>
+                    <div class="rop-scroll-acc-body">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:11px;color:var(--text-secondary);white-space:nowrap;">当前预设</span>
+                            <select id="rdp-style-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;padding:3px 6px;">
+                                ${selectOptionsHtml}
                             </select>
                         </div>
+                        <div class="rdp-cat-bar">
+                            <button type="button" class="rdp-cat-btn active" data-cat="all" style="border:1px solid #6366f1;background:#4f46e5;color:#fff;font-weight:700;">全部 (34)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="dark_particles" style="border:1px solid #475569;background:#1e293b;color:#e2e8f0;">🖤 黑色&粒子 (7)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="film_grain" style="border:1px solid #b45309;background:#271c12;color:#fde68a;">🎞️ 电影颗粒 (7)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="stars" style="border:1px solid #a16207;background:#1e1b4b;color:#fef08a;">🌟 星芒光斑 (6)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="xmas" style="border:1px solid #15803d;background:#14532d;color:#fef9c3;">🎄 圣诞 (5)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="veterans" style="border:1px solid #fbbf24;background:linear-gradient(135deg,#0a1931,#7f1d1d);color:#fef08a;">🇺🇸 退伍军人节 (4)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="frame" style="border:1px solid #a16207;background:#292524;color:#fde68a;">⚜️ 复古画框 (5)</button>
+                        </div>
+                        <div id="rdp-preset-grid" class="rdp-preset-grid">
+                            ${cardsHtml}
+                        </div>
                     </div>
-                </div>
+                </details>
 
-                <!-- 34款模板分类筛选与可视化卡片库 -->
-                <div style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
-                        <span style="font-size:11.5px;font-weight:700;color:#93c5fd;">🎨 34款预设库 (点击任意卡片立即应用)：</span>
-                        <select id="rdp-style-select" class="rop-select" style="max-width:210px;font-size:11px;padding:2px 6px;">
-                            ${selectOptionsHtml}
-                        </select>
+                <!-- 折叠区 ②: ✨ 子效果自由勾选与粒子形态 -->
+                <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-effects">
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>✨ 效果开关与粒子形态</span></span>
+                        <span class="rop-acc-badge" id="rdp-acc-effects-badge">默认</span>
+                    </summary>
+                    <div class="rop-scroll-acc-body">
+                        <div class="rop-grid">
+                            <label>✨ 启用飘浮粒子</label><input type="checkbox" id="rdp-floating-particles" checked>
+                            <label>飘浮粒子形态</label>
+                            <select id="rdp-particle-mode" class="rop-select">
+                                <option value="dust">🖤 悬浮微尘粒子 (Dust)</option>
+                                <option value="embers">🔥 升腾火星余烬 (Embers)</option>
+                                <option value="fireflies">✨ 森林萤火虫 (Fireflies)</option>
+                                <option value="ash">🌨️ 银白灰烬细雪 (Ash)</option>
+                                <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
+                                <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
+                                <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
+                            </select>
+                            <label>🌟 启用发光闪烁星芒</label><input type="checkbox" id="rdp-glow-stars">
+                            <label>❄️ 启用漫天飘雪与冰晶</label><input type="checkbox" id="rdp-snowflakes">
+                            <label>🎀 启用四角主题挂饰</label><input type="checkbox" id="rdp-corner-ornaments">
+                            <label>🌿 启用边缘花环/串灯/画框</label><input type="checkbox" id="rdp-edge-garland">
+                        </div>
                     </div>
-                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">
-                        <button type="button" class="rdp-cat-btn active" data-cat="all" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #6366f1;background:#4f46e5;color:#fff;cursor:pointer;font-weight:700;">全部 (34)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="dark_particles" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;cursor:pointer;">🖤 黑色模板&粒子 (7)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="film_grain" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #b45309;background:#271c12;color:#fde68a;cursor:pointer;">🎞️ 电影&回忆颗粒 (7)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="stars" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #a16207;background:#1e1b4b;color:#fef08a;cursor:pointer;">🌟 发光星芒&光斑 (6)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="xmas" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #15803d;background:#14532d;color:#fef9c3;cursor:pointer;">🎄 圣诞装饰 (5)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="veterans" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #fbbf24;background:linear-gradient(135deg,#0a1931,#7f1d1d);color:#fef08a;cursor:pointer;">🇺🇸 退伍军人节 (4)</button>
-                        <button type="button" class="rdp-cat-btn" data-cat="frame" style="padding:3px 7px;font-size:11px;border-radius:5px;border:1px solid #a16207;background:#292524;color:#fde68a;cursor:pointer;">⚜️ 复古画框 (5)</button>
-                    </div>
-                    <div id="rdp-preset-grid" style="display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:6px;max-height:255px;overflow-y:auto;padding-right:2px;">
-                        ${cardsHtml}
-                    </div>
-                </div>
+                </details>
 
-                <!-- 专区1: 🖤 黑色氛围模板 & 宽银幕暗角调节 -->
-                <div class="rop-group" style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 6px 0;">
-                        <div class="rop-group-title" style="margin:0;color:#f87171;">🖤 1. 黑色氛围模板 & 电影暗角遮罩</div>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#fecaca;cursor:pointer;margin:0;" title="勾选后启用黑色氛围模板和电影暗角；取消勾选则关闭黑底暗角">
+                <!-- 折叠区 ③: 🖤 黑色氛围模板 & 宽银幕暗角 -->
+                <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-dark">
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🖤 黑色氛围模板 & 电影暗角</span></span>
+                        <span class="rop-acc-badge" id="rdp-acc-dark-badge">已关闭</span>
+                    </summary>
+                    <div class="rop-scroll-acc-body">
+                        <div class="rop-grid">
+                            <label title="勾选后启用黑色氛围模板和电影暗角；取消勾选则关闭黑底暗角">启用黑色模板</label>
                             <input type="checkbox" id="rdp-dark-enabled" checked style="width:14px;height:14px;accent-color:#ef4444;cursor:pointer;">
-                            <span>启用黑色模板</span>
-                        </label>
-                    </div>
-                    <div class="rop-grid">
-                        <label title="四周暗黑遮罩与上下宽银幕暗角浓度">黑色模板浓度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-dark-vignette" class="rop-range" min="0" max="100" step="2" value="78"><input type="number" class="rop-num-readout" data-link="rdp-dark-vignette" min="0" max="100" step="2" value="78"></div>
 
-                        <label title="暗角向画面中心聚拢扩散的范围">暗角扩散范围%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-vignette-spread" class="rop-range" min="10" max="95" step="5" value="62"><input type="number" class="rop-num-readout" data-link="rdp-vignette-spread" min="10" max="95" step="5" value="62"></div>
+                            <label title="四周暗黑遮罩与上下宽银幕暗角浓度">黑色模板浓度%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-dark-vignette" class="rop-range" min="0" max="100" step="2" value="78"><input type="number" class="rop-num-readout" data-link="rdp-dark-vignette" min="0" max="100" step="2" value="78"></div>
 
-                        <label>暗底氛围色调</label>
-                        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-                            <input type="color" id="rdp-dark-tint" class="rop-color" value="#05070C" style="width:32px;height:24px;">
-                            <button type="button" class="rdp-tint-chip" data-tint="#05070C" style="padding:2px 5px;font-size:10px;background:#05070C;color:#e2e8f0;border:1px solid #475569;border-radius:4px;cursor:pointer;">纯黑</button>
-                            <button type="button" class="rdp-tint-chip" data-tint="#0B0503" style="padding:2px 5px;font-size:10px;background:#1c0a05;color:#fdba74;border:1px solid #9a3412;border-radius:4px;cursor:pointer;">黑金余烬</button>
-                            <button type="button" class="rdp-tint-chip" data-tint="#261507" style="padding:2px 5px;font-size:10px;background:#261507;color:#fde68a;border:1px solid #b45309;border-radius:4px;cursor:pointer;">怀旧深褐</button>
-                            <button type="button" class="rdp-tint-chip" data-tint="#040814" style="padding:2px 5px;font-size:10px;background:#040814;color:#93c5fd;border:1px solid #1d4ed8;border-radius:4px;cursor:pointer;">暗夜蓝</button>
-                            <button type="button" class="rdp-tint-chip" data-tint="#040C08" style="padding:2px 5px;font-size:10px;background:#040C08;color:#86efac;border:1px solid #15803d;border-radius:4px;cursor:pointer;">森林暗绿</button>
+                            <label title="暗角向画面中心聚拢扩散的范围">暗角扩散范围%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-vignette-spread" class="rop-range" min="10" max="95" step="5" value="62"><input type="number" class="rop-num-readout" data-link="rdp-vignette-spread" min="10" max="95" step="5" value="62"></div>
+
+                            <label>暗底氛围色调</label>
+                            <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                                <input type="color" id="rdp-dark-tint" class="rop-color" value="#05070C" style="width:32px;height:24px;">
+                                <button type="button" class="rdp-tint-chip" data-tint="#05070C" style="padding:2px 5px;font-size:10px;background:#05070C;color:#e2e8f0;border:1px solid #475569;border-radius:4px;cursor:pointer;">纯黑</button>
+                                <button type="button" class="rdp-tint-chip" data-tint="#0B0503" style="padding:2px 5px;font-size:10px;background:#1c0a05;color:#fdba74;border:1px solid #9a3412;border-radius:4px;cursor:pointer;">黑金余烬</button>
+                                <button type="button" class="rdp-tint-chip" data-tint="#261507" style="padding:2px 5px;font-size:10px;background:#261507;color:#fde68a;border:1px solid #b45309;border-radius:4px;cursor:pointer;">怀旧深褐</button>
+                                <button type="button" class="rdp-tint-chip" data-tint="#040814" style="padding:2px 5px;font-size:10px;background:#040814;color:#93c5fd;border:1px solid #1d4ed8;border-radius:4px;cursor:pointer;">暗夜蓝</button>
+                                <button type="button" class="rdp-tint-chip" data-tint="#040C08" style="padding:2px 5px;font-size:10px;background:#040C08;color:#86efac;border:1px solid #15803d;border-radius:4px;cursor:pointer;">森林暗绿</button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </details>
 
-                <!-- 专区2: 🎞️ 电影颗粒 & 回忆颗粒感调节 -->
-                <div class="rop-group" style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin:0 0 6px 0;">
-                        <div class="rop-group-title" style="margin:0;color:#fbbf24;">🎞️ 2. 电影颗粒 & 怀旧回忆颗粒感</div>
-                        <label style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#fde68a;cursor:pointer;margin:0;" title="勾选后启用电影胶片颗粒与怀旧暖调；取消勾选则关闭颗粒噪点">
+                <!-- 折叠区 ④: 🎞️ 电影颗粒 & 怀旧回忆颗粒感 -->
+                <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-grain">
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎞️ 电影颗粒、划痕与胶片漏光</span></span>
+                        <span class="rop-acc-badge" id="rdp-acc-grain-badge">已关闭</span>
+                    </summary>
+                    <div class="rop-scroll-acc-body">
+                        <div class="rop-grid">
+                            <label title="勾选后启用电影胶片颗粒与怀旧暖调；取消勾选则关闭颗粒噪点">启用电影颗粒</label>
                             <input type="checkbox" id="rdp-grain-enabled" checked style="width:14px;height:14px;accent-color:#f59e0b;cursor:pointer;">
-                            <span>启用电影颗粒</span>
+
+                            <label title="35mm/8mm胶片噪点与回忆颗粒感强度">电影颗粒强度%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-grain-intensity" class="rop-range" min="0" max="100" step="2" value="24"><input type="number" class="rop-num-readout" data-link="rdp-grain-intensity" min="0" max="100" step="2" value="24"></div>
+
+                            <label title="胶片颗粒的粗细大小">颗粒粗细度%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-grain-size" class="rop-range" min="50" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-grain-size" min="50" max="250" step="5" value="100"></div>
+
+                            <label title="老照片泛黄暖调回忆感">怀旧泛黄暖调%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-grain-warmth" class="rop-range" min="0" max="100" step="5" value="0"><input type="number" class="rop-num-readout" data-link="rdp-grain-warmth" min="0" max="100" step="5" value="0"></div>
+
+                            <label>📽️ 启用老电影划痕/扫描线</label><input type="checkbox" id="rdp-film-scratches">
+                            <label>🌅 启用复古胶片边缘漏光</label><input type="checkbox" id="rdp-light-leak">
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 折叠区 ⑤: 📐 分布区域 / 密度 / 尺寸 / 速度 / 边距 / 配色 -->
+                <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-layout">
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>📐 分布区域、密度与配色精调</span></span>
+                        <span class="rop-acc-badge" id="rdp-acc-layout-badge">边缘+漂浮</span>
+                    </summary>
+                    <div class="rop-scroll-acc-body">
+                        <div class="rop-grid">
+                            <label>分布位置</label>
+                            <select id="rdp-layout" class="rop-select">
+                                <option value="edges_and_float">四周边缘环绕 + 少量轻柔漂浮</option>
+                                <option value="edges_only">仅四周边缘环绕 (中心留空)</option>
+                                <option value="corners_only">仅四角精致点缀</option>
+                                <option value="top_bottom">仅上下边缘点缀 (顶部+底部)</option>
+                                <option value="full_scatter">全画面均匀漫天分布 (适合粒子/颗粒)</option>
+                            </select>
+
+                            <label>粒子/点缀密度</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-density" class="rop-range" min="5" max="200" step="5" value="75"><input type="number" class="rop-num-readout" data-link="rdp-density" min="5" max="200" step="5" value="75"></div>
+
+                            <label>元素尺寸缩放%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-size" class="rop-range" min="25" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-size" min="20" max="300" step="5" value="100"></div>
+
+                            <label>发光光晕强度%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-glow" class="rop-range" min="0" max="200" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-glow" min="0" max="200" step="5" value="100"></div>
+
+                            <label>飘动/闪烁速度%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-speed" class="rop-range" min="0" max="250" step="10" value="100"><input type="number" class="rop-num-readout" data-link="rdp-speed" min="0" max="300" step="10" value="100"></div>
+
+                            <label>距画布边缘px</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-margin" class="rop-range" min="0" max="220" step="4" value="36"><input type="number" class="rop-num-readout" data-link="rdp-margin" min="0" max="300" step="4" value="36"></div>
+
+                            <label>中心留白保护%</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-center-clear" class="rop-range" min="0" max="90" step="5" value="40"><input type="number" class="rop-num-readout" data-link="rdp-center-clear" min="0" max="95" step="5" value="40"></div>
+
+                            <label>图层总不透明度</label>
+                            <div class="rop-slider-combo"><input type="range" id="rdp-opacity" class="rop-range" min="0" max="255" step="5" value="255"><input type="number" class="rop-num-readout" data-link="rdp-opacity" min="0" max="255" step="5" value="255"></div>
+
+                            <label>主色调</label><input type="color" id="rdp-color1" class="rop-color" value="#E2E8F0">
+                            <label>副色/星核色</label><input type="color" id="rdp-color2" class="rop-color" value="#FFFDF5">
+                        </div>
+                    </div>
+                </details>
+
+                <!-- ═══ 独立专区: 📞 邀约电话 (支持收纳折叠，不占屏) ═══ -->
+                <div id="rdp-phone-cta-card" class="rdp-cta-card">
+                    <div class="rdp-cta-header">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;min-width:0;flex:1;">
+                            <input type="checkbox" id="rdp-cta-enable" style="width:15px;height:15px;accent-color:#10b981;cursor:pointer;flex-shrink:0;">
+                            <span style="font-weight:800;font-size:12.5px;color:#6ee7b7;white-space:nowrap;">📞 邀约电话</span>
+                            <span id="rdp-cta-status-badge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">未启用</span>
                         </label>
+                        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                            <button type="button" id="rdp-cta-preview-btn" class="rop-btn" style="padding:2px 7px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:1px solid #6ee7b7;border-radius:5px;cursor:pointer;" title="在画布上立即演示邀约电话的出场动画与呼吸动态">▶ 预览动画</button>
+                            <button type="button" id="rdp-cta-delete-btn" class="rop-btn" style="padding:2px 6px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;" title="从当前任务与同步队列中移除邀约电话">🗑️</button>
+                        </div>
                     </div>
-                    <div class="rop-grid">
-                        <label title="35mm/8mm胶片噪点与回忆颗粒感强度">电影颗粒强度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-grain-intensity" class="rop-range" min="0" max="100" step="2" value="24"><input type="number" class="rop-num-readout" data-link="rdp-grain-intensity" min="0" max="100" step="2" value="24"></div>
 
-                        <label title="胶片颗粒的粗细大小">颗粒粗细度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-grain-size" class="rop-range" min="50" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-grain-size" min="50" max="250" step="5" value="100"></div>
+                    <details class="rop-scroll-subacc rdp-cta-subacc" id="rdp-acc-cta">
+                        <summary>
+                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>电话图 / 文字蒙版与定位动画</span></span>
+                            <span class="rop-acc-badge" id="rdp-acc-cta-badge">30s弹出 · 居中</span>
+                        </summary>
+                        <div class="rop-scroll-subacc-body" style="display:flex;flex-direction:column;gap:7px;">
+                            <!-- 模式切换栏: 上传电话图片 vs 文字蒙版号码 -->
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                <button type="button" id="rdp-cta-mode-image" class="rdp-cta-mode-btn" data-mode="image"
+                                    style="padding:5px 7px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(14,116,144,0.35);color:#e0f2fe;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                    🖼️ 上传电话图片
+                                </button>
+                                <button type="button" id="rdp-cta-mode-text" class="rdp-cta-mode-btn" data-mode="text"
+                                    style="padding:5px 7px;font-size:11px;font-weight:700;border-radius:6px;border:1px solid #10b981;background:rgba(16,185,129,0.28);color:#ecfdf5;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;">
+                                    📝 文字蒙版号码
+                                </button>
+                            </div>
 
-                        <label title="老照片泛黄暖调回忆感">怀旧泛黄暖调%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-grain-warmth" class="rop-range" min="0" max="100" step="5" value="0"><input type="number" class="rop-num-readout" data-link="rdp-grain-warmth" min="0" max="100" step="5" value="0"></div>
+                            <!-- 模式A: 🖼️ 上传电话图片专区 -->
+                            <div id="rdp-cta-image-section" class="rdp-card-section" style="display:none;">
+                                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                    <button type="button" id="rdp-cta-upload-btn" class="rop-btn"
+                                        style="flex:1;padding:6px 10px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#fff;border:1px solid #7dd3fc;border-radius:6px;cursor:pointer;">
+                                        📁 上传电话图片 (PNG / JPG / WEBP / GIF)
+                                    </button>
+                                    <button type="button" id="rdp-cta-reuse-last-btn" class="rop-btn"
+                                        style="display:none;padding:6px 8px;font-size:11px;background:rgba(56,189,248,0.16);color:#bae6fd;border:1px solid rgba(56,189,248,0.45);border-radius:6px;cursor:pointer;"
+                                        title="一键加载上次上传过的电话图片">
+                                        🕘 用上次电话图
+                                    </button>
+                                    <input type="file" id="rdp-cta-file-input" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/jpg" style="display:none;">
+                                </div>
 
-                        <label>📽️ 启用老电影划痕/扫描线</label><input type="checkbox" id="rdp-film-scratches">
-                        <label>🌅 启用复古胶片边缘漏光</label><input type="checkbox" id="rdp-light-leak">
-                    </div>
-                </div>
+                                <div id="rdp-cta-img-dropzone" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border-radius:6px;background:rgba(2,6,23,0.65);border:1px dashed rgba(125,211,252,0.45);min-height:48px;">
+                                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
+                                        <img id="rdp-cta-img-thumb" alt="电话图片预览" style="display:none;max-width:110px;max-height:46px;object-fit:contain;border-radius:4px;border:1px solid rgba(255,255,255,0.2);background:repeating-conic-gradient(#1e293b 0% 25%, #0f172a 0% 50%) 50% / 10px 10px;">
+                                        <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                                            <div id="rdp-cta-img-name" style="font-size:11px;font-weight:600;color:#e0f2fe;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">尚未上传电话图片（支持点击上传或直接拖入）</div>
+                                            <div style="font-size:10px;color:#94a3b8;">💡 支持画布直接拖拽调节位置，下方精调尺寸与出场时间</div>
+                                        </div>
+                                    </div>
+                                    <button type="button" id="rdp-cta-clear-img-btn" class="rop-btn" style="display:none;padding:3px 7px;font-size:10.5px;background:rgba(239,68,68,0.18);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;flex-shrink:0;" title="清除已上传的电话图片并切回文字模式">✕ 清除图片</button>
+                                </div>
 
-                <!-- 专区3: ✨ 飘浮粒子 & 发光星芒 & 圣诞装饰组合 -->
-                <div class="rop-group" style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div class="rop-group-title" style="margin:0 0 6px 0;color:#38bdf8;">✨ 3. 子效果自由勾选开关 (打勾即启用，自由混搭您想要的效果)</div>
-                    <div class="rop-grid">
-                        <label>✨ 启用飘浮粒子</label><input type="checkbox" id="rdp-floating-particles" checked>
-                        <label>飘浮粒子形态</label>
-                        <select id="rdp-particle-mode" class="rop-select">
-                            <option value="dust">🖤 悬浮微尘粒子 (Dust)</option>
-                            <option value="embers">🔥 升腾火星余烬 (Embers)</option>
-                            <option value="fireflies">✨ 森林萤火虫 (Fireflies)</option>
-                            <option value="ash">🌨️ 银白灰烬细雪 (Ash)</option>
-                            <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
-                            <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
-                            <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
-                        </select>
-                        <label>🌟 启用发光闪烁星芒</label><input type="checkbox" id="rdp-glow-stars">
-                        <label>❄️ 启用漫天飘雪与冰晶</label><input type="checkbox" id="rdp-snowflakes">
-                        <label>🎀 启用四角主题挂饰</label><input type="checkbox" id="rdp-corner-ornaments">
-                        <label>🌿 启用边缘花环/串灯/画框</label><input type="checkbox" id="rdp-edge-garland">
-                    </div>
-                </div>
+                                <div class="rop-grid" style="gap:5px;">
+                                    <label style="color:#bae6fd;font-weight:600;">图片宽度(px)</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rdp-cta-img-width" class="rop-range" min="120" max="1080" step="10" value="880">
+                                        <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-width" min="80" max="1080" step="10" value="880">
+                                    </div>
 
-                <!-- 专区4: 📐 分布区域 / 密度 / 尺寸 / 速度 / 边距 / 配色 -->
-                <div class="rop-group" style="padding:8px 10px;background:var(--bg-tertiary,#181a24);border:1px solid var(--border-color,#2d3142);border-radius:8px;">
-                    <div class="rop-group-title" style="margin:0 0 6px 0;color:#a78bfa;">📐 4. 密度 / 尺寸 / 速度 / 边距 / 颜色精调</div>
-                    <div class="rop-grid">
-                        <label>分布位置</label>
-                        <select id="rdp-layout" class="rop-select">
-                            <option value="edges_and_float">四周边缘环绕 + 少量轻柔漂浮</option>
-                            <option value="edges_only">仅四周边缘环绕 (中心留空)</option>
-                            <option value="corners_only">仅四角精致点缀</option>
-                            <option value="top_bottom">仅上下边缘点缀 (顶部+底部)</option>
-                            <option value="full_scatter">全画面均匀漫天分布 (适合粒子/颗粒)</option>
-                        </select>
+                                    <label style="color:#bae6fd;font-weight:600;">图片缩放%</label>
+                                    <div class="rop-slider-combo">
+                                        <input type="range" id="rdp-cta-img-scale" class="rop-range" min="20" max="220" step="2" value="100">
+                                        <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-img-scale" min="10" max="300" step="2" value="100">
+                                    </div>
+                                </div>
+                            </div>
 
-                        <label>粒子/点缀密度</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-density" class="rop-range" min="5" max="200" step="5" value="75"><input type="number" class="rop-num-readout" data-link="rdp-density" min="5" max="200" step="5" value="75"></div>
+                            <!-- 模式B: 📝 文字蒙版号码专区 -->
+                            <div id="rdp-cta-text-section" class="rdp-card-section">
+                                <div class="rop-grid" style="gap:5px;">
+                                    <label style="color:#a7f3d0;font-weight:600;">样式模板</label>
+                                    <select id="rdp-cta-style" class="rop-select">
+                                        ${ctaStyleOptionsHtml}
+                                    </select>
 
-                        <label>元素尺寸缩放%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-size" class="rop-range" min="25" max="250" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-size" min="20" max="300" step="5" value="100"></div>
+                                    <label style="color:#a7f3d0;font-weight:600;">邀约电话文案<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(支持多行回车)</span></label>
+                                    <textarea id="rdp-cta-body" class="rop-textarea" rows="3" placeholder="Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible study." style="font-size:12.5px;font-weight:700;color:#fde047;line-height:1.35;">Message on Whats/App&#10;at +1 (315) 277-2179&#10;to join our Free Bible&#10;study.</textarea>
 
-                        <label>发光光晕强度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-glow" class="rop-range" min="0" max="200" step="5" value="100"><input type="number" class="rop-num-readout" data-link="rdp-glow" min="0" max="200" step="5" value="100"></div>
+                                    <label>顶部副标题(可选)</label>
+                                    <input type="text" id="rdp-cta-title" class="rop-input" placeholder="默认留空，可填 CALL OR TEXT NOW">
 
-                        <label>飘动/闪烁速度%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-speed" class="rop-range" min="0" max="250" step="10" value="100"><input type="number" class="rop-num-readout" data-link="rdp-speed" min="0" max="300" step="10" value="100"></div>
+                                    <label style="color:#86efac;font-weight:600;">蒙版样式</label>
+                                    <select id="rdp-cta-mask-mode" class="rop-select">
+                                        <option value="inline-joined">🟩 逐行紧贴连通蒙版 (WhatsApp同款推荐)</option>
+                                        <option value="inline">💊 逐行独立圆角胶囊条</option>
+                                        <option value="block-fit">📦 整块自适应包裹框</option>
+                                        <option value="card">💳 完整横幅卡片底框</option>
+                                        <option value="none">🚫 无底框 (纯文字+描边)</option>
+                                    </select>
 
-                        <label>距画布边缘px</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-margin" class="rop-range" min="0" max="220" step="4" value="36"><input type="number" class="rop-num-readout" data-link="rdp-margin" min="0" max="300" step="4" value="36"></div>
+                                    <label style="color:#86efac;font-weight:600;">蒙版颜色 & 透明%</label>
+                                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                        <input type="color" id="rdp-cta-mask-color" class="rop-color" value="#E0FF14" title="蒙版背景颜色">
+                                        <button type="button" class="rdp-cta-mask-chip" data-color="#E0FF14" style="padding:1px 5px;font-size:10px;background:#E0FF14;color:#000;border:1px solid #65a30d;border-radius:4px;cursor:pointer;font-weight:700;">荧光黄绿</button>
+                                        <button type="button" class="rdp-cta-mask-chip" data-color="#15803D" style="padding:1px 5px;font-size:10px;background:#15803D;color:#fff;border:1px solid #4ade80;border-radius:4px;cursor:pointer;">翠绿</button>
+                                        <button type="button" class="rdp-cta-mask-chip" data-color="#0B1021" style="padding:1px 5px;font-size:10px;background:#0B1021;color:#fde047;border:1px solid #f59e0b;border-radius:4px;cursor:pointer;">黑金底</button>
+                                        <button type="button" class="rdp-cta-mask-chip" data-color="#FFFFFF" style="padding:1px 5px;font-size:10px;background:#FFFFFF;color:#000;border:1px solid #94a3b8;border-radius:4px;cursor:pointer;">纯白</button>
+                                        <div class="rop-slider-combo" style="flex:1;min-width:105px;">
+                                            <input type="range" id="rdp-cta-mask-opacity" class="rop-range" min="0" max="100" step="2" value="100">
+                                            <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-mask-opacity" min="0" max="100" step="2" value="100">
+                                        </div>
+                                    </div>
 
-                        <label>中心留白保护%</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-center-clear" class="rop-range" min="0" max="90" step="5" value="40"><input type="number" class="rop-num-readout" data-link="rdp-center-clear" min="0" max="95" step="5" value="40"></div>
+                                    <label>蒙版圆角 & 内距</label>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                        <div style="display:flex;align-items:center;gap:4px;">
+                                            <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">圆角</span>
+                                            <input type="number" id="rdp-cta-mask-radius" class="rop-input" min="0" max="80" step="1" value="14">
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:4px;">
+                                            <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">左右内距</span>
+                                            <input type="number" id="rdp-cta-pad-h" class="rop-input" min="0" max="80" step="2" value="22">
+                                        </div>
+                                    </div>
 
-                        <label>图层总不透明度</label>
-                        <div class="rop-slider-combo"><input type="range" id="rdp-opacity" class="rop-range" min="0" max="255" step="5" value="255"><input type="number" class="rop-num-readout" data-link="rdp-opacity" min="0" max="255" step="5" value="255"></div>
+                                    <label style="color:#fda4af;font-weight:600;">文字色 & 号码色</label>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                        <div style="display:flex;align-items:center;gap:5px;">
+                                            <input type="color" id="rdp-cta-text-color" class="rop-color" value="#000000" title="普通文案颜色">
+                                            <span style="font-size:11px;color:var(--text-secondary);">正文色</span>
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:5px;">
+                                            <input type="color" id="rdp-cta-phone-color" class="rop-color" value="#E60039" title="电话号码自动高亮颜色">
+                                            <span style="font-size:11px;color:#fda4af;font-weight:600;">📞 号码高亮色</span>
+                                        </div>
+                                    </div>
 
-                        <label>主色调</label><input type="color" id="rdp-color1" class="rop-color" value="#E2E8F0">
-                        <label>副色/星核色</label><input type="color" id="rdp-color2" class="rop-color" value="#FFFDF5">
-                    </div>
+                                    <label>字号 & 横幅宽度</label>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                        <div style="display:flex;align-items:center;gap:4px;">
+                                            <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">字号</span>
+                                            <input type="number" id="rdp-cta-fontsize" class="rop-input" min="18" max="130" step="2" value="48">
+                                        </div>
+                                        <div style="display:flex;align-items:center;gap:4px;">
+                                            <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">宽度</span>
+                                            <input type="number" id="rdp-cta-text-width" class="rop-input" min="260" max="1080" step="10" value="920">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 公共子折叠区 1: 位置定位与出现时间 -->
+                            <details class="rop-scroll-subacc" id="rdp-acc-cta-timing" open>
+                                <summary>
+                                    <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>📍 位置定位与出现时间</span></span>
+                                    <span class="rop-acc-badge" id="rdp-acc-cta-timing-badge">30s → 全程</span>
+                                </summary>
+                                <div class="rop-scroll-subacc-body">
+                                    <div class="rop-grid" style="gap:5px;">
+                                        <label style="color:#fde047;font-weight:700;">快速定位<br><span style="font-size:10px;color:#94a3b8;font-weight:400;">(可画布拖移)</span></label>
+                                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                            <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="top" style="padding:2px 6px;font-size:10.5px;">⬆️ 顶部</button>
+                                            <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center" style="padding:2px 6px;font-size:10.5px;">🎯 正中</button>
+                                            <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="lower" style="padding:2px 6px;font-size:10.5px;border-color:#10b981;color:#6ee7b7;">⬇️ 中下黄金位</button>
+                                            <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="bottom" style="padding:2px 6px;font-size:10.5px;">⬇️ 底部</button>
+                                            <button type="button" class="rop-btn rdp-cta-pos-btn" data-pos="center-x" style="padding:2px 6px;font-size:10.5px;">↔️ 居中</button>
+                                        </div>
+
+                                        <label>水平位置 X</label>
+                                        <div class="rop-slider-combo">
+                                            <input type="range" id="rdp-cta-x" class="rop-range" min="-540" max="540" step="2" value="0">
+                                            <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-x" min="-1080" max="1080" step="2" value="0">
+                                        </div>
+
+                                        <label>垂直位置 Y</label>
+                                        <div class="rop-slider-combo">
+                                            <input type="range" id="rdp-cta-y" class="rop-range" min="-960" max="960" step="2" value="550">
+                                            <input type="number" class="rop-num-readout" data-cta-link="rdp-cta-y" min="-1920" max="1920" step="2" value="550">
+                                        </div>
+
+                                        <label style="color:#fde047;font-weight:700;">几秒后出现</label>
+                                        <div style="display:flex;flex-direction:column;gap:4px;">
+                                            <div style="display:flex;align-items:center;gap:5px;">
+                                                <input type="number" id="rdp-cta-start" class="rop-input" min="0" max="3600" step="0.5" value="30" style="width:68px;font-weight:700;color:#fde047;">
+                                                <span style="font-size:11px;color:var(--text-secondary);">秒 →</span>
+                                                <input type="number" id="rdp-cta-end" class="rop-input" min="0" max="9999" step="0.5" value="9999" style="width:68px;">
+                                                <button type="button" class="rop-btn" id="rdp-cta-end-full" style="padding:2px 6px;font-size:10px;" title="一直显示到视频结束">全程</button>
+                                            </div>
+                                            <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="0" style="padding:1px 5px;font-size:10px;">0s立即</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="5" style="padding:1px 5px;font-size:10px;">5s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="10" style="padding:1px 5px;font-size:10px;">10s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="15" style="padding:1px 5px;font-size:10px;">15s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="20" style="padding:1px 5px;font-size:10px;">20s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="25" style="padding:1px 5px;font-size:10px;">25s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="30" style="padding:1px 5px;font-size:10px;border-color:#10b981;color:#6ee7b7;font-weight:700;">30s(默认)</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="45" style="padding:1px 5px;font-size:10px;">45s</button>
+                                                <button type="button" class="rop-btn rdp-cta-time-chip" data-sec="60" style="padding:1px 5px;font-size:10px;">60s</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <!-- 公共子折叠区 2: 出场动画与持续动态 -->
+                            <details class="rop-scroll-subacc" id="rdp-acc-cta-anim">
+                                <summary>
+                                    <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎬 出场动画与持续动态</span></span>
+                                    <span class="rop-acc-badge" id="rdp-acc-cta-anim-badge">来电震动 · 呼吸脉冲</span>
+                                </summary>
+                                <div class="rop-scroll-subacc-body">
+                                    <div class="rop-grid" style="gap:5px;">
+                                        <label style="color:#a7f3d0;font-weight:600;">出场动画</label>
+                                        <select id="rdp-cta-anim-in" class="rop-select">
+                                            <option value="ring_shake">📳 来电震动弹出 (最吸睛推荐)</option>
+                                            <option value="pop">💥 弹跳放大 (Pop)</option>
+                                            <option value="elastic_pop">🍮 Q弹果冻弹出 (Elastic)</option>
+                                            <option value="zoom_bounce">🚀 冲刺回弹放大 (Bounce)</option>
+                                            <option value="slide_up">⬆️ 底部上滑推入</option>
+                                            <option value="slide_down">⬇️ 顶部下滑落入</option>
+                                            <option value="slide_left">⬅️ 右侧滑入</option>
+                                            <option value="slide_right">➡️ 左侧滑入</option>
+                                            <option value="fade">✨ 柔和渐显 (Fade)</option>
+                                            <option value="none">无入场动画</option>
+                                        </select>
+
+                                        <label>动画时长 & 退场</label>
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                                            <div style="display:flex;align-items:center;gap:4px;">
+                                                <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">入场(s)</span>
+                                                <input type="number" id="rdp-cta-anim-dur" class="rop-input" value="0.55" min="0.1" max="3" step="0.05">
+                                            </div>
+                                            <select id="rdp-cta-anim-out" class="rop-select">
+                                                <option value="fade">退场: 渐隐</option>
+                                                <option value="pop">退场: 缩回</option>
+                                                <option value="slide_down">退场: 下滑</option>
+                                                <option value="none">退场: 无</option>
+                                            </select>
+                                        </div>
+
+                                        <label style="color:#a7f3d0;font-weight:600;">出现后动态</label>
+                                        <select id="rdp-cta-loop-anim" class="rop-select">
+                                            <option value="pulse">💓 持续呼吸放大脉冲 (推荐)</option>
+                                            <option value="ring">🔔 间歇来电震动提醒</option>
+                                            <option value="float">🎈 持续柔和上下轻浮</option>
+                                            <option value="none">⏸️ 保持静止</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </details>
                 </div>
             </div>
         `;
@@ -12736,6 +13028,8 @@ class ReelsDecorPanel {
                         if (typeof window !== 'undefined' && window._reelsState) {
                             window._reelsState.overlaySelectedId = ov.id;
                         }
+                        const ctaAcc = q('#rdp-acc-cta');
+                        if (ctaAcc) ctaAcc.open = true;
                         this._syncPhoneCtaUI(ov);
                         this._syncScopeAndRender(ov);
                         this._previewPhoneCtaAnim(ov);
@@ -12760,6 +13054,8 @@ class ReelsDecorPanel {
             if (typeof window !== 'undefined' && window._reelsState) {
                 window._reelsState.overlaySelectedId = ov.id;
             }
+            const ctaAcc = q('#rdp-acc-cta');
+            if (ctaAcc) ctaAcc.open = true;
             this._syncPhoneCtaUI(ov);
             this._syncScopeAndRender(ov);
             this._previewPhoneCtaAnim(ov);
@@ -12797,6 +13093,8 @@ class ReelsDecorPanel {
                 if (typeof window !== 'undefined' && window._reelsState) {
                     window._reelsState.overlaySelectedId = ov.id;
                 }
+                const ctaAcc = q('#rdp-acc-cta');
+                if (ctaAcc) ctaAcc.open = true;
                 this._syncPhoneCtaUI(ov);
                 this._syncScopeAndRender(ov);
             });
@@ -12864,6 +13162,8 @@ class ReelsDecorPanel {
                 if (typeof window !== 'undefined' && window._reelsState) {
                     window._reelsState.overlaySelectedId = ov.id;
                 }
+                const ctaAcc = q('#rdp-acc-cta');
+                if (ctaAcc) ctaAcc.open = true;
                 this._syncPhoneCtaUI(ov);
                 this._syncScopeAndRender(ov);
                 this._previewPhoneCtaAnim(ov);
@@ -13012,6 +13312,8 @@ class ReelsDecorPanel {
             if (typeof window !== 'undefined' && window._reelsState) {
                 window._reelsState.overlaySelectedId = ov.id;
             }
+            const ctaAcc = this.container?.querySelector('#rdp-acc-cta');
+            if (ctaAcc) ctaAcc.open = true;
             this._syncPhoneCtaUI(ov);
             this._syncScopeAndRender(ov);
         };
@@ -13029,6 +13331,39 @@ class ReelsDecorPanel {
         reader.readAsDataURL(file);
     }
 
+    _updatePhoneCtaBadges(target, isEnabled) {
+        if (!this.container) return;
+        const startSec = Number(target?.start ?? 30);
+        const endSec = Number(target?.end ?? 9999);
+        const endLabel = endSec >= 9999 ? '全程' : `${endSec}s`;
+        const modeTag = (target?.cta_mode === 'image' && target?.cta_image_src) ? '图片模式' : '文字模式';
+        const pos = target ? this._toCtaCenterPos(target) : { x: 0, y: 550 };
+        const animInMap = {
+            ring_shake: '来电震动',
+            pop: '弹跳放大',
+            elastic_pop: 'Q弹弹出',
+            zoom_bounce: '冲刺回弹',
+            slide_up: '上滑',
+            slide_down: '下滑',
+            slide_left: '左滑',
+            slide_right: '右滑',
+            fade: '渐显',
+            none: '无入场',
+        };
+        const loopMap = {
+            pulse: '呼吸脉冲',
+            ring: '震动提醒',
+            float: '上下轻浮',
+            none: '静止',
+        };
+        const animIn = animInMap[target?.anim_in_type || 'ring_shake'] || '来电震动';
+        const loopAnim = loopMap[target?.cta_loop_anim || 'pulse'] || '呼吸脉冲';
+
+        _setAccBadge(this.container, 'rdp-acc-cta-badge', target ? `${modeTag} · ${startSec}s弹出` : '图片 / 文字 · 30s弹出', Boolean(isEnabled));
+        _setAccBadge(this.container, 'rdp-acc-cta-timing-badge', `Y:${pos.y} · ${startSec}s→${endLabel}`, Boolean(isEnabled));
+        _setAccBadge(this.container, 'rdp-acc-cta-anim-badge', `${animIn} · ${loopAnim}`, Boolean(isEnabled && (target?.anim_in_type !== 'none' || target?.cta_loop_anim !== 'none')));
+    }
+
     _syncPhoneCtaUI(ov = undefined) {
         if (!this.container) return;
         const target = ov !== undefined ? ov : this._getPhoneCta();
@@ -13037,6 +13372,12 @@ class ReelsDecorPanel {
             const exists = Boolean(target);
             const isEnabled = Boolean(target && !target.disabled);
             this._setVal('rdp-cta-enable', isEnabled);
+            if (!this._hasSyncedCtaOnce) {
+                this._hasSyncedCtaOnce = true;
+                const ctaAcc = this.container.querySelector('#rdp-acc-cta');
+                if (ctaAcc && isEnabled) ctaAcc.open = true;
+            }
+            this._updatePhoneCtaBadges(target, isEnabled);
 
             const badge = this.container.querySelector('#rdp-cta-status-badge');
             if (badge) {
@@ -13274,6 +13615,16 @@ class ReelsDecorPanel {
         return el.value;
     }
 
+    _updateDecorAccordionBadges(ov) {
+        if (!this.container) return;
+        const summary = _computeDecorSummaryBadges(ov);
+        _setAccBadge(this.container, 'rdp-acc-presets-badge', summary.presetLabel, summary.presetActive);
+        _setAccBadge(this.container, 'rdp-acc-effects-badge', summary.effectsLabel, summary.effectsActive);
+        _setAccBadge(this.container, 'rdp-acc-dark-badge', summary.darkLabel, summary.darkActive);
+        _setAccBadge(this.container, 'rdp-acc-grain-badge', summary.grainLabel, summary.grainActive);
+        _setAccBadge(this.container, 'rdp-acc-layout-badge', summary.layoutLabel, summary.layoutActive);
+    }
+
     _syncFromDecorOverlay(ov) {
         if (!ov || !this.container) return;
         this._syncing = true;
@@ -13317,6 +13668,7 @@ class ReelsDecorPanel {
                 card.style.boxShadow = isSelected ? '0 0 0 2px #fde047, 0 4px 12px rgba(250,204,21,0.35)' : 'none';
                 card.style.transform = isSelected ? 'translateY(-1px)' : 'none';
             });
+            this._updateDecorAccordionBadges(ov);
         } finally {
             this._syncing = false;
         }
@@ -13354,6 +13706,7 @@ class ReelsDecorPanel {
         ov.decor_color1 = this._getVal('rdp-color1') || '#FFD700';
         ov.decor_color2 = this._getVal('rdp-color2') || '#FFFDF5';
 
+        this._updateDecorAccordionBadges(ov);
         this._renderLayerList();
         this._syncScopeAndRender(ov);
         if (this.linkedOverlayPanel) {
@@ -13500,7 +13853,7 @@ class ReelsDecorPanel {
         const decors = this._getDecorOverlays();
         const styles = window.ReelsOverlay?.DECOR_OVERLAY_STYLES || {};
         if (!decors.length) {
-            listEl.innerHTML = `<div style="padding:6px 8px;border-radius:6px;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);color:#c7d2fe;font-size:11px;">💡 当前任务暂未添加点缀/颗粒层。直接点击下方任意 30 款卡片即可一键添加并实时预览！</div>`;
+            listEl.innerHTML = `<div style="padding:5px 8px;border-radius:6px;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);color:#c7d2fe;font-size:11px;">💡 暂未添加点缀层，点击下方 ${Object.keys(styles).length || 34} 款预设卡片即可一键叠加预览！</div>`;
             return;
         }
         const selected = this._getSelectedDecor();
@@ -13594,6 +13947,12 @@ class ReelsDecorPanel {
         const ov = this._getSelectedDecor();
         if (ov) {
             this._syncFromDecorOverlay(ov);
+        } else {
+            this.container?.querySelectorAll('.rdp-preset-card').forEach(card => {
+                card.style.boxShadow = 'none';
+                card.style.transform = 'none';
+            });
+            this._updateDecorAccordionBadges(null);
         }
         this._syncPhoneCtaUI(this._getPhoneCta());
     }

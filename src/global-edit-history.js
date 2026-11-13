@@ -22,6 +22,8 @@
     }
     function context(target){
         if(target?.closest?.('#reels-batch-table-container'))return 'batch-reels';
+        const activeSuiteSub=document.querySelector('.vk-suite-panel.active section.panel.active');
+        if(activeSuiteSub?.id)return activeSuiteSub.id.replace(/-panel$/,'');
         return document.querySelector('.tab.active[data-tab]')?.dataset.tab||document.querySelector('section.panel.active')?.id.replace(/-panel$/,'')||'general';
     }
     function panel(id){return document.getElementById(id+'-panel')||document.querySelector('section.panel.active')||document.body;}

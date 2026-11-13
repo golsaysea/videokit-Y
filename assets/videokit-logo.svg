@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="512" height="512" fill="none">
+  <defs>
+    <linearGradient id="vk-logo-bg" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0b1326"/>
+      <stop offset="55%" stop-color="#111936"/>
+      <stop offset="100%" stop-color="#1c1528"/>
+    </linearGradient>
+    <radialGradient id="vk-logo-glow" cx="23" cy="9" r="14" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.22"/>
+      <stop offset="60%" stop-color="#38bdf8" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#0b1326" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="vk-logo-rim" x1="2" y1="2" x2="30" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.72"/>
+      <stop offset="52%" stop-color="#fde68a" stop-opacity="0.62"/>
+      <stop offset="100%" stop-color="#fb7185" stop-opacity="0.76"/>
+    </linearGradient>
+    <linearGradient id="vk-logo-check" x1="8" y1="18" x2="24" y2="10" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="35%" stop-color="#fef3c7"/>
+      <stop offset="68%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#fb7185"/>
+    </linearGradient>
+    <clipPath id="vk-logo-clip">
+      <rect x="2" y="2" width="28" height="28" rx="8"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#vk-logo-clip)">
+    <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#vk-logo-bg)"/>
+    <circle cx="22.5" cy="9.5" r="13" fill="url(#vk-logo-glow)"/>
+  </g>
+  <rect x="2" y="2" width="28" height="28" rx="8" stroke="url(#vk-logo-rim)" stroke-width="1.35"/>
+  <path d="M8.2 16.4 L13.5 21.8 L24.0 10.0" stroke="url(#vk-logo-check)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.22"/>
+  <path d="M8.2 16.4 L13.5 21.8 L24.0 10.0" stroke="url(#vk-logo-check)" stroke-width="3.05" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M22.8 18.7 L23.45 20.35 L25.1 21.0 L23.45 21.65 L22.8 23.3 L22.15 21.65 L20.5 21.0 L22.15 20.35 Z" fill="#fde68a" opacity="0.92"/>
+</svg>

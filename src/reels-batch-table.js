@@ -230,10 +230,11 @@ const _batchTableState = {
     container: null,
     // ── 多标签页 ──
     tabs: [
-        { id: 'tab_1', name: '默认', materialDir: '', lastRefreshTime: null, tasks: [] }
+        { id: 'tab_1', name: '默认', group: '', materialDir: '', lastRefreshTime: null, tasks: [] }
     ],
     activeTabId: 'tab_1',
     appliedTabIds: [],
+    collapsedTabGroups: {},
     nextTabId: 2,
     // ── 视频分配模式（默认关闭） ──
     videoDropRouteEnabled: false,
@@ -272,8 +273,30 @@ window.reelsSyncActiveBatchTabFromId = reelsSyncActiveBatchTabFromId;
 
 function _normalizeBatchTabState() {
     if (!_batchTableState.tabs.length) return;
-    if (!_batchTableState.tabs.some(t => t.id === _batchTableState.activeTabId)) {
-        _batchTableState.activeTabId = _batchTableState.tabs[0].id;
+    const validGroups = new Set();
+    _batchTableState.tabs.forEach(tab => {
+        if (!tab || typeof tab !== 'object') return;
+        tab.group = String(tab.group || '').trim();
+        tab.hidden = !!tab.hidden;
+        if (tab.cloudKey !== undefined) tab.cloudKey = String(tab.cloudKey || '').trim();
+        if (tab.cloudUrl !== undefined) tab.cloudUrl = String(tab.cloudUrl || '').trim();
+        if (tab.group) validGroups.add(tab.group);
+    });
+    const prevCollapsed = (_batchTableState.collapsedTabGroups && typeof _batchTableState.collapsedTabGroups === 'object')
+        ? _batchTableState.collapsedTabGroups
+        : {};
+    const nextCollapsed = {};
+    for (const gName of validGroups) {
+        if (prevCollapsed[gName]) nextCollapsed[gName] = true;
+    }
+    _batchTableState.collapsedTabGroups = nextCollapsed;
+    if (!_batchTableState.tabs.some(t => t && !t.hidden) && _batchTableState.tabs[0]) {
+        _batchTableState.tabs[0].hidden = false;
+    }
+    const activeTabObj = _batchTableState.tabs.find(t => t && t.id === _batchTableState.activeTabId);
+    if (!activeTabObj || activeTabObj.hidden) {
+        const firstOpen = _batchTableState.tabs.find(t => t && !t.hidden) || _batchTableState.tabs[0];
+        if (firstOpen) _batchTableState.activeTabId = firstOpen.id;
     }
     const maxNumericId = _batchTableState.tabs.reduce((max, tab) => {
         const match = String(tab.id || '').match(/^tab_(\d+)$/);
@@ -289,6 +312,7 @@ function _stripBatchGroupMeta(task) {
     const clean = _cloneBatchTasks([task])[0] || {};
     delete clean._batchTabId;
     delete clean._batchTabName;
+    delete clean._batchTabGroup;
     delete clean._batchTabOrder;
     delete clean._batchTaskOrder;
     delete clean._batchProjection;
@@ -309,11 +333,11 @@ function _syncGroupedProjectionToTabs(activeTasks, forceAllTabs = false) {
     for (const task of activeTasks) {
         if (!task?._batchTabId){
             const activeTab=_getActiveTab();if(!activeTab)continue;
-            _ensureTaskId(task);task._batchTabId=activeTab.id;task._batchTabName=activeTab.name;task._batchProjection=true;
+            _ensureTaskId(task);task._batchTabId=activeTab.id;task._batchTabName=activeTab.name;task._batchTabGroup=activeTab.group||'';task._batchProjection=true;
             task._batchTaskOrder=(activeTab.tasks||[]).length+activeTasks.indexOf(task);
         }
         if(!_batchTableState.tabs.some(tab=>tab.id===task._batchTabId)){
-            _batchTableState.tabs.push({id:task._batchTabId,name:task._batchTabName||'恢复的任务组',tasks:[]});
+            _batchTableState.tabs.push({id:task._batchTabId,name:task._batchTabName||'恢复的任务组',group:String(task._batchTabGroup||'').trim(),tasks:[]});
             _normalizeBatchTabState();
         }
         if (!grouped.has(task._batchTabId)) grouped.set(task._batchTabId, []);
@@ -588,7 +612,14 @@ function _loadTabTasks(tab) {
 }
 
 function _switchToTab(tabId, opts = {}) {
-    if (tabId === _batchTableState.activeTabId && !opts.forceLoad) return;
+    const targetTab = (_batchTableState.tabs || []).find(t => t && t.id === tabId);
+    if (targetTab && targetTab.hidden) {
+        targetTab.hidden = false;
+    }
+    if (tabId === _batchTableState.activeTabId && !opts.forceLoad) {
+        if (!opts.noRender) _renderBatchTable();
+        return;
+    }
     // Save current tab tasks (apply DOM→state for the OLD tab before saving)
     if (!opts.skipSave) {
         // Apply any pending DOM edits to the CURRENT (old) tab's tasks before saving
@@ -609,10 +640,18 @@ function _switchToTab(tabId, opts = {}) {
     if (!opts.noRender) _renderBatchTable();
 }
 
-function _addTab(name) {
+function _addTab(name, group = '') {
     const id = 'tab_' + _batchTableState.nextTabId++;
-    const tab = { id, name: name || `标签${_batchTableState.tabs.length + 1}`, materialDir: '', lastRefreshTime: null, tasks: [] };
+    const tab = {
+        id,
+        name: name || `标签${_batchTableState.tabs.length + 1}`,
+        group: String(group || '').trim(),
+        materialDir: '',
+        lastRefreshTime: null,
+        tasks: [],
+    };
     _batchTableState.tabs.push(tab);
+    _normalizeBatchTabState();
     _switchToTab(id);
     _batchAutoSave();
 }
@@ -639,9 +678,14 @@ function _removeTab(tabId) {
         if (Array.isArray(opened.knownTabIds)) opened.knownTabIds = opened.knownTabIds.filter(id => id !== tabId);
         if (Array.isArray(opened.tasks)) opened.tasks = opened.tasks.filter(t => t?._batchTabId !== tabId);
     }
-    if (_batchTableState.activeTabId === tabId) {
-        _batchTableState.activeTabId = _batchTableState.tabs[Math.min(idx, _batchTableState.tabs.length - 1)].id;
+    if (_batchTableState.activeTabId === tabId || !_batchTableState.tabs.some(t => t && t.id === _batchTableState.activeTabId && !t.hidden)) {
+        const nextVisible = _batchTableState.tabs.find(t => t && !t.hidden) || _batchTableState.tabs[Math.min(idx, _batchTableState.tabs.length - 1)];
+        if (nextVisible) nextVisible.hidden = false;
+        _batchTableState.activeTabId = nextVisible?.id || '';
+        _normalizeBatchTabState();
         _loadTabTasks(_getActiveTab());
+    } else {
+        _normalizeBatchTabState();
     }
     _skipNextApply = true;
     _renderBatchTable();
@@ -756,13 +800,961 @@ window.reelsCleanEmptyBatchTabs = _cleanEmptyTabs;
 async function _renameTab(tabId) {
     const tab = _batchTableState.tabs.find(t => t.id === tabId);
     if (!tab) return;
-    const newName = await _showInputDialog('重命名标签', '输入标签名称');
+    const newName = await _showInputDialog('重命名标签', '输入标签名称', tab.name || '');
     if (newName && newName.trim()) {
         tab.name = newName.trim();
+        (window._reelsState?.tasks || []).forEach(t => {
+            if (t && t._batchTabId === tab.id) t._batchTabName = tab.name;
+        });
         _renderBatchTable();
+        if (typeof _renderTaskList === 'function') _renderTaskList({ preserveScroll: true });
         _batchAutoSave();
     }
 }
+
+// ── 标签小分组 & 导入拆分共享辅助 ──
+function _extractTaskGroupDescriptor(task, fallbackName = '默认') {
+    const cleanFallback = String(fallbackName || '默认').trim() || '默认';
+    if (!task || typeof task !== 'object') {
+        return { key: '__default__', name: cleanFallback, tabGroup: '', queueId: '', isExplicit: false };
+    }
+    const batchTabId = String(task._batchTabId || '').trim();
+    const batchTabName = String(task._batchTabName || '').trim();
+    const batchTabGroup = String(task._batchTabGroup || '').trim();
+    const queueId = String(task._folderQueueId || '').trim();
+    const queueName = String(task._folderQueueName || '').trim();
+    if (batchTabId || batchTabName) {
+        return {
+            key: batchTabId ? `tab:${batchTabId}` : `tabname:${batchTabName}`,
+            name: batchTabName || cleanFallback,
+            tabGroup: batchTabGroup,
+            queueId,
+            isExplicit: true,
+        };
+    }
+    if (queueId || queueName) {
+        return {
+            key: queueId ? `queue:${queueId}` : `queuename:${queueName}`,
+            name: queueName || cleanFallback,
+            tabGroup: batchTabGroup,
+            queueId,
+            isExplicit: true,
+        };
+    }
+    return { key: '__default__', name: cleanFallback, tabGroup: batchTabGroup, queueId: '', isExplicit: false };
+}
+
+function _splitFlatTasksIntoTabs(rawTasks, fallbackName = '导入工程') {
+    const cleanFallback = String(fallbackName || '导入工程').trim() || '导入工程';
+    const list = Array.isArray(rawTasks) ? rawTasks : [];
+    const groups = new Map();
+    let hasExplicitGroup = false;
+    for (const raw of list) {
+        if (!raw || typeof raw !== 'object') continue;
+        const desc = _extractTaskGroupDescriptor(raw, cleanFallback);
+        if (desc.isExplicit) hasExplicitGroup = true;
+        if (!groups.has(desc.key)) {
+            groups.set(desc.key, {
+                name: desc.name,
+                group: desc.tabGroup,
+                folderQueueId: desc.queueId,
+                tasks: [],
+            });
+        }
+        const entry = groups.get(desc.key);
+        if (!entry.group && desc.tabGroup) entry.group = desc.tabGroup;
+        entry.tasks.push(raw);
+    }
+    const tabs = [];
+    let idx = 1;
+    for (const entry of groups.values()) {
+        tabs.push({
+            id: `split_tab_${idx++}`,
+            name: entry.name,
+            group: entry.group || '',
+            folderQueueId: entry.folderQueueId || '',
+            tasks: entry.tasks,
+        });
+    }
+    if (!tabs.length) {
+        tabs.push({ id: 'split_tab_1', name: cleanFallback, group: '', folderQueueId: '', tasks: [] });
+    }
+    return { tabs, grouped: hasExplicitGroup && (tabs.length > 1 || tabs[0]?.name !== cleanFallback) };
+}
+window.reelsSplitTasksIntoTabs = _splitFlatTasksIntoTabs;
+
+function _normalizeImportedProjectPayload(rawData, fallbackName = '导入工程') {
+    if (!rawData || typeof rawData !== 'object') return null;
+    if (Array.isArray(rawData.tabs) && rawData.tabs.length > 0) {
+        const validTabs = rawData.tabs.filter(t => t && Array.isArray(t.tasks));
+        if (validTabs.length === rawData.tabs.length) {
+            return {
+                ...rawData,
+                version: '2.0',
+                tabs: validTabs.map(t => ({ ...t, group: String(t.group || '').trim() })),
+                activeTabId: rawData.activeTabId || validTabs[0]?.id || '',
+            };
+        }
+    }
+    if (Array.isArray(rawData.tasks)) {
+        const { tabs, grouped } = _splitFlatTasksIntoTabs(rawData.tasks, fallbackName);
+        return {
+            ...rawData,
+            version: '2.0',
+            tabs,
+            activeTabId: tabs[0]?.id || '',
+            _hadGroupedTasks: grouped,
+        };
+    }
+    return null;
+}
+
+function _getExistingTabGroupNames() {
+    const names = [];
+    const seen = new Set();
+    for (const tab of (_batchTableState.tabs || [])) {
+        const g = String(tab?.group || '').trim();
+        if (g && !seen.has(g)) {
+            seen.add(g);
+            names.push(g);
+        }
+    }
+    return names;
+}
+
+function _buildOrderedTabSegments(tabs = _batchTableState.tabs || []) {
+    const segments = [];
+    const groupSegmentMap = new Map();
+    for (const tab of tabs) {
+        if (!tab) continue;
+        const g = String(tab.group || '').trim();
+        if (!g) {
+            segments.push({ type: 'single', tab });
+            continue;
+        }
+        if (!groupSegmentMap.has(g)) {
+            const seg = { type: 'group', groupName: g, tabs: [] };
+            groupSegmentMap.set(g, seg);
+            segments.push(seg);
+        }
+        groupSegmentMap.get(g).tabs.push(tab);
+    }
+    return segments;
+}
+
+function _clusterTabsBySmallGroup() {
+    const ordered = [];
+    for (const seg of _buildOrderedTabSegments(_batchTableState.tabs)) {
+        if (seg.type === 'single') ordered.push(seg.tab);
+        else ordered.push(...seg.tabs);
+    }
+    _batchTableState.tabs = ordered;
+}
+
+function _syncActiveProjectionGroupFields() {
+    const tabMap = new Map((_batchTableState.tabs || []).map((t, idx) => [t.id, { tab: t, idx }]));
+    (window._reelsState?.tasks || []).forEach(task => {
+        if (!task || !task._batchTabId) return;
+        const hit = tabMap.get(task._batchTabId);
+        if (hit) {
+            task._batchTabName = hit.tab.name;
+            task._batchTabGroup = hit.tab.group || '';
+            task._batchTabOrder = hit.idx;
+        }
+    });
+}
+
+function _setTabsGroup(tabIds, groupName) {
+    const idSet = new Set(Array.isArray(tabIds) ? tabIds : [tabIds]);
+    if (!idSet.size) return 0;
+    const cleanGroup = String(groupName || '').trim();
+    let changed = 0;
+    for (const tab of (_batchTableState.tabs || [])) {
+        if (!tab || !idSet.has(tab.id)) continue;
+        tab.group = cleanGroup;
+        tab._dirty = true;
+        changed++;
+    }
+    if (!changed) return 0;
+    if (cleanGroup && _batchTableState.collapsedTabGroups) {
+        delete _batchTableState.collapsedTabGroups[cleanGroup];
+    }
+    _clusterTabsBySmallGroup();
+    _normalizeBatchTabState();
+    _syncActiveProjectionGroupFields();
+    if (_isBatchGroupedProjection(window._reelsState?.tasks || [])) {
+        _restoreGroupedProjectionFromTabs(_batchTableState.appliedTabIds);
+    }
+    _skipNextApply = true;
+    _renderBatchTable();
+    if (typeof _renderTaskList === 'function') _renderTaskList({ preserveScroll: true });
+    _batchAutoSave({ skipSync: true });
+    return changed;
+}
+
+function _toggleTabGroupCollapse(groupName) {
+    const g = String(groupName || '').trim();
+    if (!g) return;
+    if (!_batchTableState.collapsedTabGroups || typeof _batchTableState.collapsedTabGroups !== 'object') {
+        _batchTableState.collapsedTabGroups = {};
+    }
+    _batchTableState.collapsedTabGroups[g] = !_batchTableState.collapsedTabGroups[g];
+    _skipNextApply = true;
+    _renderBatchTable();
+    _batchAutoSave({ skipSync: true });
+}
+
+async function _renameTabGroup(oldGroupName) {
+    const oldG = String(oldGroupName || '').trim();
+    if (!oldG) return;
+    const nextName = await _showInputDialog('重命名小分组', '输入新的小分组名称（留空取消）', oldG);
+    const clean = String(nextName || '').trim();
+    if (!clean || clean === oldG) return;
+    for (const tab of (_batchTableState.tabs || [])) {
+        if (tab && tab.group === oldG) tab.group = clean;
+    }
+    if (_batchTableState.collapsedTabGroups?.[oldG]) {
+        _batchTableState.collapsedTabGroups[clean] = true;
+        delete _batchTableState.collapsedTabGroups[oldG];
+    }
+    _clusterTabsBySmallGroup();
+    _normalizeBatchTabState();
+    _syncActiveProjectionGroupFields();
+    _skipNextApply = true;
+    _renderBatchTable();
+    if (typeof _renderTaskList === 'function') _renderTaskList({ preserveScroll: true });
+    _batchAutoSave({ skipSync: true });
+}
+
+function _showTabContextMenu(tabId, clientX, clientY) {
+    document.getElementById('rbt-tab-context-menu')?.remove();
+    const tab = (_batchTableState.tabs || []).find(t => t.id === tabId);
+    if (!tab) return;
+    const existingGroups = _getExistingTabGroupNames().filter(g => g !== tab.group);
+    const menu = document.createElement('div');
+    menu.id = 'rbt-tab-context-menu';
+    menu.style.cssText = `position:fixed;left:${Math.min(clientX, window.innerWidth - 210)}px;top:${Math.min(clientY, window.innerHeight - 260)}px;z-index:100001;min-width:190px;background:#16162a;border:1px solid #353560;border-radius:8px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,0.65);font-size:12px;color:#e5e7eb;`;
+    const btnCss = 'display:block;width:100%;text-align:left;padding:6px 10px;background:none;border:none;color:#e5e7eb;border-radius:4px;cursor:pointer;font-size:12px;';
+    const openCount = (_batchTableState.tabs || []).filter(t => t && !t.hidden).length;
+    menu.innerHTML = `
+        <div style="padding:4px 10px;font-size:10px;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,0.08);margin-bottom:4px;">标签：${_escHtml(tab.name)}${tab.group ? `（${_escHtml(tab.group)}）` : ''}</div>
+        <button class="rbt-ctx-item" data-act="rename" style="${btnCss}">✏️ 重命名标签</button>
+        ${openCount > 1 ? `<button class="rbt-ctx-item" data-act="hide-bg" style="${btnCss};color:#c4b5fd;">📥 收起此工程到后台</button>` : ''}
+        <button class="rbt-ctx-item" data-act="proj-manager" style="${btnCss};color:#a5b4fc;">🗂️ 工程管理（选择打开/后台）</button>
+        <div style="border-top:1px solid rgba(255,255,255,0.08);margin:4px 0;"></div>
+        <button class="rbt-ctx-item" data-act="new-group" style="${btnCss}">📂 设为新小分组...</button>
+        ${existingGroups.map(g => `<button class="rbt-ctx-item" data-act="move-group" data-group="${_escHtml(g)}" style="${btnCss}">↳ 移入「${_escHtml(g)}」</button>`).join('')}
+        ${tab.group ? `<button class="rbt-ctx-item" data-act="ungroup" style="${btnCss};color:#fbbf24;">↩ 移出小分组</button>` : ''}
+        <button class="rbt-ctx-item" data-act="manage" style="${btnCss};color:#67e8f9;border-top:1px solid rgba(255,255,255,0.08);margin-top:4px;padding-top:7px;">🗂 批量管理小分组...</button>
+    `;
+    document.body.appendChild(menu);
+    const cleanup = () => {
+        menu.remove();
+        document.removeEventListener('mousedown', onDocDown);
+    };
+    const onDocDown = (ev) => { if (!menu.contains(ev.target)) cleanup(); };
+    setTimeout(() => document.addEventListener('mousedown', onDocDown), 0);
+    menu.querySelectorAll('.rbt-ctx-item').forEach(btn => {
+        btn.onmouseenter = () => { btn.style.background = 'rgba(123,139,239,0.22)'; };
+        btn.onmouseleave = () => { btn.style.background = 'none'; };
+        btn.onclick = async () => {
+            const act = btn.dataset.act;
+            const targetGroup = btn.dataset.group || '';
+            cleanup();
+            if (act === 'rename') await _renameTab(tabId);
+            else if (act === 'hide-bg') _hideTabToBackground(tabId);
+            else if (act === 'proj-manager') _showProjectManagerModal(tabId);
+            else if (act === 'move-group') _setTabsGroup([tabId], targetGroup);
+            else if (act === 'ungroup') _setTabsGroup([tabId], '');
+            else if (act === 'manage') _showManageTabGroupsModal(tabId);
+            else if (act === 'new-group') {
+                const gName = await _showInputDialog('设置标签小分组', '输入小分组名称（例如：祈祷组 / 英文账号）', tab.group || '');
+                if (gName && gName.trim()) _setTabsGroup([tabId], gName.trim());
+            }
+        };
+    });
+}
+
+function _showManageTabGroupsModal(focusTabId = '') {
+    try { _applyBatchTableChanges(); } catch (_) {}
+    _syncTasksToActiveTab();
+    const tabs = _batchTableState.tabs || [];
+    const existingGroups = _getExistingTabGroupNames();
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;';
+    const renderBody = () => {
+        const curTabs = _batchTableState.tabs || [];
+        const groups = _getExistingTabGroupNames();
+        const segments = _buildOrderedTabSegments(curTabs);
+        const targetId = focusTabId || _batchTableState.activeTabId;
+        const rowsHtml = segments.map(seg => {
+            if (seg.type === 'single') {
+                const t = seg.tab;
+                const checked = t.id === targetId ? 'checked' : '';
+                return `<label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;cursor:pointer;">
+                    <input type="checkbox" class="tg-tab-cb" data-tab-id="${t.id}" ${checked} style="margin:0;accent-color:#22d3ee;">
+                    <span style="font-size:12px;color:#eee;flex:1;">${_escHtml(t.name)}</span>
+                    <span style="font-size:10px;color:#888;">${t.tasks?.length || 0} 条任务 · 未分组</span>
+                </label>`;
+            }
+            return `<div style="border:1px solid rgba(123,139,239,0.35);background:rgba(123,139,239,0.07);border-radius:8px;padding:8px;">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                    <input type="checkbox" class="tg-group-cb" data-group="${_escHtml(seg.groupName)}" style="margin:0;accent-color:#7b8bef;" title="全选/取消本小分组">
+                    <span style="font-size:12px;font-weight:700;color:#c7d2fe;">📂 ${_escHtml(seg.groupName)} (${seg.tabs.length})</span>
+                    <span style="flex:1;"></span>
+                    <button class="tg-group-rename-btn" data-group="${_escHtml(seg.groupName)}" style="padding:2px 8px;font-size:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#cbd5e1;border-radius:4px;cursor:pointer;">✏️ 重命名</button>
+                    <button class="tg-group-dissolve-btn" data-group="${_escHtml(seg.groupName)}" style="padding:2px 8px;font-size:10px;background:rgba(251,191,36,0.14);border:1px solid rgba(251,191,36,0.35);color:#fcd34d;border-radius:4px;cursor:pointer;">解散分组</button>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px;padding-left:14px;">
+                    ${seg.tabs.map(t => `<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:5px;cursor:pointer;">
+                        <input type="checkbox" class="tg-tab-cb" data-group="${_escHtml(seg.groupName)}" data-tab-id="${t.id}" ${t.id === targetId ? 'checked' : ''} style="margin:0;accent-color:#22d3ee;">
+                        <span style="font-size:12px;color:#eee;flex:1;">${_escHtml(t.name)}</span>
+                        <span style="font-size:10px;color:#94a3b8;">${t.tasks?.length || 0} 条任务</span>
+                    </label>`).join('')}
+                </div>
+            </div>`;
+        }).join('');
+        ov.innerHTML = `<div style="background:#18182b;border:1px solid #353560;border-radius:10px;padding:18px;width:520px;max-width:92vw;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 16px 44px rgba(0,0,0,0.65);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <h3 style="margin:0;font-size:15px;color:#67e8f9;">📂 管理标签小分组</h3>
+                <button id="tg-close" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>
+            </div>
+            <p style="margin:0 0 10px;font-size:11px;color:#94a3b8;">勾选一个或多个标签页后输入/选择小分组名即可归组；分组后可在标签栏一键折叠或按组应用到任务列表。</p>
+            <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;flex-wrap:wrap;">
+                <input id="tg-group-input" list="tg-group-datalist" placeholder="输入或选择小分组名称（如：祈祷组）" style="flex:1;min-width:180px;padding:6px 10px;font-size:12px;background:#0f1020;border:1px solid #353560;color:#fff;border-radius:5px;">
+                <datalist id="tg-group-datalist">${groups.map(g => `<option value="${_escHtml(g)}"></option>`).join('')}</datalist>
+                <button id="tg-assign-btn" style="padding:6px 12px;font-size:12px;background:rgba(34,211,238,0.22);border:1px solid rgba(34,211,238,0.45);color:#67e8f9;border-radius:5px;cursor:pointer;font-weight:600;">✅ 归入小分组</button>
+                <button id="tg-ungroup-btn" style="padding:6px 10px;font-size:12px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);color:#cbd5e1;border-radius:5px;cursor:pointer;">↩ 移出分组</button>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:10px;">
+                <button id="tg-all-btn" style="padding:3px 10px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;border-radius:4px;cursor:pointer;">全选</button>
+                <button id="tg-none-btn" style="padding:3px 10px;font-size:11px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#ccc;border-radius:4px;cursor:pointer;">全不选</button>
+            </div>
+            <div style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">${rowsHtml}</div>
+        </div>`;
+        const close = () => ov.remove();
+        ov.querySelector('#tg-close').onclick = close;
+        ov.querySelector('#tg-all-btn').onclick = () => ov.querySelectorAll('.tg-tab-cb,.tg-group-cb').forEach(c => { c.checked = true; });
+        ov.querySelector('#tg-none-btn').onclick = () => ov.querySelectorAll('.tg-tab-cb,.tg-group-cb').forEach(c => { c.checked = false; });
+        ov.querySelectorAll('.tg-group-cb').forEach(gcb => {
+            gcb.onchange = () => {
+                const g = gcb.dataset.group;
+                ov.querySelectorAll('.tg-tab-cb').forEach(cb => { if (cb.dataset.group === g) cb.checked = gcb.checked; });
+            };
+        });
+        ov.querySelector('#tg-assign-btn').onclick = () => {
+            const name = ov.querySelector('#tg-group-input')?.value?.trim() || '';
+            if (!name) { alert('请先输入小分组名称'); return; }
+            const ids = [...ov.querySelectorAll('.tg-tab-cb:checked')].map(c => c.dataset.tabId);
+            if (!ids.length) { alert('请至少勾选一个标签页'); return; }
+            _setTabsGroup(ids, name);
+            focusTabId = '';
+            renderBody();
+        };
+        ov.querySelector('#tg-ungroup-btn').onclick = () => {
+            const ids = [...ov.querySelectorAll('.tg-tab-cb:checked')].map(c => c.dataset.tabId);
+            if (!ids.length) { alert('请至少勾选一个标签页'); return; }
+            _setTabsGroup(ids, '');
+            focusTabId = '';
+            renderBody();
+        };
+        ov.querySelectorAll('.tg-group-rename-btn').forEach(btn => {
+            btn.onclick = async () => { await _renameTabGroup(btn.dataset.group); renderBody(); };
+        });
+        ov.querySelectorAll('.tg-group-dissolve-btn').forEach(btn => {
+            btn.onclick = () => {
+                const ids = (_batchTableState.tabs || []).filter(t => t.group === btn.dataset.group).map(t => t.id);
+                _setTabsGroup(ids, '');
+                renderBody();
+            };
+        });
+    };
+    ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    renderBody();
+}
+window.reelsManageTabGroups = _showManageTabGroupsModal;
+
+function _extractCloudSourceKey(rawUrl = '') {
+    const s = String(rawUrl || '').trim();
+    if (!s) return '';
+    const docMatch = s.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]{10,})/i);
+    if (docMatch) return `gdoc:${docMatch[1]}`;
+    const folderMatch = s.match(/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\/([a-zA-Z0-9_-]{10,})/i);
+    if (folderMatch) return `gdrive-folder:${folderMatch[1]}`;
+    const fileMatch = s.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/i) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/i);
+    if (/drive\.google\.com|googleusercontent\.com/i.test(s) && fileMatch) {
+        return `gdrive:${fileMatch[1]}`;
+    }
+    try {
+        const u = new URL(s);
+        u.hash = '';
+        u.searchParams.delete('usp');
+        return `url:${u.toString()}`;
+    } catch (_) {
+        return `url:${s}`;
+    }
+}
+
+function _normalizeTabCompareName(name = '') {
+    return String(name || '').trim().toLowerCase();
+}
+
+function _findExistingTabsForCloudEntry(projItem = {}) {
+    const rawUrl = String(projItem?.url || projItem?.drive_url || '').trim();
+    const cloudKey = _extractCloudSourceKey(rawUrl);
+    const title = String(projItem?.title || '').trim();
+    const dateTitle = [projItem?.date, projItem?.title].filter(Boolean).join('_').trim();
+    const nameSet = new Set([title, dateTitle].map(_normalizeTabCompareName).filter(Boolean));
+    const tabs = _batchTableState.tabs || [];
+    const matchedTabs = tabs.filter(tab => {
+        if (!tab) return false;
+        if (tabs.length === 1 && _isBatchTabEmpty(tab) && !tab.cloudKey) return false;
+        if (cloudKey && tab.cloudKey && tab.cloudKey === cloudKey) return true;
+        const tabName = _normalizeTabCompareName(tab.name);
+        return Boolean(tabName && nameSet.has(tabName));
+    });
+    return { matchedTabs, cloudKey, rawUrl };
+}
+
+function _findDuplicateTabConflicts(importedTabs = [], existingTabs = _batchTableState.tabs || []) {
+    const list = Array.isArray(existingTabs) ? existingTabs : [];
+    const onlyEmptyPlaceholder = list.length === 1 && _isBatchTabEmpty(list[0]) && !list[0].cloudKey;
+    const matchedPairs = [];
+    const unmatchedTabs = [];
+    if (onlyEmptyPlaceholder) {
+        return { matchedPairs, unmatchedTabs: [...importedTabs] };
+    }
+    const usedExistingIds = new Set();
+    for (const incomingTab of importedTabs) {
+        if (!incomingTab) continue;
+        const incName = _normalizeTabCompareName(incomingTab.name);
+        const incGroup = _normalizeTabCompareName(incomingTab.group);
+        const incCloud = String(incomingTab.cloudKey || '').trim();
+        const hit = list.find(ex => {
+            if (!ex || usedExistingIds.has(ex.id)) return false;
+            const exName = _normalizeTabCompareName(ex.name);
+            const exGroup = _normalizeTabCompareName(ex.group);
+            if (incCloud && ex.cloudKey && incCloud === ex.cloudKey) {
+                if (importedTabs.length === 1 || (incName && exName === incName && incGroup === exGroup)) return true;
+            }
+            return Boolean(incName && exName === incName && incGroup === exGroup);
+        });
+        if (hit) {
+            usedExistingIds.add(hit.id);
+            matchedPairs.push({ existingTab: hit, incomingTab });
+        } else {
+            unmatchedTabs.push(incomingTab);
+        }
+    }
+    return { matchedPairs, unmatchedTabs };
+}
+
+function _replaceTabContentInPlace(existingTab, incomingTab) {
+    if (!existingTab || !incomingTab) return;
+    existingTab.name = incomingTab.name || existingTab.name;
+    existingTab.group = String(incomingTab.group || '').trim();
+    existingTab.materialDir = incomingTab.materialDir || '';
+    existingTab._folderQueueId = incomingTab._folderQueueId || '';
+    existingTab._externalFolderQueuesCombined = !!incomingTab._externalFolderQueuesCombined;
+    existingTab.lastRefreshTime = incomingTab.lastRefreshTime || new Date().toISOString();
+    existingTab.cloudKey = String(incomingTab.cloudKey || existingTab.cloudKey || '').trim();
+    existingTab.cloudUrl = String(incomingTab.cloudUrl || existingTab.cloudUrl || '').trim();
+    existingTab.hidden = false;
+    existingTab.tasks = Array.isArray(incomingTab.tasks) ? incomingTab.tasks : [];
+    existingTab._cachedSerializedTasks = null;
+    existingTab._cachedTasksRef = null;
+    existingTab._cachedTasksLen = -1;
+    existingTab._dirty = true;
+}
+
+function _safeSyncBatchActiveTabIfPopulated() {
+    const activeTasks = window._reelsState?.tasks || [];
+    const activeTab = _getActiveTab();
+    const safeToSync = _batchTableState.visible
+        || activeTasks.length > 0
+        || (activeTab?.tasks?.length || 0) === 0;
+    if (!safeToSync) return;
+    if (!_isRenderingBatchTable && _batchTableState.visible) {
+        try { _applyBatchTableChanges(); } catch (_) {}
+    }
+    _syncTasksToActiveTab();
+}
+
+function _applyBatchProjectVisibility(visibleTabIds, options = {}) {
+    if (!options.skipSync) {
+        _safeSyncBatchActiveTabIfPopulated();
+    }
+    const tabs = _batchTableState.tabs || [];
+    if (!tabs.length) return 0;
+    const rawSet = visibleTabIds instanceof Set
+        ? visibleTabIds
+        : new Set(Array.isArray(visibleTabIds) ? visibleTabIds : []);
+    const validIds = [...rawSet].filter(id => tabs.some(t => t && t.id === id));
+    if (!validIds.length) {
+        if (typeof showToast === 'function') showToast('至少需要保留 1 个工程标签在前台打开', 'warning');
+        else alert('至少需要保留 1 个工程标签在前台打开');
+        return 0;
+    }
+    const visibleSet = new Set(validIds);
+    for (const tab of tabs) {
+        if (tab) tab.hidden = !visibleSet.has(tab.id);
+    }
+    _normalizeBatchTabState();
+    const openTabs = tabs.filter(t => t && !t.hidden);
+    if (openTabs.length === 1) {
+        _batchTableState.activeTabId = openTabs[0].id;
+        _loadTabTasks(openTabs[0]);
+    } else if (openTabs.length > 1) {
+        if (_isBatchGroupedProjection(window._reelsState?.tasks || []) || openTabs.some(t => (t.tasks || []).length > 0)) {
+            _restoreGroupedProjectionFromTabs(openTabs.map(t => t.id));
+        } else {
+            _loadTabTasks(_getActiveTab());
+        }
+    }
+    _batchTableState.openedGroupedProjection = null;
+    _skipNextApply = true;
+    _renderBatchTable();
+    if (typeof _renderTaskList === 'function') _renderTaskList({ preserveScroll: true });
+    _batchAutoSave({ skipSync: true, forceFullSerialize: true });
+    return openTabs.length;
+}
+window.reelsSetVisibleBatchTabs = _applyBatchProjectVisibility;
+
+function _hideTabToBackground(tabId) {
+    const openTabs = (_batchTableState.tabs || []).filter(t => t && !t.hidden);
+    if (openTabs.length <= 1) {
+        if (typeof showToast === 'function') showToast('至少保留一个前台打开的工程标签', 'info');
+        else alert('至少保留一个前台打开的工程标签');
+        return false;
+    }
+    const target = openTabs.find(t => t.id === tabId);
+    if (!target) return false;
+    const nextOpenIds = openTabs.filter(t => t.id !== tabId).map(t => t.id);
+    const count = _applyBatchProjectVisibility(nextOpenIds);
+    if (count > 0 && typeof showToast === 'function') {
+        showToast(`📥 已将「${target.name}」收起到后台保存（随时可在「🗂️ 工程管理」重新打开）`, 'info', 4000);
+    }
+    return count > 0;
+}
+
+function _chooseDuplicateCloudAction(projectLabel = '', matchedTabs = []) {
+    if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+        return Promise.resolve('open');
+    }
+    return new Promise((resolve) => {
+        const isAllHidden = matchedTabs.length > 0 && matchedTabs.every(t => t && t.hidden);
+        const tabNames = matchedTabs.slice(0, 4).map(t => `「${t.name}」`).join('、') + (matchedTabs.length > 4 ? ` 等 ${matchedTabs.length} 个` : '');
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:100060;background:rgba(4,7,18,0.82);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:16px;';
+        ov.innerHTML = `
+            <div style="background:#0f172a;border:1px solid rgba(56,189,248,0.45);border-radius:12px;padding:18px 20px;width:min(480px,94vw);color:#e2e8f0;box-shadow:0 20px 50px rgba(0,0,0,0.8);">
+                <div style="font-size:15px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚠️ 检测到本地已存在同名/同源工程</div>
+                <div style="font-size:12.5px;color:#cbd5e1;line-height:1.6;margin-bottom:14px;">
+                    云端工程 <strong style="color:#f8fafc;">${_escHtml(projectLabel || '未命名工程')}</strong> 在本地已经存在对应标签 ${tabNames}（当前状态：<strong style="color:${isAllHidden ? '#c4b5fd' : '#4ade80'};">${isAllHidden ? '💤 后台保留' : '🟢 前台已加载'}</strong>）。<br>
+                    为避免重复下载和标签栏堆积，请选择处理方式：
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                    <button type="button" data-choice="open" style="padding:9px 14px;border-radius:7px;border:1px solid #34d399;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;text-align:left;">
+                        📂 跳过下载，直接打开本地已有工程${isAllHidden ? '（从后台调回前台）' : ''}
+                    </button>
+                    <button type="button" data-choice="overwrite" style="padding:9px 14px;border-radius:7px;border:1px solid rgba(56,189,248,0.5);background:rgba(14,165,233,0.16);color:#bae6fd;font-size:12px;font-weight:600;cursor:pointer;text-align:left;">
+                        🔄 重新从云端下载，并直接覆盖更新本地同名工程（不新增重复标签）
+                    </button>
+                    <button type="button" data-choice="cancel" style="padding:7px 14px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#94a3b8;font-size:12px;cursor:pointer;">
+                        取消
+                    </button>
+                </div>
+            </div>
+        `;
+        const finish = (choice) => { ov.remove(); resolve(choice); };
+        ov.querySelectorAll('button[data-choice]').forEach(btn => {
+            btn.addEventListener('click', () => finish(btn.dataset.choice));
+        });
+        ov.addEventListener('click', (e) => { if (e.target === ov) finish('cancel'); });
+        document.body.appendChild(ov);
+    });
+}
+
+function _showProjectManagerModal(focusTabId = '') {
+    _safeSyncBatchActiveTabIfPopulated();
+    _normalizeBatchTabState();
+    const curTabs = _batchTableState.tabs || [];
+    if (!curTabs.length) return;
+
+    const existing = document.getElementById('rbt-project-manager-modal');
+    if (existing) existing.remove();
+
+    const draftVisible = new Set(curTabs.filter(t => t && !t.hidden).map(t => t.id));
+    let searchQuery = '';
+
+    const ov = document.createElement('div');
+    ov.id = 'rbt-project-manager-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:100030;background:rgba(4,7,18,0.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    const renderBody = () => {
+        const tabs = _batchTableState.tabs || [];
+        const groups = _getExistingTabGroupNames();
+        const q = searchQuery.trim().toLowerCase();
+        const visibleCount = tabs.filter(t => draftVisible.has(t.id)).length;
+        const hiddenCount = tabs.length - visibleCount;
+        const filtered = tabs.filter(t => {
+            if (!q) return true;
+            return String(t.name || '').toLowerCase().includes(q) || String(t.group || '').toLowerCase().includes(q);
+        });
+
+        const groupQuickHtml = groups.length > 0 ? `
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed rgba(148,163,184,0.18);">
+                <span style="font-size:11px;color:#94a3b8;">按小分组快速勾选:</span>
+                ${groups.map(g => {
+                    const gTabs = tabs.filter(t => t.group === g);
+                    const allChecked = gTabs.length > 0 && gTabs.every(t => draftVisible.has(t.id));
+                    return `<button type="button" class="pm-group-toggle" data-group="${_escHtml(g)}" style="padding:3px 9px;border-radius:999px;font-size:11px;cursor:pointer;border:1px solid ${allChecked ? '#34d399' : 'rgba(148,163,184,0.35)'};background:${allChecked ? 'rgba(16,185,129,0.2)' : 'rgba(30,41,59,0.75)'};color:${allChecked ? '#6ee7b7' : '#cbd5e1'};">${allChecked ? '✅' : '💤'} ${_escHtml(g)} (${gTabs.length})</button>`;
+                }).join('')}
+            </div>
+        ` : '';
+
+        ov.innerHTML = `
+            <div style="background:#0f172a;border:1px solid rgba(167,139,250,0.45);border-radius:14px;padding:18px 20px;width:min(760px,95vw);max-height:88vh;display:flex;flex-direction:column;gap:10px;color:#e2e8f0;box-shadow:0 24px 64px rgba(0,0,0,0.85);">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+                    <div>
+                        <h3 style="margin:0;font-size:16px;color:#ddd6fe;">🗂️ 工程管理（前台打开 vs 后台保留）</h3>
+                        <div style="font-size:11.5px;color:#94a3b8;margin-top:3px;">勾选要在前台标签栏与任务区显示的工程，不勾选的会安稳保存在后台（不会删除数据，随时可重新勾选打开）。</div>
+                    </div>
+                    <button type="button" id="pm-close-x" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.2);border-radius:8px;padding:8px 10px;">
+                    <input type="text" id="pm-search" value="${_escHtml(searchQuery)}" placeholder="🔍 搜索工程标签名或小分组..." style="flex:1;min-width:160px;padding:5px 9px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                    <button type="button" id="pm-open-all" style="padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(52,211,153,0.45);background:rgba(16,185,129,0.16);color:#6ee7b7;cursor:pointer;">☑️ 全部打开</button>
+                    <button type="button" id="pm-only-active" style="padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(56,189,248,0.45);background:rgba(14,165,233,0.16);color:#7dd3fc;cursor:pointer;">🎯 仅保留当前标签</button>
+                    <button type="button" id="pm-only-nonempty" style="padding:5px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(251,191,36,0.45);background:rgba(245,158,11,0.16);color:#fde68a;cursor:pointer;">📄 仅打开有任务的工程</button>
+                </div>
+
+                ${groupQuickHtml}
+
+                <div style="font-size:11.5px;color:#cbd5e1;display:flex;justify-content:space-between;align-items:center;">
+                    <span>当前选择：共 <b>${tabs.length}</b> 个工程 · <span style="color:#4ade80;">前台打开 <b>${visibleCount}</b> 个</span> · <span style="color:#c4b5fd;">后台保留 <b>${hiddenCount}</b> 个</span></span>
+                </div>
+
+                <div id="pm-tab-list" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:2px;min-height:140px;max-height:46vh;">
+                    ${filtered.map(tab => {
+                        const checked = draftVisible.has(tab.id);
+                        const isActive = tab.id === _batchTableState.activeTabId;
+                        const isFocus = focusTabId && tab.id === focusTabId;
+                        const taskCount = Array.isArray(tab.tasks) ? tab.tasks.length : 0;
+                        return `
+                        <div class="pm-tab-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;border:1px solid ${isFocus ? '#818cf8' : (checked ? 'rgba(52,211,153,0.35)' : 'rgba(148,163,184,0.18)')};background:${checked ? 'rgba(16,185,129,0.08)' : 'rgba(15,23,42,0.55)'};">
+                            <input type="checkbox" class="pm-check" data-tab-id="${_escHtml(tab.id)}" ${checked ? 'checked' : ''} style="width:16px;height:16px;accent-color:#10b981;cursor:pointer;">
+                            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:7px;flex-wrap:wrap;cursor:pointer;" class="pm-row-label" data-tab-id="${_escHtml(tab.id)}">
+                                ${tab.group ? `<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(123,139,239,0.2);color:#c7d2fe;">📂 ${_escHtml(tab.group)}</span>` : ''}
+                                <span style="font-size:13px;font-weight:700;color:${checked ? '#f8fafc' : '#94a3b8'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escHtml(tab.name || '未命名标签')}</span>
+                                <span style="font-size:11px;color:#94a3b8;">(${taskCount} 条任务)</span>
+                                ${isActive ? `<span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(56,189,248,0.22);color:#38bdf8;">当前聚焦</span>` : ''}
+                                <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:${checked ? 'rgba(34,197,94,0.16)' : 'rgba(167,139,250,0.16)'};color:${checked ? '#4ade80' : '#c4b5fd'};">${checked ? '🟢 前台打开' : '💤 后台保留'}</span>
+                            </div>
+                            <button type="button" class="pm-solo-btn" data-tab-id="${_escHtml(tab.id)}" title="只打开这 1 个工程，其他全部暂时收起到后台" style="padding:4px 9px;font-size:11px;border-radius:5px;border:1px solid rgba(56,189,248,0.4);background:rgba(14,165,233,0.15);color:#7dd3fc;cursor:pointer;white-space:nowrap;">⚡ 单独打开</button>
+                            <button type="button" class="pm-rename-btn" data-tab-id="${_escHtml(tab.id)}" title="重命名此工程标签" style="padding:4px 7px;font-size:11px;border-radius:5px;border:1px solid rgba(148,163,184,0.25);background:rgba(255,255,255,0.05);color:#cbd5e1;cursor:pointer;">✏️</button>
+                            ${tabs.length > 1 ? `<button type="button" class="pm-delete-btn" data-tab-id="${_escHtml(tab.id)}" title="彻底删除此工程标签" style="padding:4px 7px;font-size:11px;border-radius:5px;border:1px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer;">🗑</button>` : ''}
+                        </div>`;
+                    }).join('') || `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">没有匹配的工程标签</div>`}
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;gap:10px;padding-top:8px;border-top:1px solid rgba(148,163,184,0.2);">
+                    <button type="button" id="pm-cancel" style="padding:7px 14px;border-radius:6px;border:1px solid #475569;background:#1e293b;color:#cbd5e1;font-size:12px;cursor:pointer;">取消</button>
+                    <button type="button" id="pm-apply" style="padding:7px 18px;border-radius:6px;border:1px solid #34d399;background:linear-gradient(135deg,#059669,#10b981);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer;">✅ 应用打开/后台设置</button>
+                </div>
+            </div>
+        `;
+
+        const searchEl = ov.querySelector('#pm-search');
+        if (searchEl) {
+            searchEl.oninput = (e) => {
+                searchQuery = e.target.value || '';
+                const caret = e.target.selectionStart || searchQuery.length;
+                renderBody();
+                const nextSearch = ov.querySelector('#pm-search');
+                if (nextSearch) {
+                    nextSearch.focus();
+                    try { nextSearch.setSelectionRange(caret, caret); } catch (_) {}
+                }
+            };
+        }
+        ov.querySelector('#pm-close-x').onclick = () => ov.remove();
+        ov.querySelector('#pm-cancel').onclick = () => ov.remove();
+        ov.querySelector('#pm-open-all').onclick = () => {
+            (_batchTableState.tabs || []).forEach(t => { if (t) draftVisible.add(t.id); });
+            renderBody();
+        };
+        ov.querySelector('#pm-only-active').onclick = () => {
+            const cur = _batchTableState.activeTabId || _batchTableState.tabs[0]?.id;
+            if (!cur) return;
+            draftVisible.clear();
+            draftVisible.add(cur);
+            renderBody();
+        };
+        ov.querySelector('#pm-only-nonempty').onclick = () => {
+            const nonEmpty = (_batchTableState.tabs || []).filter(t => t && !_isBatchTabEmpty(t));
+            if (!nonEmpty.length) {
+                alert('当前全部标签都是空的，至少需保留一个标签打开');
+                return;
+            }
+            draftVisible.clear();
+            nonEmpty.forEach(t => draftVisible.add(t.id));
+            renderBody();
+        };
+        ov.querySelectorAll('.pm-group-toggle').forEach(btn => {
+            btn.onclick = () => {
+                const g = btn.dataset.group;
+                const gTabs = (_batchTableState.tabs || []).filter(t => t.group === g);
+                const allChecked = gTabs.length > 0 && gTabs.every(t => draftVisible.has(t.id));
+                gTabs.forEach(t => {
+                    if (allChecked) draftVisible.delete(t.id);
+                    else draftVisible.add(t.id);
+                });
+                renderBody();
+            };
+        });
+        ov.querySelectorAll('.pm-check').forEach(chk => {
+            chk.onchange = () => {
+                if (chk.checked) draftVisible.add(chk.dataset.tabId);
+                else draftVisible.delete(chk.dataset.tabId);
+                renderBody();
+            };
+        });
+        ov.querySelectorAll('.pm-row-label').forEach(el => {
+            el.onclick = () => {
+                const id = el.dataset.tabId;
+                if (draftVisible.has(id)) draftVisible.delete(id);
+                else draftVisible.add(id);
+                renderBody();
+            };
+        });
+        ov.querySelectorAll('.pm-solo-btn').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.dataset.tabId;
+                _applyBatchProjectVisibility([id], { skipSync: true });
+                ov.remove();
+            };
+        });
+        ov.querySelectorAll('.pm-rename-btn').forEach(btn => {
+            btn.onclick = async () => {
+                await _renameTab(btn.dataset.tabId);
+                renderBody();
+            };
+        });
+        ov.querySelectorAll('.pm-delete-btn').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.dataset.tabId;
+                const beforeLen = (_batchTableState.tabs || []).length;
+                _removeTab(id);
+                if ((_batchTableState.tabs || []).length < beforeLen) {
+                    draftVisible.delete(id);
+                    if (draftVisible.size === 0 && _batchTableState.tabs[0]) {
+                        draftVisible.add(_batchTableState.tabs[0].id);
+                    }
+                    renderBody();
+                }
+            };
+        });
+        ov.querySelector('#pm-apply').onclick = () => {
+            if (draftVisible.size === 0) {
+                alert('请至少勾选 1 个要在前台打开的工程标签');
+                return;
+            }
+            const appliedCount = _applyBatchProjectVisibility(draftVisible, { skipSync: true });
+            const bgCount = Math.max(0, (_batchTableState.tabs || []).length - appliedCount);
+            ov.remove();
+            if (typeof showToast === 'function') {
+                showToast(`🗂️ 已设置：前台打开 ${appliedCount} 个工程，后台保留 ${bgCount} 个工程`, 'success', 4000);
+            }
+        };
+    };
+
+    ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    renderBody();
+}
+window.openBatchProjectManager = _showProjectManagerModal;
+
+function _buildImportedTabObjects(rawTabs, fallbackName = '导入工程', tagPrefix = 'import') {
+    const cleanFallback = String(fallbackName || '导入工程').trim() || '导入工程';
+    return (Array.isArray(rawTabs) ? rawTabs : []).map((t, tIdx) => {
+        const id = 'tab_' + _batchTableState.nextTabId++;
+        const queueIds = new Map();
+        const remapQueue = old => {
+            if (!old) return '';
+            if (!queueIds.has(old)) queueIds.set(old, `${id}_${tagPrefix}_${Date.now()}_${queueIds.size}`);
+            return queueIds.get(old);
+        };
+        const rawTabName = String(t?.name || '').trim();
+        const tabName = (rawTabs.length === 1 && (!rawTabName || rawTabName === '默认' || rawTabName === '标签1'))
+            ? cleanFallback
+            : (rawTabName || `${cleanFallback}_${tIdx + 1}`);
+        return {
+            id,
+            name: tabName,
+            group: String(t?.group || '').trim(),
+            hidden: !!t?.hidden,
+            cloudKey: String(t?.cloudKey || '').trim(),
+            cloudUrl: String(t?.cloudUrl || '').trim(),
+            materialDir: t?.materialDir || '',
+            _folderQueueId: remapQueue(t?.folderQueueId || t?._folderQueueId),
+            _externalFolderQueuesCombined: !!(t?.externalFolderQueuesCombined || t?._externalFolderQueuesCombined),
+            lastRefreshTime: t?.lastRefreshTime || null,
+            tasks: (Array.isArray(t?.tasks) ? t.tasks : []).map(task => {
+                const imported = _stripBatchGroupMeta(task);
+                delete imported.id;
+                _ensureTaskId(imported);
+                if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
+                const mediaBg = imported.bgPath || imported.videoPath || '';
+                if (mediaBg && window.electronAPI?.toFileUrl) {
+                    imported.bgSrcUrl = window.electronAPI.toFileUrl(mediaBg);
+                }
+                return imported;
+            }),
+        };
+    });
+}
+
+function _applyImportedTabsToState(importedTabs, normalizedData, options = {}) {
+    const loadMode = options.loadMode === 'replace' ? 'replace' : 'append';
+    const applyGlobalMeta = options.applyGlobalMeta !== false;
+    if (!Array.isArray(importedTabs) || !importedTabs.length) return { tabsAdded: 0, tabsUpdated: 0, skippedDuplicates: 0, matchedFirstTabId: '' };
+
+    if (options.cloudKey || options.cloudUrl) {
+        importedTabs.forEach(tab => {
+            if (!tab) return;
+            if (options.cloudKey && !tab.cloudKey) tab.cloudKey = String(options.cloudKey).trim();
+            if (options.cloudUrl && !tab.cloudUrl) tab.cloudUrl = String(options.cloudUrl).trim();
+        });
+    }
+
+    if (!_batchTableState.collapsedTabGroups || typeof _batchTableState.collapsedTabGroups !== 'object') {
+        _batchTableState.collapsedTabGroups = {};
+    }
+    let tabsAdded = 0;
+    let tabsUpdated = 0;
+    let skippedDuplicates = 0;
+    let matchedFirstTabId = '';
+    if (loadMode === 'replace') {
+        _batchTableState.tabs = importedTabs;
+        tabsAdded = importedTabs.length;
+        _batchTableState.collapsedTabGroups = (normalizedData?.collapsedTabGroups && typeof normalizedData.collapsedTabGroups === 'object')
+            ? { ...normalizedData.collapsedTabGroups } : {};
+        if (options.projectName) _batchTableState.projectName = options.projectName;
+    } else {
+        if (_batchTableState.tabs.length === 1 && _isBatchTabEmpty(_batchTableState.tabs[0]) && !_batchTableState.tabs[0].cloudKey) {
+            _batchTableState.tabs = importedTabs;
+            tabsAdded = importedTabs.length;
+        } else {
+            const { matchedPairs, unmatchedTabs } = _findDuplicateTabConflicts(importedTabs, _batchTableState.tabs);
+            if (matchedPairs.length > 0) {
+                matchedFirstTabId = matchedPairs[0].existingTab.id;
+                let strategy = options.duplicateStrategy || '';
+                if (strategy !== 'replace' && strategy !== 'skip') {
+                    const previewNames = matchedPairs.slice(0, 4).map(p => `「${p.existingTab.name}」`).join('、')
+                        + (matchedPairs.length > 4 ? ` 等 ${matchedPairs.length} 个` : '');
+                    const shouldOverwrite = typeof confirm === 'function'
+                        ? confirm(`检测到本地已存在 ${matchedPairs.length} 个同名工程标签（${previewNames}）。\n\n• 点「确定」：覆盖更新本地已有同名标签（不重复新增）\n• 点「取消」：跳过同名工程，只新增不重名的标签`)
+                        : false;
+                    strategy = shouldOverwrite ? 'replace' : 'skip';
+                }
+                if (strategy === 'replace') {
+                    for (const pair of matchedPairs) {
+                        _replaceTabContentInPlace(pair.existingTab, pair.incomingTab);
+                        tabsUpdated++;
+                    }
+                } else {
+                    skippedDuplicates = matchedPairs.length;
+                }
+            }
+            if (unmatchedTabs.length > 0) {
+                _batchTableState.tabs.push(...unmatchedTabs);
+                tabsAdded = unmatchedTabs.length;
+            } else if (tabsUpdated === 0 && matchedFirstTabId) {
+                const existingHit = _batchTableState.tabs.find(t => t && t.id === matchedFirstTabId);
+                if (existingHit) existingHit.hidden = false;
+            }
+        }
+        if (normalizedData?.collapsedTabGroups && typeof normalizedData.collapsedTabGroups === 'object') {
+            Object.assign(_batchTableState.collapsedTabGroups, normalizedData.collapsedTabGroups);
+        }
+    }
+
+    if (applyGlobalMeta && window._reelsState) {
+        if (normalizedData?.style && typeof normalizedData.style === 'object') {
+            try { window._reelsState.globalSubtitleStyle = JSON.parse(JSON.stringify(normalizedData.style)); } catch (_) {}
+        }
+        if (normalizedData?.exportOpts && typeof normalizedData.exportOpts === 'object') {
+            const modeEl = document.getElementById('reels-work-mode');
+            const nextMode = normalizedData.exportOpts.workMode;
+            if (modeEl && (nextMode === 'srt' || nextMode === 'voiced_bg') && modeEl.value !== nextMode) {
+                modeEl.value = nextMode;
+                if (typeof window.reelsOnWorkModeChange === 'function') window.reelsOnWorkModeChange();
+            }
+        }
+    }
+    if (Array.isArray(normalizedData?.watermarks) && normalizedData.watermarks.length > 0
+        && options._watermarksAlreadyApplied !== true && window._reelsState) {
+        const wmMode = (applyGlobalMeta && loadMode !== 'append') ? 'replace' : 'append';
+        if (typeof window.reelsApplyRestoredWatermarks === 'function') {
+            window.reelsApplyRestoredWatermarks(normalizedData.watermarks, { mode: wmMode });
+        } else {
+            try { window._reelsState.watermarks = JSON.parse(JSON.stringify(normalizedData.watermarks)); } catch (_) {}
+        }
+    }
+
+    const srcTabs = Array.isArray(normalizedData?.tabs) ? normalizedData.tabs : [];
+    const activeIndex = Math.max(0, srcTabs.findIndex(t => t && t.id === normalizedData?.activeTabId));
+    const preferredTabId = importedTabs[Math.min(activeIndex, importedTabs.length - 1)]?.id || '';
+    const hasPreferredInTabs = preferredTabId && _batchTableState.tabs.some(t => t && t.id === preferredTabId && !t.hidden);
+    if (hasPreferredInTabs) {
+        _batchTableState.activeTabId = preferredTabId;
+    } else if (matchedFirstTabId && _batchTableState.tabs.some(t => t && t.id === matchedFirstTabId)) {
+        _batchTableState.activeTabId = matchedFirstTabId;
+    } else {
+        _batchTableState.activeTabId = preferredTabId || _batchTableState.activeTabId;
+    }
+    _clusterTabsBySmallGroup();
+    _normalizeBatchTabState();
+    _batchTableState.openedGroupedProjection = null;
+    _batchTableState.appliedTabIds = [];
+    _loadTabTasks(_getActiveTab());
+    _skipNextApply = true;
+    if (_batchTableState.visible) {
+        _renderBatchTable();
+    } else {
+        const visibleTabIds = _batchTableState.tabs.filter(tab => tab && !tab.hidden).map(tab => tab.id);
+        if (visibleTabIds.length > 1 || (importedTabs.length > 1 && visibleTabIds.length > 0)) {
+            _restoreGroupedProjectionFromTabs(visibleTabIds);
+        }
+        if (typeof _renderTaskList === 'function') _renderTaskList();
+        if (window._reelsState?.tasks?.length > 0 && typeof reelsSelectTask === 'function') {
+            reelsSelectTask(0);
+        }
+    }
+    _batchAutoSave({ skipSync: true, forceFullSerialize: true });
+    return { tabsAdded, tabsUpdated, skippedDuplicates, matchedFirstTabId };
+}
+
+window.reelsRestoreImportedTabsFromProject = function(projectResult) {
+    if (!projectResult || typeof projectResult !== 'object') return false;
+    const hasTabs = Array.isArray(projectResult.tabs) && projectResult.tabs.length > 0;
+    const splitInfo = !hasTabs && Array.isArray(projectResult.tasks)
+        ? _splitFlatTasksIntoTabs(projectResult.tasks, '加载工程')
+        : null;
+    if (!hasTabs && !splitInfo?.grouped) return false;
+    const rawTabs = hasTabs ? projectResult.tabs : splitInfo.tabs;
+    const importedTabs = _buildImportedTabObjects(rawTabs, '加载工程', 'proj');
+    if (!importedTabs.length) return false;
+    _applyImportedTabsToState(importedTabs, {
+        tabs: rawTabs,
+        activeTabId: projectResult.activeTabId || rawTabs[0]?.id || '',
+        collapsedTabGroups: projectResult.collapsedTabGroups,
+    }, { loadMode: 'replace', applyGlobalMeta: false, _watermarksAlreadyApplied: true });
+    return true;
+};
 
 // ★ 应用标签页：将选中标签页的任务合并到当前任务列表
 function _showMergeTabsModal() {
@@ -795,19 +1787,33 @@ function _showMergeTabsModal() {
                 <span style="flex:1;"></span>
                 <span style="font-size:11px;color:#666;">共 ${tabs.length} 个标签 / ${totalTasks} 条任务</span>
             </div>
-            <div id="mt-tab-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
-                ${tabs.map((tab, i) => {
-                    const count = tab.tasks?.length || 0;
-                    const isActive = tab.id === _batchTableState.activeTabId;
-                    const t0 = tab.tasks?.[0];
-                    const preview = t0?.overlays?.[0]?.title_text || t0?.ttsText || t0?.baseName || '';
-                    return `<label style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${isActive ? 'rgba(123,139,239,0.1)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isActive ? 'rgba(123,139,239,0.3)' : 'rgba(255,255,255,0.06)'};border-radius:6px;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='rgba(123,139,239,0.12)'" onmouseleave="this.style.background='${isActive ? 'rgba(123,139,239,0.1)' : 'rgba(255,255,255,0.03)'}'" >
-                        <input type="checkbox" class="mt-tab-cb" data-tab-id="${tab.id}" checked style="margin:0;transform:scale(1.1);accent-color:#7b8bef;">
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-size:12px;color:#eee;font-weight:${isActive ? 'bold' : 'normal'};">${_escHtml(tab.name)}${isActive ? ' <span style="font-size:10px;color:#7b8bef;">（当前）</span>' : ''}</div>
-                            <div style="font-size:10px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${count}条任务${preview ? ' · ' + _escHtml(preview.slice(0, 40)) : ''}</div>
+            <div id="mt-tab-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+                ${_buildOrderedTabSegments(tabs).map(seg => {
+                    const renderTabItem = (tab, groupAttr = '') => {
+                        const count = tab.tasks?.length || 0;
+                        const isActive = tab.id === _batchTableState.activeTabId;
+                        const t0 = tab.tasks?.[0];
+                        const preview = t0?.overlays?.[0]?.title_text || t0?.ttsText || t0?.baseName || '';
+                        return `<label style="display:flex;align-items:center;gap:8px;padding:7px 12px;background:${isActive ? 'rgba(123,139,239,0.1)' : 'rgba(255,255,255,0.03)'};border:1px solid ${isActive ? 'rgba(123,139,239,0.3)' : 'rgba(255,255,255,0.06)'};border-radius:6px;cursor:pointer;transition:background 0.15s;" onmouseenter="this.style.background='rgba(123,139,239,0.12)'" onmouseleave="this.style.background='${isActive ? 'rgba(123,139,239,0.1)' : 'rgba(255,255,255,0.03)'}'" >
+                            <input type="checkbox" class="mt-tab-cb" ${groupAttr ? `data-tab-group="${_escHtml(groupAttr)}"` : ''} data-tab-id="${tab.id}" checked style="margin:0;transform:scale(1.1);accent-color:#7b8bef;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:12px;color:#eee;font-weight:${isActive ? 'bold' : 'normal'};">${_escHtml(tab.name)}${isActive ? ' <span style="font-size:10px;color:#7b8bef;">（当前）</span>' : ''}</div>
+                                <div style="font-size:10px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${count}条任务${preview ? ' · ' + _escHtml(preview.slice(0, 40)) : ''}</div>
+                            </div>
+                        </label>`;
+                    };
+                    if (seg.type === 'single') return renderTabItem(seg.tab);
+                    const gCount = seg.tabs.reduce((s, item) => s + (item.tasks?.length || 0), 0);
+                    return `<div style="border:1px solid rgba(123,139,239,0.32);background:rgba(123,139,239,0.06);border-radius:8px;padding:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-size:12px;font-weight:700;color:#c7d2fe;">
+                            <input type="checkbox" class="mt-group-cb" data-tab-group="${_escHtml(seg.groupName)}" checked style="margin:0;transform:scale(1.1);accent-color:#7b8bef;">
+                            <span>📂 ${_escHtml(seg.groupName)}</span>
+                            <span style="margin-left:auto;font-size:10px;color:#94a3b8;font-weight:400;">${seg.tabs.length}个标签 / ${gCount}条任务</span>
+                        </label>
+                        <div style="display:flex;flex-direction:column;gap:5px;padding-left:14px;">
+                            ${seg.tabs.map(t => renderTabItem(t, seg.groupName)).join('')}
                         </div>
-                    </label>`;
+                    </div>`;
                 }).join('')}
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -825,11 +1831,29 @@ function _showMergeTabsModal() {
     ov.addEventListener('click', e => { if (e.target === ov) close(); });
 
     ov.querySelector('#mt-select-all').onclick = () => {
-        ov.querySelectorAll('.mt-tab-cb').forEach(cb => cb.checked = true);
+        ov.querySelectorAll('.mt-tab-cb,.mt-group-cb').forEach(cb => { cb.checked = true; cb.indeterminate = false; });
     };
     ov.querySelector('#mt-deselect-all').onclick = () => {
-        ov.querySelectorAll('.mt-tab-cb').forEach(cb => cb.checked = false);
+        ov.querySelectorAll('.mt-tab-cb,.mt-group-cb').forEach(cb => { cb.checked = false; cb.indeterminate = false; });
     };
+    ov.querySelectorAll('.mt-group-cb').forEach(gcb => {
+        gcb.onchange = () => {
+            const g = gcb.dataset.tabGroup;
+            ov.querySelectorAll('.mt-tab-cb').forEach(cb => { if (cb.dataset.tabGroup === g) cb.checked = gcb.checked; });
+        };
+    });
+    ov.querySelectorAll('.mt-tab-cb').forEach(cb => {
+        cb.onchange = () => {
+            const g = cb.dataset.tabGroup;
+            if (!g) return;
+            const gcb = [...ov.querySelectorAll('.mt-group-cb')].find(el => el.dataset.tabGroup === g);
+            if (!gcb) return;
+            const members = [...ov.querySelectorAll('.mt-tab-cb')].filter(el => el.dataset.tabGroup === g);
+            const checkedCount = members.filter(el => el.checked).length;
+            gcb.checked = checkedCount === members.length;
+            gcb.indeterminate = checkedCount > 0 && checkedCount < members.length;
+        };
+    });
     ov.querySelector('#mt-clean-empty').onclick = () => {
         const cleaned = _cleanEmptyTabs();
         if (cleaned > 0) {
@@ -862,6 +1886,7 @@ function _showMergeTabsModal() {
                     cloned._batchProjection = true;
                     cloned._batchTabId = tab.id;
                     cloned._batchTabName = tab.name;
+                    cloned._batchTabGroup = tab.group || '';
                     cloned._batchTabOrder = tabOrder;
                     cloned._batchTaskOrder = taskOrder;
                     mergedTasks.push(cloned);
@@ -939,6 +1964,7 @@ function _restoreGroupedProjectionFromTabs(tabIds) {
             cloned._batchProjection = true;
             cloned._batchTabId = tab.id;
             cloned._batchTabName = tab.name;
+            cloned._batchTabGroup = tab.group || '';
             cloned._batchTabOrder = tabOrder;
             cloned._batchTaskOrder = taskOrder;
             mergedTasks.push(cloned);
@@ -1357,7 +2383,7 @@ function _renderBatchTable() {
   try {
     let container = _batchTableState.container;
     const state = window._reelsState;
-    if (!state) return;
+    if (!state || !container) return;
 
     // Ensure IDs and unique names
     (state.tasks || []).forEach(t => _ensureTaskId(t));
@@ -1467,12 +2493,33 @@ function _renderBatchTable() {
     const cardTemplates = _getOverlayGroupPresetList();
     const subtitlePresets = _getSubtitlePresetList();
 
-    // 标签栏 HTML
-    const tabsHtml = _batchTableState.tabs.map(tab => {
+    // 标签栏 HTML（仅渲染前台打开的标签，支持小分组折叠与组内标签）
+    const allTabsList = _batchTableState.tabs || [];
+    const openTabsForBar = allTabsList.filter(t => t && !t.hidden);
+    const tabsToRender = openTabsForBar.length > 0 ? openTabsForBar : allTabsList;
+    const hiddenTabCount = Math.max(0, allTabsList.length - tabsToRender.length);
+    const renderTabItemHtml = (tab) => {
         const isActive = tab.id === _batchTableState.activeTabId;
-        return `<div class="rbt-tab ${isActive ? 'rbt-tab-active' : ''}" data-tab-id="${tab.id}">
-            <span class="rbt-tab-name" title="双击重命名">${_escHtml(tab.name)}</span>
-            ${_batchTableState.tabs.length > 1 ? `<span class="rbt-tab-close" data-tab-id="${tab.id}" title="关闭标签">×</span>` : ''}
+        const count = tab.tasks?.length || 0;
+        const tip = tab.group ? `小分组「${tab.group}」 · 双击重命名 · 右键分配小分组/收起到后台` : '双击重命名 · 右键分配小分组/收起到后台';
+        return `<div class="rbt-tab ${isActive ? 'rbt-tab-active' : ''}" data-tab-id="${tab.id}" title="${_escHtml(tip)}">
+            <span class="rbt-tab-name">${_escHtml(tab.name)}</span>
+            ${count > 0 ? `<span class="rbt-tab-count">${count}</span>` : ''}
+            ${tabsToRender.length > 1 ? `<span class="rbt-tab-close" data-tab-id="${tab.id}" title="关闭标签">×</span>` : ''}
+        </div>`;
+    };
+    const tabsHtml = _buildOrderedTabSegments(tabsToRender).map(seg => {
+        if (seg.type === 'single') return renderTabItemHtml(seg.tab);
+        const gName = seg.groupName;
+        const isCollapsed = !!_batchTableState.collapsedTabGroups?.[gName];
+        const hasActive = seg.tabs.some(t => t.id === _batchTableState.activeTabId);
+        return `<div class="rbt-tabgroup ${isCollapsed ? 'rbt-tabgroup-collapsed' : ''} ${hasActive ? 'rbt-tabgroup-has-active' : ''}" data-tab-group="${_escHtml(gName)}">
+            <div class="rbt-tabgroup-header" data-tab-group="${_escHtml(gName)}" title="小分组「${_escHtml(gName)}」 · 点击折叠/展开 · 双击重命名组">
+                <span class="rbt-tabgroup-arrow">${isCollapsed ? '▶' : '▼'}</span>
+                <span class="rbt-tabgroup-label">📂 ${_escHtml(gName)}</span>
+                <span class="rbt-tabgroup-count">${seg.tabs.length}</span>
+            </div>
+            <div class="rbt-tabgroup-tabs">${seg.tabs.map(renderTabItemHtml).join('')}</div>
         </div>`;
     }).join('');
 
@@ -1495,6 +2542,8 @@ function _renderBatchTable() {
                     <div class="rbt-tab rbt-tab-clean-empty" id="rbt-clean-empty-tabs-btn" title="一键清理所有没有任务的空标签页（至少保留一个标签页）" style="color:#fcd34d;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(251,191,36,0.4);background:rgba(245,158,11,0.16);font-weight:600;">🧹 一键清理空标签</div>
                     <div class="rbt-tab rbt-tab-clear-all" title="清空删除所有标签页" style="color:#f66;font-size:11px;margin-left:4px;">🗑 清空</div>
                     <div class="rbt-tab rbt-tab-merge" id="rbt-merge-tabs-btn" title="将多个标签页的任务合并到当前渲染队列" style="color:#7b8bef;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(123,139,239,0.3);background:rgba(123,139,239,0.1);">📋 应用标签页</div>
+                    <div class="rbt-tab rbt-tab-groups-btn" id="rbt-tab-groups-btn" title="管理标签小分组（把标签归纳到小分组、折叠/重命名）" style="color:#67e8f9;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(34,211,238,0.35);background:rgba(34,211,238,0.12);">📂 小分组</div>
+                    <div class="rbt-tab rbt-tab-manager-btn" id="rbt-tab-manager-btn" title="工程管理：勾选要在前台打开的工程标签，不用的留在后台保存（随时可切换回来）" style="color:#ddd6fe;font-size:11px;margin-left:4px;cursor:pointer;border:1px solid rgba(167,139,250,0.45);background:rgba(139,92,246,0.18);font-weight:600;">🗂️ 工程管理 (${tabsToRender.length}/${allTabsList.length}${hiddenTabCount > 0 ? ` · 后台${hiddenTabCount}` : ''})</div>
                 </div>
             </div>
 
@@ -1518,7 +2567,7 @@ function _renderBatchTable() {
                 <div class="rbt-ms-linked-dir">
                     <div style="font-size:10px; color:var(--text-muted); font-weight:bold; margin-bottom:4px;">🔗 绑定文件夹</div>
                     <div style="display:flex; gap:4px; align-items:center;">
-                        <span id="rbt-ms-dir-path" style="flex:1; font-size:10px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_escHtml(matDir)}">${matDirShort || '<i style="color:var(--text-muted)">未绑定</i>'}</span>
+                        <span id="rbt-ms-dir-path" style="flex:1; font-size:10px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${_escHtml(matDir)}">${matDirShort ? _escHtml(matDirShort) : '<i style="color:var(--text-muted)">未绑定</i>'}</span>
                         <button class="rbt-btn" id="rbt-ms-select-dir" style="padding:1px 6px; font-size:9px;">📂</button>
                         <button class="rbt-btn" id="rbt-ms-refresh-dir" style="padding:1px 6px; font-size:9px; background:#1a3a2a; border-color:#2a5a3a; color:#8f8;" ${!matDir ? 'disabled' : ''}>🔄</button>
                     </div>
@@ -3497,6 +4546,22 @@ function _bindBatchTableEvents() {
                 _showMergeTabsModal();
                 return;
             }
+            // ★ 管理标签小分组
+            if (e.target.closest('.rbt-tab-groups-btn')) {
+                _showManageTabGroupsModal();
+                return;
+            }
+            // ★ 工程管理（前台打开 vs 后台保留）
+            if (e.target.closest('.rbt-tab-manager-btn')) {
+                _showProjectManagerModal();
+                return;
+            }
+            // 小分组头部点击折叠/展开
+            const groupHeaderEl = e.target.closest('.rbt-tabgroup-header');
+            if (groupHeaderEl && groupHeaderEl.dataset.tabGroup) {
+                _toggleTabGroupCollapse(groupHeaderEl.dataset.tabGroup);
+                return;
+            }
             // Add new tab
             if (e.target.closest('.rbt-tab-add')) {
                 _addTab();
@@ -3516,9 +4581,22 @@ function _bindBatchTableEvents() {
             }
         });
         tabBar.addEventListener('dblclick', (e) => {
+            const groupHeaderEl = e.target.closest('.rbt-tabgroup-header');
+            if (groupHeaderEl && groupHeaderEl.dataset.tabGroup) {
+                _renameTabGroup(groupHeaderEl.dataset.tabGroup);
+                return;
+            }
             const tabEl = e.target.closest('.rbt-tab');
             if (tabEl && tabEl.dataset.tabId && !tabEl.classList.contains('rbt-tab-add')) {
                 _renameTab(tabEl.dataset.tabId);
+            }
+        });
+        tabBar.addEventListener('contextmenu', (e) => {
+            const tabEl = e.target.closest('.rbt-tab');
+            if (tabEl && tabEl.dataset.tabId) {
+                e.preventDefault();
+                e.stopPropagation();
+                _showTabContextMenu(tabEl.dataset.tabId, e.clientX, e.clientY);
             }
         });
     }
@@ -8850,10 +9928,11 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
         padding: '0',
     });
 
-    // 搜索区
+    // 搜索区 + 独立预览窗快捷入口
     const searchHtml = `
-        <div style="padding:10px; border-bottom:1px solid #2a2a3e; background:rgba(0,0,0,0.2); position:sticky; top:0; z-index:10;">
-            <input type="text" id="rbt-ssp-search" placeholder="搜索预设名称或编号 (如 sub-01 / 68 / se-01)..." style="width:100%; box-sizing:border-box; background:#000; border:1px solid #555; border-radius:4px; color:#eee; font-size:12px; padding:6px; outline:none;" autocomplete="off">
+        <div style="padding:10px; border-bottom:1px solid #2a2a3e; background:rgba(0,0,0,0.28); position:sticky; top:0; z-index:10; display:flex; flex-direction:column; gap:6px;">
+            <button type="button" id="rbt-ssp-open-studio" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid rgba(56,189,248,0.48); background:linear-gradient(135deg,#0c4a6e,#1e3a8a); color:#e0f2fe; font-size:12px; font-weight:700; cursor:pointer;">🎬 打开大屏效果预览窗（实时动画 · 读取免费爆款）</button>
+            <input type="text" id="rbt-ssp-search" placeholder="搜索预设名称或编号 (如 sub-01 / 128 / Hormozi / se-01)..." style="width:100%; box-sizing:border-box; background:#000; border:1px solid #555; border-radius:4px; color:#eee; font-size:12px; padding:6px; outline:none;" autocomplete="off">
         </div>
     `;
 
@@ -9015,6 +10094,18 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
             document.removeEventListener('mousedown', outsideHandler);
         }
     };
+    const openStudioBtn = popup.querySelector('#rbt-ssp-open-studio');
+    if (openStudioBtn) {
+        openStudioBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
+            popup.remove();
+            document.removeEventListener('mousedown', outsideHandler);
+            if (typeof window.reelsOpenSubtitlePresetLibrary === 'function') {
+                window.reelsOpenSubtitlePresetLibrary({ currentVal, onSelect });
+            }
+        });
+    }
     requestAnimationFrame(() => {
         document.addEventListener('mousedown', outsideHandler);
     });
@@ -18375,6 +19466,34 @@ function _injectBatchTableCSS() {
             color:#555; font-size:16px; font-weight:700; padding:0 12px;
         }
         .rbt-tab-add:hover { color:var(--accent); }
+        .rbt-tab-count {
+            font-size:10px; line-height:1; padding:2px 5px; border-radius:999px;
+            background:rgba(255,255,255,0.08); color:#94a3b8; font-weight:600;
+        }
+        .rbt-tab-active .rbt-tab-count { background:rgba(123,139,239,0.22); color:#c7d2fe; }
+        .rbt-tabgroup {
+            display:inline-flex; align-items:center; gap:2px; padding:2px 4px 0;
+            border:1px solid rgba(123,139,239,0.28); border-bottom:none;
+            border-radius:8px 8px 0 0; background:rgba(123,139,239,0.08);
+            max-width:100%; flex-wrap:wrap; box-sizing:border-box;
+        }
+        .rbt-tabgroup-has-active {
+            border-color:rgba(123,139,239,0.55); background:rgba(123,139,239,0.14);
+        }
+        .rbt-tabgroup-header {
+            display:inline-flex; align-items:center; gap:5px; padding:0 8px; height:28px;
+            cursor:pointer; font-size:11px; font-weight:700; color:#c7d2fe;
+            border-radius:5px; user-select:none; white-space:nowrap;
+        }
+        .rbt-tabgroup-header:hover { background:rgba(123,139,239,0.22); }
+        .rbt-tabgroup-arrow { font-size:10px; opacity:0.8; }
+        .rbt-tabgroup-count {
+            font-size:10px; padding:1px 5px; border-radius:999px;
+            background:rgba(123,139,239,0.28); color:#e0e7ff;
+        }
+        .rbt-tabgroup-tabs { display:inline-flex; align-items:center; flex-wrap:wrap; gap:2px; }
+        .rbt-tabgroup-collapsed { padding-bottom:2px; border-bottom:1px solid rgba(123,139,239,0.28); border-radius:8px; }
+        .rbt-tabgroup-collapsed .rbt-tabgroup-tabs { display:none; }
 
         /* ══ Material folder bar ══ */
         .rbt-material-bar {
@@ -18629,6 +19748,11 @@ function _injectBatchTableCSS() {
         body.theme-light .rbt-tab:hover { color:var(--text-primary) !important; background:var(--bg-hover) !important; }
         body.theme-light .rbt-tab-active { color:var(--accent) !important; }
         body.theme-light .rbt-tab-add { color:var(--text-muted) !important; }
+        body.theme-light .rbt-tabgroup { background:rgba(99,102,241,0.06); border-color:rgba(99,102,241,0.28); }
+        body.theme-light .rbt-tabgroup-has-active { background:rgba(99,102,241,0.12); border-color:rgba(99,102,241,0.5); }
+        body.theme-light .rbt-tabgroup-header { color:var(--text-primary); }
+        body.theme-light .rbt-tabgroup-count { background:rgba(99,102,241,0.16); color:var(--text-primary); }
+        body.theme-light .rbt-tab-count { background:rgba(0,0,0,0.07); color:var(--text-secondary); }
         body.theme-light .rbt-batch-label { color:var(--text-secondary) !important; }
         body.theme-light .rbt-group-label { color:var(--text-secondary) !important; border-color:var(--text-muted) !important; }
         body.theme-light .rbt-ms-filter { color:var(--text-secondary) !important; }
@@ -18824,6 +19948,7 @@ function _batchAutoSave(options = {}) {
             uiState:{globalSubtitleStyle:window._reelsState?.globalSubtitleStyle||null,selectedTaskId:window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.id||'',targetWidth:window._reelsState?.targetWidth,targetHeight:window._reelsState?.targetHeight,styleScope:typeof _getSubtitleStyleScope==='function'?_getSubtitleStyleScope():'folder'},
             activeTabId: _batchTableState.activeTabId,
             nextTabId: _batchTableState.nextTabId,
+            collapsedTabGroups: { ...(_batchTableState.collapsedTabGroups || {}) },
             projectDir: _batchTableState.projectDir || defaultProjDir || '',
             projectName: _batchTableState.projectName || 'UntitledProject.json',
             tabs: _batchTableState.tabs.map(tab => {
@@ -18844,6 +19969,10 @@ function _batchAutoSave(options = {}) {
                 return {
                     id: tab.id,
                     name: tab.name,
+                    group: String(tab.group || '').trim(),
+                    hidden: !!tab.hidden,
+                    cloudKey: tab.cloudKey || '',
+                    cloudUrl: tab.cloudUrl || '',
                     materialDir: tab.materialDir || '',
                     folderQueueId: tab._folderQueueId || '',
                     externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined,
@@ -18958,6 +20087,10 @@ function _batchAutoRestore() {
                 return {
                     id: t.id,
                     name: t.name,
+                    group: String(t.group || '').trim(),
+                    hidden: !!t.hidden,
+                    cloudKey: String(t.cloudKey || '').trim(),
+                    cloudUrl: String(t.cloudUrl || '').trim(),
                     materialDir: t.materialDir || '',
                     _folderQueueId: t.folderQueueId || '',
                     // 兼容此前没有持久化该标记的版本。
@@ -18970,6 +20103,8 @@ function _batchAutoRestore() {
                     _dirty: false,
                 };
             });
+            _batchTableState.collapsedTabGroups = (data.collapsedTabGroups && typeof data.collapsedTabGroups === 'object')
+                ? { ...data.collapsedTabGroups } : {};
             if(data.uiState && window._reelsState){
                 if(data.uiState.globalSubtitleStyle)window._reelsState.globalSubtitleStyle=_cloneBatchTasks([data.uiState.globalSubtitleStyle])[0];
                 for(const key of ['targetWidth','targetHeight'])if(data.uiState[key])window._reelsState[key]=data.uiState[key];
@@ -18999,6 +20134,7 @@ function _batchAutoRestore() {
             );
             let duplicateTaskCount = 0;
             orderedTabs.forEach((tab) => {
+                if (tab.hidden) return;
                 const tabOrder = _batchTableState.tabs.indexOf(tab);
                 const tabTasks = tab.tasks || [];
                 if (!tabTasks.length) return;
@@ -19026,6 +20162,7 @@ function _batchAutoRestore() {
                     cloned._batchProjection = true;
                     cloned._batchTabId = tab.id;
                     cloned._batchTabName = tab.name;
+                    cloned._batchTabGroup = tab.group || '';
                     cloned._batchTabOrder = tabOrder;
                     cloned._batchTaskOrder = taskOrder;
                     _ensureTaskId(cloned);
@@ -19610,34 +20747,46 @@ window._extLoadProject = async (pathStr) => {
 
         // 我们利用现成的导入逻辑，稍微魔改下跳过 input.click
         // 因为现成的 _batchImportConfig 需要传入 file (FileReader)，它会确认。
-        const data = JSON.parse(content);
-        if (data.version === '2.0' && data.tabs) {
+        const rawData = JSON.parse(content);
+        const parts = pathStr.split(/[/\\]/);
+        const fileName = parts[parts.length - 1] || '工程.json';
+        const data = _normalizeImportedProjectPayload(rawData, fileName.replace(/\.json$/i, ''));
+        if (data && Array.isArray(data.tabs) && data.tabs.length > 0) {
             if (!confirm(`将从硬盘加载 [${pathStr}]\n这将替换当前界面的所有任务数据！\n确定加载？`)) return;
-            _batchTableState.tabs = data.tabs.map(t => ({
-                id: t.id,
-                name: t.name,
+            _batchTableState.tabs = data.tabs.map((t, idx) => ({
+                id: t.id || ('tab_' + (idx + 1)),
+                name: t.name || `标签${idx + 1}`,
+                group: String(t.group || '').trim(),
                 materialDir: t.materialDir || '',
+                _folderQueueId: t.folderQueueId || t._folderQueueId || '',
+                _externalFolderQueuesCombined: !!(t.externalFolderQueuesCombined || t._externalFolderQueuesCombined),
                 lastRefreshTime: t.lastRefreshTime || null,
                 tasks: t.tasks || [],
             }));
-            const parts = pathStr.split(/[/\\]/);
-            _batchTableState.projectName = parts[parts.length - 1]; // update current name
+            _batchTableState.collapsedTabGroups = (data.collapsedTabGroups && typeof data.collapsedTabGroups === 'object')
+                ? { ...data.collapsedTabGroups } : {};
+            _batchTableState.projectName = fileName; // update current name
             _batchTableState.activeTabId = data.activeTabId || _batchTableState.tabs[0].id;
             _batchTableState.nextTabId = data.nextTabId || _batchTableState.tabs.length + 1;
+            _clusterTabsBySmallGroup();
             _normalizeBatchTabState();
             const activeTab = _getActiveTab();
             _loadTabTasks(activeTab);
+            if (!_batchTableState.visible && _batchTableState.tabs.length > 1) {
+                _restoreGroupedProjectionFromTabs(_batchTableState.tabs.map(tab => tab.id));
+                if (typeof _renderTaskList === 'function') _renderTaskList();
+            }
             _skipNextApply = true;
             _renderBatchTable();
-            _batchAutoSave(); // instantly resync localStorage
+            _batchAutoSave({ skipSync: true, forceFullSerialize: true }); // instantly resync localStorage
 
             const popup = document.getElementById('rbt-project-mgr-popup');
             if (popup) popup.remove();
 
             const total = _batchTableState.tabs.reduce((s, t) => s + (t.tasks || []).length, 0);
-            alert(`✅ 已成功加载工程！`);
+            alert(`✅ 已成功加载工程！共 ${_batchTableState.tabs.length} 个标签分组 / ${total} 条任务`);
         } else {
-            alert('文件格式不正确或版本过旧(仅支持v2.0多标签工程)');
+            alert('文件格式不正确（缺少有效的标签页或任务列表）');
         }
     } catch (e) {
         alert('加载工程解析失败: ' + e.message);
@@ -19902,14 +21051,28 @@ function _batchExportConfig(scope = 'current') {
         alert(scope === 'all' ? '没有任务可以保存' : '当前工程没有任务可以保存');
         return;
     }
+    try { window.reelsSyncWatermarkFromUI?.(); } catch (_) {}
+    const wmList = Array.isArray(window._reelsState?.watermarks) ? window._reelsState.watermarks : [];
+    const globalStyle = window._reelsState?.globalSubtitleStyle;
     const data = {
         version: '2.0',
         timestamp: new Date().toISOString(),
         activeTabId: activeTab?.id || tabs[0]?.id,
         nextTabId: _batchTableState.nextTabId,
+        collapsedTabGroups: { ...(_batchTableState.collapsedTabGroups || {}) },
+        ...(globalStyle && typeof globalStyle === 'object'
+            ? { style: JSON.parse(JSON.stringify(globalStyle)) }
+            : {}),
+        ...(wmList.length > 0
+            ? { watermarks: JSON.parse(JSON.stringify(wmList)) }
+            : {}),
         tabs: tabs.map(tab => ({
             id: tab.id,
             name: tab.name,
+            group: String(tab.group || '').trim(),
+            hidden: !!tab.hidden,
+            cloudKey: tab.cloudKey || '',
+            cloudUrl: tab.cloudUrl || '',
             materialDir: tab.materialDir || '',
             lastRefreshTime: tab.lastRefreshTime || null,
             tasks: _serializeTasks(tab.tasks),
@@ -19935,61 +21098,37 @@ function _batchImportConfig(file) {
         if (window._batchImportInProgress) return;
         window._batchImportInProgress = true;
         try {
-            let data = JSON.parse(e.target.result);
-            if (data.version !== '2.0' && Array.isArray(data.tasks)) {
-                data = { version: '2.0', tabs: [{ id: 'legacy', name: (file.name || '导入工程').replace(/\.json$/i, ''), tasks: data.tasks }], activeTabId: 'legacy' };
-            }
-            if (data.version !== '2.0' || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('工程文件中没有有效标签页');
+            const rawData = JSON.parse(e.target.result);
+            const fallbackName = String(file?.name || '导入工程').replace(/\.json$/i, '').trim() || '导入工程';
+            const data = _normalizeImportedProjectPayload(rawData, fallbackName);
+            if (!data || !Array.isArray(data.tabs) || !data.tabs.length) throw new Error('工程文件中没有有效标签页');
 
-            if (data.version === '2.0' && data.tabs && data.tabs.length > 0) {
-                // Import into new tabs; loading a file must not replace existing work.
-                if (!data.tabs.every(t => t && Array.isArray(t.tasks))) throw new Error('工程标签页数据无效');
-                const mode = await window.electronAPI.chooseBatchImportMode({ current: _batchTableState.tabs.length, incoming: data.tabs.length });
-                if (mode !== 'append' && mode !== 'replace') return;
-                if (_batchTableState.visible) _applyBatchTableChanges();
-                _syncTasksToActiveTab();
-                _normalizeBatchTabState();
-                if (mode === 'replace') {
-                    const backupDir = _batchTableState.projectDir || await window.electronAPI.getDownloadsPath();
-                    if (!backupDir) throw new Error('无法确定备份目录，已取消覆盖');
-                    const backupPath = backupDir.replace(/[\\/]$/, '') + '/覆盖前工程备份_' + Date.now() + '.json';
-                    const backup = { version: '2.0', timestamp: new Date().toISOString(), activeTabId: _batchTableState.activeTabId, nextTabId: _batchTableState.nextTabId,
-                        tabs: _batchTableState.tabs.map(tab => ({ id: tab.id, name: tab.name, materialDir: tab.materialDir || '', folderQueueId: tab._folderQueueId || '', externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined, lastRefreshTime: tab.lastRefreshTime || null, tasks: _serializeTasks(tab.tasks) })) };
-                    if (!await window.electronAPI.writeFileText(backupPath, JSON.stringify(backup, null, 2))) throw new Error('备份失败，原有工程未覆盖');
-                }
-                const importedTabs = data.tabs.map(t => {
-                    const id = 'tab_' + _batchTableState.nextTabId++;
-                    const queueIds = new Map();
-                    const remapQueue = old => {
-                        if (!old) return '';
-                        if (!queueIds.has(old)) queueIds.set(old, `${id}_import_${Date.now()}_${queueIds.size}`);
-                        return queueIds.get(old);
-                    };
-                    return {
-                        id,
-                        name: t.name || '导入工程',
-                        materialDir: t.materialDir || '',
-                        _folderQueueId: remapQueue(t.folderQueueId || t._folderQueueId),
-                        _externalFolderQueuesCombined: !!(t.externalFolderQueuesCombined || t._externalFolderQueuesCombined),
-                        lastRefreshTime: t.lastRefreshTime || null,
-                        tasks: t.tasks.map(task => {
-                            const imported = _stripBatchGroupMeta(task);
-                            delete imported.id;
-                            _ensureTaskId(imported);
-                            if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
-                            return imported;
-                        }),
-                    };
-                });
-                if (mode === 'replace') _batchTableState.tabs = importedTabs;
-                else _batchTableState.tabs.push(...importedTabs);
-                const activeIndex = Math.max(0, data.tabs.findIndex(t => t.id === data.activeTabId));
-                _batchTableState.activeTabId = importedTabs[activeIndex].id;
-                _loadTabTasks(_getActiveTab());
-                _skipNextApply = true;
-                _renderBatchTable();
-                const total = importedTabs.reduce((sum, t) => sum + t.tasks.length, 0);
-                alert(mode === 'replace' ? `✅ 已覆盖为 ${importedTabs.length} 个工程、${total} 个任务。原工程已备份到工程保存目录。` : `✅ 已新增 ${importedTabs.length} 个工程标签页、${total} 个任务，原有工程已保留。`);
+            if (!data.tabs.every(t => t && Array.isArray(t.tasks))) throw new Error('工程标签页数据无效');
+            const mode = await window.electronAPI.chooseBatchImportMode({ current: _batchTableState.tabs.length, incoming: data.tabs.length });
+            if (mode !== 'append' && mode !== 'replace') return;
+            if (_batchTableState.visible) _applyBatchTableChanges();
+            _syncTasksToActiveTab();
+            _normalizeBatchTabState();
+            if (mode === 'replace') {
+                const backupDir = _batchTableState.projectDir || await window.electronAPI.getDownloadsPath();
+                if (!backupDir) throw new Error('无法确定备份目录，已取消覆盖');
+                const backupPath = backupDir.replace(/[\\/]$/, '') + '/覆盖前工程备份_' + Date.now() + '.json';
+                const backup = { version: '2.0', timestamp: new Date().toISOString(), activeTabId: _batchTableState.activeTabId, nextTabId: _batchTableState.nextTabId,
+                    collapsedTabGroups: { ...(_batchTableState.collapsedTabGroups || {}) },
+                    tabs: _batchTableState.tabs.map(tab => ({ id: tab.id, name: tab.name, group: String(tab.group || '').trim(), hidden: !!tab.hidden, cloudKey: tab.cloudKey || '', cloudUrl: tab.cloudUrl || '', materialDir: tab.materialDir || '', folderQueueId: tab._folderQueueId || '', externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined, lastRefreshTime: tab.lastRefreshTime || null, tasks: _serializeTasks(tab.tasks) })) };
+                if (!await window.electronAPI.writeFileText(backupPath, JSON.stringify(backup, null, 2))) throw new Error('备份失败，原有工程未覆盖');
+            }
+            const importedTabs = _buildImportedTabObjects(data.tabs, fallbackName, 'import');
+            const applyRes = _applyImportedTabsToState(importedTabs, data, { loadMode: mode, applyGlobalMeta: true });
+            const total = importedTabs.reduce((sum, t) => sum + t.tasks.length, 0);
+            if (mode === 'replace') {
+                alert(`✅ 已覆盖为 ${importedTabs.length} 个工程、${total} 个任务。原工程已备份到工程保存目录。`);
+            } else {
+                const parts = [];
+                if (applyRes?.tabsAdded > 0) parts.push(`新增 ${applyRes.tabsAdded} 个标签页`);
+                if (applyRes?.tabsUpdated > 0) parts.push(`覆盖更新 ${applyRes.tabsUpdated} 个同名标签页`);
+                if (applyRes?.skippedDuplicates > 0) parts.push(`跳过重复 ${applyRes.skippedDuplicates} 个`);
+                alert(`✅ 导入完成：${parts.length ? parts.join('、') : `共 ${importedTabs.length} 个标签页`}（共 ${total} 条任务），其余原有工程已保留。`);
             }
         } catch (err) {
             alert(`加载工程未完成: ${err.message}`);
@@ -20044,6 +21183,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const st = syncData.stats || {};
                     const totalKeys = (st.groq || 0) + (st.gladia || 0) + (st.deepgram || 0) + (st.gemini || 0) + (st.elevenlabs || 0);
                     console.log(`[CloudHub] 启动自动同步完成: Keys=${totalKeys}, 日期贴=${st.daily_projects || 0}`);
+                    if (typeof window.loadSettings === 'function') {
+                        window.loadSettings(false).catch(() => {});
+                    }
                     if (typeof showToast === 'function' && (totalKeys > 0 || st.daily_projects > 0)) {
                         showToast(`☁️ 云端已同步：${totalKeys} 个 API Key · ${st.daily_projects || 0} 个每日工程`, 'info', 3500);
                     }
@@ -21578,6 +22720,7 @@ window.reelsCaptureBatchTableState = function() {
     return {
         activeTabId: _batchTableState?.activeTabId || '',
         appliedTabIds: [...(_batchTableState?.appliedTabIds || [])],
+        collapsedTabGroups: { ...(_batchTableState?.collapsedTabGroups || {}) },
         nextTabId: _batchTableState?.nextTabId || 1,
         tabs: (_batchTableState?.tabs || []).map(tab => ({ ...tab, tasks: _cloneBatchTasks(tab.tasks || []) })),
         selectedRows: [...(_batchTableState?.selectedRows || [])],
@@ -21585,11 +22728,14 @@ window.reelsCaptureBatchTableState = function() {
 };
 window.reelsRestoreBatchTableState = function(snapshot) {
     if (!snapshot || !_batchTableState) return;
-    _batchTableState.tabs = (snapshot.tabs || []).map(tab => ({ ...tab, tasks: _cloneBatchTasks(tab.tasks || []) }));
+    _batchTableState.tabs = (snapshot.tabs || []).map(tab => ({ ...tab, group: String(tab?.group || '').trim(), tasks: _cloneBatchTasks(tab.tasks || []) }));
     _batchTableState.activeTabId = snapshot.activeTabId || _batchTableState.tabs[0]?.id || '';
     _batchTableState.appliedTabIds = [...(snapshot.appliedTabIds || [])];
+    _batchTableState.collapsedTabGroups = (snapshot.collapsedTabGroups && typeof snapshot.collapsedTabGroups === 'object')
+        ? { ...snapshot.collapsedTabGroups } : {};
     _batchTableState.nextTabId = Math.max(1, Number(snapshot.nextTabId) || _batchTableState.tabs.length + 1);
     _batchTableState.selectedRows = new Set(snapshot.selectedRows || []);
+    _normalizeBatchTabState();
 };
 window.reelsGetSelectedBatchTasks = function() {
     const tasks = window._reelsState?.tasks || [];
@@ -21635,20 +22781,13 @@ window.reelsRefreshTasksUsingOverlayPreset = function(name, previousPreset = nul
 // 14. Cloudflare 远程总控中心 & Google Drive 每日工程(日期贴)一键下载加载
 // ═══════════════════════════════════════════════════════
 
-async function _applyDownloadedCloudProjectToBatchTable(rawProject, savedPath = '', loadMode = 'append', projectLabel = '') {
-    let data = rawProject;
-    if (!data || typeof data !== 'object') {
+async function _applyDownloadedCloudProjectToBatchTable(rawProject, savedPath = '', loadMode = 'append', projectLabel = '', options = {}) {
+    if (!rawProject || typeof rawProject !== 'object') {
         throw new Error('工程数据为空或格式无效');
     }
     const fallbackName = String(projectLabel || (savedPath ? savedPath.split(/[/\\]/).pop().replace(/\.json$/i, '') : '云端每日工程')).trim() || '云端每日工程';
-    if (data.version !== '2.0' && Array.isArray(data.tasks)) {
-        data = {
-            version: '2.0',
-            tabs: [{ id: 'cloud_legacy', name: fallbackName, tasks: data.tasks }],
-            activeTabId: 'cloud_legacy',
-        };
-    }
-    if (!Array.isArray(data.tabs) || data.tabs.length === 0) {
+    const data = _normalizeImportedProjectPayload(rawProject, fallbackName);
+    if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) {
         throw new Error('该云端工程中没有有效的标签页或任务');
     }
 
@@ -21667,9 +22806,14 @@ async function _applyDownloadedCloudProjectToBatchTable(rawProject, savedPath = 
                 timestamp: new Date().toISOString(),
                 activeTabId: _batchTableState.activeTabId,
                 nextTabId: _batchTableState.nextTabId,
+                collapsedTabGroups: { ...(_batchTableState.collapsedTabGroups || {}) },
                 tabs: _batchTableState.tabs.map(tab => ({
                     id: tab.id,
                     name: tab.name,
+                    group: String(tab.group || '').trim(),
+                    hidden: !!tab.hidden,
+                    cloudKey: tab.cloudKey || '',
+                    cloudUrl: tab.cloudUrl || '',
                     materialDir: tab.materialDir || '',
                     folderQueueId: tab._folderQueueId || '',
                     externalFolderQueuesCombined: !!tab._externalFolderQueuesCombined,
@@ -21681,73 +22825,34 @@ async function _applyDownloadedCloudProjectToBatchTable(rawProject, savedPath = 
         }
     }
 
-    const importedTabs = data.tabs.map((t, tIdx) => {
-        const id = 'tab_' + _batchTableState.nextTabId++;
-        const queueIds = new Map();
-        const remapQueue = old => {
-            if (!old) return '';
-            if (!queueIds.has(old)) queueIds.set(old, `${id}_cloud_${Date.now()}_${queueIds.size}`);
-            return queueIds.get(old);
-        };
-        const rawTabName = String(t?.name || '').trim();
-        const tabName = (data.tabs.length === 1 && (!rawTabName || rawTabName === '默认' || rawTabName === '标签1'))
-            ? fallbackName
-            : (rawTabName || `${fallbackName}_${tIdx + 1}`);
-        return {
-            id,
-            name: tabName,
-            materialDir: t?.materialDir || '',
-            _folderQueueId: remapQueue(t?.folderQueueId || t?._folderQueueId),
-            _externalFolderQueuesCombined: !!(t?.externalFolderQueuesCombined || t?._externalFolderQueuesCombined),
-            lastRefreshTime: t?.lastRefreshTime || null,
-            tasks: (Array.isArray(t?.tasks) ? t.tasks : []).map(task => {
-                const imported = _stripBatchGroupMeta(task);
-                delete imported.id;
-                _ensureTaskId(imported);
-                if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
-                const mediaBg = imported.bgPath || imported.videoPath || '';
-                if (mediaBg && window.electronAPI?.toFileUrl) {
-                    imported.bgSrcUrl = window.electronAPI.toFileUrl(mediaBg);
-                }
-                return imported;
-            }),
-        };
+    const importedTabs = _buildImportedTabObjects(data.tabs, fallbackName, 'cloud');
+    const cloudKey = String(options.cloudKey || '').trim();
+    const cloudUrl = String(options.cloudUrl || '').trim();
+    if (cloudKey || cloudUrl) {
+        importedTabs.forEach(tab => {
+            if (!tab) return;
+            if (cloudKey && !tab.cloudKey) tab.cloudKey = cloudKey;
+            if (cloudUrl && !tab.cloudUrl) tab.cloudUrl = cloudUrl;
+        });
+    }
+    const savedFileName = savedPath ? (String(savedPath).split(/[/\\]/).pop() || '') : '';
+    const applyRes = _applyImportedTabsToState(importedTabs, data, {
+        loadMode,
+        projectName: savedFileName,
+        applyGlobalMeta: true,
+        cloudKey,
+        cloudUrl,
+        duplicateStrategy: options.duplicateStrategy || '',
     });
-
-    if (loadMode === 'replace') {
-        _batchTableState.tabs = importedTabs;
-        if (savedPath) {
-            const parts = String(savedPath).split(/[/\\]/);
-            _batchTableState.projectName = parts[parts.length - 1] || _batchTableState.projectName;
-        }
-    } else {
-        // 如果当前仅有一个完全空白的默认标签，直接替换掉空白标签避免残留空标签
-        if (_batchTableState.tabs.length === 1 && _isBatchTabEmpty(_batchTableState.tabs[0])) {
-            _batchTableState.tabs = importedTabs;
-        } else {
-            _batchTableState.tabs.push(...importedTabs);
-        }
-    }
-
-    const activeIndex = Math.max(0, data.tabs.findIndex(t => t && t.id === data.activeTabId));
-    _batchTableState.activeTabId = importedTabs[Math.min(activeIndex, importedTabs.length - 1)].id;
-    _loadTabTasks(_getActiveTab());
-    _skipNextApply = true;
-    if (_batchTableState.visible) {
-        _renderBatchTable();
-    } else {
-        // 如果在主界面加载，同步更新左侧外部任务列表并选中第一条任务
-        if (importedTabs.length > 1) {
-            _restoreGroupedProjectionFromTabs(_batchTableState.tabs.map(tab => tab.id));
-        }
-        if (typeof _renderTaskList === 'function') _renderTaskList();
-        if (window._reelsState?.tasks?.length > 0 && typeof reelsSelectTask === 'function') {
-            reelsSelectTask(0);
-        }
-    }
-    _batchAutoSave({ skipSync: true, forceFullSerialize: true });
     const totalTasks = importedTabs.reduce((s, tab) => s + (tab.tasks?.length || 0), 0);
-    return { tabsCount: importedTabs.length, tasksCount: totalTasks };
+    return {
+        tabsCount: importedTabs.length,
+        tasksCount: totalTasks,
+        tabsAdded: applyRes?.tabsAdded ?? importedTabs.length,
+        tabsUpdated: applyRes?.tabsUpdated ?? 0,
+        skippedDuplicates: applyRes?.skippedDuplicates ?? 0,
+        matchedFirstTabId: applyRes?.matchedFirstTabId || '',
+    };
 }
 
 window.openCloudHubDialog = async function() {
@@ -21794,13 +22899,17 @@ window.openCloudHubDialog = async function() {
             const pNote = _escHtml(item.note || '');
             const pMatHint = _escHtml(item.material_folder_hint || '');
             const isDrive = /drive\.google\.com/i.test(item.url || item.drive_url || '');
+            const { matchedTabs } = _findExistingTabsForCloudEntry(item);
+            const hasLocal = matchedTabs.length > 0;
+            const localIsHidden = hasLocal && matchedTabs.every(t => t && t.hidden);
             return `
-            <div class="ch-project-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:rgba(15,23,42,0.82);border:1px solid rgba(56,189,248,0.22);border-radius:8px;transition:border-color .15s;">
+            <div class="ch-project-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;background:rgba(15,23,42,0.82);border:1px solid ${hasLocal ? 'rgba(34,197,94,0.35)' : 'rgba(56,189,248,0.22)'};border-radius:8px;transition:border-color .15s;">
                 <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         ${pDate ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(14,165,233,0.2);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);font-family:monospace;">📅 ${pDate}</span>` : ''}
                         <span style="font-size:13px;font-weight:700;color:#f1f5f9;">${pTitle}</span>
                         <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${isDrive ? 'rgba(34,197,94,0.16)' : 'rgba(168,85,247,0.16)'};color:${isDrive ? '#4ade80' : '#c084fc'};">${isDrive ? 'Google Drive 直链转换' : '云端直链'}</span>
+                        ${hasLocal ? `<span style="font-size:10px;padding:1px 7px;border-radius:999px;background:${localIsHidden ? 'rgba(167,139,250,0.2)' : 'rgba(16,185,129,0.2)'};color:${localIsHidden ? '#c4b5fd' : '#4ade80'};border:1px solid ${localIsHidden ? 'rgba(167,139,250,0.4)' : 'rgba(16,185,129,0.4)'};">${localIsHidden ? '💤 本地后台已有' : '✅ 本地已加载'}</span>` : ''}
                     </div>
                     <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${pUrl}">
                         🔗 ${pUrl}
@@ -21811,8 +22920,9 @@ window.openCloudHubDialog = async function() {
                     </div>` : ''}
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-                    <button type="button" class="rbt-btn ch-download-proj-btn" data-idx="${idx}" style="padding:6px 12px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);border:1px solid #38bdf8;color:#fff;border-radius:6px;cursor:pointer;">
-                        ⬇️ 下载并加载工程
+                    ${hasLocal ? `<button type="button" class="rbt-btn ch-open-local-proj-btn" data-idx="${idx}" title="不重新下载，直接打开本地已有工程标签" style="padding:6px 10px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#059669,#10b981);border:1px solid #34d399;color:#fff;border-radius:6px;cursor:pointer;">📂 直接打开</button>` : ''}
+                    <button type="button" class="rbt-btn ch-download-proj-btn" data-idx="${idx}" style="padding:6px 12px;font-size:12px;font-weight:700;background:${hasLocal ? 'rgba(51,65,85,0.85)' : 'linear-gradient(135deg,#0284c7,#2563eb)'};border:1px solid ${hasLocal ? '#475569' : '#38bdf8'};color:#fff;border-radius:6px;cursor:pointer;">
+                        ${hasLocal ? '🔄 重新下载更新' : '⬇️ 下载并加载工程'}
                     </button>
                     <button type="button" class="rbt-btn ch-copy-proj-url-btn" data-idx="${idx}" title="复制分享链接" style="padding:6px 8px;font-size:11px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:#cbd5e1;border-radius:6px;cursor:pointer;">
                         📋
@@ -21901,11 +23011,14 @@ window.openCloudHubDialog = async function() {
                         <button type="button" id="ch-push-keys-btn" title="将当前电脑里已配置的 Groq / Gladia / Deepgram / Gemini / ElevenLabs Key 与日期贴一键上传到你的 Cloudflare Worker" style="padding:7px 12px;font-size:12px;background:rgba(16,185,129,0.16);border:1px solid rgba(16,185,129,0.45);color:#6ee7b7;border-radius:6px;cursor:pointer;font-weight:600;">
                             ⬆️ 将本机全部 Key 推送到 Cloudflare
                         </button>
-                        <button type="button" id="ch-open-web-admin-btn" title="在浏览器打开 Cloudflare 网页管理后台，直接网页修改 Key 和发每日工程" style="padding:7px 12px;font-size:12px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.45);color:#c4b5fd;border-radius:6px;cursor:pointer;">
-                            🌐 打开云端网页后台
+                        <button type="button" id="ch-open-web-admin-btn" title="在浏览器打开 Cloudflare 网页管理后台（KV版）或查看 JSON 配置" style="padding:7px 12px;font-size:12px;background:rgba(139,92,246,0.16);border:1px solid rgba(139,92,246,0.45);color:#c4b5fd;border-radius:6px;cursor:pointer;">
+                            🌐 打开云端地址
                         </button>
-                        <button type="button" id="ch-copy-worker-btn" title="复制单文件 Cloudflare Worker 代码（自带可视化网页后台，粘贴到 Cloudflare 即可免费使用）" style="margin-left:auto;padding:7px 12px;font-size:11px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.45);color:#fcd34d;border-radius:6px;cursor:pointer;font-weight:600;">
-                            📋 复制 Cloudflare Worker 部署代码
+                        <button type="button" id="ch-copy-simple-worker-btn" title="推荐：无需创建KV！只需在代码顶部填好 Key 和 1 个谷歌云盘链接，粘贴到 Cloudflare 点 Deploy 即可" style="margin-left:auto;padding:7px 12px;font-size:11.5px;background:rgba(245,158,11,0.22);border:1px solid rgba(245,158,11,0.65);color:#fde68a;border-radius:6px;cursor:pointer;font-weight:700;">
+                            📋 复制极简模板（免KV · 只填Key+1个谷歌链接）
+                        </button>
+                        <button type="button" id="ch-copy-worker-btn" title="复制带网页管理后台的高级 KV 版 Worker 代码" style="padding:7px 10px;font-size:11px;background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.35);color:#cbd5e1;border-radius:6px;cursor:pointer;">
+                            📋 高级KV版
                         </button>
                     </div>
                 </div>
@@ -21913,8 +23026,9 @@ window.openCloudHubDialog = async function() {
                 <!-- Section 2: Google Drive 每日工程（日期贴） -->
                 <div style="background:rgba(30,41,59,0.55);border:1px solid rgba(148,163,184,0.2);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
                     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                        <div style="font-size:13px;font-weight:700;color:#fbbf24;display:flex;align-items:center;gap:6px;">
-                            <span>📅 二、每日工程（Google Drive 日期贴）一键下载并加载</span>
+                        <div style="font-size:13px;font-weight:700;color:#fbbf24;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span>📅 二、每日工程（Google Drive 文件夹 / 工程文件）一键加载编辑</span>
+                            <span id="ch-linked-drive-badge" style="font-size:11px;font-weight:500;color:#38bdf8;">${cfg.single_google_drive_url ? `· 🔗 已关联总链接` : ''}</span>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;">
                             <span style="font-size:11px;color:#94a3b8;">加载方式:</span>
@@ -21927,10 +23041,10 @@ window.openCloudHubDialog = async function() {
 
                     <!-- 快速粘贴任意 Google Drive 链接直接下载加载 -->
                     <div style="display:flex;align-items:center;gap:8px;background:rgba(9,13,22,0.65);padding:8px 10px;border-radius:8px;border:1px solid rgba(56,189,248,0.2);">
-                        <span style="font-size:12px;color:#38bdf8;font-weight:700;white-space:nowrap;">⚡ 临时链接直装:</span>
-                        <input type="text" id="ch-quick-drive-url" placeholder="直接粘贴 Google Drive 分享链接 (https://drive.google.com/file/d/.../view?usp=sharing) 或 .json 直链，无需点开网页下载..." style="flex:1;padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
+                        <span style="font-size:12px;color:#38bdf8;font-weight:700;white-space:nowrap;">⚡ 谷歌链接直装:</span>
+                        <input type="text" id="ch-quick-drive-url" value="${_escHtml(cfg.single_google_drive_url || '')}" placeholder="粘贴 Google Drive「共享文件夹链接」或「单个工程 .json 链接」，自动展开/加载可编辑工程..." style="flex:1;padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:12px;">
                         <button type="button" id="ch-quick-download-btn" style="padding:6px 14px;font-size:12px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);border:1px solid #34d399;color:#fff;border-radius:6px;cursor:pointer;white-space:nowrap;">
-                            ⬇️ 直接下载并加载
+                            ⬇️ 读取 / 加载工程
                         </button>
                     </div>
 
@@ -22005,6 +23119,25 @@ window.openCloudHubDialog = async function() {
             alert('该日期贴没有有效的下载链接');
             return;
         }
+        const selectedLoadMode = modal.querySelector('#ch-project-load-mode')?.value || 'append';
+        const { matchedTabs, cloudKey } = _findExistingTabsForCloudEntry(projItem);
+        const projLabel = [projItem.date, projItem.title].filter(Boolean).join('_') || projItem.title || '云端每日工程';
+        let preChosenDuplicateStrategy = '';
+        if (selectedLoadMode === 'append' && matchedTabs.length > 0) {
+            const action = await _chooseDuplicateCloudAction(projLabel, matchedTabs);
+            if (action === 'cancel') return;
+            if (action === 'open') {
+                matchedTabs.forEach(t => { if (t) t.hidden = false; });
+                _normalizeBatchTabState();
+                _switchToTab(matchedTabs[0].id);
+                rebindProjectItemEvents();
+                const openMsg = `📂 已直接切换到本地已有工程「${matchedTabs[0].name}」（跳过重复下载）`;
+                setFooterMsg(openMsg, '#4ade80');
+                if (typeof showToast === 'function') showToast(openMsg, 'success', 4000);
+                return;
+            }
+            if (action === 'overwrite') preChosenDuplicateStrategy = 'replace';
+        }
         const origText = btnEl ? btnEl.textContent : '';
         if (btnEl) {
             btnEl.disabled = true;
@@ -22027,14 +23160,35 @@ window.openCloudHubDialog = async function() {
                 }),
             });
             const data = await resp.json();
-            if (!resp.ok || data.status !== 'success') {
-                throw new Error(data.detail || '下载云端工程失败');
+            if (!resp.ok || (data.status !== 'success' && data.status !== 'folder_listed')) {
+                throw new Error(data.error || data.detail || '下载云端工程失败');
+            }
+            if (data.status === 'folder_listed') {
+                cfg.daily_projects = Array.isArray(data.projects) ? data.projects : [];
+                cfg.single_google_drive_url = rawUrl;
+                rebindProjectItemEvents();
+                const badge = modal.querySelector('#ch-linked-drive-badge');
+                if (badge) badge.textContent = '· 🔗 已展开云盘文件夹';
+                const listMsg = data.message || `📁 已从谷歌文件夹读取到 ${cfg.daily_projects.length} 个可编辑工程，请在下方点击加载`;
+                setFooterMsg(listMsg, '#4ade80');
+                if (typeof showToast === 'function') showToast(listMsg, 'success', 4500);
+                return;
             }
             const loadMode = modal.querySelector('#ch-project-load-mode')?.value || 'append';
             const label = [projItem.date, projItem.title].filter(Boolean).join('_') || '云端每日工程';
-            const applied = await _applyDownloadedCloudProjectToBatchTable(data.project, data.saved_path, loadMode, label);
+            const applied = await _applyDownloadedCloudProjectToBatchTable(data.project, data.saved_path, loadMode, label, {
+                cloudKey,
+                cloudUrl: rawUrl,
+                duplicateStrategy: preChosenDuplicateStrategy,
+            });
+            rebindProjectItemEvents();
             const relink = data.relink_stats || { fixed: 0, missing: 0 };
-            const summaryMsg = `✅ 已成功下载并加载「${label}」：${applied.tabsCount} 个标签页、${applied.tasksCount} 条任务` +
+            const actionNote = (applied.tabsUpdated > 0 && applied.tabsAdded === 0)
+                ? `已覆盖更新本地同名工程 ${applied.tabsUpdated} 个标签`
+                : (applied.skippedDuplicates > 0 && applied.tabsAdded === 0)
+                    ? `检测到重名工程，已跳过重复加入 ${applied.skippedDuplicates} 个标签`
+                    : `${applied.tabsCount} 个标签页、${applied.tasksCount} 条任务` + (applied.skippedDuplicates > 0 ? `（跳过重名 ${applied.skippedDuplicates} 个）` : '');
+            const summaryMsg = `✅ 「${label}」处理完成：${actionNote}` +
                 (relink.fixed > 0 ? `（自动关联本机素材 ${relink.fixed} 处）` : '') +
                 (relink.missing > 0 ? `（仍有 ${relink.missing} 处素材未找到，可点“🔍 查找素材”关联）` : '');
             setFooterMsg(summaryMsg, '#4ade80');
@@ -22056,6 +23210,22 @@ window.openCloudHubDialog = async function() {
         const listEl = modal.querySelector('#ch-projects-list');
         if (!listEl) return;
         listEl.innerHTML = renderProjectsListHtml(cfg.daily_projects);
+        listEl.querySelectorAll('.ch-open-local-proj-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.dataset.idx, 10);
+                const item = (cfg.daily_projects || [])[idx];
+                if (!item) return;
+                const { matchedTabs } = _findExistingTabsForCloudEntry(item);
+                if (!matchedTabs.length) return;
+                matchedTabs.forEach(t => { if (t) t.hidden = false; });
+                _normalizeBatchTabState();
+                _switchToTab(matchedTabs[0].id);
+                rebindProjectItemEvents();
+                const openMsg = `📂 已直接切换到本地工程「${matchedTabs[0].name}」（未重复下载）`;
+                setFooterMsg(openMsg, '#4ade80');
+                if (typeof showToast === 'function') showToast(openMsg, 'success', 4000);
+            });
+        });
         listEl.querySelectorAll('.ch-download-proj-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const idx = parseInt(btn.dataset.idx, 10);
@@ -22084,7 +23254,7 @@ window.openCloudHubDialog = async function() {
                 cfg.daily_projects.splice(idx, 1);
                 await saveCurrentSettings();
                 const hubUrl = modal.querySelector('#ch-hub-url')?.value?.trim() || '';
-                if (hubUrl && item.id) {
+                if (hubUrl) {
                     try {
                         await apiFetch('settings/cloud-hub/push', {
                             method: 'POST',
@@ -22094,6 +23264,8 @@ window.openCloudHubDialog = async function() {
                                 access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
                                 action: 'delete_daily_project',
                                 id: item.id,
+                                url: item.url || item.drive_url || '',
+                                date: item.date || '',
                             }),
                         });
                     } catch (_) {}
@@ -22151,16 +23323,25 @@ window.openCloudHubDialog = async function() {
             });
             const data = await resp.json();
             if (!resp.ok || data.status !== 'success') {
-                throw new Error(data.detail || '同步失败');
+                throw new Error(data.error || data.detail || '同步失败');
+            }
+            if (typeof window.loadSettings === 'function') {
+                window.loadSettings(false).catch(() => {});
             }
             if (data.settings) cfg = { ...cfg, ...data.settings };
             const badgeEl = modal.querySelector('#ch-sync-status-badge');
             if (badgeEl) badgeEl.innerHTML = renderSyncBadge();
+            const linkedBadge = modal.querySelector('#ch-linked-drive-badge');
+            if (linkedBadge) linkedBadge.textContent = cfg.single_google_drive_url ? '· 🔗 已关联总链接' : '';
+            const quickInput = modal.querySelector('#ch-quick-drive-url');
+            if (quickInput && cfg.single_google_drive_url) quickInput.value = cfg.single_google_drive_url;
             rebindProjectItemEvents();
             const s = data.stats || {};
-            const msg = `✅ 同步成功！Groq(${s.groq || 0}) · Gladia(${s.gladia || 0}) · Deepgram(${s.deepgram || 0}) · Gemini(${s.gemini || 0}) · ElevenLabs(${s.elevenlabs || 0}) · 日期贴(${s.daily_projects || 0}个)`;
-            setFooterMsg(msg, '#4ade80');
-            if (typeof showToast === 'function') showToast(msg, 'success', 4500);
+            const folderWarn = data.folder_warning || data.summary?.folder_warning || '';
+            const baseMsg = `✅ 同步成功！Groq(${s.groq || 0}) · Gladia(${s.gladia || 0}) · Deepgram(${s.deepgram || 0}) · Gemini(${s.gemini || 0}) · ElevenLabs(${s.elevenlabs || 0}) · 工程(${s.daily_projects || 0}个)`;
+            const msg = folderWarn ? `${baseMsg} ｜ ⚠️ ${folderWarn}` : baseMsg;
+            setFooterMsg(msg, folderWarn ? '#fbbf24' : '#4ade80');
+            if (typeof showToast === 'function') showToast(msg, folderWarn ? 'warning' : 'success', 5000);
         } catch (err) {
             const msg = `❌ 同步失败: ${err.message || err}`;
             setFooterMsg(msg, '#f87171');
@@ -22197,7 +23378,7 @@ window.openCloudHubDialog = async function() {
             });
             const data = await resp.json();
             if (!resp.ok || data.status !== 'success') {
-                throw new Error(data.detail || '推送到 Cloudflare 失败（请确认目标 URL 是支持 POST 的 Cloudflare Worker 且 Token 正确）');
+                throw new Error(data.error || data.detail || '推送到 Cloudflare 失败（请确认目标 URL 是支持 POST 的 Cloudflare Worker 且 Token 正确）');
             }
             setFooterMsg('✅ 已将本机全部 API Key 与日期贴成功推送到 Cloudflare 云端！', '#4ade80');
             if (typeof showToast === 'function') showToast('✅ 已成功推送到 Cloudflare 云端', 'success');
@@ -22219,19 +23400,27 @@ window.openCloudHubDialog = async function() {
         window.open(hubUrl, '_blank', 'noopener,noreferrer');
     });
 
-    modal.querySelector('#ch-copy-worker-btn')?.addEventListener('click', async () => {
+    const copyWorkerTemplate = async (variant) => {
         try {
-            const resp = await apiFetch('settings/cloud-hub/worker-code');
+            const url = variant === 'simple'
+                ? 'settings/cloud-hub/worker-code?variant=simple'
+                : 'settings/cloud-hub/worker-code';
+            const resp = await apiFetch(url);
             const data = await resp.json();
             if (!data?.code) throw new Error('未能读取 Worker 模板代码');
             await navigator.clipboard.writeText(data.code);
-            const msg = '✅ 已复制 Cloudflare Worker 完整代码！去 Cloudflare Workers 新建 Worker 粘贴部署并绑定 KV (名称填 HUB_KV) 即可使用。';
+            const msg = variant === 'simple'
+                ? '✅ 已复制极简版 Cloudflare 代码！去 Cloudflare 新建 Worker 粘贴，只需在代码顶部填好 Key 和 1 个谷歌链接，点 Deploy 即可（无需建 KV）！'
+                : '✅ 已复制高级 KV 版 Worker 代码！去 Cloudflare 新建 Worker 粘贴部署并绑定 KV (Variable name 填 HUB_KV) 即可使用。';
             setFooterMsg(msg, '#4ade80');
             alert(msg);
         } catch (err) {
             alert('复制 Worker 代码失败: ' + err.message);
         }
-    });
+    };
+
+    modal.querySelector('#ch-copy-simple-worker-btn')?.addEventListener('click', () => copyWorkerTemplate('simple'));
+    modal.querySelector('#ch-copy-worker-btn')?.addEventListener('click', () => copyWorkerTemplate('kv'));
 
     modal.querySelector('#ch-quick-download-btn')?.addEventListener('click', () => {
         const quickUrl = modal.querySelector('#ch-quick-drive-url')?.value?.trim() || '';

@@ -334,6 +334,13 @@ const REELS_ANIMATION_PRESETS = {
         anim_out_type: 'fade',
         anim_out_duration: 0.25,
     },
+    speech_feather_wipe: {
+        label: 'Speech Feather Wipe · 人声逐字羽化',
+        anim_in_type: 'speech_feather_wipe',
+        anim_in_duration: 0,
+        anim_out_type: 'none',
+        anim_out_duration: 0,
+    },
     three_word_focus_stack: {
         label: 'Three-Word Hero Stack · 三词叠排(中词放大)',
         anim_in_type: 'three_word_focus_stack',
@@ -591,6 +598,7 @@ function _initReelsModule() {
     if (!_reelsState._bgmAudioEl) {
         const bgmEl = document.createElement('audio');
         bgmEl.id = 'reels-preview-bgm';
+        bgmEl.crossOrigin = 'anonymous';
         bgmEl.style.display = 'none';
         bgmEl.loop = _isPreviewLoopEnabled();
         document.body.appendChild(bgmEl);
@@ -5443,6 +5451,65 @@ function _reelsRefreshWatermarkUI() {
     });
 }
 
+function _reelsWatermarkIdentityKey(wm) {
+    if (!wm || typeof wm !== 'object') return '';
+    return `${wm.type || 'text'}|${String(wm.text || '').trim()}|${String(wm.imagePath || '').trim()}|${wm.position || 'top-right'}`;
+}
+
+function _reelsApplyRestoredWatermarks(watermarks, { mode = 'replace', persist = true, refreshUI = true, refreshPreview = true } = {}) {
+    if (!Array.isArray(watermarks) || watermarks.length === 0 || typeof _reelsState !== 'object' || !_reelsState) {
+        return false;
+    }
+    const cloneFn = typeof _cloneProjectDataForSave === 'function'
+        ? _cloneProjectDataForSave
+        : (v => JSON.parse(JSON.stringify(v)));
+    const incoming = cloneFn(watermarks).filter(w => w && typeof w === 'object');
+    if (!incoming.length) return false;
+
+    if (mode === 'append') {
+        const current = Array.isArray(_reelsState.watermarks) ? _reelsState.watermarks : [];
+        const hasActiveCurrent = current.some(w => w && w.enabled);
+        if (!hasActiveCurrent) {
+            _reelsState.watermarks = incoming;
+        } else {
+            const seen = new Set(current.map(_reelsWatermarkIdentityKey));
+            for (const wm of incoming) {
+                if (!wm.enabled) continue;
+                const key = _reelsWatermarkIdentityKey(wm);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    current.push(wm);
+                }
+            }
+            _reelsState.watermarks = current;
+        }
+    } else {
+        _reelsState.watermarks = incoming;
+    }
+
+    if (persist && typeof _reelsSaveWatermarks === 'function') {
+        _reelsSaveWatermarks();
+    }
+    if (refreshUI && typeof _reelsRefreshWatermarkUI === 'function') {
+        _reelsRefreshWatermarkUI();
+    }
+    if (refreshPreview && typeof reelsUpdatePreview === 'function') {
+        try { reelsUpdatePreview(); } catch (_) {}
+    }
+    return true;
+}
+
+if (typeof window !== 'undefined') {
+    window.reelsApplyRestoredWatermarks = _reelsApplyRestoredWatermarks;
+    window.reelsSyncWatermarkFromUI = () => {
+        if (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function'
+            && document.querySelectorAll('#reels-watermark-list .wm-row').length > 0
+            && typeof _reelsSyncWatermarkFromUI === 'function') {
+            _reelsSyncWatermarkFromUI();
+        }
+    };
+}
+
 // 初始化水印 — 从 localStorage 恢复
 document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
@@ -6985,6 +7052,48 @@ function _isSingleAutoEditTask(task) {
     return Boolean(task && task.bgMode !== 'multi' && (task._autoEditSource || task.alignSource === 'auto_edit' || task.autoEditProject));
 }
 
+function _isTaskUsingBgAsVoice(task, explicitBgPath, explicitWorkMode) {
+    if (!task || task.audioPath) return false;
+    const workMode = explicitWorkMode !== undefined ? explicitWorkMode : _getWorkMode();
+    if (workMode !== 'voiced_bg' && !_isSingleAutoEditTask(task)) return false;
+    const effectiveBgPool = _getEffectiveBgClipPool(task);
+    if (task.bgMode === 'multi' && effectiveBgPool.length > 0) return false;
+    const bgPath = explicitBgPath !== undefined
+        ? explicitBgPath
+        : (_resolvePreviewBackgroundPath(task).path || task.bgPath || task.videoPath || '');
+    return Boolean(bgPath && !_isImagePath(bgPath));
+}
+window._isTaskUsingBgAsVoice = _isTaskUsingBgAsVoice;
+
+function _hasTaskVoiceAudio(task, audioEl) {
+    return !!(task && audioEl && audioEl.src && (task.audioPath || _isTaskUsingBgAsVoice(task)));
+}
+
+function _getEffectiveTaskVoiceDurScale(task, explicitBgPath, explicitWorkMode) {
+    if (!task) return 100;
+    if (!task.audioPath && _isTaskUsingBgAsVoice(task, explicitBgPath, explicitWorkMode)) {
+        return task.bgDurScale || task.audioDurScale || 100;
+    }
+    return task.audioDurScale || 100;
+}
+
+function _resolveTaskVoiceVolumePercent(task, opts = {}) {
+    const globalVoice = opts.globalVoiceVolume !== undefined ? opts.globalVoiceVolume : _getGlobalVoiceVolumePercent();
+    const globalBg = opts.globalBgVolume !== undefined ? opts.globalBgVolume : _getGlobalBgVolumePercent();
+    const voiceEff = _getEffectiveVoiceVolumePercent(task, globalVoice);
+    if (!_isTaskUsingBgAsVoice(task, opts.bgPath, opts.workMode)) {
+        return voiceEff;
+    }
+    if (_isSingleAutoEditTask(task)) {
+        return voiceEff;
+    }
+    const bgEff = _getEffectiveBgVolumePercent(task, globalBg);
+    if (bgEff > 0) return bgEff;
+    if (task && task.bgVideoVolume != null && parseFloat(task.bgVideoVolume) === 0) return 0;
+    return voiceEff;
+}
+window._resolveTaskVoiceVolumePercent = _resolveTaskVoiceVolumePercent;
+
 function _getTaskSubtitleEnd(task) {
     if (!task || !Array.isArray(task.segments) || task.segments.length === 0) return 0;
     let maxEnd = 0;
@@ -7077,7 +7186,7 @@ function _getPreviewMasterElement() {
     const task = _getSelectedTask();
     if (!task) return null;
     const audio = document.getElementById('reels-preview-audio');
-    if (task.audioPath && audio && audio.src && audio.readyState >= 1) return audio;
+    if (_hasTaskVoiceAudio(task, audio) && audio.readyState >= 1) return audio;
     if (!(task.contentVideoDirectBg && task.contentVideoPath)) {
         const previewBg = _resolvePreviewBackgroundPath(task);
         if (!previewBg.isMulti) {
@@ -7107,7 +7216,7 @@ function _applyPreviewLoopMode() {
     const cvVideo = document.getElementById('reels-preview-contentvideo');
     const bgm = _reelsState._bgmAudioEl;
 
-    const hasAudio = !!(task && task.audioPath && audio && audio.src);
+    const hasAudio = _hasTaskVoiceAudio(task, audio);
     const previewBg = _resolvePreviewBackgroundPath(task);
     const hasVideo = !!(task && !previewBg.isMulti && previewBg.path && !_isImagePath(previewBg.path) && video && video.src);
     const hasCvVideo = !!(task && task.contentVideoPath && cvVideo && cvVideo.src);
@@ -7151,7 +7260,7 @@ function _getPreviewCurrentTime() {
             const trimStart = parseFloat(task.contentVideoTrimStart) || 0;
             t = Math.max(0, t - trimStart);
         }
-        const aDurScale = (task && task.audioDurScale) ? (task.audioDurScale / 100) : 1;
+        const aDurScale = _getEffectiveTaskVoiceDurScale(task) / 100;
         return (t * aDurScale) + offsetDur;
     }
 
@@ -7188,7 +7297,7 @@ function _getPreviewPlaybackTimeForPause() {
             const trimStart = parseFloat((task || {}).contentVideoTrimStart) || 0;
             t = Math.max(0, t - trimStart);
         }
-        const aDurScale = (task && task.audioDurScale) ? (task.audioDurScale / 100) : 1;
+        const aDurScale = _getEffectiveTaskVoiceDurScale(task) / 100;
         return (t * aDurScale) + offsetDur;
     }
 
@@ -7660,10 +7769,14 @@ function _applyPreviewAudioMix() {
     const video = document.getElementById('reels-preview-video');
     const contentVideoEl = document.getElementById('reels-preview-contentvideo');
     const cfg = _getPreviewAudioMixConfig();
-    const hasVoice = !!(task && task.audioPath && audio && audio.src);
+    const bgSameAsVoice = _isTaskUsingBgAsVoice(task);
+    const hasVoice = _hasTaskVoiceAudio(task, audio);
     // ── 计算有效音量：全局导出音量作为总控，任务级音量作为单任务微调 ──
-    const effectiveVoiceGain = _getEffectiveVoiceVolumePercent(task, cfg.voiceGain * 100) / 100;
-    const effectiveBgGain = _getEffectiveBgVolumePercent(task, cfg.bgGain * 100) / 100;
+    const effectiveVoiceGain = _resolveTaskVoiceVolumePercent(task, {
+        globalVoiceVolume: cfg.voiceGain * 100,
+        globalBgVolume: cfg.bgGain * 100,
+    }) / 100;
+    const effectiveBgGain = bgSameAsVoice ? 0 : (_getEffectiveBgVolumePercent(task, cfg.bgGain * 100) / 100);
 
     if (audio) {
         const vol = hasVoice ? effectiveVoiceGain : 1.0;
@@ -7986,6 +8099,7 @@ function _ensurePreviewFadeVideo(mainVideo) {
     if (!_reelsState.previewFadeVideo) {
         const fadeVideo = document.createElement('video');
         fadeVideo.id = 'reels-preview-video-fade';
+        fadeVideo.crossOrigin = 'anonymous';
         fadeVideo.muted = true;
         fadeVideo.loop = true;
         fadeVideo.playsInline = true;
@@ -9077,6 +9191,23 @@ function reelsOnWorkModeChange() {
         if (alignLang) alignLang.style.display = '';
         if (bgLabel) bgLabel.innerHTML = '📁 导入带声视频';
     }
+    const selectedTask = typeof _getSelectedTask === 'function' ? _getSelectedTask() : null;
+    const previewAudio = document.getElementById('reels-preview-audio');
+    if (selectedTask && !selectedTask.audioPath && previewAudio) {
+        const shouldUseBgVoice = _isTaskUsingBgAsVoice(selectedTask);
+        if (shouldUseBgVoice !== Boolean(previewAudio.src)) {
+            if (shouldUseBgVoice) {
+                const bgPath = _resolvePreviewBackgroundPath(selectedTask).path || selectedTask.bgPath || selectedTask.videoPath || '';
+                const url = bgPath ? _toPlayablePath(bgPath, null) : '';
+                if (url) previewAudio.src = url;
+            } else {
+                previewAudio.pause();
+                previewAudio.removeAttribute('src');
+            }
+        }
+    }
+    _applyPreviewAudioMix();
+    _applyPreviewLoopMode();
 }
 
 function _queueMixedFiles(files, options = {}) {
@@ -10108,6 +10239,9 @@ function _renderTaskList(options = {}) {
         const batchGroupCollapsed = !!_reelsState.batchGroupCollapsed[batchGroupId];
         if (batchGroupId !== lastBatchGroupId) {
             const groupName = escapeTaskText(isLegacyTask ? '已有任务（未归档）' : (task._batchTabName || '未命名分组'));
+            const subGroupBadge = (!isLegacyTask && task._batchTabGroup)
+                ? `<span style="padding:1px 5px;border-radius:4px;background:rgba(34,211,238,0.16);border:1px solid rgba(34,211,238,0.35);color:#67e8f9;font-size:10px;font-weight:600;flex-shrink:0;" title="所属标签小分组">📂 ${escapeTaskText(task._batchTabGroup)}</span>`
+                : '';
             const groupTasks = tasks.filter(item => isLegacyTask ? !item._batchTabId : item._batchTabId === batchGroupId);
             const groupSelected = groupTasks.filter(item => item._exportSelected !== false).length;
             const groupIndeterminate = groupSelected > 0 && groupSelected < groupTasks.length;
@@ -10127,6 +10261,7 @@ function _renderTaskList(options = {}) {
                         style="accent-color:var(--accent-color,#7b8bef);margin:0;transform:scale(1.08);cursor:pointer;"
                         title="本组总开关：勾选则本组全部参与导出，取消则本组全部不导出">
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${groupName}">${isLegacyTask ? '🕘' : '📑'} ${groupName}</span>
+                    ${subGroupBadge}
                     <span style="margin-left:auto;color:#94a3b8;font-weight:400;">${groupSelected}/${groupTasks.length}</span>
                     ${incompleteInGroup > 0 ? `<button class="btn" draggable="false" onpointerdown="event.stopPropagation()" onmousedown="event.stopPropagation()" onclick="event.stopPropagation(); reelsRemoveIncompleteTasksInGroup(decodeURIComponent('${encodedGroupId}'))" style="padding:1px 5px;font-size:10px;border:1px solid rgba(251,191,36,0.45);background:rgba(245,158,11,0.16);color:#fcd34d;cursor:pointer;" title="一键清理本组内没有视频/图片素材(BG)的空行 (${incompleteInGroup}条)">🧹清理空行(${incompleteInGroup})</button>` : ''}
                     <button class="btn" draggable="false" onpointerdown="event.stopPropagation()" onmousedown="event.stopPropagation()" onclick="event.stopPropagation(); reelsRemoveBatchGroup(decodeURIComponent('${encodedGroupId}'))" style="padding:1px 5px;font-size:10px;border:none;background:transparent;color:#f87171;opacity:0.8;cursor:pointer;" title="删除本组全部任务">🗑</button>
@@ -10486,8 +10621,9 @@ function reelsSelectTask(idx, options = {}) {
         }
     }
     const workMode = _getWorkMode();
-    // In voiced_bg mode, the background video IS the audio source
-    const voicePath = task.audioPath || (workMode === 'voiced_bg' ? bgPath : '') || '';
+    const bgAsVoice = _isTaskUsingBgAsVoice(task, bgPath, workMode);
+    // In voiced_bg / single auto-edit mode, the background video IS the audio source
+    const voicePath = task.audioPath || (bgAsVoice ? bgPath : '') || '';
 
     if (audio) {
         audio.pause();
@@ -10502,7 +10638,7 @@ function reelsSelectTask(idx, options = {}) {
             audio.removeAttribute('src');
         }
         // 应用音频变速预览：audioDurScale=150% → playbackRate=0.667（减速）
-        const aDurScale = task.audioDurScale || 100;
+        const aDurScale = _getEffectiveTaskVoiceDurScale(task, bgPath, workMode);
         audio.playbackRate = (aDurScale !== 100) ? (100 / aDurScale) : 1.0;
         audio.preservesPitch = true; // 变速不变调
     }
@@ -11090,7 +11226,7 @@ function reelsTogglePlay() {
     _applyPreviewAudioMix();
     _applyPreviewLoopMode();
 
-    const hasAudio = !!(task && task.audioPath && audio && audio.src);
+    const hasAudio = _hasTaskVoiceAudio(task, audio);
     const previewBg = _resolvePreviewBackgroundPath(task);
     const hasVideo = !!(task && !previewBg.isMulti && previewBg.path && !_isImagePath(previewBg.path) && video && video.src && !(task.contentVideoDirectBg && task.contentVideoPath));
     // 与导出一致：task.hookFile 优先，全局前置回退
@@ -11166,9 +11302,9 @@ function reelsTogglePlay() {
             _reelsState.mockPlaying = true;
             _reelsState.mockStartTime = (performance.now() / 1000) - (_reelsState.mockPausedTime || 0);
         } else {
-            if (hasAudio && audio && task && task.audioPath) {
+            if (hasAudio && audio && task) {
                 // 应用音频变速：audioDurScale=150% → playbackRate=0.667
-                const aDurScale = task.audioDurScale || 100;
+                const aDurScale = _getEffectiveTaskVoiceDurScale(task);
                 audio.playbackRate = (aDurScale !== 100) ? (100 / aDurScale) : 1.0;
                 audio.preservesPitch = true;
                 audio.play().catch(() => { });
@@ -11179,7 +11315,7 @@ function reelsTogglePlay() {
                 video.playbackRate = (bDurScale !== 100) ? (100 / bDurScale) : 1.0;
                 
                 const vDur = _getVideoDuration(task);
-                if (hasAudio && task && task.audioPath && vDur > 0) {
+                if (hasAudio && task && vDur > 0) {
                     try { video.currentTime = (audio.currentTime || 0) % vDur; } catch (e) { }
                 }
                 video.play().catch(() => { });
@@ -11243,7 +11379,7 @@ function _syncHookPhaseTransition() {
             const audio = document.getElementById('reels-preview-audio');
         const video = document.getElementById('reels-preview-video');
         const fadeVideo = _reelsState.previewFadeVideo;
-        const hasAudio = !!(task && task.audioPath && audio && audio.src);
+        const hasAudio = _hasTaskVoiceAudio(task, audio);
         const previewBg = _resolvePreviewBackgroundPath(task);
         const hasVideo = !!(task && !previewBg.isMulti && previewBg.path && !_isImagePath(previewBg.path) && video && video.src && !(task.contentVideoDirectBg && task.contentVideoPath));
 
@@ -11252,8 +11388,9 @@ function _syncHookPhaseTransition() {
 
         if (hasAudio && audio) {
             // 有转场时，正片从转场重叠量开始（与 FFmpeg acrossfade 一致）
-            audio.currentTime = transDur > 0 ? Math.min(transDur, _getAudioDuration(task) || 0) : 0;
-            const aDurScale = task.audioDurScale || 100;
+            const voiceDur = ((task && task.audioPath) ? _getAudioDuration(task) : _getVideoDuration(task)) || 0;
+            audio.currentTime = transDur > 0 ? Math.min(transDur, voiceDur) : 0;
+            const aDurScale = _getEffectiveTaskVoiceDurScale(task);
             audio.playbackRate = (aDurScale !== 100) ? (100 / aDurScale) : 1.0;
             audio.preservesPitch = true;
             audio.play().catch(() => { });
@@ -11263,7 +11400,7 @@ function _syncHookPhaseTransition() {
             video.playbackRate = (bDurScale !== 100) ? (100 / bDurScale) : 1.0;
             video.currentTime = 0;
             video.play().catch(() => { });
-            if (fadeVideo && hasAudio) {
+            if (fadeVideo && task && task.audioPath) {
                 fadeVideo.playbackRate = video.playbackRate;
                 fadeVideo.play().catch(() => { });
             }
@@ -11590,9 +11727,10 @@ function _actualSeek(e) {
     // ── Main content seek (offset by hookDur + coverDur) ──
     const contentTarget = hookDur > 0 || coverDur > 0 ? Math.max(0, target - hookDur - coverDur) : target;
 
-    const aDur = _getAudioDuration(task);
-    if (task && task.audioPath && audio && audio.src && aDur > 0) {
-        const aDurScale = task.audioDurScale ? (task.audioDurScale / 100) : 1;
+    const hasAudio = _hasTaskVoiceAudio(task, audio);
+    const aDur = (task && task.audioPath) ? _getAudioDuration(task) : (hasAudio ? _getVideoDuration(task) : 0);
+    if (hasAudio && aDur > 0) {
+        const aDurScale = _getEffectiveTaskVoiceDurScale(task) / 100;
         const audioTarget = Math.max(0, Math.min(contentTarget / Math.max(aDurScale, 0.0001), aDur));
         console.log(`[Seek] Seeking Audio to ${audioTarget.toFixed(3)}s`);
         _queuePreviewMediaSeek(seekedMedia, audio, audioTarget);
@@ -11653,8 +11791,8 @@ function _onVideoTimeUpdate() {
         return;
     }
     const task = _getSelectedTask();
-    // 有配音时，以音频为主时钟，不用视频 timeupdate 驱动 UI
-    if (task && task.audioPath) {
+    // 有配音（或带声视频作为主音轨）时，以音频为主时钟，不用视频 timeupdate 驱动 UI
+    if (task && (task.audioPath || _isTaskUsingBgAsVoice(task))) {
         _syncBackgroundVideoToMaster();
         return;
     }
@@ -11803,211 +11941,10 @@ function reelsChoosePresetGroup(title, currentGroup = '我的预设', groups = [
 }
 window.reelsChoosePresetGroup = reelsChoosePresetGroup;
 
-function reelsOpenSubtitlePresetLibrary() {
-    if (!window.ReelsStyleEngine?.getPresetsByCategory) return;
-    const hiddenInput = document.getElementById('reels-preset-select');
-    const { categorized = [], presetsMap = {} } = window.ReelsStyleEngine.getPresetsByCategory();
-    const myPresetNames = categorized.find(group => group.category === '💾 我的预设')?.names || [];
-    const modal = document.createElement('div');
-    modal.className = 'reels-subtitle-preset-library';
-    const groups = categorized.map(g => `<button data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">${String(g.category).replace(/</g,'&lt;')} <small>${g.names.length}</small></button>`).join('');
-    const previewStyles = [];
-    const cards = categorized.flatMap(g => g.names.map(name => {
-        const style = presetsMap[name] || {};
-        const custom = g.category.startsWith('💾');
-        const title = String(name).replace(/</g,'&lt;');
-        const code = typeof window.getSubtitlePresetCode === 'function' ? window.getSubtitlePresetCode(name) : '';
-        const codeBadge = code ? `<span class="rsp-code-badge" style="display:inline-block;margin-right:5px;padding:1px 6px;border-radius:4px;font-family:monospace;font-size:11px;font-weight:700;background:rgba(56,189,248,0.18);color:#7dd3fc;border:1px solid rgba(56,189,248,0.38);">${String(code).replace(/</g,'&lt;')}</span>` : '';
-        const animated = (style.anim_in_type && style.anim_in_type !== 'none') || style.box_wipe_enabled || style.dynamic_box || style.karaoke_highlight || style.word_pop;
-        const previewIndex = previewStyles.push(window.ReelsStyleEngine?.mergeStyle?.(style) || style) - 1;
-        // 画布显示时缩小，但渲染仍使用成片的 1080×1920 坐标系，保证预设
-        // 内保存的像素字号、X/Y 坐标与最终导出完全一致。
-        return `<article class="rsp-card" data-animated="${animated ? 'true' : 'false'}" data-group="${String(g.category).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-code="${String(code).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-name="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"><canvas class="rsp-preview-canvas" width="360" height="640" data-preview-index="${previewIndex}" aria-label="${title} 的字幕效果预览"></canvas><div class="rsp-name">${codeBadge}${title}</div><div class="rsp-group">${code ? `[${String(code).replace(/</g,'&lt;')}] · ` : ''}${String(g.category).replace(/</g,'&lt;')}${animated ? ' · 悬浮播放' : ''}</div><button class="rsp-use">选用</button>${custom ? '<button class="rsp-move-group">分组</button><button class="rsp-delete">删除</button>' : ''}</article>`;
-    })).join('');
-    modal.innerHTML = `<div class="rsp-shell"><header><h2>动态字幕预设库 (支持编号 sub-01 ~ sub-127 / se-01 ~ se-31)</h2><div style="display:flex;align-items:center;gap:10px;"><input type="text" class="rsp-search-input" placeholder="🔍 搜索编号或名称 (如 sub-103 / 119 / Submagic)..." style="width:240px;padding:6px 10px;border-radius:6px;border:1px solid rgba(125,211,252,0.4);background:rgba(15,23,42,0.85);color:#f8fafc;font-size:12px;outline:none;"><button class="rsp-clear-mine" ${myPresetNames.length ? '' : 'disabled'} title="只删除“我的预设”分组，不影响内置预设、模板同步或覆层预设">清空我的预设</button><button class="rsp-close">✕</button></div></header><div class="rsp-main"><aside><button data-group="all" class="active">全部预设</button>${groups}</aside><section><div class="rsp-grid">${cards || '<p>暂无预设</p>'}</div></section></div></div>`;
-    document.body.appendChild(modal);
-    // 卡片预览与导出/编辑面板使用同一个 Canvas 渲染器。悬浮时从 0 秒
-    // 重新播放，因而展示的是每套预设本身的入场、逐词、卡拉 OK 等真实效果。
-    // 静态卡片只看第一句最终版式；悬浮时按连续多条 SRT 播放，方便判断
-    // 逐词、入场、退场以及相邻字幕切换的真实效果。
-    const previewSegments = [
-        { start: 0, end: 3, text: 'Sample subtitle font preview', words: [
-            { word: 'Sample', start: 0, end: 0.75 }, { word: 'subtitle', start: 0.75, end: 1.5 },
-            { word: 'font', start: 1.5, end: 2.25 }, { word: 'preview', start: 2.25, end: 3 },
-        ] },
-        { start: 3, end: 6, text: '悬浮 即可 预览 效果', words: [
-            { word: '悬浮', start: 3, end: 3.75 }, { word: '即可', start: 3.75, end: 4.5 },
-            { word: '预览', start: 4.5, end: 5.25 }, { word: '效果', start: 5.25, end: 6 },
-        ] },
-        { start: 6, end: 9, text: '最终 位置 保持 不变', words: [
-            { word: '最终', start: 6, end: 6.75 }, { word: '位置', start: 6.75, end: 7.5 },
-            { word: '保持', start: 7.5, end: 8.25 }, { word: '不变', start: 8.25, end: 9 },
-        ] },
-    ];
-    const previewSegment = previewSegments[0];
-    const previewDuration = previewSegments[previewSegments.length - 1].end;
-    const activePreviewFrames = new Set();
-    const staticPreviewTime = previewSegment.end - 0.05;
-    const stopPreviewFrames = () => {
-        activePreviewFrames.forEach(id => cancelAnimationFrame(id));
-        activePreviewFrames.clear();
-    };
-    modal.querySelectorAll('.rsp-preview-canvas').forEach(canvas => {
-        const style = previewStyles[Number(canvas.dataset.previewIndex)] || {};
-        if (!window.ReelsCanvasRenderer) return;
-        let renderer = null, ctx = null;
-        const outputWidth = 1080;
-        const outputHeight = 1920;
-        const renderScale = canvas.width / outputWidth;
-        // 卡片静止时必须是“动画完成后的成片样子”，不能停在淡入/淡出的
-        // 半透明中间帧。悬浮时才使用原始动画配置与真实 SRT 时间轴。
-        const isBoxWipeCard = Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
-        const isLineFocusCard = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
-        const isUnderlineSweepCard = style.anim_in_type === 'underline_sweep';
-        const isThreeWordFocusStackCard = style.anim_in_type === 'three_word_focus_stack';
-        const isKineticGlowStackCard = style.anim_in_type === 'kinetic_glow_stack';
-        const isRollingKaraokeCard = style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke';
-        const isFeatherWipeCard = style.anim_in_type === 'feather_wipe';
-        const preserveAnimCard = isBoxWipeCard || isLineFocusCard || isUnderlineSweepCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard || isFeatherWipeCard;
-        const finalStyle = {
-            ...style,
-            anim_in_type: isBoxWipeCard
-                ? 'box_wipe'
-                : (isLineFocusCard
-                    ? 'line_focus'
-                    : (preserveAnimCard ? style.anim_in_type : 'none')),
-            anim_out_type: 'none',
-            dynamic_box: false,
-            karaoke_highlight: (isLineFocusCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard) ? Boolean(style.karaoke_highlight ?? true) : false,
-            highlight_enabled: (isLineFocusCard || isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard) ? Boolean(style.highlight_enabled ?? true) : style.highlight_enabled,
-            word_pop: false,
-            fullpage_typewriter: false,
-        };
-        const cardStaticTime = isBoxWipeCard
-            ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.65)
-            : (isLineFocusCard
-                ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.35)
-                : (isUnderlineSweepCard
-                    ? (previewSegment.start + 0.24)
-                    : ((isThreeWordFocusStackCard || isKineticGlowStackCard || isRollingKaraokeCard)
-                        ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.52)
-                        : (isFeatherWipeCard
-                            ? (previewSegment.start + (previewSegment.end - previewSegment.start) * 0.72)
-                            : staticPreviewTime))));
-        const draw = (time, animated = false) => {
-            if (!renderer) { renderer = new window.ReelsCanvasRenderer(canvas); renderer.setContextSegments(previewSegments); ctx = canvas.getContext('2d'); }
-            const activeSegment = animated
-                ? (previewSegments.find(segment => time >= segment.start && time <= segment.end) || previewSegment)
-                : previewSegment;
-            ctx.save();
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#11111f';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.restore();
-            ctx.save();
-            ctx.scale(renderScale, renderScale);
-            renderer.renderSubtitle(animated ? style : finalStyle, activeSegment, time, outputWidth, outputHeight);
-            ctx.restore();
-        };
-        canvas._subtitlePresetDraw = () => draw(cardStaticTime, false);
-        const card = canvas.closest('.rsp-card');
-        let frameId = null;
-        card.addEventListener('mouseenter', () => {
-            if (frameId !== null) return;
-            const beganAt = performance.now();
-            const play = (now) => {
-                activePreviewFrames.delete(frameId);
-                if (!card.isConnected || !card.getClientRects().length) { frameId = null; return; }
-                const seconds = ((now - beganAt) / 1000) % previewDuration;
-                draw(seconds, true);
-                frameId = requestAnimationFrame(play);
-                activePreviewFrames.add(frameId);
-            };
-            frameId = requestAnimationFrame(play);
-            activePreviewFrames.add(frameId);
-        });
-        card.addEventListener('mouseleave', () => {
-            if (frameId !== null) cancelAnimationFrame(frameId);
-            activePreviewFrames.delete(frameId);
-            frameId = null;
-            draw(cardStaticTime, false);
-        });
-    });
-    reelsObservePresetFonts(modal, '.rsp-preview-canvas', canvas => previewStyles[Number(canvas.dataset.previewIndex)]?.font_family, canvas => canvas._subtitlePresetDraw?.());
-    let activeGroupFilter = 'all';
-    const applyLibraryFilters = () => {
-        const q = (modal.querySelector('.rsp-search-input')?.value || '').trim().toLowerCase();
-        modal.querySelectorAll('.rsp-card').forEach(card => {
-            const matchGroup = activeGroupFilter === 'all' || card.dataset.group === activeGroupFilter;
-            const nameStr = (card.dataset.name || '').toLowerCase();
-            const codeStr = (card.dataset.code || '').toLowerCase();
-            const matchQuery = !q || nameStr.includes(q) || codeStr.includes(q);
-            card.style.display = (matchGroup && matchQuery) ? '' : 'none';
-        });
-    };
-    modal.querySelectorAll('aside button').forEach(btn => btn.onclick = () => {
-        modal.querySelectorAll('aside button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeGroupFilter = btn.dataset.group;
-        applyLibraryFilters();
-    });
-    const libSearchInput = modal.querySelector('.rsp-search-input');
-    if (libSearchInput) {
-        libSearchInput.addEventListener('input', applyLibraryFilters);
+function reelsOpenSubtitlePresetLibrary(options = {}) {
+    if (window.ReelsPresetLibrary && typeof window.ReelsPresetLibrary.reelsOpenSubtitlePresetLibrary === 'function') {
+        return window.ReelsPresetLibrary.reelsOpenSubtitlePresetLibrary(options);
     }
-    modal.querySelector('.rsp-close').onclick = () => { stopPreviewFrames(); modal.remove(); };
-    modal.querySelector('.rsp-clear-mine').onclick = () => {
-        if (!myPresetNames.length) return;
-        if (!confirm(`确定清空“我的预设”中的 ${myPresetNames.length} 个动态字幕预设吗？\n\n内置预设、模板同步分组和覆层预设不会删除。`)) return;
-        myPresetNames.forEach(name => window.ReelsStyleEngine.deleteSubtitlePreset(name));
-        stopPreviewFrames();
-        modal.remove();
-        reelsOpenSubtitlePresetLibrary();
-        if (typeof _reelsRefreshPresetList === 'function') _reelsRefreshPresetList();
-        if (typeof _renderBatchTable === 'function') _renderBatchTable();
-    };
-    modal.querySelectorAll('.rsp-use').forEach(btn => btn.onclick = event => {
-        const selectedVal = event.currentTarget.closest('.rsp-card').dataset.name;
-        if (hiddenInput) {
-            hiddenInput.value = selectedVal || '';
-
-            // 从字幕面板选择预设应当“落地”为当前样式，而不是给任务留下
-            // 高优先级的 _subtitlePreset 引用。后者会覆盖随后在面板中做的
-            // 颜色/色块调整，造成必须手动再改一次才显示的假象。
-            const scope = typeof _getSubtitleStyleScope === 'function' ? _getSubtitleStyleScope() : 'task';
-            const targets = scope === 'all'
-                ? (_reelsState.tasks || [])
-                : (scope === 'folder' ? _getCurrentReelsGroupTasks() : [_getSelectedTask()].filter(Boolean));
-            targets.forEach(t => { t._subtitlePreset = ''; });
-
-            if (typeof reelsLoadPresetQuick === 'function') {
-                reelsLoadPresetQuick();
-            } else if (typeof reelsLoadPreset === 'function') {
-                reelsLoadPreset();
-            }
-        }
-        const span = document.querySelector('#reels-preset-select-trigger span');
-        if (span) {
-            const disp = (selectedVal && typeof window.formatSubtitlePresetDisplayName === 'function')
-                ? window.formatSubtitlePresetDisplayName(selectedVal)
-                : selectedVal;
-            span.textContent = disp || '-- 改全部样式 --';
-        }
-        stopPreviewFrames();
-        modal.remove();
-    });
-    modal.querySelectorAll('.rsp-delete').forEach(btn => btn.onclick = event => { const card = event.currentTarget.closest('.rsp-card'); const name = card.dataset.name; if (!confirm(`删除动态字幕预设「${name}」？`)) return; window.ReelsStyleEngine.deleteSubtitlePreset(name); card.remove(); });
-    modal.querySelectorAll('.rsp-move-group').forEach(btn => btn.onclick = async event => {
-        const card = event.currentTarget.closest('.rsp-card');
-        const currentGroup = String(card.dataset.group || '').replace(/^💾\s*/, '') || '我的预设';
-        const savedGroups = categorized.filter(group => group.category.startsWith('💾')).map(group => group.category.replace(/^💾\s*/, ''));
-        const nextGroup = await reelsChoosePresetGroup('移动动态字幕预设分组', currentGroup, savedGroups);
-        if (!nextGroup || !String(nextGroup).trim()) return;
-        window.ReelsStyleEngine.setSubtitlePresetGroup(card.dataset.name, String(nextGroup).trim());
-        stopPreviewFrames();
-        modal.remove();
-        reelsOpenSubtitlePresetLibrary();
-    });
 }
 window.reelsOpenSubtitlePresetLibrary = reelsOpenSubtitlePresetLibrary;
 
@@ -12334,7 +12271,7 @@ function reelsExportPresets() {
 function reelsImportPresets() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = '.json,.ass,.ssa';
     input.multiple = true;
     input.onchange = async (e) => {
         const files = Array.from(e.target.files || []);
@@ -12342,9 +12279,25 @@ function reelsImportPresets() {
 
         const bundles = [];
         const unreadable = [];
+        let hasAss = false;
         for (const file of files) {
             try {
-                bundles.push({ source: file.name, data: JSON.parse(await file.text()) });
+                const rawText = await file.text();
+                if (/\.(ass|ssa)$/i.test(file.name) && window.ReelsPresetOnlineLoader?.parsePresetBundlePayload) {
+                    const parsedAss = window.ReelsPresetOnlineLoader.parsePresetBundlePayload(rawText, file.name.replace(/\.[^.]+$/, ''));
+                    if (Object.keys(parsedAss.presets || {}).length > 0) {
+                        bundles.push({ source: file.name, data: { presets: parsedAss.presets } });
+                        hasAss = true;
+                        continue;
+                    }
+                }
+                const parsedJson = JSON.parse(rawText);
+                if (parsedJson && Array.isArray(parsedJson.packs) && window.ReelsPresetOnlineLoader?.parsePresetBundlePayload) {
+                    const expanded = window.ReelsPresetOnlineLoader.parsePresetBundlePayload(rawText, file.name);
+                    bundles.push({ source: file.name, data: { presets: expanded.presets } });
+                } else {
+                    bundles.push({ source: file.name, data: parsedJson });
+                }
             } catch (err) {
                 unreadable.push(file.name);
                 console.error(`[预设] 无法读取 ${file.name}:`, err);
@@ -12363,7 +12316,8 @@ function reelsImportPresets() {
 
         const result = ReelsStyleEngine.importSubtitlePresets(
             JSON.stringify(prepared.payload),
-            overwriteConflicts
+            overwriteConflicts,
+            hasAss ? '🎭 ASS特效导入' : ''
         );
         _reelsRefreshPresetList();
 
@@ -13492,30 +13446,195 @@ function _getAutoEditProjectScript(task) {
         .join('\n');
 }
 
-function _collectReelsProjectMediaAssets() {
-    const paths = new Set();
-    const isAbsolutePath = value => typeof value === 'string'
-        && (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value) || /^\\\\[^\\]+\\[^\\]+/.test(value));
-    const visit = (value, key = '', seen = new WeakSet()) => {
-        if (typeof value === 'string') {
-            // 覆层文字同样使用 content 字段，因此只收集真正的绝对本地路径。
-            if (isAbsolutePath(value) && /(?:path|src|content|media|file)$/i.test(key)) paths.add(value);
-            return;
+function _resolveReelsJobBaseNames(jobs, namingMode = 'text', options = {}) {
+    const fallbackName = options.fallback || '';
+    const sanitizeOutput = options.sanitize === true;
+    const namedWithRow = (Array.isArray(jobs) ? jobs : []).map((job, idx) => {
+        const task = job?.task || job;
+        const rowNo = job?.taskListRowNo || idx + 1;
+        let raw = '';
+        if (namingMode === 'ai-cn-date') {
+            raw = _resolveReelsExportBaseName(task, 'ai-cn-date');
+        } else if (namingMode === 'index') {
+            const prefix = localStorage.getItem('reels_naming_prefix') || '';
+            const suffixVal = localStorage.getItem('reels_naming_suffix') || '';
+            raw = `${String(rowNo).padStart(3, '0')}${prefix || suffixVal ? '_' + prefix + suffixVal : ''}`;
+        } else if (namingMode === 'date-auto') {
+            const startDateStr = localStorage.getItem('reels_naming_start_date') || '';
+            const vidsPerDay = parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3;
+            const prefix = localStorage.getItem('reels_naming_prefix') || '';
+            const suffixVal = localStorage.getItem('reels_naming_suffix') || '';
+
+            let startDate = new Date();
+            startDate.setDate(startDate.getDate() + 1);
+            if (startDateStr) {
+                const cleanDate = startDateStr.replace(/-/g, '');
+                if (cleanDate.length === 8) {
+                    const y = parseInt(cleanDate.substring(0, 4));
+                    const m = parseInt(cleanDate.substring(4, 6)) - 1;
+                    const d = parseInt(cleanDate.substring(6, 8));
+                    startDate = new Date(y, m, d);
+                } else {
+                    const parsed = Date.parse(startDateStr);
+                    if (!isNaN(parsed)) startDate = new Date(parsed);
+                }
+            }
+            const dayOffset = Math.floor(idx / vidsPerDay);
+            const seq = (idx % vidsPerDay) + 1;
+            const targetDate = new Date(startDate.getTime());
+            targetDate.setDate(startDate.getDate() + dayOffset);
+
+            const yyyy = targetDate.getFullYear();
+            const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const dd = String(targetDate.getDate()).padStart(2, '0');
+            const dateFormatted = `${yyyy}${mm}${dd}`;
+
+            raw = _prefixReelsExportRowName(`${prefix}${dateFormatted}-${seq}${suffixVal}`, rowNo);
+        } else {
+            raw = _prefixReelsExportRowName(_resolveReelsExportBaseName(task, namingMode), rowNo);
         }
-        if (!value || typeof value !== 'object' || seen.has(value)) return;
-        seen.add(value);
-        if (Array.isArray(value)) value.forEach(item => visit(item, '', seen));
-        else Object.entries(value).forEach(([childKey, childValue]) => visit(childValue, childKey, seen));
-    };
-    (_reelsState.tasks || []).forEach(task => visit(task.overlays || []));
-    (_reelsState.watermarks || []).forEach(watermark => visit(watermark));
-    return [...paths];
+        return sanitizeOutput ? _sanitizeReelsFileBaseName(raw, fallbackName || 'Reels工程') : raw;
+    });
+
+    const freq = {};
+    namedWithRow.forEach((name) => {
+        const key = sanitizeOutput ? String(name).toLowerCase() : name;
+        freq[key] = (freq[key] || 0) + 1;
+    });
+    const counter = {};
+    const resolved = {};
+    namedWithRow.forEach((name, idx) => {
+        const key = sanitizeOutput ? String(name).toLowerCase() : name;
+        if (freq[key] > 1) {
+            counter[key] = (counter[key] || 0) + 1;
+            resolved[idx] = `${name}_${counter[key]}`;
+        } else {
+            resolved[idx] = name;
+        }
+    });
+    return resolved;
 }
 
-async function _copyAutoEditProjectToReelsOutput(task, finalOutputPath) {
+function _collectReelsTaskMediaAssets(task) {
+    const assets = [];
+    const seen = new Set();
+    const addAsset = (role, rawValue) => {
+        if (typeof rawValue !== 'string' || !rawValue.trim()) return;
+        const trimmed = rawValue.trim();
+        if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) return;
+        const candidate = /^(?:file|local-media):/i.test(trimmed)
+            ? _normalizeLocalMediaPath(trimmed)
+            : trimmed;
+        if (!_isAbsoluteReelsMediaPath(candidate)) return;
+        const dedupeKey = candidate.replace(/\\/g, '/').toLowerCase();
+        if (seen.has(dedupeKey)) return;
+        seen.add(dedupeKey);
+        assets.push({ role, path: candidate });
+    };
+
+    const visitValue = (value, role, key = '', seenObjs = new WeakSet()) => {
+        if (typeof value === 'string') {
+            // 覆层文字也用 content 字段；仅收集路径类键名或指向带扩展名媒体的本地绝对路径。
+            const isPathKey = !key || /(?:path|src|file|media|image|video|audio|clip|cursor|font|url|content)$/i.test(key);
+            if (isPathKey && (key !== 'content' || /\.(?:png|jpe?g|webp|gif|bmp|svg|ico|mp4|mov|webm|mkv|avi|m4v|mp3|wav|m4a|aac|flac|ogg|srt|txt|ttf|otf|woff2?)$/i.test(value))) {
+                addAsset(role, value);
+            }
+            return;
+        }
+        if (!value || typeof value !== 'object' || seenObjs.has(value)) return;
+        seenObjs.add(value);
+        if (Array.isArray(value)) {
+            value.forEach(item => visitValue(item, role, '', seenObjs));
+            return;
+        }
+        const plain = typeof value.toJSON === 'function' ? value.toJSON() : value;
+        Object.entries(plain).forEach(([childKey, childVal]) => visitValue(childVal, role, childKey, seenObjs));
+    };
+
+    if (!task || typeof task !== 'object') return assets;
+
+    const primaryBg = _resolveTaskExportBackgroundPath(task);
+    addAsset('background', primaryBg);
+    addAsset('background', task.videoPath);
+    if (task.bgMode === 'multi' || !primaryBg) {
+        _getEffectiveBgClipPool(task).forEach(clip => addAsset('background', clip));
+    }
+    addAsset('background', task.concatVideoPath);
+    if (!task.concatVideoPath && Array.isArray(task.clipPool)) {
+        task.clipPool.forEach(clip => addAsset('background', clip));
+    }
+
+    addAsset('audio', task.audioPath);
+    addAsset('subtitle', task.srtPath);
+    addAsset('script', task.txtPath);
+
+    addAsset('bgm', task.bgmPath);
+    if (task.bgmMode === 'multi') {
+        _getEffectiveBgmClipPool(task).forEach(clip => addAsset('bgm', clip));
+    }
+
+    addAsset('media', task.contentVideoPath);
+    addAsset('media', task.pipPath);
+    addAsset('media', task.hookFile);
+    const globalIntroPath = document.getElementById('reels-intro-path')?.value || '';
+    addAsset('media', globalIntroPath);
+    visitValue(task.introMedia, 'media');
+    visitValue(task.insertMediaFiles, 'media');
+    visitValue(task.insertClips, 'media');
+    visitValue(task.timeline, 'media');
+
+    visitValue(task.overlays, 'overlay');
+    visitValue(task.textOverlays, 'overlay');
+    visitValue(task.imageOverlays, 'overlay');
+    visitValue(task.cover, 'overlay');
+    visitValue(task.watermarks, 'overlay');
+    visitValue(_reelsState.watermarks || [], 'overlay');
+
+    return assets;
+}
+
+function _buildSingleTaskReelsProjectSnapshot(task) {
+    if (!window.ReelsProject?.collectProjectData) return null;
+    try {
+        const style = _cloneSubtitleStyle(
+            task?.subtitleStyle || task?.style || _reelsState.globalSubtitleStyle || _readStyleFromUI()
+        );
+        const exportOpts = {
+            quality: (document.getElementById('reels-quality') || {}).value || 'medium',
+            exportEngine: (document.getElementById('reels-export-engine') || {}).value || 'precise',
+            suffix: (document.getElementById('reels-suffix') || {}).value || '_subtitled',
+            namingMode: (document.getElementById('reels-export-naming-mode-outer') || {}).value || (document.getElementById('reels-naming-mode') || {}).value || 'text',
+            voiceVolume: _getGlobalVoiceVolumePercent(),
+            bgVolume: _getGlobalBgVolumePercent(),
+            bgmVolume: _getGlobalBgmVolumePercent(),
+            workMode: _getWorkMode(),
+            targetWidth: _reelsState.targetWidth || 1080,
+            targetHeight: _reelsState.targetHeight || 1920,
+        };
+        const projectData = window.ReelsProject.collectProjectData({
+            tasks: [task],
+            backgroundLibrary: [],
+            style,
+            exportOpts,
+            selectedIdx: 0,
+        });
+        if (projectData && Array.isArray(_reelsState.watermarks) && _reelsState.watermarks.length > 0) {
+            projectData.watermarks = JSON.parse(JSON.stringify(_reelsState.watermarks));
+        }
+        return projectData;
+    } catch (error) {
+        console.warn('[Reels] 收集当前任务工程快照失败:', error);
+        return null;
+    }
+}
+
+async function _copyReelsTaskProjectPackage(task, finalOutputPath) {
+    if (!task || !finalOutputPath || !window.electronAPI?.copyReelsProjectPackage) {
+        return { skipped: true };
+    }
     let sourceProjectDir = String(task?.autoEditProject?.collectionPath || '').trim();
-    if (!sourceProjectDir) {
-        const sourceOutputPath = String(task?.autoEditProject?.outputPath || task?.bgPath || '');
+    const sourceOutputPath = String(task?.autoEditProject?.outputPath || '').trim();
+    if (!sourceProjectDir && task?.autoEditProject && sourceOutputPath) {
         const sourceBase = sourceOutputPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || '';
         const sourceDir = sourceOutputPath.slice(0, Math.max(sourceOutputPath.lastIndexOf('/'), sourceOutputPath.lastIndexOf('\\')));
         if (sourceBase && sourceDir) {
@@ -13523,33 +13642,117 @@ async function _copyAutoEditProjectToReelsOutput(task, finalOutputPath) {
             sourceProjectDir = `${sourceDir}${sep}${sourceBase}-工程`;
         }
     }
-    if (!sourceProjectDir || !finalOutputPath || !window.electronAPI?.copyReelsProjectPackage) return { skipped: true };
-    let reelsProjectData = null;
-    try {
-        reelsProjectData = window.ReelsProject?.collectProjectData?.(_reelsState) || null;
-    } catch (error) {
-        console.warn('[Reels] 收集当前 Reels 工程快照失败:', error);
-    }
+    const taskAssets = _collectReelsTaskMediaAssets(task);
     return window.electronAPI.copyReelsProjectPackage({
         sourceProjectDir,
+        sourceOutputPath: sourceOutputPath || _resolveTaskExportBackgroundPath(task),
         outputPath: finalOutputPath,
         scriptText: _getAutoEditProjectScript(task),
-        reelsProjectData,
-        overlayAssets: _collectReelsProjectMediaAssets(),
+        reelsProjectData: _buildSingleTaskReelsProjectSnapshot(task),
+        taskAssets,
         analysisAssets: [task?.autoEditProject?.analysisProjectPath, task?.autoEditProject?.analysisReportPath].filter(Boolean),
         analysisOutputDir: task?.autoEditProject?.analysisOutputDir || '',
         originalClips: Array.isArray(task?.autoEditProject?.originalClips) ? task.autoEditProject.originalClips : [],
     });
 }
+const _copyAutoEditProjectToReelsOutput = _copyReelsTaskProjectPackage;
 
+function _groupReelsTasksForPackaging(selectedTasks, allTasks = []) {
+    const taskListRows = new Map();
+    const taskListIdRows = new Map();
+    (Array.isArray(allTasks) ? allTasks : []).forEach((task, index) => {
+        taskListRows.set(task, index + 1);
+        if (task?.id && !taskListIdRows.has(task.id)) taskListIdRows.set(task.id, index + 1);
+    });
+    const rowOfTask = task => taskListRows.get(task) || taskListIdRows.get(task?.id) || null;
+    const knownTabs = (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs))
+        ? _batchTableState.tabs : [];
+
+    const groupMap = new Map();
+    (Array.isArray(selectedTasks) ? selectedTasks : []).forEach((task, origIdx) => {
+        const batchTabId = String(task?._batchTabId || '').trim();
+        const batchTabName = String(task?._batchTabName || '').trim();
+        const batchTabGroup = String(task?._batchTabGroup || '').trim();
+        const queueId = String(task?._folderQueueId || '').trim();
+        const queueName = String(task?._folderQueueName || '').trim();
+
+        let key = '__default__';
+        let name = '默认分组';
+        let tabId = '';
+        let groupName = batchTabGroup;
+        let folderQueueId = queueId;
+        let isExplicit = false;
+
+        if (batchTabId || batchTabName) {
+            key = batchTabId ? `tab:${batchTabId}` : `tabname:${batchTabName}`;
+            name = batchTabName || '未命名分组';
+            tabId = batchTabId;
+            isExplicit = true;
+        } else if (queueId || queueName) {
+            key = queueId ? `queue:${queueId}` : `queuename:${queueName}`;
+            name = queueName || '文件夹分组';
+            tabId = queueId;
+            isExplicit = true;
+        }
+
+        if (!groupMap.has(key)) {
+            const matchedTab = knownTabs.find(t => (tabId && t.id === tabId) || (!tabId && isExplicit && t.name === name));
+            groupMap.set(key, {
+                key,
+                tabId: tabId || matchedTab?.id || '',
+                name: matchedTab?.name || name,
+                groupName: groupName || matchedTab?.group || '',
+                materialDir: matchedTab?.materialDir || '',
+                folderQueueId,
+                isExplicit,
+                folderName: '',
+                items: [],
+                packedTasks: [],
+            });
+        }
+        const entry = groupMap.get(key);
+        if (!entry.groupName && groupName) entry.groupName = groupName;
+        entry.items.push({ task, origIdx, rowNo: rowOfTask(task) || (origIdx + 1) });
+    });
+
+    const usedFolderNames = new Map();
+    const groups = [...groupMap.values()];
+    for (const g of groups) {
+        const baseFolder = _sanitizeReelsFileBaseName(g.name, '分组');
+        const lower = baseFolder.toLowerCase();
+        const count = (usedFolderNames.get(lower) || 0) + 1;
+        usedFolderNames.set(lower, count);
+        g.folderName = count === 1 ? baseFolder : `${baseFolder}_${count}`;
+    }
+    return groups;
+}
+
+let _reelsPackageInProgress = false;
 async function reelsPackageSelectedProjects() {
-    const packButton = document.getElementById('reels-package-project-btn');
-    const statusEl = document.getElementById('reels-export-status');
-    const tasks = (_reelsState.tasks || []).filter(task => task._exportSelected !== false && task.autoEditProject);
-    if (!tasks.length) {
-        showToast?.('没有可打包的自动剪辑任务；请先将文案自动剪辑成片送入 Reels', 'info');
+    if (_reelsPackageInProgress) {
+        showToast?.('正在打包工程，请稍候…', 'info');
         return;
     }
+    _syncCurrentOverlayEditorToSelectedTask?.();
+    window.reelsSyncWatermarkFromUI?.();
+    const allTasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks : [];
+
+    const exportRange = {
+        mode: document.getElementById('reels-download-mode')?.value || 'all',
+        text: document.getElementById('reels-download-range')?.value || '',
+    };
+    let tasks = [];
+    try {
+        tasks = _selectReelsDownloadTasks(allTasks, exportRange);
+    } catch (error) {
+        showToast?.(error.message, 'warning');
+        return;
+    }
+    if (!tasks.length) {
+        showToast?.('没有可打包的已选任务；请在任务列表中勾选需要打包的任务', 'warning');
+        return;
+    }
+
     let outputDir = String(document.getElementById('reels-output-dir')?.value || '');
     if (!outputDir) {
         outputDir = await _getSystemDownloadsPath();
@@ -13557,41 +13760,164 @@ async function reelsPackageSelectedProjects() {
         if (outputEl) outputEl.value = outputDir || '';
     }
     if (!outputDir) return showToast?.('请先选择工程包输出目录', 'warning');
-    const ensure = await window.electronAPI?.ensureDirectory?.(outputDir);
-    if (ensure?.ok === false) return showToast?.(`无法创建输出目录：${ensure.error || outputDir}`, 'error');
+
     const sep = outputDir.includes('\\') ? '\\' : '/';
-    const baseDir = outputDir.replace(/[\\/]+$/, '');
-    let succeeded = 0;
-    const failures = [];
+    const baseDir = outputDir.replace(/[\\/]+$/, '') || outputDir;
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const batchPackageDir = `${baseDir}${sep}${dateStr}_${timeStr}_工程包`;
+
+    const ensure = await window.electronAPI?.ensureDirectory?.(batchPackageDir);
+    if (ensure?.ok === false) return showToast?.(`无法创建输出目录：${ensure.error || batchPackageDir}`, 'error');
+
+    const namingMode = (document.getElementById('reels-export-naming-mode-outer') || {}).value
+        || (document.getElementById('reels-naming-mode') || {}).value
+        || localStorage.getItem('reels_naming_mode')
+        || 'text';
+    if (namingMode === 'ai-cn-date' && typeof _ensureReelsAiChineseExportNames === 'function') {
+        await _ensureReelsAiChineseExportNames(tasks);
+    }
+
+    const groups = _groupReelsTasksForPackaging(tasks, allTasks);
+    const useGroupSubdirs = groups.length > 1;
+    const groupNote = useGroupSubdirs ? `（按 ${groups.length} 个分组子文件夹打包）` : '';
+
+    const notify = (msg, type = 'info', dur = 5000) => {
+        if (typeof showToast === 'function') showToast(msg, type, dur);
+    };
+    const appendLog = (msg, level) => {
+        if (typeof _reelsAppendExportLogUI === 'function') _reelsAppendExportLogUI(msg, level);
+    };
+
+    const packButton = document.getElementById('reels-package-project-btn');
+    const statusEl = document.getElementById('reels-export-status');
     const previousButtonText = packButton?.textContent || '📦 仅打包工程';
-    if (packButton) { packButton.disabled = true; packButton.textContent = '📦 打包中…'; }
-    if (statusEl) statusEl.textContent = `📦 正在打包工程 0/${tasks.length}…`;
-    showToast?.(`开始打包 ${tasks.length} 个工程；大视频素材复制期间请勿关闭窗口`, 'info', 5000);
+    _reelsPackageInProgress = true;
+    if (packButton) { packButton.disabled = true; packButton.textContent = `📦 打包 0/${tasks.length}…`; }
+    if (statusEl) statusEl.textContent = `📦 正在打包工程 0/${tasks.length}${groupNote}…`;
+    appendLog(`开始仅打包工程：已选 ${tasks.length} 个任务${groupNote} → ${batchPackageDir}`);
+    notify(`开始打包 ${tasks.length} 个工程到「${dateStr}_${timeStr}_工程包」${groupNote}，复制素材期间请勿关闭窗口`, 'info', 5000);
+
+    let processed = 0;
+    let succeeded = 0;
+    let totalMissingAssets = 0;
+    const failures = [];
+    const packedTasks = [];
+    let firstPackedWatermarks = null;
     try {
-        for (let index = 0; index < tasks.length; index++) {
-            const task = tasks[index];
-            const rawName = task.exportName || task.baseName || task.fileName || 'Reels工程';
-            const safeName = _sanitizeReelsFileBaseName(rawName, 'Reels工程');
-            if (statusEl) statusEl.textContent = `📦 正在打包工程 ${index + 1}/${tasks.length}：${safeName}`;
-            const virtualOutputPath = `${baseDir}${sep}${safeName}.mp4`;
-            const result = await _copyAutoEditProjectToReelsOutput(task, virtualOutputPath);
-            if (result?.ok) succeeded++;
-            else failures.push(`${task.fileName || safeName}：${result?.error || '原工程文件夹不存在'}`);
+        for (const group of groups) {
+            let groupTargetDir = batchPackageDir;
+            if (useGroupSubdirs) {
+                groupTargetDir = `${batchPackageDir}${sep}${group.folderName}`;
+                const gEnsure = await window.electronAPI?.ensureDirectory?.(groupTargetDir);
+                if (gEnsure?.ok === false) {
+                    throw new Error(`无法创建分组目录：${gEnsure.error || groupTargetDir}`);
+                }
+            }
+            const groupJobs = group.items.map(item => ({ task: item.task, taskListRowNo: item.rowNo }));
+            const groupNames = _resolveReelsJobBaseNames(groupJobs, namingMode, { sanitize: true, fallback: 'Reels工程' });
+
+            for (let i = 0; i < group.items.length; i++) {
+                const { task } = group.items[i];
+                processed++;
+                const safeName = groupNames[i] || _sanitizeReelsFileBaseName(task.exportName || task.baseName || task.fileName || `Reels工程_${processed}`, 'Reels工程');
+                if (packButton) packButton.textContent = `📦 打包 ${processed}/${tasks.length}…`;
+                if (statusEl) statusEl.textContent = `📦 正在打包工程 ${processed}/${tasks.length}：${useGroupSubdirs ? `${group.name}/` : ''}${safeName}`;
+                const virtualOutputPath = `${groupTargetDir}${sep}${safeName}.mp4`;
+                const result = await _copyReelsTaskProjectPackage(task, virtualOutputPath);
+                if (result?.ok) {
+                    succeeded++;
+                    if (result.packedTask) {
+                        if (group.tabId) result.packedTask._batchTabId = group.tabId;
+                        if (group.isExplicit) result.packedTask._batchTabName = group.name;
+                        if (group.groupName) result.packedTask._batchTabGroup = group.groupName;
+                        if (task?._folderQueueId) result.packedTask._folderQueueId = task._folderQueueId;
+                        if (task?._folderQueueName) result.packedTask._folderQueueName = task._folderQueueName;
+                        packedTasks.push(result.packedTask);
+                        group.packedTasks.push(result.packedTask);
+                    }
+                    if (!firstPackedWatermarks && Array.isArray(result.packedWatermarks)) {
+                        firstPackedWatermarks = result.packedWatermarks;
+                    }
+                    if (Array.isArray(result.missing) && result.missing.length > 0) {
+                        totalMissingAssets += result.missing.length;
+                        appendLog(`${safeName}：已打包，但有 ${result.missing.length} 个源文件未找到`, 'warning');
+                    }
+                } else {
+                    const err = result?.error || '复制工程失败';
+                    failures.push(`${task.fileName || safeName}：${err}`);
+                    appendLog(`${safeName} 打包失败：${err}`, 'error');
+                }
+            }
+        }
+
+        // 额外生成整批总工程 JSON，跨设备整包迁移时只需导入这一个文件即可还原全部已选分组和任务。
+        if (packedTasks.length > 0 && window.electronAPI?.writeFileText) {
+            const batchProjectFile = `${batchPackageDir}${sep}批量工程_${packedTasks.length}个任务.json`;
+            const baseSnap = _buildSingleTaskReelsProjectSnapshot(tasks[0]) || { version: '2.0', app: 'VideoKit' };
+            baseSnap.createdAt = new Date().toISOString();
+            baseSnap.packageDir = batchPackageDir;
+            baseSnap.tasks = packedTasks;
+            baseSnap.selectedIdx = 0;
+            const effectiveWatermarks = firstPackedWatermarks
+                || (Array.isArray(_reelsState.watermarks) && _reelsState.watermarks.length > 0
+                    ? _cloneProjectDataForSave(_reelsState.watermarks)
+                    : null);
+            if (effectiveWatermarks) baseSnap.watermarks = effectiveWatermarks;
+            const hasNamedGroups = groups.length > 1 || groups.some(g => g.isExplicit);
+            if (hasNamedGroups) {
+                const packedTabs = groups
+                    .filter(g => g.packedTasks.length > 0)
+                    .map((g, gIdx) => ({
+                        id: g.tabId || `tab_pkg_${gIdx + 1}`,
+                        name: g.name,
+                        group: g.groupName || '',
+                        materialDir: g.materialDir || '',
+                        folderQueueId: g.folderQueueId || '',
+                        tasks: g.packedTasks,
+                    }));
+                if (packedTabs.length > 0) {
+                    baseSnap.version = '2.0';
+                    baseSnap.tabs = packedTabs;
+                    baseSnap.activeTabId = packedTabs[0].id;
+                }
+            }
+            const wrote = await window.electronAPI.writeFileText(batchProjectFile, JSON.stringify(baseSnap, null, 2));
+            if (wrote) {
+                appendLog(`已生成批量总工程文件 → ${batchProjectFile}`);
+            }
         }
     } catch (error) {
         failures.push(`打包流程：${error?.message || error}`);
     } finally {
+        _reelsPackageInProgress = false;
         if (packButton) { packButton.disabled = false; packButton.textContent = previousButtonText; }
     }
-    if (statusEl) statusEl.textContent = failures.length
-        ? `⚠️ 工程打包完成 ${succeeded}/${tasks.length}，有 ${failures.length} 个失败`
-        : `✅ 工程打包完成 ${succeeded}/${tasks.length}`;
-    if (succeeded) showToast?.(`已打包 ${succeeded}/${tasks.length} 个工程到当前输出目录（未重新导出视频）`, failures.length ? 'warning' : 'success', 7000);
+
+    if (succeeded > 0) {
+        _reelsState.lastExportOutputPath = batchPackageDir;
+        if (typeof _reelsUpdateLastOutputUI === 'function') _reelsUpdateLastOutputUI(batchPackageDir);
+    }
+    const missingNote = totalMissingAssets > 0 ? `（${totalMissingAssets} 个源素材文件未在原路径找到）` : '';
+    if (statusEl) {
+        statusEl.textContent = failures.length
+            ? `⚠️ 工程打包完成 ${succeeded}/${tasks.length}${groupNote}，失败 ${failures.length}${missingNote}`
+            : `✅ 工程打包完成 ${succeeded}/${tasks.length}${groupNote}${missingNote}`;
+    }
+    if (succeeded) {
+        notify(
+            `已打包 ${succeeded}/${tasks.length} 个工程到「${dateStr}_${timeStr}_工程包」${groupNote}${missingNote}`,
+            (failures.length || totalMissingAssets) ? 'warning' : 'success',
+            8000
+        );
+    }
     if (failures.length) {
         console.warn('[Reels] 仅打包工程失败:', failures);
-        showToast?.(`有 ${failures.length} 个工程未打包成功，请查看控制台详情`, 'warning', 7000);
+        notify(`有 ${failures.length} 个工程未打包成功，请查看导出日志`, 'warning', 7000);
     }
 }
+window._groupReelsTasksForPackaging = _groupReelsTasksForPackaging;
 window.reelsPackageSelectedProjects = reelsPackageSelectedProjects;
 
 // 初始化（需要在 DOM 就绪后调用）
@@ -14093,68 +14419,7 @@ async function _reelsStartExportImpl(options = {}) {
             try { window.ReelsBatchTable.render(); } catch (_) { }
         }
     }
-    const _exportResolvedNames = {};
-    {
-        // 先给每个任务加上行号（纯序号与日期-首句中文模式直接按目标格式输出，重名时在下方自动加 _1, _2）
-        const namedWithRow = exportJobs.map((job, idx) => {
-            const rowNo = job.taskListRowNo || idx + 1;
-            if (namingMode === 'ai-cn-date') {
-                return _resolveReelsExportBaseName(job.task, 'ai-cn-date');
-            }
-            if (namingMode === 'index') {
-                const prefix = localStorage.getItem('reels_naming_prefix') || '';
-                const suffixVal = localStorage.getItem('reels_naming_suffix') || '';
-                return `${String(rowNo).padStart(3, '0')}${prefix || suffixVal ? '_' + prefix + suffixVal : ''}`;
-            }
-            if (namingMode === 'date-auto') {
-                const startDateStr = localStorage.getItem('reels_naming_start_date') || '';
-                const vidsPerDay = parseInt(localStorage.getItem('reels_naming_vids_per_day') || '3') || 3;
-                const prefix = localStorage.getItem('reels_naming_prefix') || '';
-                const suffixVal = localStorage.getItem('reels_naming_suffix') || '';
-
-                let startDate = new Date();
-                startDate.setDate(startDate.getDate() + 1);
-                if (startDateStr) {
-                    const cleanDate = startDateStr.replace(/-/g, '');
-                    if (cleanDate.length === 8) {
-                        const y = parseInt(cleanDate.substring(0, 4));
-                        const m = parseInt(cleanDate.substring(4, 6)) - 1;
-                        const d = parseInt(cleanDate.substring(6, 8));
-                        startDate = new Date(y, m, d);
-                    } else {
-                        const parsed = Date.parse(startDateStr);
-                        if (!isNaN(parsed)) startDate = new Date(parsed);
-                    }
-                }
-                const dayOffset = Math.floor(idx / vidsPerDay);
-                const seq = (idx % vidsPerDay) + 1;
-                const targetDate = new Date(startDate.getTime());
-                targetDate.setDate(startDate.getDate() + dayOffset);
-
-                const yyyy = targetDate.getFullYear();
-                const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-                const dd = String(targetDate.getDate()).padStart(2, '0');
-                const dateFormatted = `${yyyy}${mm}${dd}`;
-
-                return _prefixReelsExportRowName(`${prefix}${dateFormatted}-${seq}${suffixVal}`, rowNo);
-            }
-
-            const raw = _resolveReelsExportBaseName(job.task, namingMode);
-            return _prefixReelsExportRowName(raw, rowNo);
-        });
-        // 再检测加完行号后是否仍有重名（极端情况），追加编号
-        const freq = {};
-        namedWithRow.forEach(n => freq[n] = (freq[n] || 0) + 1);
-        const counter = {};
-        namedWithRow.forEach((n, idx) => {
-            if (freq[n] > 1) {
-                counter[n] = (counter[n] || 0) + 1;
-                _exportResolvedNames[idx] = `${n}_${counter[n]}`;
-            } else {
-                _exportResolvedNames[idx] = n;
-            }
-        });
-    }
+    const _exportResolvedNames = _resolveReelsJobBaseNames(exportJobs, namingMode);
 
     failCount = resumeManifest.failCount;
     okCount = resumeManifest.okCount;
@@ -14242,13 +14507,24 @@ async function _reelsStartExportImpl(options = {}) {
             
             const effectiveBgClipPool = _getEffectiveBgClipPool(task);
             const isMultiBgTask = task.bgMode === 'multi' && effectiveBgClipPool.length > 0;
-            const hasVoiceAudio = !!task.audioPath || workMode === 'voiced_bg';
+            const isAutoEditVoiceBg = !task.audioPath && !isMultiBgTask && _isSingleAutoEditTask(task) && Boolean(bgPath && !_isImageFile(bgPath));
+            const hasVoiceAudio = !!task.audioPath || workMode === 'voiced_bg' || isAutoEditVoiceBg;
             // For voiced_bg mode, use the background video's audio track as the voice source
             // ONLY in single-background mode. In multi-clip mode, bgPath may still point to the
             // first 30s clip (pool[0]), which would truncate the entire export to 30s instead of
             // using the stitched multi-clip pool duration and audio.
             const voiceSource = task.audioPath || ((workMode === 'voiced_bg' && !isMultiBgTask) ? bgPath : null);
-            const effectiveAudioDurScale = (workMode === 'voiced_bg' && !task.audioPath)
+            const resolvedVoiceSource = voiceSource || (isAutoEditVoiceBg ? bgPath : null);
+            const resolvedVoiceVolumeGain = _resolveTaskVoiceVolumePercent(task, {
+                globalVoiceVolume: voiceVolume,
+                globalBgVolume: bgVolume,
+                workMode,
+                bgPath,
+            }) / 100;
+            const resolvedBgVolumeGain = (resolvedVoiceSource && resolvedVoiceSource === bgPath && !isMultiBgTask)
+                ? 0
+                : (_getEffectiveBgVolumePercent(task, bgVolume) / 100);
+            const effectiveAudioDurScale = (!task.audioPath && (workMode === 'voiced_bg' || isAutoEditVoiceBg))
                 ? (task.bgDurScale || task.audioDurScale || 100)
                 : (task.audioDurScale || 100);
             let finalOutputPath = outputPath;
@@ -14266,11 +14542,11 @@ async function _reelsStartExportImpl(options = {}) {
                 const effectiveBgmPath = _getEffectiveBgmVolumePercent(task, bgmVolume) > 0
                     ? (_getEffectiveBgmPath(task, i) || '')
                     : '';
-                const pathsToCheck = [voiceSource, effectiveBgmPath].filter(Boolean);
+                const pathsToCheck = [resolvedVoiceSource, effectiveBgmPath].filter(Boolean);
                 if (pathsToCheck.length > 0) {
                     const existsMap = await window.electronAPI.checkFilesExist(pathsToCheck);
-                    if (voiceSource && !existsMap[voiceSource]) {
-                        throw new Error(`配音文件不存在，请重新选择或生成配音：${voiceSource}`);
+                    if (resolvedVoiceSource && !existsMap[resolvedVoiceSource]) {
+                        throw new Error(`配音文件不存在，请重新选择或生成配音：${resolvedVoiceSource}`);
                     }
                     if (effectiveBgmPath && !existsMap[effectiveBgmPath]) {
                         throw new Error(`背景音乐文件不存在，请重新选择：${effectiveBgmPath}`);
@@ -14332,15 +14608,15 @@ async function _reelsStartExportImpl(options = {}) {
                     contentVideoDirectBg: task.contentVideoDirectBg || false,
                     contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                     contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
-                    voicePath: voiceSource || null,
+                    voicePath: resolvedVoiceSource || null,
                     outputDir: jobOutputDir,
                     taskName: jobBaseName,
                     targetWidth: tw,
                     targetHeight: th,
                     fps: 30,
 
-                    voiceVolume: (workMode === 'voiced_bg' && !task.audioPath) ? _getEffectiveBgVolumePercent(task, bgVolume) / 100 : _getEffectiveVoiceVolumePercent(task, voiceVolume) / 100,
-                    bgVolume: _getEffectiveBgVolumePercent(task, bgVolume) / 100,
+                    voiceVolume: resolvedVoiceVolumeGain,
+                    bgVolume: resolvedBgVolumeGain,
                     loopFade,
                     loopFadeDur,
                     customDuration: resolveReelsCustomDuration(task, customDuration),
@@ -14598,7 +14874,7 @@ async function _reelsStartExportImpl(options = {}) {
                     contentVideoPath: task.contentVideoPath || null,
                     contentVideoTrimStart: task.contentVideoTrimStart != null ? task.contentVideoTrimStart : null,
                     contentVideoTrimEnd: task.contentVideoTrimEnd != null ? task.contentVideoTrimEnd : null,
-                    voicePath: voiceSource || null,
+                    voicePath: resolvedVoiceSource || null,
                     bgmPath: _getEffectiveBgmPath(task, i) || '',
                     customDuration: resolveReelsCustomDuration(task, customDuration),
                     taskName: baseName,
@@ -14649,8 +14925,8 @@ async function _reelsStartExportImpl(options = {}) {
                         estimatedDuration = maxFlipperDuration;
                     } else if (task.customDuration > 0) {
                         estimatedDuration = task.customDuration;
-                    } else if ((task.audioPath || voiceSource) && window.electronAPI.getMediaDuration) {
-                        estimatedDuration = await window.electronAPI.getMediaDuration(task.audioPath || voiceSource);
+                    } else if ((task.audioPath || resolvedVoiceSource) && window.electronAPI.getMediaDuration) {
+                        estimatedDuration = await window.electronAPI.getMediaDuration(task.audioPath || resolvedVoiceSource);
                     }
                     if (!estimatedDuration) {
                         if (task.contentVideoDirectBg && task.contentVideoPath) {
@@ -14738,10 +15014,10 @@ async function _reelsStartExportImpl(options = {}) {
                                 contentVideoDirectBg: task.contentVideoDirectBg || false,
                                 contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                                 contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
-                                voicePath: voiceSource || null,
+                                voicePath: resolvedVoiceSource || null,
                                 targetWidth: tw, targetHeight: th, fps: 30,
-                                voiceVolume: (workMode === 'voiced_bg' && !task.audioPath) ? _getEffectiveBgVolumePercent(task, bgVolume) / 100 : _getEffectiveVoiceVolumePercent(task, voiceVolume) / 100,
-                                bgVolume: _getEffectiveBgVolumePercent(task, bgVolume) / 100,
+                                voiceVolume: resolvedVoiceVolumeGain,
+                                bgVolume: resolvedBgVolumeGain,
                                 loopFade, loopFadeDur,
                                 bgmPath: _getEffectiveBgmPath(task, i) || '',
                                 bgmVolume: _getEffectiveBgmVolumePercent(task, bgmVolume) / 100,
@@ -14753,7 +15029,7 @@ async function _reelsStartExportImpl(options = {}) {
                                 reverbMix: _getReverbConfig().mix,
                                 stereoWidth: _getReverbConfig().stereoWidth,
                                 audioFxTarget: _getReverbConfig().audioFxTarget,
-                                bgHasAudio: bgPath && !_isImageFile(bgPath) && !(voiceSource && voiceSource === bgPath),
+                                bgHasAudio: bgPath && !_isImageFile(bgPath) && !(resolvedVoiceSource && resolvedVoiceSource === bgPath),
                                 qualityPreset, crf, targetBitrateMbps, maxBitrateMbps,
                             },
                             outputPath,
@@ -14836,14 +15112,13 @@ async function _reelsStartExportImpl(options = {}) {
                     contentVideoDirectBg: task.contentVideoDirectBg || false,
                     contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                     contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
-                    voicePath: voiceSource || null,
+                    voicePath: resolvedVoiceSource || null,
                     outputPath,
                     targetWidth: tw,
                     targetHeight: th,
                     fps: 30,
-                    // voiced_bg 模式: 背景音频作为主音轨，用 bgVolume 控制
-                    voiceVolume: (workMode === 'voiced_bg' && !task.audioPath) ? _getEffectiveBgVolumePercent(task, bgVolume) / 100 : _getEffectiveVoiceVolumePercent(task, voiceVolume) / 100,
-                    bgVolume: _getEffectiveBgVolumePercent(task, bgVolume) / 100,
+                    voiceVolume: resolvedVoiceVolumeGain,
+                    bgVolume: resolvedBgVolumeGain,
                     loopFade,
                     loopFadeDur,
                     customDuration: resolveReelsCustomDuration(task, customDuration),
@@ -14925,10 +15200,10 @@ async function _reelsStartExportImpl(options = {}) {
                     break;
                 }
                 } // end if (!wysiwygDone)
-            } else if (hasVoiceAudio && voiceSource) {
+            } else if (hasVoiceAudio && resolvedVoiceSource) {
                 // ── 回退: ASS 字幕方式导出（需要配音）──
                 _reelsUpdateJobFastCapabilityUI(i, 'unsupported', '当前任务使用 ASS 稳定导出链路');
-                const aDurScale = task.audioDurScale || 100;
+                const aDurScale = effectiveAudioDurScale;
                 const factor = aDurScale / 100;
                 const scaledSegments = (factor !== 1.0 && task.segments) 
                     ? task.segments.map(s => ({ ...s, start: s.start * factor, end: s.end * factor, words: s.words ? s.words.map(w => ({...w, start: w.start * factor, end: w.end * factor})) : undefined }))
@@ -14944,15 +15219,15 @@ async function _reelsStartExportImpl(options = {}) {
 
                 const resp = await _reelsComposeViaBackend({
                     background_path: bgPath,
-                    voice_path: voiceSource,
+                    voice_path: resolvedVoiceSource,
                     ass_content: assContent,
                     output_path: outputPath,
                     crf,
                     use_gpu: gpuEnabled,
                     loop_fade: loopFade,
                     loop_fade_dur: loopFadeDur,
-                    voice_volume: _getEffectiveVoiceVolumePercent(task, voiceVolume) / 100,
-                    bg_volume: _getEffectiveBgVolumePercent(task, bgVolume) / 100,
+                    voice_volume: resolvedVoiceVolumeGain,
+                    bg_volume: resolvedBgVolumeGain,
                     bgm_path: _getEffectiveBgmPath(task, i) || '',
                     bgm_volume: _getEffectiveBgmVolumePercent(task, bgmVolume) / 100,
                     bgm_start: Math.max(0, parseFloat(task.bgmStart) || 0),
@@ -15048,10 +15323,10 @@ async function _reelsStartExportImpl(options = {}) {
                 }
             }
 
-            // 默认不复制；仅在用户勾选且该任务来自文案自动剪辑时，在最终成片旁
-            // 再放一份完整工程包。复制失败不影响已经成功的成片。
-            if (copyProjectToOutput && doMp4 && task.autoEditProject) {
-                const copiedProject = await _copyAutoEditProjectToReelsOutput(task, finalOutputPath);
+            // 默认不复制；勾选“导出后复制工程包”后，在最终成片旁再放一份完整可二剪工程包
+            // （同时支持普通批量 Reels 任务与文案自动剪辑任务）。复制失败不影响已经成功的成片。
+            if (copyProjectToOutput && doMp4) {
+                const copiedProject = await _copyReelsTaskProjectPackage(task, finalOutputPath);
                 if (copiedProject?.ok) {
                     _reelsAppendExportLogUI(`${task.fileName}${presetLabel}：工程包已复制 → ${copiedProject.projectDir}`);
                 } else if (!copiedProject?.skipped) {
@@ -15505,6 +15780,7 @@ function _cloneProjectDataForSave(value) {
     const persistedPrivateFields = new Set([
         '_subtitlePreset', '_overlayPresetName',
         '_sourceFolder', '_folderQueueId', '_folderQueueName',
+        '_batchTabId', '_batchTabName', '_batchTabGroup',
     ]);
     return JSON.parse(JSON.stringify(value, (key, val) => {
         if (key && key.startsWith('_') && !persistedPrivateFields.has(key)) return undefined;
@@ -15552,6 +15828,7 @@ function collectCurrentProjectState() {
         subtitleStyleApplyAll: _isStyleApplyAllEnabled(),
         subtitleStyleScopeVersion: 2,
         subtitleStyleScope: _getSubtitleStyleScope(),
+        workMode: _getWorkMode(),
     };
     return {
         tasks: _cloneProjectDataForSave(_reelsState.tasks),
@@ -15600,9 +15877,17 @@ function applyRestoredProject(result) {
 
     // 在渲染/同步当前标签之前恢复完整批量表格快照，避免撤销时把其他标签页
     // 的任务、素材配置和参数覆盖成当前任务页的数据。
-    const restoredBatchTable = !!(result.batchTable && typeof window.reelsRestoreBatchTableState === 'function');
+    let restoredBatchTable = !!(result.batchTable && typeof window.reelsRestoreBatchTableState === 'function');
     if (restoredBatchTable) {
         window.reelsRestoreBatchTableState(result.batchTable);
+    } else if (typeof window.reelsRestoreImportedTabsFromProject === 'function') {
+        restoredBatchTable = !!window.reelsRestoreImportedTabsFromProject(result);
+        if (restoredBatchTable && _reelsState.tasks.length > 0 && (_reelsState.selectedIdx < 0 || _reelsState.selectedIdx >= _reelsState.tasks.length)) {
+            _reelsState.selectedIdx = 0;
+        }
+    }
+    if (Array.isArray(result.watermarks) && result.watermarks.length > 0) {
+        _reelsApplyRestoredWatermarks(result.watermarks, { mode: 'replace', refreshPreview: false });
     }
 
     // Keep the batch-table active tab in sync so loaded template paths appear
@@ -15731,6 +16016,20 @@ function applyRestoredProject(result) {
         _applyPreviewLoopMode();
     }
 
+    const explicitWorkMode = result.exportOpts && result.exportOpts.workMode;
+    const inferredAutoEditMode = (!explicitWorkMode && _reelsState.tasks.length > 0
+        && _reelsState.tasks.every(t => t && !t.audioPath)
+        && _reelsState.tasks.some(t => _isSingleAutoEditTask(t)))
+        ? 'voiced_bg'
+        : '';
+    const nextWorkMode = explicitWorkMode || inferredAutoEditMode;
+    if (nextWorkMode) {
+        const workModeEl = document.getElementById('reels-work-mode');
+        if (workModeEl && workModeEl.value !== nextWorkMode) {
+            workModeEl.value = nextWorkMode;
+            if (typeof reelsOnWorkModeChange === 'function') reelsOnWorkModeChange();
+        }
+    }
 
     const selectedTask = _reelsState.tasks[_reelsState.selectedIdx] || null;
     const styleToShow = _resolveSubtitleStyleForTask(selectedTask);
@@ -15810,14 +16109,17 @@ function reelsSaveProject(event) {
         subtitleStyleApplyAll: _isStyleApplyAllEnabled(),
         subtitleStyleScopeVersion: 2,
         subtitleStyleScope: _getSubtitleStyleScope(),
+        workMode: _getWorkMode(),
         targetWidth: _reelsState.targetWidth || 1080,
         targetHeight: _reelsState.targetHeight || 1920,
     };
 
+    window.reelsSyncWatermarkFromUI?.();
     ReelsProject.saveProject({
         tasks: _reelsState.tasks,
         style: globalStyle,
         exportOpts,
+        watermarks: Array.isArray(_reelsState.watermarks) ? _reelsState.watermarks : [],
         selectedIdx: _reelsState.selectedIdx,
     }, { interactive: true });
 }
@@ -15883,7 +16185,7 @@ function _cloneReelsHistoryTasks(tasks) {
         const out={};for(const [k,v]of Object.entries(value))if((!k.startsWith('_')||allowed.has(k))&&typeof v!=='function')out[k]=clone(v,seen);return out;
     }
     const clones=clone(tasks);
-    clones.forEach((task,i)=>{for(const key of ['_batchProjection','_batchTabId','_batchTabName','_batchTabOrder','_batchTaskOrder'])if(tasks[i][key]!==undefined)task[key]=tasks[i][key];});
+    clones.forEach((task,i)=>{for(const key of ['_batchProjection','_batchTabId','_batchTabName','_batchTabGroup','_batchTabOrder','_batchTaskOrder'])if(tasks[i][key]!==undefined)task[key]=tasks[i][key];});
     return clones;
 }
 
@@ -15921,6 +16223,7 @@ function _captureReelsHistoryState() {
         subtitleStyleApplyAll: _isStyleApplyAllEnabled(),
         subtitleStyleScopeVersion: 2,
         subtitleStyleScope: _getSubtitleStyleScope(),
+        workMode: _getWorkMode(),
     };
     return {
         tasks: _cloneReelsHistoryTasks(_reelsState.tasks),

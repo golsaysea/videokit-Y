@@ -185,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initSubTabs();
     initMediaSidebar();
+    initSuiteSidebars();
     initFileInputs();
     initAudioPlayer();
     initMediaModeOptions();
@@ -754,6 +755,54 @@ function addToastStyles() {
     document.head.appendChild(style);
 }
 
+const PANEL_SUITE_PARENTS = {
+    'elevenlabs': 'voice-suite',
+    'microsoft-tts': 'voice-suite',
+    'google-tts': 'voice-suite',
+    'voiceover-workflow': 'subtitle-suite',
+    'subtitle': 'subtitle-suite',
+    'srt-tools': 'subtitle-suite',
+};
+
+function activateSuiteSubtab(suiteId, subTabName) {
+    const suitePanel = document.getElementById(`${suiteId}-panel`);
+    if (!suitePanel || !subTabName) return false;
+    const subPanel = document.getElementById(`${subTabName}-panel`);
+    if (!subPanel || !suitePanel.contains(subPanel)) return false;
+
+    suitePanel.dataset.activeSuiteTab = subTabName;
+    suitePanel.querySelectorAll('.vk-suite-sidebar .sidebar-item[data-suite-tab]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.suiteTab === subTabName);
+    });
+    suitePanel.querySelectorAll('.vk-suite-workbench > .panel').forEach(p => {
+        p.classList.toggle('active', p === subPanel);
+    });
+
+    if (subTabName === 'voiceover-workflow' && typeof window.initVWPageOnce === 'function') {
+        window.initVWPageOnce();
+    }
+    const wb = suitePanel.querySelector('.vk-suite-workbench');
+    if (wb?.scrollTo) wb.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (wb) wb.scrollTop = 0;
+
+    try {
+        document.dispatchEvent(new CustomEvent('vk:panel-activated', { detail: { tabName: subTabName, suiteId } }));
+    } catch (_) {}
+    return true;
+}
+
+function initSuiteSidebars() {
+    document.querySelectorAll('.vk-suite-sidebar').forEach(sidebar => {
+        const suiteId = sidebar.dataset.suite;
+        if (!suiteId) return;
+        sidebar.querySelectorAll('.sidebar-item[data-suite-tab]').forEach(item => {
+            item.addEventListener('click', () => {
+                activateSuiteSubtab(suiteId, item.dataset.suiteTab);
+            });
+        });
+    });
+}
+
 // 标签页切换
 function initTabs() {
     const tabs = document.querySelectorAll('.tab');
@@ -766,7 +815,10 @@ function initTabs() {
 }
 
 function openPanelByName(tabName) {
-    if (tabName === 'media') {
+    const parentSuite = PANEL_SUITE_PARENTS[tabName];
+    const topTabName = parentSuite || tabName;
+
+    if (topTabName === 'media') {
         if (typeof mtbRestorePortedNodes === 'function') {
             mtbRestorePortedNodes(true);
         }
@@ -778,8 +830,8 @@ function openPanelByName(tabName) {
 
     const tabs = document.querySelectorAll('.tab');
     const panels = document.querySelectorAll('.panel');
-    const tab = document.querySelector(`.tab[data-tab="${tabName}"]`);
-    const panel = document.getElementById(`${tabName}-panel`);
+    const tab = document.querySelector(`.tab[data-tab="${topTabName}"]`);
+    const panel = document.getElementById(`${topTabName}-panel`);
 
     if (!tab || !panel) return;
 
@@ -788,7 +840,13 @@ function openPanelByName(tabName) {
 
     tab.classList.add('active');
     panel.classList.add('active');
-    if (tabName === 'voiceover-workflow' && typeof window.initVWPageOnce === 'function') window.initVWPageOnce();
+
+    if (panel.classList.contains('vk-suite-panel')) {
+        const defaultSub = panel.querySelector('.vk-suite-sidebar .sidebar-item.active[data-suite-tab]')?.dataset.suiteTab
+            || panel.querySelector('.vk-suite-sidebar .sidebar-item[data-suite-tab]')?.dataset.suiteTab;
+        const targetSub = parentSuite ? tabName : (panel.dataset.activeSuiteTab || defaultSub);
+        if (targetSub) activateSuiteSubtab(topTabName, targetSub);
+    }
 
     const content = document.querySelector('.content');
     if (content?.scrollTo) {
@@ -797,6 +855,7 @@ function openPanelByName(tabName) {
         content.scrollTop = 0;
     }
 }
+window.openPanelByName = openPanelByName;
 
 // 子标签页切换
 function initSubTabs() {
@@ -2962,6 +3021,7 @@ async function loadSettings(autoLoadVoices = false) {
     }
 }
 
+if (typeof loadSettings === 'function') window.loadSettings = loadSettings;
 function openExternalUrl(url) {
     try {
         if (window.electronAPI && typeof window.electronAPI.openExternal === 'function') {
@@ -11709,9 +11769,99 @@ const CUSTOM_THEME_KEY = 'videokit-custom-theme';
 
 /** 预设主题库 */
 const THEME_PRESETS = {
+    'starry-lantern': {
+        name: '🏮 夜景 · 静夜花灯',
+        desc: '深邃静夜星空与暖意中国花灯',
+        colors: {
+            '--bg-primary': '#060913', '--bg-secondary': 'rgba(11,16,30,0.82)', '--bg-tertiary': '#11182c',
+            '--bg-card': 'rgba(17,25,45,0.86)', '--bg-input': 'rgba(5,9,19,0.88)', '--bg-titlebar': '#050811',
+            '--bg-hover': 'rgba(158,191,255,0.06)', '--bg-hover-strong': 'rgba(246,178,75,0.13)',
+            '--accent': '#f6b24b', '--accent-hover': '#ffc96b',
+            '--accent-alpha': 'rgba(246,178,75,0.18)',
+            '--text-primary': '#eef2fb', '--text-secondary': '#94a3b8',
+            '--text-muted': '#64748b', '--text-color': '#eef2fb',
+            '--border-color': 'rgba(158,191,255,0.12)',
+            '--scrollbar-thumb': 'rgba(158,191,255,0.18)', '--scrollbar-thumb-hover': 'rgba(246,178,75,0.42)',
+            '--success': '#34d399', '--warning': '#fbbf24', '--error': '#f87171',
+            '--shadow': 'rgba(0,0,0,0.48)'
+        },
+        preview: ['#060913', '#0e1528', '#f6b24b', '#e85d35']
+    },
+    'autumn-night': {
+        name: '🍁 秋景 · 暮秋枫夜',
+        desc: '11月深秋红枫与暖琥珀夜色',
+        colors: {
+            '--bg-primary': '#0d0706', '--bg-secondary': 'rgba(24,13,10,0.84)', '--bg-tertiary': '#22130e',
+            '--bg-card': 'rgba(32,18,13,0.88)', '--bg-input': 'rgba(14,8,6,0.90)', '--bg-titlebar': '#0b0605',
+            '--bg-hover': 'rgba(245,166,91,0.08)', '--bg-hover-strong': 'rgba(232,121,58,0.16)',
+            '--accent': '#ea8c42', '--accent-hover': '#f5a96b',
+            '--accent-alpha': 'rgba(234,140,66,0.20)',
+            '--text-primary': '#faf0e6', '--text-secondary': '#b99c89',
+            '--text-muted': '#7b6354', '--text-color': '#faf0e6',
+            '--border-color': 'rgba(245,166,91,0.14)',
+            '--scrollbar-thumb': 'rgba(245,166,91,0.22)', '--scrollbar-thumb-hover': 'rgba(234,140,66,0.46)',
+            '--success': '#34d399', '--warning': '#fbbf24', '--error': '#f87171',
+            '--shadow': 'rgba(0,0,0,0.52)'
+        },
+        preview: ['#0d0706', '#22130e', '#ea8c42', '#d9483b']
+    },
+    'snow-night': {
+        name: '❄️ 雪景 · 静冬雪夜',
+        desc: '深蓝冬夜冰晶飘雪，静谧护眼',
+        colors: {
+            '--bg-primary': '#050a14', '--bg-secondary': 'rgba(10,19,34,0.84)', '--bg-tertiary': '#10203a',
+            '--bg-card': 'rgba(15,28,50,0.88)', '--bg-input': 'rgba(5,10,20,0.90)', '--bg-titlebar': '#040811',
+            '--bg-hover': 'rgba(186,230,253,0.07)', '--bg-hover-strong': 'rgba(125,211,252,0.15)',
+            '--accent': '#7dd3fc', '--accent-hover': '#bae6fd',
+            '--accent-alpha': 'rgba(125,211,252,0.18)',
+            '--text-primary': '#f0f7ff', '--text-secondary': '#97b2cc',
+            '--text-muted': '#5c7894', '--text-color': '#f0f7ff',
+            '--border-color': 'rgba(147,197,253,0.15)',
+            '--scrollbar-thumb': 'rgba(147,197,253,0.20)', '--scrollbar-thumb-hover': 'rgba(125,211,252,0.44)',
+            '--success': '#34d399', '--warning': '#fbbf24', '--error': '#f87171',
+            '--shadow': 'rgba(0,0,0,0.50)'
+        },
+        preview: ['#050a14', '#10203a', '#7dd3fc', '#e0f2fe']
+    },
+    'christmas-eve': {
+        name: '🎄 圣诞 · 圣诞暖夜',
+        desc: '深松绿雪夜与暖金圣诞灯饰',
+        colors: {
+            '--bg-primary': '#060d0a', '--bg-secondary': 'rgba(10,22,17,0.85)', '--bg-tertiary': '#10261d',
+            '--bg-card': 'rgba(16,34,26,0.88)', '--bg-input': 'rgba(5,12,9,0.90)', '--bg-titlebar': '#050b08',
+            '--bg-hover': 'rgba(245,196,81,0.08)', '--bg-hover-strong': 'rgba(217,72,72,0.15)',
+            '--accent': '#f5c451', '--accent-hover': '#fde088',
+            '--accent-alpha': 'rgba(245,196,81,0.20)',
+            '--text-primary': '#f6f3ea', '--text-secondary': '#9bb3a5',
+            '--text-muted': '#60786b', '--text-color': '#f6f3ea',
+            '--border-color': 'rgba(110,231,183,0.14)',
+            '--scrollbar-thumb': 'rgba(245,196,81,0.22)', '--scrollbar-thumb-hover': 'rgba(245,196,81,0.46)',
+            '--success': '#34d399', '--warning': '#f5c451', '--error': '#ef4444',
+            '--shadow': 'rgba(0,0,0,0.52)'
+        },
+        preview: ['#060d0a', '#10261d', '#f5c451', '#d94848']
+    },
+    'starry-ink': {
+        name: '🌌 夜景 · 静谧深空',
+        desc: '纯静深蓝星海，极简专注',
+        colors: {
+            '--bg-primary': '#060a14', '--bg-secondary': 'rgba(12,18,32,0.84)', '--bg-tertiary': '#111a30',
+            '--bg-card': 'rgba(17,24,42,0.88)', '--bg-input': 'rgba(5,9,18,0.9)', '--bg-titlebar': '#050811',
+            '--bg-hover': 'rgba(148,184,255,0.06)', '--bg-hover-strong': 'rgba(96,165,250,0.14)',
+            '--accent': '#60a5fa', '--accent-hover': '#93c5fd',
+            '--accent-alpha': 'rgba(96,165,250,0.18)',
+            '--text-primary': '#e8effa', '--text-secondary': '#8fa1ba',
+            '--text-muted': '#5b6b84', '--text-color': '#e8effa',
+            '--border-color': 'rgba(148,184,255,0.12)',
+            '--scrollbar-thumb': 'rgba(148,184,255,0.2)', '--scrollbar-thumb-hover': 'rgba(148,184,255,0.38)',
+            '--success': '#34d399', '--warning': '#fbbf24', '--error': '#f87171',
+            '--shadow': 'rgba(0,0,0,0.48)'
+        },
+        preview: ['#060a14', '#111a30', '#60a5fa', '#e8effa']
+    },
     dark: {
-        name: '🌙 暗色 (默认)',
-        desc: '专业暗色调',
+        name: '🌙 经典暗灰',
+        desc: '沉稳深灰色调',
         colors: {
             '--bg-primary': '#181818', '--bg-secondary': '#1e1e1e', '--bg-tertiary': '#252525',
             '--bg-card': '#2a2a2a', '--bg-input': '#141414', '--bg-titlebar': '#111111',
@@ -11821,8 +11971,8 @@ function applyTheme(themeId, customColors) {
         colors = THEME_PRESETS[themeId].colors;
         isLight = (themeId === 'light');
     } else {
-        colors = THEME_PRESETS.dark.colors;
-        themeId = 'dark';
+        colors = THEME_PRESETS['starry-lantern'].colors;
+        themeId = 'starry-lantern';
     }
 
     // 设置所有 CSS 变量
@@ -11830,11 +11980,41 @@ function applyTheme(themeId, customColors) {
         root.style.setProperty(key, val);
     }
 
-    // 设置 body class 以便 CSS 区分亮色/暗色
-    document.body.classList.remove('theme-light', 'theme-dark');
+    // 设置 body class 以便 CSS 区分亮色/暗色及星空花灯/季节氛围
+    document.body.classList.remove(
+        'theme-light',
+        'theme-dark',
+        'theme-starry-lantern',
+        'theme-starry-ink',
+        'theme-autumn-night',
+        'theme-snow-night',
+        'theme-christmas-eve'
+    );
     document.body.classList.add(isLight ? 'theme-light' : 'theme-dark');
+    if (
+        themeId === 'starry-lantern'
+        || themeId === 'starry-ink'
+        || themeId === 'autumn-night'
+        || themeId === 'snow-night'
+        || themeId === 'christmas-eve'
+    ) {
+        document.body.classList.add(`theme-${themeId}`);
+    }
 
     localStorage.setItem(THEME_KEY, themeId);
+
+    // 同步原生 Windows 标题栏叠加层颜色，消除顶部白条
+    if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.setTitlebarTheme === 'function') {
+        const titleColor = /^#[0-9a-fA-F]{6}$/.test(colors['--bg-titlebar'] || '')
+            ? colors['--bg-titlebar']
+            : (isLight ? '#e2ebe0' : '#050811');
+        const symbolColor = /^#[0-9a-fA-F]{6}$/.test(colors['--text-primary'] || '')
+            ? colors['--text-primary']
+            : (isLight ? '#1b2e1b' : '#eef2fb');
+        try {
+            Promise.resolve(window.electronAPI.setTitlebarTheme({ isLight, color: titleColor, symbolColor })).catch(() => {});
+        } catch (_) {}
+    }
 
     // 更新选中状态
     document.querySelectorAll('.theme-card').forEach(card => {
@@ -11842,6 +12022,10 @@ function applyTheme(themeId, customColors) {
         card.style.borderColor = isActive ? 'var(--accent)' : 'var(--border-color)';
         card.style.boxShadow = isActive ? '0 0 0 2px var(--accent-alpha)' : 'none';
     });
+
+    if (typeof window !== 'undefined' && window.VideoKitStudio && typeof window.VideoKitStudio.onThemeChange === 'function') {
+        window.VideoKitStudio.onThemeChange(themeId, { colors, isLight });
+    }
 }
 
 /** 判断 hex 颜色是否为亮色 */
@@ -11909,7 +12093,7 @@ function _lightenHex(hex, amount) {
 function renderThemeCards() {
     const container = document.getElementById('theme-cards');
     if (!container) return;
-    const current = localStorage.getItem(THEME_KEY) || 'dark';
+    const current = localStorage.getItem(THEME_KEY) || 'starry-lantern';
 
     container.innerHTML = '';
     for (const [id, preset] of Object.entries(THEME_PRESETS)) {
@@ -11925,7 +12109,7 @@ function renderThemeCards() {
             transition: all 0.2s;
         `;
         card.onmouseenter = () => { if (!card.style.boxShadow.includes('accent')) card.style.borderColor = 'rgba(255,255,255,0.2)'; };
-        card.onmouseleave = () => { if (card.dataset.theme !== (localStorage.getItem(THEME_KEY) || 'dark')) card.style.borderColor = 'var(--border-color)'; };
+        card.onmouseleave = () => { if (card.dataset.theme !== (localStorage.getItem(THEME_KEY) || 'starry-lantern')) card.style.borderColor = 'var(--border-color)'; };
         card.onclick = () => applyTheme(id);
 
         // 色块预览
@@ -11944,13 +12128,29 @@ function renderThemeCards() {
 
 /** 初始化主题 */
 function initTheme() {
-    const saved = localStorage.getItem(THEME_KEY) || 'dark';
+    if (typeof window !== 'undefined') {
+        window.THEME_PRESETS = THEME_PRESETS;
+        window.applyTheme = applyTheme;
+    }
+    const MIGRATE_KEY = 'vk_starry_default_v1';
+    let saved = localStorage.getItem(THEME_KEY);
+    if (!localStorage.getItem(MIGRATE_KEY)) {
+        localStorage.setItem(MIGRATE_KEY, '1');
+        if (!saved || saved === 'dark') {
+            saved = 'starry-lantern';
+        }
+    }
+    saved = saved || 'starry-lantern';
+
     if (saved === 'custom') {
-        const customColors = JSON.parse(localStorage.getItem(CUSTOM_THEME_KEY) || 'null');
+        let customColors = null;
+        try {
+            customColors = JSON.parse(localStorage.getItem(CUSTOM_THEME_KEY) || 'null');
+        } catch (_) {}
         if (customColors) {
             applyTheme('custom', customColors);
         } else {
-            applyTheme('dark');
+            applyTheme('starry-lantern');
         }
     } else {
         applyTheme(saved);
@@ -28900,31 +29100,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(() => { });
     }
 
-    // 监听更新状态事件
+    // 监听更新状态事件（先刷新右上角非阻塞提醒卡片，再同步设置页状态）
     if (window.electronAPI?.onUpdateStatus) {
         window.electronAPI.onUpdateStatus((data) => {
+            _handleAppUpdateStatusEvent(data);
+
             const statusEl = document.getElementById('update-status-text');
             const progressBar = document.getElementById('update-progress-bar');
             const progressInner = document.getElementById('update-progress-inner');
             const btn = document.getElementById('check-update-btn');
-
             if (!statusEl) return;
 
-            switch (data.status) {
+            switch (data?.status) {
                 case 'checking':
                     statusEl.textContent = '⏳ 正在检查...';
                     statusEl.style.color = 'var(--text-secondary)';
-                    if (btn) btn.disabled = true;
+                    if (btn) { btn.disabled = true; btn.onclick = checkAppUpdate; }
                     break;
                 case 'available':
-                    statusEl.textContent = `🎉 发现新版本 ${data.version}`;
+                    statusEl.textContent = `🎉 发现新版本 ${data.version || ''}`;
                     statusEl.style.color = '#00d9a5';
-                    if (btn) { btn.disabled = false; btn.textContent = '📥 下载更新'; }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '📥 下载更新';
+                        btn.onclick = _startAppUpdateDownload;
+                    }
                     break;
                 case 'up-to-date':
                     statusEl.textContent = '✅ 已是最新版本';
                     statusEl.style.color = '#00d9a5';
-                    if (btn) { btn.disabled = false; btn.textContent = '🔄 检查更新'; }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🔄 检查更新';
+                        btn.onclick = checkAppUpdate;
+                    }
                     break;
                 case 'downloading':
                     statusEl.textContent = `⬇️ 下载中 ${data.percent || 0}%`;
@@ -28934,21 +29143,234 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (btn) btn.disabled = true;
                     break;
                 case 'downloaded':
-                    statusEl.textContent = `✅ v${data.version} 已下载，重启即可安装`;
+                    statusEl.textContent = `✅ v${data.version || ''} 已下载，重启即可安装`;
                     statusEl.style.color = '#00d9a5';
                     if (progressBar) progressBar.classList.add('hidden');
-                    if (btn) { btn.disabled = false; btn.textContent = '🔄 重启安装'; btn.onclick = () => window.electronAPI.installUpdate(); }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🔄 重启安装';
+                        btn.onclick = _installDownloadedAppUpdate;
+                    }
                     break;
                 case 'error':
-                    statusEl.textContent = `❌ ${data.message}`;
+                    statusEl.textContent = `❌ ${data.message || '更新失败'}`;
                     statusEl.style.color = '#ff4757';
                     if (progressBar) progressBar.classList.add('hidden');
-                    if (btn) { btn.disabled = false; btn.textContent = '🔄 重试'; }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = '🔄 重试';
+                        btn.onclick = _appUpdateUiState.latestVersion ? _startAppUpdateDownload : checkAppUpdate;
+                    }
                     break;
             }
         });
     }
 });
+
+const _appUpdateUiState = {
+    dismissedVersion: null,
+    userInitiatedFlow: false,
+    latestVersion: '',
+    isDownloading: false,
+    isInstalling: false,
+};
+
+function _dismissUpdateCornerToast(rememberVersion = true) {
+    if (rememberVersion && _appUpdateUiState.latestVersion) {
+        _appUpdateUiState.dismissedVersion = _appUpdateUiState.latestVersion;
+    }
+    _appUpdateUiState.userInitiatedFlow = false;
+    const el = document.getElementById('vk-update-toast');
+    if (!el) return;
+    el.classList.remove('is-visible');
+    el.setAttribute('aria-hidden', 'true');
+}
+
+function _getOrCreateUpdateCornerToast() {
+    let el = document.getElementById('vk-update-toast');
+    if (el) return el;
+    if (!document.body) return null;
+    el = document.createElement('aside');
+    el.id = 'vk-update-toast';
+    el.className = 'vk-update-toast';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(el);
+    return el;
+}
+
+function _showUpdateCornerToast(data) {
+    if (!data || !data.status) return;
+    const el = _getOrCreateUpdateCornerToast();
+    if (!el) return;
+
+    const status = String(data.status);
+    const version = data.version ? String(data.version) : _appUpdateUiState.latestVersion;
+    if (data.version) _appUpdateUiState.latestVersion = String(data.version);
+    const safeVersion = escapeHtml(version || '');
+    const notesText = typeof data.releaseNotes === 'string' ? data.releaseNotes.trim() : '';
+    const sizeText = Number(data.zipSize) > 0 ? ` · ${(Number(data.zipSize) / 1024 / 1024).toFixed(1)} MB` : '';
+
+    el.dataset.status = status;
+
+    let badgeHtml = '';
+    let titleHtml = '';
+    let bodyHtml = '';
+    let actionsHtml = '';
+
+    if (status === 'available') {
+        badgeHtml = `<span class="vk-update-toast-badge ${data.isBeta ? 'is-beta' : ''}">${data.isBeta ? '🧪 测试版' : '新版本'} v${safeVersion}</span>`;
+        titleHtml = `<span>🎉 发现更新</span>${badgeHtml}`;
+        bodyHtml = `<div class="vk-update-toast-body">新版本已就绪${escapeHtml(sizeText)}，可按需下载，不影响当前编辑。</div>`;
+        if (notesText) {
+            bodyHtml += `<div class="vk-update-toast-notes">${escapeHtml(notesText)}</div>`;
+        }
+        bodyHtml += `<div class="vk-update-toast-hint">若当前版本运行顺畅，也可稍后在设置中升级。</div>`;
+        actionsHtml = `
+            <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">稍后</button>
+            <button type="button" class="vk-update-toast-btn is-primary" data-toast-action="download">立即下载</button>`;
+    } else if (status === 'downloading') {
+        const pct = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0)));
+        badgeHtml = `<span class="vk-update-toast-badge">${pct}%</span>`;
+        titleHtml = `<span>⬇️ 正在更新</span>${badgeHtml}`;
+        bodyHtml = `
+            <div class="vk-update-toast-body">${escapeHtml(data.message || `正在下载更新... ${pct}%`)}</div>
+            <div class="vk-update-toast-progress"><div class="vk-update-toast-progress-bar" style="width: ${pct}%;"></div></div>`;
+    } else if (status === 'downloaded') {
+        _appUpdateUiState.isDownloading = false;
+        _appUpdateUiState.dismissedVersion = null;
+        badgeHtml = safeVersion ? `<span class="vk-update-toast-badge is-ready">v${safeVersion}</span>` : '';
+        titleHtml = `<span>✅ 更新已就绪</span>${badgeHtml}`;
+        const hintLine = data.errorHint
+            ? `<div class="vk-update-toast-hint" style="color: #fbbf24;">⚠️ ${escapeHtml(data.errorHint)}</div>`
+            : `<div class="vk-update-toast-hint">重启应用即可使用新版本，当前工程会自动保存。</div>`;
+        bodyHtml = `<div class="vk-update-toast-body">安装包已准备就绪。</div>${hintLine}`;
+        actionsHtml = `
+            <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">稍后重启</button>
+            <button type="button" class="vk-update-toast-btn is-primary" data-toast-action="install">立即重启安装</button>`;
+    } else if (status === 'error') {
+        _appUpdateUiState.isDownloading = false;
+        titleHtml = `<span>⚠️ 更新未完成</span>`;
+        bodyHtml = `<div class="vk-update-toast-body">${escapeHtml(data.message || '请检查网络连接后重试')}</div>`;
+        actionsHtml = `
+            <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">关闭</button>
+            <button type="button" class="vk-update-toast-btn is-primary" data-toast-action="retry">重试</button>`;
+    } else {
+        return;
+    }
+
+    el.innerHTML = `
+        <div class="vk-update-toast-header">
+            <div class="vk-update-toast-title-wrap">${titleHtml}</div>
+            <button type="button" class="vk-update-toast-close" data-toast-action="close" aria-label="关闭更新提醒">✕</button>
+        </div>
+        ${bodyHtml}
+        ${actionsHtml ? `<div class="vk-update-toast-actions">${actionsHtml}</div>` : ''}`;
+
+    el.querySelectorAll('[data-toast-action]').forEach((btnEl) => {
+        btnEl.addEventListener('click', () => {
+            const action = btnEl.getAttribute('data-toast-action');
+            if (action === 'close' || action === 'dismiss') {
+                _dismissUpdateCornerToast(status === 'available');
+            } else if (action === 'download') {
+                _startAppUpdateDownload();
+            } else if (action === 'install') {
+                _installDownloadedAppUpdate();
+            } else if (action === 'retry') {
+                if (_appUpdateUiState.latestVersion) _startAppUpdateDownload();
+                else checkAppUpdate();
+            }
+        });
+    });
+
+    el.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => el.classList.add('is-visible'));
+}
+
+function _handleAppUpdateStatusEvent(data) {
+    const status = data?.status;
+    if (!status) return;
+    if (status === 'available') {
+        if (!_appUpdateUiState.userInitiatedFlow && _appUpdateUiState.dismissedVersion && _appUpdateUiState.dismissedVersion === String(data.version || '')) {
+            return;
+        }
+        _showUpdateCornerToast(data);
+        return;
+    }
+    if (status === 'downloading' || status === 'downloaded') {
+        _showUpdateCornerToast(data);
+        return;
+    }
+    if (status === 'up-to-date') {
+        _dismissUpdateCornerToast(false);
+        return;
+    }
+    if (status === 'error') {
+        const el = document.getElementById('vk-update-toast');
+        const visible = !!(el && el.classList.contains('is-visible'));
+        if (_appUpdateUiState.userInitiatedFlow || visible) {
+            _showUpdateCornerToast(data);
+        }
+    }
+}
+
+async function _startAppUpdateDownload() {
+    if (!window.electronAPI?.downloadUpdate) {
+        if (typeof showToast === 'function') showToast('⚠️ 仅打包版支持自动更新', 'warning');
+        return;
+    }
+    if (_appUpdateUiState.isDownloading) return;
+    _appUpdateUiState.isDownloading = true;
+    _appUpdateUiState.userInitiatedFlow = true;
+    _showUpdateCornerToast({
+        status: 'downloading',
+        percent: 0,
+        message: '正在准备下载更新...',
+        version: _appUpdateUiState.latestVersion,
+    });
+    const btn = document.getElementById('check-update-btn');
+    if (btn) btn.disabled = true;
+
+    try {
+        const result = await window.electronAPI.downloadUpdate();
+        if (result && result.success === false) {
+            _showUpdateCornerToast({ status: 'error', message: result.error || '下载更新失败' });
+        }
+    } catch (err) {
+        _showUpdateCornerToast({ status: 'error', message: err?.message || '下载更新失败' });
+    } finally {
+        _appUpdateUiState.isDownloading = false;
+    }
+}
+
+async function _installDownloadedAppUpdate() {
+    if (!window.electronAPI?.installUpdate || _appUpdateUiState.isInstalling) return;
+    _appUpdateUiState.isInstalling = true;
+    const primaryBtn = document.querySelector('#vk-update-toast [data-toast-action="install"]');
+    const settingsBtn = document.getElementById('check-update-btn');
+    if (primaryBtn) {
+        primaryBtn.disabled = true;
+        primaryBtn.textContent = '正在准备重启...';
+    }
+    if (settingsBtn) settingsBtn.disabled = true;
+
+    try {
+        const result = await window.electronAPI.installUpdate();
+        if (result && result.success === false) {
+            const msg = result.error || '请先保存当前工作或等待导出完成后再重启';
+            if (typeof showToast === 'function') showToast(msg, 'warning');
+            _showUpdateCornerToast({ status: 'downloaded', version: _appUpdateUiState.latestVersion, errorHint: msg });
+        }
+    } catch (err) {
+        const msg = err?.message || '重启安装失败';
+        if (typeof showToast === 'function') showToast(msg, 'error');
+        _showUpdateCornerToast({ status: 'downloaded', version: _appUpdateUiState.latestVersion, errorHint: msg });
+    } finally {
+        _appUpdateUiState.isInstalling = false;
+        if (settingsBtn) settingsBtn.disabled = false;
+    }
+}
 
 // 手动检查更新
 async function checkAppUpdate() {
@@ -28963,6 +29385,8 @@ async function checkAppUpdate() {
         return;
     }
 
+    _appUpdateUiState.userInitiatedFlow = true;
+    _appUpdateUiState.dismissedVersion = null;
     if (btn) btn.disabled = true;
     if (statusEl) {
         statusEl.textContent = '⏳ 正在检查...';
@@ -28981,7 +29405,7 @@ async function checkAppUpdate() {
             statusEl.style.color = '#ff4757';
         }
     } finally {
-        if (btn) btn.disabled = false;
+        if (btn && !_appUpdateUiState.isDownloading) btn.disabled = false;
     }
 }
 

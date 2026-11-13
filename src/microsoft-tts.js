@@ -995,6 +995,9 @@
         if ($('create-zip')) $('create-zip').onclick = createZipArchive;
 
         const tabBtn = document.querySelector('[data-tab="microsoft-tts"]');
+        document.addEventListener('vk:panel-activated', (e) => {
+            if (e.detail?.tabName === 'microsoft-tts' && voices.length <= FALLBACK_VOICES.length) loadVoices(false);
+        });
         if (tabBtn) {
             tabBtn.addEventListener('click', () => {
                 if (voices.length <= FALLBACK_VOICES.length) loadVoices(false);

@@ -40,6 +40,8 @@ const CANVAS_EXCLUSIVE_ANIMATIONS = new Set([
     'underline_sweep',
     'three_word_focus_stack',
     'rolling_rainbow_karaoke',
+    'feather_wipe',
+    'speech_feather_wipe',
     'char_fade',
     'char_scale',
     'char_slide',
@@ -525,6 +527,8 @@ function resolveSingleFontFamily(fontFamilyRaw, taskId = null) {
         georgia: ['georgia.ttf', 'georgiab.ttf', 'gelasio-variablefont_wght.ttf'],
         microsoftyahei: ['msyh.ttc', 'msyhbd.ttc'],
         simhei: ['simhei.ttf'],
+        knewave: ['shrikhand-regular.ttf', 'comicrelief-bold.ttf', 'comicbd.ttf', 'comic.ttf'],
+        shrikhand: ['shrikhand-regular.ttf', 'comicrelief-bold.ttf'],
     };
 
     const aliasCandidates = winFontAliases[requestedKey] || [];

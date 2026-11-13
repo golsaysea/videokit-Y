@@ -92,7 +92,7 @@ const GOOGLE_FONTS = [
     'Abril Fatface', 'Alfa Slab One', 'Comfortaa', 'Passion One',
     'Baloo 2', 'Bangers', 'Russo One', 'Press Start 2P',
     'Lobster Two', 'Fugaz One', 'Concert One', 'Bungee Shade',
-    'Monoton', 'Fascinate Inline', 'Rampart One', 'Shrikhand',
+    'Monoton', 'Fascinate Inline', 'Rampart One', 'Shrikhand', 'Knewave',
     'Bree Serif', 'Crete Round', 'Patua One', 'Ultra',
     'Secular One', 'Staatliches', 'Francois One', 'Passion One',
     'Graduate', 'Oleo Script', 'Modak', 'Faster One',
@@ -248,6 +248,8 @@ class ReelsFontManager {
         this._loadingGoogleFontPromises = new Map();
         this._injectedStylesheetUrls = new Set();
         this._fontVariants = new Map(); // family -> Set of "weight|style"
+        this._remoteGoogleMeta = new Map(); // family.toLowerCase() -> metadata from Google Fonts API
+        this._lastGoogleSyncAt = 0;
         this._catalogSignature = '';
         this._lastDirCheckAt = 0;
         if(typeof document!=='undefined'&&document.fonts?.addEventListener)document.fonts.addEventListener('loadingdone',()=>{if(typeof window.reelsUpdatePreview==='function')window.reelsUpdatePreview();});
@@ -341,10 +343,10 @@ class ReelsFontManager {
         // Always expose hardcoded Google-font families in selector
         for (const gf of GOOGLE_FONTS) merged.add(gf);
 
-        // ── 动态拉取 Google Fonts 全量列表 (1700+) ──
+        // ── 动态拉取 Google Fonts 全量列表 (1900+) ──
         const dynamicGoogleFonts = await this._fetchGoogleFontsCatalog();
         if (dynamicGoogleFonts.length > 0) {
-            this._googleFontsFull = new Set(dynamicGoogleFonts);
+            this._googleFontsFull = new Set([...GOOGLE_FONTS, ...dynamicGoogleFonts]);
             for (const gf of dynamicGoogleFonts) merged.add(gf);
         } else {
             this._googleFontsFull = new Set(GOOGLE_FONTS);
@@ -415,28 +417,148 @@ class ReelsFontManager {
     }
 
     /**
-     * 从 Google Fonts 公开 API 拉取全量字体列表 (~1700+)。
-     * 结果缓存到 localStorage，7天内不重复请求。
-     * 离线或请求失败时返回空数组（回退到硬编码列表）。
+     * 解析并注册 Google Fonts 元数据条目（分类、字重、斜体、语种/地区、热门排名、飙升排名、上架时间）。
      */
-    async _fetchGoogleFontsCatalog() {
-        const CACHE_KEY = 'gfonts_catalog';
-        const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7天
+    _applyGoogleCatalogItems(items) {
+        if (!Array.isArray(items) || items.length === 0) return [];
+        const total = Math.max(1, items.length);
+        const families = [];
+        const catMap = {
+            'sans serif': 'sans',
+            'serif': 'serif',
+            'display': 'display',
+            'handwriting': 'script',
+            'monospace': 'mono',
+            'sans': 'sans',
+            'script': 'script',
+            'mono': 'mono',
+            'cjk': 'cjk',
+        };
 
-        // 1. 尝试从缓存读取
-        try {
-            const cached = localStorage.getItem(CACHE_KEY);
-            if (cached) {
-                const { ts, fonts } = JSON.parse(cached);
-                if (Date.now() - ts < CACHE_TTL && Array.isArray(fonts) && fonts.length > 100) {
-                    console.log(`[FontManager] Google Fonts 目录缓存命中: ${fonts.length} 个字体`);
-                    return fonts;
+        for (const item of items) {
+            if (!item) continue;
+            if (typeof item === 'string') {
+                families.push(item);
+                continue;
+            }
+            const family = item.family || item.f;
+            if (!family) continue;
+            families.push(family);
+
+            const rawCat = String(item.category || item.c || '').toLowerCase();
+            let styleCat = catMap[rawCat] || 'sans';
+            const subsets = Array.isArray(item.subsets || item.s) ? (item.subsets || item.s) : [];
+            const isCjk = subsets.some(sub =>
+                sub === 'chinese-simplified' ||
+                sub === 'chinese-traditional' ||
+                sub === 'chinese-hongkong' ||
+                sub === 'japanese' ||
+                sub === 'korean'
+            );
+            const category = isCjk ? 'cjk' : styleCat;
+
+            const regions = [];
+            if (subsets.includes('arabic')) regions.push('arabic');
+            if (subsets.includes('tagalog')) regions.push('philippines');
+            if (isCjk) regions.push('cjk');
+            if (subsets.includes('cyrillic') || subsets.includes('greek') || subsets.includes('latin-ext')) {
+                regions.push('europe');
+            }
+            if (!regions.includes('us')) regions.push('us');
+            if (!regions.includes('europe')) regions.push('europe');
+
+            const popRank = Number(item.popularity ?? item.p) || 999;
+            const trendRank = Number(item.trending ?? item.t) || 999;
+            const dateAdded = item.dateAdded || item.d || '';
+
+            let popularity = 60;
+            if (popRank <= 50) popularity = 98 - Math.floor((popRank - 1) / 15);
+            else if (popRank <= 200) popularity = 94 - Math.floor((popRank - 50) / 30);
+            else if (popRank <= 600) popularity = 88 - Math.floor((popRank - 200) / 35);
+            else popularity = Math.max(52, Math.round(76 - ((popRank - 600) / Math.max(1, total - 600)) * 24));
+
+            const useCases = [];
+            if (styleCat === 'sans') useCases.push('subtitle', 'tech');
+            if (styleCat === 'serif') useCases.push('luxury', 'narrative');
+            if (styleCat === 'display') useCases.push('viral', 'poster');
+            if (styleCat === 'script') useCases.push('kids', 'lifestyle');
+            if (styleCat === 'mono') useCases.push('tech', 'game');
+            if (isCjk) useCases.push('subtitle', 'documentary');
+            if (popRank <= 120 || trendRank <= 80) {
+                if (!useCases.includes('viral')) useCases.unshift('viral');
+            }
+
+            // 注册该字体真实支持的字重与斜体
+            const variants = item.fonts ? Object.keys(item.fonts) : (Array.isArray(item.w) ? item.w : []);
+            for (const vKey of variants) {
+                const isItalic = String(vKey).endsWith('i');
+                const weightNum = String(vKey).replace(/i$/i, '') || '400';
+                if (/^\d+$/.test(weightNum)) {
+                    this._recordVariant(family, weightNum, isItalic ? 'italic' : 'normal');
                 }
             }
-        } catch { /* ignore parse errors */ }
+
+            const aliases = [];
+            if (isCjk) aliases.push('中日韩', '汉字');
+            if (subsets.includes('arabic')) aliases.push('阿拉伯语');
+            if (subsets.includes('cyrillic')) aliases.push('俄语', '西里尔文');
+            if (trendRank <= 100) aliases.push('飙升', '趋势');
+
+            this._remoteGoogleMeta.set(family.toLowerCase(), {
+                family,
+                category,
+                subCategory: styleCat,
+                regions: Array.from(new Set(regions)),
+                useCases: Array.from(new Set(useCases)),
+                popularity,
+                popularityRank: popRank,
+                trendingRank: trendRank,
+                dateAdded,
+                subsets,
+                source: 'google',
+                aliases,
+            });
+        }
+        return families;
+    }
+
+    /**
+     * 从 Google Fonts 公开 API 拉取全量字体列表 (~1960+)。
+     * 结果缓存到 localStorage，7天内不重复请求（支持 forceRefresh 强制立即联网更新）。
+     * 离线或请求失败时返回空数组（回退到硬编码列表）。
+     */
+    async _fetchGoogleFontsCatalog(forceRefresh = false) {
+        const CACHE_KEY_V2 = 'gfonts_catalog_v2';
+        const LEGACY_CACHE_KEY = 'gfonts_catalog';
+        const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7天
+
+        // 1. 尝试从缓存读取（非强制刷新时）
+        if (!forceRefresh) {
+            try {
+                const cachedV2 = localStorage.getItem(CACHE_KEY_V2);
+                if (cachedV2) {
+                    const { ts, items } = JSON.parse(cachedV2);
+                    if (Date.now() - ts < CACHE_TTL && Array.isArray(items) && items.length > 100) {
+                        this._lastGoogleSyncAt = ts;
+                        const fonts = this._applyGoogleCatalogItems(items);
+                        console.log(`[FontManager] Google Fonts 目录缓存命中 (v2): ${fonts.length} 个字体`);
+                        return fonts;
+                    }
+                }
+                const cachedLegacy = localStorage.getItem(LEGACY_CACHE_KEY);
+                if (cachedLegacy) {
+                    const { ts, fonts } = JSON.parse(cachedLegacy);
+                    if (Date.now() - ts < CACHE_TTL && Array.isArray(fonts) && fonts.length > 100) {
+                        this._lastGoogleSyncAt = ts;
+                        console.log(`[FontManager] Google Fonts 目录缓存命中: ${fonts.length} 个字体`);
+                        return fonts;
+                    }
+                }
+            } catch { /* ignore parse errors */ }
+        }
 
         // 2. 离线时跳过
-        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
             return [];
         }
 
@@ -447,28 +569,48 @@ class ReelsFontManager {
                 text = await window.electronAPI.fetchGoogleFonts();
             } else {
                 const resp = await fetch('https://fonts.google.com/metadata/fonts', {
-                    signal: AbortSignal.timeout(8000),
+                    signal: AbortSignal.timeout(10000),
                 });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 text = await resp.text();
             }
             // Google Fonts metadata 前面有 )]}' 安全前缀，需要去掉
-            const jsonStr = text.replace(/^\)\]\}'\n?/, '');
+            const jsonStr = String(text || '').replace(/^\)\]\}'\n?/, '');
             const data = JSON.parse(jsonStr);
 
             let fontFamilies = [];
+            let compactItems = [];
             if (data.familyMetadataList && Array.isArray(data.familyMetadataList)) {
-                fontFamilies = data.familyMetadataList.map(f => f.family).filter(Boolean);
+                fontFamilies = this._applyGoogleCatalogItems(data.familyMetadataList);
+                compactItems = data.familyMetadataList
+                    .filter(f => f && f.family)
+                    .map(f => ({
+                        f: f.family,
+                        c: f.category || 'Sans Serif',
+                        p: f.popularity || 999,
+                        t: f.trending || 999,
+                        d: f.dateAdded || '',
+                        s: Array.isArray(f.subsets) ? f.subsets.filter(x => x !== 'menu' && x !== 'latin') : [],
+                        w: f.fonts ? Object.keys(f.fonts) : ['400', '700'],
+                    }));
             }
 
             if (fontFamilies.length > 100) {
-                // 缓存到 localStorage
+                const now = Date.now();
+                this._lastGoogleSyncAt = now;
                 try {
-                    localStorage.setItem(CACHE_KEY, JSON.stringify({
-                        ts: Date.now(),
-                        fonts: fontFamilies,
+                    localStorage.setItem(CACHE_KEY_V2, JSON.stringify({
+                        ts: now,
+                        items: compactItems,
                     }));
-                } catch { /* quota exceeded — ignore */ }
+                } catch {
+                    try {
+                        localStorage.setItem(LEGACY_CACHE_KEY, JSON.stringify({
+                            ts: now,
+                            fonts: fontFamilies,
+                        }));
+                    } catch { /* quota exceeded — ignore */ }
+                }
                 console.log(`[FontManager] 🌐 Google Fonts 全量目录: ${fontFamilies.length} 个字体已加载`);
                 return fontFamilies;
             }
@@ -477,6 +619,28 @@ class ReelsFontManager {
         }
 
         return [];
+    }
+
+    /**
+     * 立即联网拉取最新 Google Fonts 全量字体库 (~1960+)，合并并刷新所有字体选择器与弹窗。
+     */
+    async syncGoogleFontsCatalog(force = true) {
+        const dynamicGoogleFonts = await this._fetchGoogleFontsCatalog(Boolean(force));
+        const mergedGoogle = new Set([...GOOGLE_FONTS, ...(this._googleFontsFull || []), ...dynamicGoogleFonts]);
+        this._googleFontsFull = mergedGoogle;
+        const allowedSet = new Set(this._allowedFonts);
+        for (const gf of mergedGoogle) {
+            allowedSet.add(gf);
+        }
+        this._allowedFonts = Array.from(allowedSet);
+        this._unifiedCatalogCache = null;
+        this._catalogSignature = this.getAllFonts().join('|');
+        this.refreshAllFontSelects();
+        return {
+            fetchedCount: dynamicGoogleFonts.length,
+            totalGoogleFonts: this._googleFontsFull.size,
+            updatedAt: this._lastGoogleSyncAt || Date.now(),
+        };
     }
 
     /**
@@ -882,8 +1046,21 @@ class ReelsFontManager {
 
     _getFontMetadata(fontName) {
         if (!fontName) return {};
-        const exact = this._ensureFontMetadataIndex().get(String(fontName).toLowerCase());
+        const key = String(fontName).toLowerCase();
+        const exact = this._ensureFontMetadataIndex().get(key);
+        const remote = this._remoteGoogleMeta ? this._remoteGoogleMeta.get(key) : null;
+        if (exact && remote) {
+            return {
+                ...remote,
+                ...exact,
+                popularityRank: remote.popularityRank,
+                trendingRank: remote.trendingRank,
+                dateAdded: remote.dateAdded || exact.dateAdded,
+                subsets: remote.subsets || exact.subsets,
+            };
+        }
         if (exact) return exact;
+        if (remote) return remote;
         return this._inferFontMetadata(fontName);
     }
 
@@ -1569,25 +1746,35 @@ class ReelsFontManager {
             <div class="fp-header">
                 <div class="fp-search-box">
                     <span class="fp-search-icon">🔍</span>
-                    <input type="text" class="fp-search-input" placeholder="智能搜索：如 '短视频', '高级', '英式'...">
+                    <input type="text" class="fp-search-input" placeholder="智能搜索 1960+ 字体：如 '短视频', '高级', '科幻', 'Playfair'...">
                 </div>
                 <div class="fp-preview-field">
                     <input type="text" class="fp-preview-input" placeholder="输入预览文字..." value="Make it unforgettable">
                     <div class="fp-preview-hint">预览文字，不会写入字幕</div>
                 </div>
+                <select class="fp-sort-select" title="字体排序方式" style="height:34px; padding:0 8px; border:1px solid #333; border-radius:8px; background:#11111b; color:#dce3f2; font-size:12px; cursor:pointer;">
+                    <option value="popular">🔥 综合热门</option>
+                    <option value="trending">📈 近期飙升</option>
+                    <option value="newest">🆕 最新上架</option>
+                    <option value="az">🔤 名称 A-Z</option>
+                </select>
+                <button type="button" class="fp-sync-btn" title="从 Google Fonts 官方服务器同步最新全量免费字体库 (1960+ 款)" style="height:34px; padding:0 10px; border:1px solid #3b82f6; border-radius:8px; background:rgba(59,130,246,0.14); color:#93c5fd; cursor:pointer; font-size:12px; white-space:nowrap;">🔄 联网更新字体库</button>
                 <button type="button" class="fp-global-toggle fp-active-filter" title="打开后，任何分类都只显示适合分享预设的字体">仅可分享</button>
                 <button class="fp-close-btn">×</button>
             </div>
-            <div class="fp-reco-area">
-                <div class="fp-reco-title">🎯 高命中率预设</div>
-                <div class="fp-reco-tags">
-                    <div class="fp-reco-tag" data-use="viral">短视频爆款</div>
-                    <div class="fp-reco-tag" data-use="subtitle">字幕清晰</div>
-                    <div class="fp-reco-tag" data-use="luxury">高级品牌感</div>
-                    <div class="fp-reco-tag" data-use="news">新闻纪录片</div>
-                    <div class="fp-reco-tag" data-use="tech">科技感</div>
-                    <div class="fp-reco-tag" data-use="kids">儿童轻松</div>
+            <div class="fp-reco-area" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                <div>
+                    <div class="fp-reco-title">🎯 高命中率预设</div>
+                    <div class="fp-reco-tags">
+                        <div class="fp-reco-tag" data-use="viral">短视频爆款</div>
+                        <div class="fp-reco-tag" data-use="subtitle">字幕清晰</div>
+                        <div class="fp-reco-tag" data-use="luxury">高级品牌感</div>
+                        <div class="fp-reco-tag" data-use="news">新闻纪录片</div>
+                        <div class="fp-reco-tag" data-use="tech">科技感</div>
+                        <div class="fp-reco-tag" data-use="kids">儿童轻松</div>
+                    </div>
                 </div>
+                <div class="fp-result-summary" style="font-size:12px; color:#8f97aa; white-space:nowrap; text-align:right;"></div>
             </div>
             <div class="fp-candidate-area">
                 <div class="fp-candidate-title">候选对比：点击字体名快速切换预览</div>
@@ -1640,8 +1827,12 @@ class ReelsFontManager {
         document.body.appendChild(overlay);
         
         const grid = main.querySelector('.fp-grid');
+        const gridWrap = main.querySelector('.fp-grid-wrap');
         const searchInput = main.querySelector('.fp-search-input');
         const previewInput = main.querySelector('.fp-preview-input');
+        const sortSelect = main.querySelector('.fp-sort-select');
+        const syncBtn = main.querySelector('.fp-sync-btn');
+        const resultSummary = main.querySelector('.fp-result-summary');
         const closeBtn = main.querySelector('.fp-close-btn');
         const portableToggle = main.querySelector('.fp-global-toggle');
         const sideItems = sidebar.querySelectorAll('.fp-side-item');
@@ -1664,6 +1855,7 @@ class ReelsFontManager {
         let activeRegion = null;
         let activeSource = null;
         let activeUseCase = null;
+        let activeSort = 'popular';
         let portableOnly = true;
         let currentFont = DEFAULT_FONT_FAMILY;
         let selectedFont = DEFAULT_FONT_FAMILY;
@@ -1672,8 +1864,32 @@ class ReelsFontManager {
         let selectedItalic = false;
         
         const self = this;
+        const PAGE_SIZE = 120;
+        let currentFiltered = [];
+        let renderedCount = 0;
+        let loadMoreWrap = null;
         
         const getMetadata = (fontName) => self._getFontMetadata(fontName);
+        
+        const updateSidebarCounts = () => {
+            const googleCount = (currentGroups.google || []).length;
+            const sysCount = (currentGroups.system || []).length + (currentGroups.embedded || []).length;
+            const customCount = (currentGroups.custom || []).length;
+            const totalCount = new Set([
+                ...(currentGroups.system || []),
+                ...(currentGroups.google || []),
+                ...(currentGroups.embedded || []),
+                ...(currentGroups.custom || []),
+            ]).size;
+            const allItem = sidebar.querySelector('.fp-side-item[data-cat="all"]');
+            if (allItem) allItem.textContent = `🌟 所有字体 (${totalCount})`;
+            const googleItem = sidebar.querySelector('.fp-side-item[data-source="google"]');
+            if (googleItem) googleItem.textContent = `🌐 Google 免费 (${googleCount})`;
+            const sysItem = sidebar.querySelector('.fp-side-item[data-source="system"]');
+            if (sysItem) sysItem.textContent = `💻 系统与自带 (${sysCount})`;
+            const customItem = sidebar.querySelector('.fp-side-item[data-source="custom"]');
+            if (customItem) customItem.textContent = `📤 我的上传 (${customCount})`;
+        };
         
         const getFavorites = () => {try{const saved=window.electronAPI?.getFontFavorites?.();if(Array.isArray(saved))return saved;const local=JSON.parse(localStorage.getItem('fp_favorites')||'[]');return Array.isArray(local)?local:[];}catch(_){return [];}};
         const toggleFavorite = (font) => {
@@ -1823,89 +2039,23 @@ class ReelsFontManager {
                 });
             }
         };
-        const renderGrid = () => {
-            previewObserver?.disconnect();
-            previewQueue = [];
-            queuedPreviewFonts.clear();
-            previewObserver = new IntersectionObserver(entries => {
-                for (const entry of entries) {
-                    if (!entry.isIntersecting) continue;
-                    const font = entry.target.dataset.font;
-                    previewObserver.unobserve(entry.target);
-                    if (!queuedPreviewFonts.has(font)) {
-                        queuedPreviewFonts.add(font);
-                        previewQueue.push(font);
-                    }
-                }
-                drainPreviews();
-            }, { root: grid.closest('.fp-grid-wrap') || null, rootMargin: '160px' });
-            grid.innerHTML = '';
-            const query = searchInput.value.toLowerCase().trim();
+        const appendNextBatch = () => {
+            if (renderedCount >= currentFiltered.length) {
+                if (loadMoreWrap) loadMoreWrap.remove();
+                loadMoreWrap = null;
+                return;
+            }
             const previewText = previewInput.value || 'Make it unforgettable';
             const favs = getFavorites();
-            const recs = getRecents();
-            
-            let allFonts = [];
-            if (currentGroups.system) allFonts.push(...currentGroups.system);
-            if (currentGroups.google) allFonts.push(...currentGroups.google);
-            if (currentGroups.embedded) allFonts.push(...currentGroups.embedded);
-            if (currentGroups.custom) allFonts.push(...currentGroups.custom);
-            allFonts = [...new Set(allFonts)];
-            
-            const filtered = allFonts.filter(font => {
-                const meta = getMetadata(font);
-                const displayName = currentDisplayNames[font] || font;
-                
-                if (query) {
-                    const matchName = font.toLowerCase().includes(query) || displayName.toLowerCase().includes(query);
-                    const matchAlias = meta.aliases && meta.aliases.some(a => a.toLowerCase().includes(query));
-                    const matchTags = meta.useCases && meta.useCases.some(u => u.toLowerCase().includes(query));
-                    const matchRegion = meta.regions && meta.regions.some(r => r.toLowerCase().includes(query));
-                    const matchCategory = meta.category && meta.category.toLowerCase().includes(query);
-                    if (!matchName && !matchAlias && !matchTags && !matchRegion && !matchCategory) return false;
-                }
-                
-                if (activeCategory === 'subtitled') {
-                    if (meta.importedFrom !== 'subtitled') return false;
-                } else if (activeCategory === 'favorites') {
-                    if (!favs.includes(font)) return false;
-                } else if (activeCategory === 'recent') {
-                    if (!recs.includes(font)) return false;
-                } else if (activeCategory !== 'all' && activeCategory !== 'trending') {
-                    if (meta.category !== activeCategory) {
-                        if (!meta.category && activeCategory === 'sans' && font.toLowerCase().includes('sans')) return true;
-                        if (!meta.category && activeCategory === 'serif' && font.toLowerCase().includes('serif')) return true;
-                        if (!meta.category && activeCategory === 'mono' && font.toLowerCase().includes('mono')) return true;
-                        if (!meta.category && activeCategory === 'cjk' && font.match(/[\u4e00-\u9fa5]/)) return true;
-                        return false;
-                    }
-                }
-                
-                if (activeCategory === 'trending' && (!meta.popularity || meta.popularity < 90)) return false;
-                if (activeRegion && (!meta.regions || !meta.regions.includes(activeRegion))) return false;
-                if (activeUseCase && (!meta.useCases || !meta.useCases.includes(activeUseCase))) return false;
-                
-                if (activeSource === 'system' && !currentGroups.system.includes(font) && !currentGroups.embedded.includes(font)) return false;
-                if (activeSource === 'google' && !currentGroups.google.includes(font)) return false;
-                if (activeSource === 'portable' && !currentGroups.google.includes(font) && !currentGroups.embedded.includes(font)) return false;
-                if (activeSource === 'custom' && !currentGroups.custom.includes(font)) return false;
-                if (portableOnly && !currentGroups.google.includes(font) && !currentGroups.embedded.includes(font)) return false;
-                
-                return true;
-            });
-            
-            filtered.sort((a, b) => {
-                if (activeCategory === 'recent') {
-                    return recs.indexOf(a) - recs.indexOf(b);
-                }
-                const mA = getMetadata(a).popularity || 50;
-                const mB = getMetadata(b).popularity || 50;
-                return mB - mA;
-            });
-            
-            const toRender = filtered.slice(0, 450);
-            
-            for (const font of toRender) {
+            const slice = currentFiltered.slice(renderedCount, renderedCount + PAGE_SIZE);
+            renderedCount += slice.length;
+
+            if (loadMoreWrap) {
+                loadMoreWrap.remove();
+                loadMoreWrap = null;
+            }
+
+            for (const font of slice) {
                 const meta = getMetadata(font);
                 const isFav = favs.includes(font);
                 const source = self._getFontSource(font, currentGroups);
@@ -1945,7 +2095,7 @@ class ReelsFontManager {
                         </button>
                     </div>
                     <div class="fp-card-preview" style="font-family: '${safeFont}', sans-serif;">
-                        ${safePreview}
+                        <span class="fp-card-preview-en">${safePreview}</span>
                         <div class="fp-card-preview-cn">高级字幕预览</div>
                     </div>
                     <div class="fp-card-footer">
@@ -1976,9 +2126,143 @@ class ReelsFontManager {
                 grid.appendChild(card);
                 previewObserver.observe(card);
             }
-            
-            if (filtered.length === 0) grid.innerHTML = '<div style="color:#888; padding:20px;">未找到匹配的字体。</div>';
+
+            if (resultSummary) {
+                resultSummary.textContent = `共匹配 ${currentFiltered.length} 款字体（已加载 ${renderedCount} 款）`;
+            }
+
+            if (renderedCount < currentFiltered.length) {
+                loadMoreWrap = document.createElement('div');
+                loadMoreWrap.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 14px 0;';
+                const moreBtn = document.createElement('button');
+                moreBtn.type = 'button';
+                moreBtn.style.cssText = 'padding: 8px 20px; border: 1px solid #3b82f6; border-radius: 8px; background: rgba(59,130,246,0.12); color: #93c5fd; cursor: pointer; font-size: 13px;';
+                moreBtn.textContent = `👇 继续加载更多字体（已显示 ${renderedCount} / 共 ${currentFiltered.length} 款）`;
+                moreBtn.addEventListener('click', () => appendNextBatch());
+                loadMoreWrap.appendChild(moreBtn);
+                grid.appendChild(loadMoreWrap);
+            }
         };
+
+        const renderGrid = () => {
+            updateSidebarCounts();
+            previewObserver?.disconnect();
+            previewQueue = [];
+            queuedPreviewFonts.clear();
+            previewObserver = new IntersectionObserver(entries => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    const font = entry.target.dataset.font;
+                    previewObserver.unobserve(entry.target);
+                    if (!queuedPreviewFonts.has(font)) {
+                        queuedPreviewFonts.add(font);
+                        previewQueue.push(font);
+                    }
+                }
+                drainPreviews();
+            }, { root: gridWrap || null, rootMargin: '220px' });
+            grid.innerHTML = '';
+            loadMoreWrap = null;
+            renderedCount = 0;
+            if (gridWrap) gridWrap.scrollTop = 0;
+            const query = searchInput.value.toLowerCase().trim();
+            const favs = getFavorites();
+            const recs = getRecents();
+            
+            let allFonts = [];
+            if (currentGroups.system) allFonts.push(...currentGroups.system);
+            if (currentGroups.google) allFonts.push(...currentGroups.google);
+            if (currentGroups.embedded) allFonts.push(...currentGroups.embedded);
+            if (currentGroups.custom) allFonts.push(...currentGroups.custom);
+            allFonts = [...new Set(allFonts)];
+            
+            const filtered = allFonts.filter(font => {
+                const meta = getMetadata(font);
+                const displayName = currentDisplayNames[font] || font;
+                
+                if (query) {
+                    const matchName = font.toLowerCase().includes(query) || displayName.toLowerCase().includes(query);
+                    const matchAlias = meta.aliases && meta.aliases.some(a => a.toLowerCase().includes(query));
+                    const matchTags = meta.useCases && meta.useCases.some(u => u.toLowerCase().includes(query));
+                    const matchRegion = meta.regions && meta.regions.some(r => r.toLowerCase().includes(query));
+                    const matchCategory = meta.category && meta.category.toLowerCase().includes(query);
+                    if (!matchName && !matchAlias && !matchTags && !matchRegion && !matchCategory) return false;
+                }
+                
+                if (activeCategory === 'subtitled') {
+                    if (meta.importedFrom !== 'subtitled') return false;
+                } else if (activeCategory === 'favorites') {
+                    if (!favs.includes(font)) return false;
+                } else if (activeCategory === 'recent') {
+                    if (!recs.includes(font)) return false;
+                } else if (activeCategory !== 'all' && activeCategory !== 'trending') {
+                    if (meta.category !== activeCategory && meta.subCategory !== activeCategory) {
+                        if (!meta.category && activeCategory === 'sans' && font.toLowerCase().includes('sans')) return true;
+                        if (!meta.category && activeCategory === 'serif' && font.toLowerCase().includes('serif')) return true;
+                        if (!meta.category && activeCategory === 'mono' && font.toLowerCase().includes('mono')) return true;
+                        if (!meta.category && activeCategory === 'cjk' && font.match(/[\u4e00-\u9fa5]/)) return true;
+                        return false;
+                    }
+                }
+                
+                if (activeCategory === 'trending' && (!meta.popularity || meta.popularity < 88) && (!meta.trendingRank || meta.trendingRank > 250)) return false;
+                if (activeRegion && (!meta.regions || !meta.regions.includes(activeRegion))) return false;
+                if (activeUseCase && (!meta.useCases || !meta.useCases.includes(activeUseCase))) return false;
+                
+                if (activeSource === 'system' && !currentGroups.system.includes(font) && !currentGroups.embedded.includes(font)) return false;
+                if (activeSource === 'google' && !currentGroups.google.includes(font)) return false;
+                if (activeSource === 'portable' && !currentGroups.google.includes(font) && !currentGroups.embedded.includes(font)) return false;
+                if (activeSource === 'custom' && !currentGroups.custom.includes(font)) return false;
+                if (portableOnly && !currentGroups.google.includes(font) && !currentGroups.embedded.includes(font)) return false;
+                
+                return true;
+            });
+            
+            filtered.sort((a, b) => {
+                if (activeCategory === 'recent') {
+                    return recs.indexOf(a) - recs.indexOf(b);
+                }
+                const mA = getMetadata(a);
+                const mB = getMetadata(b);
+                if (activeSort === 'az') {
+                    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+                }
+                if (activeSort === 'trending') {
+                    const tA = mA.trendingRank || 9999;
+                    const tB = mB.trendingRank || 9999;
+                    if (tA !== tB) return tA - tB;
+                }
+                if (activeSort === 'newest') {
+                    const dA = mA.dateAdded || '';
+                    const dB = mB.dateAdded || '';
+                    if (dA !== dB) return dB.localeCompare(dA);
+                }
+                const popA = mA.popularity || 50;
+                const popB = mB.popularity || 50;
+                if (popB !== popA) return popB - popA;
+                const rA = mA.popularityRank || 9999;
+                const rB = mB.popularityRank || 9999;
+                if (rA !== rB) return rA - rB;
+                return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+            });
+            
+            currentFiltered = filtered;
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div style="color:#888; padding:20px;">未找到匹配的字体。</div>';
+                if (resultSummary) resultSummary.textContent = '共匹配 0 款字体';
+                return;
+            }
+            appendNextBatch();
+        };
+        
+        if (gridWrap && typeof gridWrap.addEventListener === 'function') {
+            gridWrap.addEventListener('scroll', () => {
+                if (renderedCount < currentFiltered.length &&
+                    gridWrap.scrollTop + gridWrap.clientHeight >= gridWrap.scrollHeight - 360) {
+                    appendNextBatch();
+                }
+            });
+        }
         
         const closeModal = () => { overlay.classList.remove('fp-open'); previewObserver?.disconnect(); previewQueue = []; };
         closeBtn.addEventListener('click', closeModal);
@@ -1986,9 +2270,44 @@ class ReelsFontManager {
         
         searchInput.addEventListener('input', renderGrid);
         previewInput.addEventListener('input', () => {
-            renderGrid();
+            const nextPreview = previewInput.value || 'Make it unforgettable';
+            grid.querySelectorAll('.fp-card-preview-en').forEach(el => {
+                el.textContent = nextPreview;
+            });
             renderInspector();
         });
+        if (sortSelect) {
+            sortSelect.addEventListener('change', () => {
+                activeSort = sortSelect.value || 'popular';
+                renderGrid();
+            });
+        }
+        if (syncBtn) {
+            syncBtn.addEventListener('click', async () => {
+                const origText = syncBtn.textContent;
+                syncBtn.disabled = true;
+                syncBtn.textContent = '⏳ 正在同步 Google 字体库...';
+                try {
+                    const res = await self.syncGoogleFontsCatalog(true);
+                    const catalog = self.getUnifiedFontCatalog();
+                    currentDisplayNames = catalog.displayNames;
+                    currentGroups = catalog.groups;
+                    updateSidebarCounts();
+                    renderGrid();
+                    syncBtn.textContent = `✅ 已同步 (${res.totalGoogleFonts}款)`;
+                    if (typeof showToast === 'function') {
+                        showToast(`已从 Google Fonts 联网同步 ${res.totalGoogleFonts} 款免费商用字体`, 'success');
+                    }
+                    setTimeout(() => {
+                        syncBtn.textContent = origText;
+                        syncBtn.disabled = false;
+                    }, 3000);
+                } catch (err) {
+                    syncBtn.textContent = '⚠️ 同步失败，点击重试';
+                    syncBtn.disabled = false;
+                }
+            });
+        }
         weightSelect.addEventListener('change', renderInspector);
         compareButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -2073,6 +2392,19 @@ class ReelsFontManager {
                 renderCandidates();
                 renderGrid();
                 searchInput.focus();
+                if ((!self._remoteGoogleMeta || self._remoteGoogleMeta.size === 0) && !self._autoSyncingModal) {
+                    self._autoSyncingModal = true;
+                    self.syncGoogleFontsCatalog(true).then(() => {
+                        const latest = self.getUnifiedFontCatalog();
+                        currentDisplayNames = latest.displayNames;
+                        currentGroups = latest.groups;
+                        if (overlay.classList.contains('fp-open')) {
+                            renderGrid();
+                        }
+                    }).catch(() => {}).finally(() => {
+                        self._autoSyncingModal = false;
+                    });
+                }
             }
         };
     }

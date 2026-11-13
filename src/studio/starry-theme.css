@@ -1,0 +1,1136 @@
+/* ============================================================================
+ * VideoKit Starry Night & Chinese Palace Lantern Design System (v1)
+ * 静夜星空 · 中国花灯 现代深色剪辑台视觉系统
+ * ============================================================================ */
+
+:root {
+    --vk-radius-sm: 6px;
+    --vk-radius-md: 10px;
+    --vk-radius-lg: 14px;
+    --vk-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── 1. 静夜星空 Canvas & 中国花灯装饰层 ── */
+#vk-starry-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.45s var(--vk-ease-out);
+}
+
+body.theme-starry-lantern #vk-starry-canvas,
+body.theme-starry-ink #vk-starry-canvas,
+body.theme-autumn-night #vk-starry-canvas,
+body.theme-snow-night #vk-starry-canvas,
+body.theme-christmas-eve #vk-starry-canvas {
+    opacity: 1;
+}
+
+#vk-lantern-stage {
+    position: fixed;
+    top: var(--window-chrome-height, 38px);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 12;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.45s var(--vk-ease-out);
+}
+
+body.theme-starry-lantern #vk-lantern-stage,
+body.theme-autumn-night #vk-lantern-stage,
+body.theme-snow-night #vk-lantern-stage,
+body.theme-christmas-eve #vk-lantern-stage {
+    opacity: 1;
+}
+
+body[data-lantern-mode="off"] #vk-lantern-stage {
+    opacity: 0 !important;
+}
+
+.vk-lantern-eave {
+    position: absolute;
+    top: -2px;
+    pointer-events: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.vk-lantern-eave-right {
+    right: 18px;
+}
+
+.vk-lantern-eave-left {
+    left: 14px;
+    opacity: 0.72;
+}
+
+.vk-lantern-hanger {
+    position: relative;
+    transform-origin: top center;
+    will-change: transform;
+    animation: vkLanternSway 8.5s ease-in-out infinite;
+    filter: var(--vk-ornament-shadow, drop-shadow(0 6px 18px rgba(245, 158, 11, 0.34)));
+}
+
+.vk-lantern-hanger.is-compact {
+    animation-duration: 10.2s;
+    animation-delay: -3.4s;
+    filter: var(--vk-ornament-shadow-compact, drop-shadow(0 4px 12px rgba(232, 93, 53, 0.28)));
+}
+
+.vk-lantern-halo {
+    position: absolute;
+    left: 50%;
+    top: 38%;
+    width: 140px;
+    height: 140px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle,
+        rgba(255, 193, 94, 0.22) 0%,
+        rgba(245, 130, 50, 0.11) 36%,
+        rgba(232, 74, 39, 0.03) 64%,
+        transparent 76%);
+    pointer-events: none;
+    animation: vkLanternBreath 5.6s ease-in-out infinite;
+}
+
+.vk-lantern-hanger.is-compact .vk-lantern-halo {
+    width: 98px;
+    height: 98px;
+    animation-delay: -2.1s;
+}
+
+body[data-lantern-mode="calm"] .vk-lantern-hanger,
+body[data-lantern-mode="calm"] .vk-lantern-halo {
+    animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vk-lantern-hanger,
+    .vk-lantern-halo {
+        animation: none !important;
+    }
+}
+
+@keyframes vkLanternSway {
+    0%, 100% { transform: rotate(-1.4deg); }
+    50% { transform: rotate(1.4deg); }
+}
+
+@keyframes vkLanternBreath {
+    0%, 100% { opacity: 0.72; transform: translate(-50%, -50%) scale(0.96); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+}
+
+/* ── 2. 静夜星空 & 十一月季节主题视觉令牌系统 ── */
+body.theme-starry-lantern,
+body.theme-starry-ink,
+body.theme-autumn-night,
+body.theme-snow-night,
+body.theme-christmas-eve {
+    color-scheme: dark;
+    --vk-lantern-gold: #f6b24b;
+    --vk-lantern-amber: #ff9d3b;
+    --vk-lantern-red: #e85d35;
+    --vk-lantern-glow: rgba(246, 178, 75, 0.20);
+    --vk-starlight: #89b4fa;
+    --vk-glass-bg: rgba(9, 13, 25, 0.80);
+    --vk-glass-panel: rgba(12, 18, 34, 0.78);
+    --vk-glass-card: rgba(17, 25, 45, 0.84);
+    --vk-glass-border: rgba(158, 191, 255, 0.11);
+    --vk-glass-border-warm: rgba(246, 178, 75, 0.34);
+    --vk-titlebar-bg: linear-gradient(180deg, rgba(5, 8, 17, 0.96), rgba(8, 12, 24, 0.90));
+    --vk-title-gradient: linear-gradient(120deg, #f8fafc 10%, #ffd88a 75%, #ff9d3b 100%);
+    --vk-tab-active-bg: linear-gradient(135deg, rgba(246, 178, 75, 0.24), rgba(232, 93, 53, 0.22));
+    --vk-tab-active-fg: #ffe3a8;
+    --vk-tab-active-border: rgba(246, 178, 75, 0.48);
+    --vk-tab-active-shadow: 0 0 14px rgba(246, 178, 75, 0.18), inset 0 1px 0 rgba(255, 232, 178, 0.18);
+    --vk-pill-lit-border: rgba(246, 178, 75, 0.42);
+    --vk-pill-lit-bg: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(232, 93, 53, 0.16));
+    --vk-pill-lit-fg: #fde68a;
+    --vk-pill-lit-glow: rgba(245, 158, 11, 0.14);
+    --vk-stage-glow-1: rgba(246, 178, 75, 0.08);
+    --vk-stage-glow-2: rgba(96, 165, 250, 0.08);
+    --vk-stage-placeholder-glow: rgba(246, 178, 75, 0.14);
+    --vk-stage-placeholder-bg: linear-gradient(180deg, #060915 0%, #0b1122 55%, #070b17 100%);
+    --vk-stage-placeholder-fg: rgba(238, 224, 198, 0.72);
+    --vk-accent-primary: #f6b24b;
+    --vk-accent-soft: rgba(246, 178, 75, 0.14);
+    --vk-accent-soft-2: rgba(232, 93, 53, 0.10);
+    --vk-accent-border: rgba(246, 178, 75, 0.42);
+    --vk-accent-fg: #fde68a;
+    --vk-accent-focus-ring: rgba(246, 178, 75, 0.18);
+    --accent-color: var(--accent);
+}
+
+body.theme-starry-ink {
+    --vk-glass-bg: rgba(8, 12, 23, 0.82);
+    --vk-glass-panel: rgba(12, 18, 32, 0.80);
+    --vk-glass-card: rgba(17, 24, 42, 0.86);
+    --vk-glass-border: rgba(148, 184, 255, 0.12);
+    --vk-glass-border-warm: rgba(103, 178, 255, 0.35);
+    --vk-title-gradient: linear-gradient(120deg, #f8fafc 15%, #bfdbfe 75%, #60a5fa 100%);
+    --vk-tab-active-bg: linear-gradient(135deg, rgba(96, 165, 250, 0.24), rgba(129, 140, 248, 0.22));
+    --vk-tab-active-fg: #e0f2fe;
+    --vk-tab-active-border: rgba(125, 211, 252, 0.45);
+    --vk-tab-active-shadow: 0 0 14px rgba(96, 165, 250, 0.16);
+    --vk-pill-lit-border: rgba(96, 165, 250, 0.42);
+    --vk-pill-lit-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(99, 102, 241, 0.16));
+    --vk-pill-lit-fg: #dbeafe;
+    --vk-pill-lit-glow: rgba(96, 165, 250, 0.14);
+    --vk-stage-glow-1: rgba(96, 165, 250, 0.08);
+    --vk-stage-glow-2: rgba(129, 140, 248, 0.08);
+    --vk-stage-placeholder-glow: rgba(96, 165, 250, 0.12);
+    --vk-stage-placeholder-bg: linear-gradient(180deg, #050914 0%, #091021 55%, #060a16 100%);
+    --vk-stage-placeholder-fg: rgba(219, 234, 254, 0.70);
+    --vk-accent-primary: #60a5fa;
+    --vk-accent-soft: rgba(96, 165, 250, 0.14);
+    --vk-accent-soft-2: rgba(129, 140, 248, 0.10);
+    --vk-accent-border: rgba(96, 165, 250, 0.44);
+    --vk-accent-fg: #dbeafe;
+    --vk-accent-focus-ring: rgba(96, 165, 250, 0.18);
+}
+
+/* 🍁 十一月 · 暮秋枫夜 */
+body.theme-autumn-night {
+    --vk-glass-bg: rgba(15, 10, 12, 0.82);
+    --vk-glass-panel: rgba(21, 14, 17, 0.80);
+    --vk-glass-card: rgba(29, 19, 21, 0.86);
+    --vk-glass-border: rgba(245, 158, 11, 0.15);
+    --vk-glass-border-warm: rgba(245, 158, 11, 0.36);
+    --vk-titlebar-bg: linear-gradient(180deg, rgba(11, 7, 9, 0.97), rgba(16, 11, 13, 0.91));
+    --vk-title-gradient: linear-gradient(120deg, #fff7ed 10%, #fbbf24 65%, #e16b3b 100%);
+    --vk-tab-active-bg: linear-gradient(135deg, rgba(245, 158, 11, 0.24), rgba(217, 93, 57, 0.24));
+    --vk-tab-active-fg: #fde68a;
+    --vk-tab-active-border: rgba(245, 158, 11, 0.48);
+    --vk-tab-active-shadow: 0 0 14px rgba(245, 158, 11, 0.18), inset 0 1px 0 rgba(254, 243, 199, 0.18);
+    --vk-pill-lit-border: rgba(245, 158, 11, 0.44);
+    --vk-pill-lit-bg: linear-gradient(135deg, rgba(245, 158, 11, 0.20), rgba(217, 93, 57, 0.18));
+    --vk-pill-lit-fg: #fde68a;
+    --vk-pill-lit-glow: rgba(245, 158, 11, 0.15);
+    --vk-ornament-shadow: drop-shadow(0 6px 16px rgba(245, 158, 11, 0.36));
+    --vk-ornament-shadow-compact: drop-shadow(0 4px 12px rgba(217, 93, 57, 0.30));
+    --vk-stage-glow-1: rgba(245, 158, 11, 0.09);
+    --vk-stage-glow-2: rgba(217, 93, 57, 0.08);
+    --vk-stage-placeholder-glow: rgba(245, 158, 11, 0.14);
+    --vk-stage-placeholder-bg: linear-gradient(180deg, #0d080a 0%, #170e10 55%, #0c0709 100%);
+    --vk-stage-placeholder-fg: rgba(253, 230, 138, 0.74);
+    --vk-accent-primary: #f59e0b;
+    --vk-accent-soft: rgba(245, 158, 11, 0.15);
+    --vk-accent-soft-2: rgba(217, 93, 57, 0.12);
+    --vk-accent-border: rgba(245, 158, 11, 0.45);
+    --vk-accent-fg: #fde68a;
+    --vk-accent-focus-ring: rgba(245, 158, 11, 0.18);
+}
+
+/* ❄️ 十一月 · 静冬雪夜 */
+body.theme-snow-night {
+    --vk-glass-bg: rgba(7, 13, 26, 0.82);
+    --vk-glass-panel: rgba(10, 18, 34, 0.80);
+    --vk-glass-card: rgba(15, 26, 46, 0.86);
+    --vk-glass-border: rgba(147, 213, 255, 0.14);
+    --vk-glass-border-warm: rgba(125, 211, 252, 0.36);
+    --vk-titlebar-bg: linear-gradient(180deg, rgba(5, 9, 20, 0.97), rgba(8, 15, 30, 0.91));
+    --vk-title-gradient: linear-gradient(120deg, #f8fafc 12%, #bae6fd 65%, #7dd3fc 100%);
+    --vk-tab-active-bg: linear-gradient(135deg, rgba(125, 211, 252, 0.22), rgba(56, 189, 248, 0.18));
+    --vk-tab-active-fg: #e0f2fe;
+    --vk-tab-active-border: rgba(125, 211, 252, 0.48);
+    --vk-tab-active-shadow: 0 0 14px rgba(125, 211, 252, 0.16), inset 0 1px 0 rgba(224, 242, 254, 0.18);
+    --vk-pill-lit-border: rgba(125, 211, 252, 0.44);
+    --vk-pill-lit-bg: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(148, 163, 184, 0.14));
+    --vk-pill-lit-fg: #e0f2fe;
+    --vk-pill-lit-glow: rgba(125, 211, 252, 0.16);
+    --vk-ornament-shadow: drop-shadow(0 5px 15px rgba(125, 211, 252, 0.34));
+    --vk-ornament-shadow-compact: drop-shadow(0 4px 10px rgba(186, 230, 253, 0.26));
+    --vk-stage-glow-1: rgba(125, 211, 252, 0.08);
+    --vk-stage-glow-2: rgba(165, 243, 252, 0.06);
+    --vk-stage-placeholder-glow: rgba(125, 211, 252, 0.13);
+    --vk-stage-placeholder-bg: linear-gradient(180deg, #050a16 0%, #091326 55%, #060b18 100%);
+    --vk-stage-placeholder-fg: rgba(224, 242, 254, 0.72);
+    --vk-accent-primary: #7dd3fc;
+    --vk-accent-soft: rgba(125, 211, 252, 0.14);
+    --vk-accent-soft-2: rgba(56, 189, 248, 0.10);
+    --vk-accent-border: rgba(125, 211, 252, 0.44);
+    --vk-accent-fg: #e0f2fe;
+    --vk-accent-focus-ring: rgba(125, 211, 252, 0.18);
+}
+
+body.theme-snow-night .vk-lantern-halo {
+    background: radial-gradient(circle,
+        rgba(186, 230, 253, 0.20) 0%,
+        rgba(125, 211, 252, 0.10) 38%,
+        rgba(56, 189, 248, 0.03) 66%,
+        transparent 76%);
+}
+
+/* 🎄 十一月 · 圣诞暖夜 */
+body.theme-christmas-eve {
+    --vk-glass-bg: rgba(7, 16, 13, 0.82);
+    --vk-glass-panel: rgba(10, 22, 18, 0.80);
+    --vk-glass-card: rgba(14, 30, 24, 0.86);
+    --vk-glass-border: rgba(167, 243, 208, 0.13);
+    --vk-glass-border-warm: rgba(251, 191, 36, 0.36);
+    --vk-titlebar-bg: linear-gradient(180deg, rgba(5, 11, 9, 0.97), rgba(8, 17, 14, 0.91));
+    --vk-title-gradient: linear-gradient(120deg, #fefce8 10%, #fde047 62%, #f87171 100%);
+    --vk-tab-active-bg: linear-gradient(135deg, rgba(220, 38, 38, 0.24), rgba(245, 158, 11, 0.22));
+    --vk-tab-active-fg: #fef08a;
+    --vk-tab-active-border: rgba(251, 191, 36, 0.48);
+    --vk-tab-active-shadow: 0 0 14px rgba(251, 191, 36, 0.18), inset 0 1px 0 rgba(254, 240, 138, 0.18);
+    --vk-pill-lit-border: rgba(251, 191, 36, 0.44);
+    --vk-pill-lit-bg: linear-gradient(135deg, rgba(220, 38, 38, 0.20), rgba(21, 128, 61, 0.22));
+    --vk-pill-lit-fg: #fef08a;
+    --vk-pill-lit-glow: rgba(251, 191, 36, 0.16);
+    --vk-ornament-shadow: drop-shadow(0 6px 16px rgba(251, 191, 36, 0.34));
+    --vk-ornament-shadow-compact: drop-shadow(0 4px 12px rgba(239, 68, 68, 0.30));
+    --vk-stage-glow-1: rgba(251, 191, 36, 0.08);
+    --vk-stage-glow-2: rgba(239, 68, 68, 0.07);
+    --vk-stage-placeholder-glow: rgba(251, 191, 36, 0.14);
+    --vk-stage-placeholder-bg: linear-gradient(180deg, #050d0a 0%, #091712 55%, #050c09 100%);
+    --vk-stage-placeholder-fg: rgba(254, 240, 138, 0.74);
+    --vk-accent-primary: #fbbf24;
+    --vk-accent-soft: rgba(251, 191, 36, 0.14);
+    --vk-accent-soft-2: rgba(239, 68, 68, 0.11);
+    --vk-accent-border: rgba(251, 191, 36, 0.44);
+    --vk-accent-fg: #fef08a;
+    --vk-accent-focus-ring: rgba(251, 191, 36, 0.18);
+}
+
+body.theme-christmas-eve .vk-lantern-halo {
+    background: radial-gradient(circle,
+        rgba(253, 224, 71, 0.22) 0%,
+        rgba(239, 68, 68, 0.11) 40%,
+        rgba(22, 163, 74, 0.04) 68%,
+        transparent 78%);
+}
+
+body.theme-starry-lantern .app,
+body.theme-starry-ink .app,
+body.theme-autumn-night .app,
+body.theme-snow-night .app,
+body.theme-christmas-eve .app {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+}
+
+/* 透明透出底层静谧星空与季节粒子 */
+body.theme-starry-lantern .content,
+body.theme-starry-ink .content,
+body.theme-autumn-night .content,
+body.theme-snow-night .content,
+body.theme-christmas-eve .content,
+body.theme-starry-lantern #batch-reels-panel,
+body.theme-starry-ink #batch-reels-panel,
+body.theme-autumn-night #batch-reels-panel,
+body.theme-snow-night #batch-reels-panel,
+body.theme-christmas-eve #batch-reels-panel {
+    background: transparent !important;
+}
+
+/* 顶栏：夜幕毛玻璃 + 纤细星光底边 */
+body.theme-starry-lantern .titlebar,
+body.theme-starry-ink .titlebar,
+body.theme-autumn-night .titlebar,
+body.theme-snow-night .titlebar,
+body.theme-christmas-eve .titlebar {
+    background: var(--vk-titlebar-bg) !important;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--vk-glass-border) !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.42);
+    gap: 8px;
+}
+
+body.theme-starry-lantern .vk-brand-logo,
+body.theme-starry-ink .vk-brand-logo,
+body.theme-autumn-night .vk-brand-logo,
+body.theme-snow-night .vk-brand-logo,
+body.theme-christmas-eve .vk-brand-logo {
+    filter: drop-shadow(0 0 8px var(--vk-accent-soft, rgba(246, 178, 75, 0.28)));
+}
+
+body.theme-starry-lantern .app-title,
+body.theme-starry-ink .app-title,
+body.theme-autumn-night .app-title,
+body.theme-snow-night .app-title,
+body.theme-christmas-eve .app-title {
+    background: var(--vk-title-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent !important;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    font-size: 13px;
+}
+
+/* 导航标签胶囊化 */
+body.theme-starry-lantern .tab,
+body.theme-starry-ink .tab,
+body.theme-autumn-night .tab,
+body.theme-snow-night .tab,
+body.theme-christmas-eve .tab {
+    border-radius: 7px;
+    padding: 5px 11px;
+    transition: background 0.18s var(--vk-ease-out), color 0.18s var(--vk-ease-out), box-shadow 0.2s var(--vk-ease-out);
+}
+
+body.theme-starry-lantern .tab.active,
+body.theme-starry-ink .tab.active,
+body.theme-autumn-night .tab.active,
+body.theme-snow-night .tab.active,
+body.theme-christmas-eve .tab.active {
+    background: var(--vk-tab-active-bg) !important;
+    color: var(--vk-tab-active-fg) !important;
+    border: 1px solid var(--vk-tab-active-border);
+    box-shadow: var(--vk-tab-active-shadow);
+}
+
+/* 顶栏右侧快速工具胶囊（⌘K 命令面板 + 🎨 主题快切 + 🏮 季节氛围开关） */
+.vk-titlebar-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+    flex-shrink: 0;
+}
+
+.vk-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(158, 191, 255, 0.18);
+    background: rgba(15, 22, 42, 0.72);
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.18s var(--vk-ease-out);
+    white-space: nowrap;
+}
+
+.vk-pill-btn:hover {
+    border-color: var(--vk-accent-border, rgba(246, 178, 75, 0.48));
+    color: #ffffff;
+    background: rgba(26, 34, 60, 0.92);
+    box-shadow: 0 0 10px var(--vk-accent-soft, rgba(246, 178, 75, 0.14));
+}
+
+.vk-pill-btn kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 9.5px;
+    padding: 0 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+body.theme-light .vk-pill-btn {
+    border-color: rgba(27, 46, 27, 0.18);
+    background: rgba(255, 255, 255, 0.86);
+    color: #1f2937;
+}
+
+body.theme-light .vk-pill-btn:hover {
+    border-color: rgba(16, 185, 129, 0.55);
+    background: #ffffff;
+    color: #064e3b;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.15);
+}
+
+body.theme-light .vk-pill-btn kbd {
+    background: rgba(27, 46, 27, 0.08);
+    color: #475569;
+    border-color: rgba(27, 46, 27, 0.12);
+}
+
+body.theme-starry-lantern .vk-lantern-toggle.is-lit,
+body.theme-starry-ink .vk-lantern-toggle.is-lit,
+body.theme-autumn-night .vk-lantern-toggle.is-lit,
+body.theme-snow-night .vk-lantern-toggle.is-lit,
+body.theme-christmas-eve .vk-lantern-toggle.is-lit {
+    border-color: var(--vk-pill-lit-border);
+    background: var(--vk-pill-lit-bg);
+    color: var(--vk-pill-lit-fg);
+    box-shadow: 0 0 12px var(--vk-pill-lit-glow);
+}
+
+/* 顶栏快捷主题弹出菜单 */
+.vk-theme-popover {
+    position: fixed;
+    z-index: 410000;
+    width: 248px;
+    padding: 8px;
+    border-radius: 12px;
+    background: rgba(10, 15, 29, 0.96);
+    border: 1px solid var(--vk-glass-border-warm, rgba(246, 178, 75, 0.34));
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 24px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    -webkit-app-region: no-drag;
+}
+
+.vk-theme-popover-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--vk-accent-fg, #fde68a);
+    padding: 4px 8px 6px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    margin-bottom: 2px;
+}
+
+.vk-theme-opt {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 7px 9px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #e2e8f0;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.vk-theme-opt:hover {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.24);
+}
+
+.vk-theme-opt.is-active {
+    background: var(--vk-accent-soft, rgba(246, 178, 75, 0.16));
+    border-color: var(--vk-accent-border, rgba(246, 178, 75, 0.45));
+    color: var(--vk-accent-fg, #fde68a);
+}
+
+.vk-theme-opt-name {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vk-theme-opt-desc {
+    font-size: 10.5px;
+    color: #94a3b8;
+    line-height: 1.3;
+}
+
+body.theme-light .vk-theme-popover {
+    background: rgba(255, 255, 255, 0.97);
+    border-color: rgba(27, 46, 27, 0.18);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+body.theme-light .vk-theme-popover-title {
+    color: #065f46;
+}
+
+body.theme-light .vk-theme-opt {
+    color: #1e293b;
+}
+
+body.theme-light .vk-theme-opt-desc {
+    color: #64748b;
+}
+
+/* ── 3. 主工作台玻璃化升级 + 性能容器隔离 ── */
+body.theme-starry-lantern .nle-toolbar,
+body.theme-starry-ink .nle-toolbar,
+body.theme-autumn-night .nle-toolbar,
+body.theme-snow-night .nle-toolbar,
+body.theme-christmas-eve .nle-toolbar {
+    background: var(--vk-glass-bg) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--vk-glass-border) !important;
+}
+
+body.theme-starry-lantern #reels-col-tasks,
+body.theme-starry-lantern #reels-col-subtitle,
+body.theme-starry-ink #reels-col-tasks,
+body.theme-starry-ink #reels-col-subtitle,
+body.theme-autumn-night #reels-col-tasks,
+body.theme-autumn-night #reels-col-subtitle,
+body.theme-snow-night #reels-col-tasks,
+body.theme-snow-night #reels-col-subtitle,
+body.theme-christmas-eve #reels-col-tasks,
+body.theme-christmas-eve #reels-col-subtitle {
+    background: var(--vk-glass-panel) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-color: var(--vk-glass-border) !important;
+}
+
+body.theme-starry-lantern #reels-col-preview .form-section,
+body.theme-starry-ink #reels-col-preview .form-section,
+body.theme-autumn-night #reels-col-preview .form-section,
+body.theme-snow-night #reels-col-preview .form-section,
+body.theme-christmas-eve #reels-col-preview .form-section,
+body.theme-starry-lantern .form-section,
+body.theme-starry-ink .form-section,
+body.theme-autumn-night .form-section,
+body.theme-snow-night .form-section,
+body.theme-christmas-eve .form-section {
+    background: var(--vk-glass-panel) !important;
+    border: 1px solid var(--vk-glass-border) !important;
+    border-radius: var(--vk-radius-md) !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.34);
+}
+
+/* 中央视频预览舞台：静夜星辉与季节氛围微光 */
+body.theme-starry-lantern #reels-preview-viewport,
+body.theme-starry-ink #reels-preview-viewport,
+body.theme-autumn-night #reels-preview-viewport,
+body.theme-snow-night #reels-preview-viewport,
+body.theme-christmas-eve #reels-preview-viewport {
+    background:
+        radial-gradient(circle at 82% 16%, var(--vk-stage-glow-1), transparent 36%),
+        radial-gradient(circle at 18% 82%, var(--vk-stage-glow-2), transparent 40%),
+        rgba(4, 7, 15, 0.72) !important;
+    box-shadow: inset 0 0 32px rgba(0, 0, 0, 0.72) !important;
+}
+
+body.theme-starry-lantern #reels-preview-container,
+body.theme-starry-ink #reels-preview-container,
+body.theme-autumn-night #reels-preview-container,
+body.theme-snow-night #reels-preview-container,
+body.theme-christmas-eve #reels-preview-container {
+    border: 1px solid var(--vk-glass-border);
+    border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.82), 0 0 28px var(--vk-stage-glow-1) !important;
+}
+
+body.theme-starry-lantern #reels-preview-placeholder,
+body.theme-starry-ink #reels-preview-placeholder,
+body.theme-autumn-night #reels-preview-placeholder,
+body.theme-snow-night #reels-preview-placeholder,
+body.theme-christmas-eve #reels-preview-placeholder {
+    background:
+        radial-gradient(circle at 50% 24%, var(--vk-stage-placeholder-glow) 0%, var(--vk-accent-soft-2) 28%, transparent 62%),
+        var(--vk-stage-placeholder-bg);
+    color: var(--vk-stage-placeholder-fg) !important;
+    flex-direction: column;
+    gap: 10px;
+}
+
+body.theme-starry-lantern .reels-task-item,
+body.theme-starry-ink .reels-task-item,
+body.theme-autumn-night .reels-task-item,
+body.theme-snow-night .reels-task-item,
+body.theme-christmas-eve .reels-task-item {
+    border-radius: 7px;
+    border: 1px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.18s ease;
+}
+
+body.theme-starry-lantern .reels-task-item:hover,
+body.theme-starry-ink .reels-task-item:hover,
+body.theme-autumn-night .reels-task-item:hover,
+body.theme-snow-night .reels-task-item:hover,
+body.theme-christmas-eve .reels-task-item:hover {
+    background: rgba(158, 191, 255, 0.07);
+    border-color: var(--vk-glass-border);
+}
+
+body.theme-starry-lantern .reels-task-item.active,
+body.theme-starry-ink .reels-task-item.active,
+body.theme-autumn-night .reels-task-item.active,
+body.theme-snow-night .reels-task-item.active,
+body.theme-christmas-eve .reels-task-item.active {
+    background: linear-gradient(135deg, var(--vk-accent-soft), var(--vk-accent-soft-2)) !important;
+    border-color: var(--vk-accent-border) !important;
+    box-shadow: 0 0 14px var(--vk-accent-soft);
+}
+
+/* 检视器 Tabs & Details 折叠卡优雅质感 */
+body.theme-starry-lantern .inspector-tabs,
+body.theme-starry-ink .inspector-tabs,
+body.theme-autumn-night .inspector-tabs,
+body.theme-snow-night .inspector-tabs,
+body.theme-christmas-eve .inspector-tabs {
+    background: rgba(5, 8, 18, 0.88) !important;
+    border-bottom: 1px solid var(--vk-glass-border) !important;
+}
+
+body.theme-starry-lantern .inspector-tab.active,
+body.theme-starry-ink .inspector-tab.active,
+body.theme-autumn-night .inspector-tab.active,
+body.theme-snow-night .inspector-tab.active,
+body.theme-christmas-eve .inspector-tab.active {
+    color: var(--vk-accent-fg) !important;
+    border-bottom-color: var(--vk-accent-primary) !important;
+    background: linear-gradient(180deg, transparent, var(--vk-accent-soft)) !important;
+}
+
+body.theme-starry-lantern #batch-reels-panel details > summary,
+body.theme-starry-ink #batch-reels-panel details > summary,
+body.theme-autumn-night #batch-reels-panel details > summary,
+body.theme-snow-night #batch-reels-panel details > summary,
+body.theme-christmas-eve #batch-reels-panel details > summary {
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--vk-glass-border);
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+body.theme-starry-lantern #batch-reels-panel details > summary:hover,
+body.theme-starry-ink #batch-reels-panel details > summary:hover,
+body.theme-autumn-night #batch-reels-panel details > summary:hover,
+body.theme-snow-night #batch-reels-panel details > summary:hover,
+body.theme-christmas-eve #batch-reels-panel details > summary:hover {
+    background: var(--vk-accent-soft);
+    border-color: var(--vk-accent-border);
+    color: var(--vk-accent-fg);
+}
+
+body.theme-starry-lantern #batch-reels-panel details[open] > summary,
+body.theme-starry-ink #batch-reels-panel details[open] > summary,
+body.theme-autumn-night #batch-reels-panel details[open] > summary,
+body.theme-snow-night #batch-reels-panel details[open] > summary,
+body.theme-christmas-eve #batch-reels-panel details[open] > summary {
+    color: var(--vk-accent-fg);
+    border-color: var(--vk-accent-border);
+    background: var(--vk-accent-soft);
+}
+
+/* 现代柔和输入框、滑块、细滚动条 */
+body.theme-starry-lantern .input,
+body.theme-starry-lantern .textarea,
+body.theme-starry-lantern .select,
+body.theme-starry-lantern input[type="text"],
+body.theme-starry-lantern input[type="number"],
+body.theme-starry-lantern textarea,
+body.theme-starry-lantern select,
+body.theme-starry-ink .input,
+body.theme-starry-ink .textarea,
+body.theme-starry-ink .select,
+body.theme-starry-ink input[type="text"],
+body.theme-starry-ink input[type="number"],
+body.theme-starry-ink textarea,
+body.theme-starry-ink select,
+body.theme-autumn-night .input,
+body.theme-autumn-night .textarea,
+body.theme-autumn-night .select,
+body.theme-autumn-night input[type="text"],
+body.theme-autumn-night input[type="number"],
+body.theme-autumn-night textarea,
+body.theme-autumn-night select,
+body.theme-snow-night .input,
+body.theme-snow-night .textarea,
+body.theme-snow-night .select,
+body.theme-snow-night input[type="text"],
+body.theme-snow-night input[type="number"],
+body.theme-snow-night textarea,
+body.theme-snow-night select,
+body.theme-christmas-eve .input,
+body.theme-christmas-eve .textarea,
+body.theme-christmas-eve .select,
+body.theme-christmas-eve input[type="text"],
+body.theme-christmas-eve input[type="number"],
+body.theme-christmas-eve textarea,
+body.theme-christmas-eve select {
+    background-color: rgba(5, 9, 19, 0.86) !important;
+    border-color: var(--vk-glass-border) !important;
+    border-radius: 6px !important;
+}
+
+body.theme-starry-lantern .input:focus,
+body.theme-starry-lantern .textarea:focus,
+body.theme-starry-lantern .select:focus,
+body.theme-starry-lantern input[type="text"]:focus,
+body.theme-starry-lantern input[type="number"]:focus,
+body.theme-starry-lantern select:focus,
+body.theme-starry-ink .input:focus,
+body.theme-starry-ink .textarea:focus,
+body.theme-starry-ink .select:focus,
+body.theme-starry-ink input[type="text"]:focus,
+body.theme-starry-ink input[type="number"]:focus,
+body.theme-starry-ink select:focus,
+body.theme-autumn-night .input:focus,
+body.theme-autumn-night .textarea:focus,
+body.theme-autumn-night .select:focus,
+body.theme-autumn-night input[type="text"]:focus,
+body.theme-autumn-night input[type="number"]:focus,
+body.theme-autumn-night select:focus,
+body.theme-snow-night .input:focus,
+body.theme-snow-night .textarea:focus,
+body.theme-snow-night .select:focus,
+body.theme-snow-night input[type="text"]:focus,
+body.theme-snow-night input[type="number"]:focus,
+body.theme-snow-night select:focus,
+body.theme-christmas-eve .input:focus,
+body.theme-christmas-eve .textarea:focus,
+body.theme-christmas-eve .select:focus,
+body.theme-christmas-eve input[type="text"]:focus,
+body.theme-christmas-eve input[type="number"]:focus,
+body.theme-christmas-eve select:focus {
+    border-color: var(--vk-accent-primary) !important;
+    box-shadow: 0 0 0 2px var(--vk-accent-focus-ring) !important;
+}
+
+body.theme-starry-lantern input[type="range"],
+body.theme-starry-ink input[type="range"],
+body.theme-autumn-night input[type="range"],
+body.theme-snow-night input[type="range"],
+body.theme-christmas-eve input[type="range"] {
+    accent-color: var(--vk-accent-primary);
+}
+
+body.theme-starry-lantern .reels-timeline-bar,
+body.theme-starry-lantern .reels-timeline-header,
+body.theme-starry-ink .reels-timeline-bar,
+body.theme-starry-ink .reels-timeline-header,
+body.theme-autumn-night .reels-timeline-bar,
+body.theme-autumn-night .reels-timeline-header,
+body.theme-snow-night .reels-timeline-bar,
+body.theme-snow-night .reels-timeline-header,
+body.theme-christmas-eve .reels-timeline-bar,
+body.theme-christmas-eve .reels-timeline-header {
+    background: rgba(6, 9, 20, 0.88) !important;
+    border-color: var(--vk-glass-border) !important;
+}
+
+/* 批量表格 RBT 星空与季节主题一体化覆盖 */
+body.theme-starry-lantern #reels-batch-table-container > .rbt-panel,
+body.theme-starry-ink #reels-batch-table-container > .rbt-panel,
+body.theme-autumn-night #reels-batch-table-container > .rbt-panel,
+body.theme-snow-night #reels-batch-table-container > .rbt-panel,
+body.theme-christmas-eve #reels-batch-table-container > .rbt-panel {
+    background: var(--vk-glass-bg) !important;
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--vk-glass-border-warm) !important;
+}
+
+body.theme-starry-lantern .rbt-header,
+body.theme-starry-lantern .rbt-actions-panel,
+body.theme-starry-lantern .rbt-footer,
+body.theme-starry-ink .rbt-header,
+body.theme-starry-ink .rbt-actions-panel,
+body.theme-starry-ink .rbt-footer,
+body.theme-autumn-night .rbt-header,
+body.theme-autumn-night .rbt-actions-panel,
+body.theme-autumn-night .rbt-footer,
+body.theme-snow-night .rbt-header,
+body.theme-snow-night .rbt-actions-panel,
+body.theme-snow-night .rbt-footer,
+body.theme-christmas-eve .rbt-header,
+body.theme-christmas-eve .rbt-actions-panel,
+body.theme-christmas-eve .rbt-footer {
+    background: rgba(6, 10, 20, 0.94) !important;
+    border-color: var(--vk-glass-border) !important;
+}
+
+body.theme-starry-lantern .rbt-table th,
+body.theme-starry-ink .rbt-table th,
+body.theme-autumn-night .rbt-table th,
+body.theme-snow-night .rbt-table th,
+body.theme-christmas-eve .rbt-table th {
+    background: rgba(11, 16, 32, 0.96) !important;
+    border-color: var(--vk-glass-border) !important;
+}
+
+body.theme-starry-lantern .rbt-table td,
+body.theme-starry-ink .rbt-table td,
+body.theme-autumn-night .rbt-table td,
+body.theme-snow-night .rbt-table td,
+body.theme-christmas-eve .rbt-table td {
+    border-color: rgba(158, 191, 255, 0.08) !important;
+}
+
+body.theme-starry-lantern .rbt-row:hover,
+body.theme-starry-ink .rbt-row:hover,
+body.theme-autumn-night .rbt-row:hover,
+body.theme-snow-night .rbt-row:hover,
+body.theme-christmas-eve .rbt-row:hover {
+    background: var(--vk-accent-soft) !important;
+}
+
+body.theme-starry-lantern .rbt-row-selected,
+body.theme-starry-ink .rbt-row-selected,
+body.theme-autumn-night .rbt-row-selected,
+body.theme-snow-night .rbt-row-selected,
+body.theme-christmas-eve .rbt-row-selected {
+    background: var(--vk-accent-soft) !important;
+}
+
+/* 字幕效果独立预览窗 风格协同 */
+body.theme-starry-lantern .reels-subtitle-preset-library,
+body.theme-starry-ink .reels-subtitle-preset-library,
+body.theme-autumn-night .reels-subtitle-preset-library,
+body.theme-snow-night .reels-subtitle-preset-library,
+body.theme-christmas-eve .reels-subtitle-preset-library {
+    background: rgba(3, 6, 14, 0.82);
+    backdrop-filter: blur(12px);
+}
+
+body.theme-starry-lantern .rsp-shell,
+body.theme-starry-ink .rsp-shell,
+body.theme-autumn-night .rsp-shell,
+body.theme-snow-night .rsp-shell,
+body.theme-christmas-eve .rsp-shell {
+    background: var(--vk-glass-bg);
+}
+
+body.theme-starry-lantern .rsp-shell header,
+body.theme-starry-lantern .rsp-stage,
+body.theme-starry-lantern .rsp-main > aside:first-child,
+body.theme-starry-ink .rsp-shell header,
+body.theme-starry-ink .rsp-stage,
+body.theme-starry-ink .rsp-main > aside:first-child,
+body.theme-autumn-night .rsp-shell header,
+body.theme-autumn-night .rsp-stage,
+body.theme-autumn-night .rsp-main > aside:first-child,
+body.theme-snow-night .rsp-shell header,
+body.theme-snow-night .rsp-stage,
+body.theme-snow-night .rsp-main > aside:first-child,
+body.theme-christmas-eve .rsp-shell header,
+body.theme-christmas-eve .rsp-stage,
+body.theme-christmas-eve .rsp-main > aside:first-child {
+    background: rgba(6, 10, 21, 0.95);
+    border-color: var(--vk-glass-border);
+}
+
+body.theme-starry-lantern .rsp-card,
+body.theme-starry-ink .rsp-card,
+body.theme-autumn-night .rsp-card,
+body.theme-snow-night .rsp-card,
+body.theme-christmas-eve .rsp-card {
+    background: var(--vk-glass-card);
+    border-color: var(--vk-glass-border);
+}
+
+body.theme-starry-lantern .rsp-card:hover,
+body.theme-starry-ink .rsp-card:hover,
+body.theme-autumn-night .rsp-card:hover,
+body.theme-snow-night .rsp-card:hover,
+body.theme-christmas-eve .rsp-card:hover {
+    border-color: var(--vk-accent-border);
+}
+
+body.theme-starry-lantern .rsp-card.is-selected,
+body.theme-starry-ink .rsp-card.is-selected,
+body.theme-autumn-night .rsp-card.is-selected,
+body.theme-snow-night .rsp-card.is-selected,
+body.theme-christmas-eve .rsp-card.is-selected {
+    border-color: var(--vk-accent-primary);
+    box-shadow: 0 0 0 2px var(--vk-accent-soft), 0 8px 24px var(--vk-accent-soft);
+    background: var(--vk-glass-card);
+}
+
+body.theme-starry-lantern .rsp-nav-btn.active,
+body.theme-starry-ink .rsp-nav-btn.active,
+body.theme-autumn-night .rsp-nav-btn.active,
+body.theme-snow-night .rsp-nav-btn.active,
+body.theme-christmas-eve .rsp-nav-btn.active {
+    background: linear-gradient(135deg, var(--vk-accent-soft), var(--vk-accent-soft-2));
+    border-color: var(--vk-accent-border);
+    color: var(--vk-accent-fg);
+}
+
+/* 拖拽分割线反馈 */
+body.theme-starry-lantern .reels-resize-handle:hover,
+body.theme-starry-lantern .reels-resize-handle.active,
+body.theme-starry-ink .reels-resize-handle:hover,
+body.theme-starry-ink .reels-resize-handle.active,
+body.theme-autumn-night .reels-resize-handle:hover,
+body.theme-autumn-night .reels-resize-handle.active,
+body.theme-snow-night .reels-resize-handle:hover,
+body.theme-snow-night .reels-resize-handle.active,
+body.theme-christmas-eve .reels-resize-handle:hover,
+body.theme-christmas-eve .reels-resize-handle.active {
+    background: linear-gradient(180deg, transparent, var(--vk-accent-primary), transparent);
+}
+
+/* 性能优化：大列表与检视器布局隔离，防止滑动时整页重排 */
+#reels-task-list,
+#inspector-tab-subtitle,
+.rsp-grid-pane,
+.rbt-table-wrap {
+    contain: layout style;
+}
+
+/* 优雅极细滚动条 */
+body.theme-starry-lantern ::-webkit-scrollbar,
+body.theme-starry-ink ::-webkit-scrollbar,
+body.theme-autumn-night ::-webkit-scrollbar,
+body.theme-snow-night ::-webkit-scrollbar,
+body.theme-christmas-eve ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+body.theme-starry-lantern ::-webkit-scrollbar-track,
+body.theme-starry-ink ::-webkit-scrollbar-track,
+body.theme-autumn-night ::-webkit-scrollbar-track,
+body.theme-snow-night ::-webkit-scrollbar-track,
+body.theme-christmas-eve ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+body.theme-starry-lantern ::-webkit-scrollbar-thumb,
+body.theme-starry-ink ::-webkit-scrollbar-thumb,
+body.theme-autumn-night ::-webkit-scrollbar-thumb,
+body.theme-snow-night ::-webkit-scrollbar-thumb,
+body.theme-christmas-eve ::-webkit-scrollbar-thumb {
+    background: rgba(158, 191, 255, 0.18);
+    border-radius: 999px;
+}
+
+body.theme-starry-lantern ::-webkit-scrollbar-thumb:hover,
+body.theme-starry-ink ::-webkit-scrollbar-thumb:hover,
+body.theme-autumn-night ::-webkit-scrollbar-thumb:hover,
+body.theme-snow-night ::-webkit-scrollbar-thumb:hover,
+body.theme-christmas-eve ::-webkit-scrollbar-thumb:hover {
+    background: var(--vk-accent-border);
+}
+
+/* Tab 切换微动效 */
+.panel.active {
+    animation: vkPanelFadeIn 0.14s var(--vk-ease-out);
+}
+
+@keyframes vkPanelFadeIn {
+    from { opacity: 0.72; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 4. ⌘K 全局命令面板 ── */
+.vk-cmdk-overlay {
+    position: fixed;
+    inset: var(--window-chrome-height, 38px) 0 0 0;
+    z-index: 400000;
+    background: rgba(3, 5, 12, 0.68);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: min(10vh, 76px);
+    -webkit-app-region: no-drag;
+}
+
+.vk-cmdk-card {
+    width: min(640px, 92vw);
+    max-height: 74vh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    background: rgba(10, 14, 28, 0.96);
+    border: 1px solid rgba(246, 178, 75, 0.34);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.75), 0 0 42px rgba(246, 178, 75, 0.12);
+    overflow: hidden;
+    color: #eef2fb;
+}
+
+.vk-cmdk-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 16px;
+    border-bottom: 1px solid rgba(158, 191, 255, 0.12);
+    background: rgba(6, 9, 20, 0.85);
+}
+
+.vk-cmdk-input {
+    flex: 1;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #f8fafc !important;
+    font-size: 14px !important;
+    outline: none;
+}
+
+.vk-cmdk-list {
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.vk-cmdk-group-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #8b9bb4;
+    padding: 6px 10px 3px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.vk-cmdk-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #dbe4f3;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.vk-cmdk-item:hover,
+.vk-cmdk-item.is-active {
+    background: linear-gradient(135deg, rgba(246, 178, 75, 0.16), rgba(232, 93, 53, 0.10));
+    border-color: rgba(246, 178, 75, 0.36);
+    color: #fff6e5;
+}
+
+.vk-cmdk-item-left {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+}
+
+.vk-cmdk-badge {
+    font-size: 10.5px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(158, 191, 255, 0.10);
+    color: #93c5fd;
+    border: 1px solid rgba(158, 191, 255, 0.18);
+    flex-shrink: 0;
+}
+
+.vk-cmdk-item.is-active .vk-cmdk-badge {
+    background: rgba(246, 178, 75, 0.18);
+    color: #fde68a;
+    border-color: rgba(246, 178, 75, 0.36);
+}
+
+.vk-cmdk-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-top: 1px solid rgba(158, 191, 255, 0.10);
+    font-size: 11px;
+    color: #7c8ca8;
+    background: rgba(5, 8, 17, 0.9);
+}

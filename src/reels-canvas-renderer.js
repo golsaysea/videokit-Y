@@ -1624,6 +1624,8 @@ class ReelsCanvasRenderer {
         const isExtendedCharAnim = !!(anim && anim.isCharAnimType && anim.isCharAnimType(animInType));
         const isUnderlineSweep = animInType === 'underline_sweep';
         const isFeatherWipe = animInType === 'feather_wipe';
+        const isSpeechFeatherWipe = animInType === 'speech_feather_wipe';
+        const isAnyFeatherWipe = isFeatherWipe || isSpeechFeatherWipe;
         const cbHeight = s.char_bounce_height || 20;
         const cbStagger = s.char_bounce_stagger || 0.05;
 
@@ -2144,7 +2146,7 @@ class ReelsCanvasRenderer {
         const needsPerWordStrokeExpand = s.only_show_active_word || Boolean(s.hide_until_spoken) ||
             Boolean(s.highlight_scale_enabled) || isTypewriter || isMetronome ||
             isWordPopRandom || isWordPopRandomPulse || isBullet || isExtendedCharAnim ||
-            isUnderlineSweep || isFeatherWipe || isLineFocus || lineScales.some(sc => Math.abs(sc - 1.0) > 0.001);
+            isUnderlineSweep || isAnyFeatherWipe || isLineFocus || lineScales.some(sc => Math.abs(sc - 1.0) > 0.001);
         if (s.stroke_expand_enabled && !needsPerWordStrokeExpand) {
             this._renderStrokeExpand(ctx, s, visibleLines, lineWidths, cx, advEnabled, advAlign, advX, advW,
                 cy, totalH, lineStep, fontStr, fontSize, letterSpacing, advY, advH, computeAlignedLineX);
@@ -2200,27 +2202,52 @@ class ReelsCanvasRenderer {
             ? visibleLines.reduce((sum, ln) => sum + ln.split(/\s+/).filter(Boolean).reduce((c, w) => c + Array.from(w).length, 0), 0)
             : 0;
         const activeHighlightIdx = highlightEnabled ? activeSpokenIdx : -1;
-        const sweepLineWidths = (isUnderlineSweep || isFeatherWipe)
+        const sweepLineWidths = (isUnderlineSweep || isAnyFeatherWipe)
             ? visibleLines.map((_, li) => {
                 const lw = lineWidths[li] || 0;
                 const ls = lineScales[li] || 1.0;
                 return Math.max(lw * ls, actualLineWidths[li] ?? 0, finalLineWidths[li] ?? 0);
             })
             : null;
-        const underlineSweepState = (isFeatherWipe && anim && typeof anim.computeFeatherWipeState === 'function')
-            ? anim.computeFeatherWipeState(currentTime, segStart, segEnd, sweepLineWidths, {
+        const speechWipeWordAnchors = (isSpeechFeatherWipe && sweepLineWidths)
+            ? this._buildSpeechWipeWordAnchors(ctx, visibleLines, lineScales, sweepLineWidths, resolvedWordTimings, {
+                letterSpacing,
+                wordSpacing,
+                segStart,
+                segEnd,
+                totalWordCount,
+                style: s,
+            })
+            : null;
+        const underlineSweepState = (isSpeechFeatherWipe && anim && typeof anim.computeSpeechFeatherWipeState === 'function')
+            ? anim.computeSpeechFeatherWipeState(currentTime, segStart, segEnd, sweepLineWidths, {
                 sweepDuration: s.anim_in_duration,
                 fontSize,
+                wordAnchors: speechWipeWordAnchors,
             })
-            : ((isUnderlineSweep && anim && typeof anim.computeUnderlineSweepState === 'function')
-                ? anim.computeUnderlineSweepState(currentTime, segStart, segEnd, sweepLineWidths, {
+            : ((isFeatherWipe && anim && typeof anim.computeFeatherWipeState === 'function')
+                ? anim.computeFeatherWipeState(currentTime, segStart, segEnd, sweepLineWidths, {
                     sweepDuration: s.anim_in_duration,
                     fontSize,
                 })
-                : null);
+                : ((isUnderlineSweep && anim && typeof anim.computeUnderlineSweepState === 'function')
+                    ? anim.computeUnderlineSweepState(currentTime, segStart, segEnd, sweepLineWidths, {
+                        sweepDuration: s.anim_in_duration,
+                        fontSize,
+                    })
+                    : null));
         const isUnderlineSweepScanning = Boolean(
-            underlineSweepState && underlineSweepState.active && (isFeatherWipe || underlineSweepState.sweepProgress < 0.999)
+            underlineSweepState && underlineSweepState.active && (isAnyFeatherWipe || underlineSweepState.sweepProgress < 0.999)
         );
+        const sweepCharRevealFn = (isUnderlineSweepScanning && anim)
+            ? ((isSpeechFeatherWipe && typeof anim.computeSpeechFeatherWipeCharReveal === 'function')
+                ? anim.computeSpeechFeatherWipeCharReveal
+                : ((isFeatherWipe && typeof anim.computeFeatherWipeCharReveal === 'function')
+                    ? anim.computeFeatherWipeCharReveal
+                    : (typeof anim.computeUnderlineSweepCharReveal === 'function'
+                        ? anim.computeUnderlineSweepCharReveal
+                        : null)))
+            : null;
         const underlineSweepLineGeoms = [];
         let lineSweepAccumBefore = 0;
         const useUnifiedStrokeFillPasses = Boolean(
@@ -2556,9 +2583,9 @@ class ReelsCanvasRenderer {
                     // ── Local multi-layer stroke expand ──
                     if (s.stroke_expand_enabled && needsPerWordStrokeExpand) {
                         let seAlphaFactor = 1.0;
-                        if (isUnderlineSweepScanning && anim && typeof anim.computeUnderlineSweepCharReveal === 'function') {
+                        if (isUnderlineSweepScanning && sweepCharRevealFn) {
                             const wordMidLocal = Math.max(0, (textDrawX - xStart) * lineScale + (wordW * lineScale) * 0.5);
-                            const wordRev = anim.computeUnderlineSweepCharReveal(currentLineSweepStartDist + wordMidLocal, underlineSweepState);
+                            const wordRev = sweepCharRevealFn(currentLineSweepStartDist + wordMidLocal, underlineSweepState);
                             seAlphaFactor = wordRev.strokeAlpha;
                         }
                         if (seAlphaFactor > 0.01) {
@@ -2759,9 +2786,7 @@ class ReelsCanvasRenderer {
                     )) {
                         const chars = Array.from(wordStr);
                         let charX = textDrawX;
-                        const charRevealFn = (isFeatherWipe && typeof anim.computeFeatherWipeCharReveal === 'function')
-                            ? anim.computeFeatherWipeCharReveal
-                            : anim.computeUnderlineSweepCharReveal;
+                        const charRevealFn = sweepCharRevealFn || anim.computeUnderlineSweepCharReveal;
                         for (let ci = 0; ci < chars.length; ci++) {
                             const ch = chars[ci];
                             const chW = ctx.measureText(ch).width;
@@ -2773,7 +2798,7 @@ class ReelsCanvasRenderer {
                                 underlineSweepState
                             );
                             if (rev.fillAlpha > 0.005 || rev.strokeAlpha > 0.005) {
-                                if (isFeatherWipe || s.use_unified_stroke_fill || s.extrude_3d_enabled) {
+                                if (isAnyFeatherWipe || s.use_unified_stroke_fill || s.extrude_3d_enabled) {
                                     if (useStroke && !s.stroke_expand_enabled && (rev.strokeAlpha > 0.005 || rev.shadowAlpha > 0.005)) {
                                         ctx.save();
                                         ctx.globalAlpha = globalAlpha * wordOpacity;
@@ -4038,6 +4063,102 @@ class ReelsCanvasRenderer {
             i = endIdx + 1;
         }
         return { starts, ends };
+    }
+
+    /**
+     * Build word-level { start, end, startDist, endDist } anchors along each line
+     * for `speech_feather_wipe`, keeping lines stationary while syncing feather
+     * wipe progress with spoken word timestamps and inter-word pauses.
+     */
+    _buildSpeechWipeWordAnchors(ctx, visibleLines, lineScales, sweepLineWidths, resolvedWordTimings, opts = {}) {
+        if (!ctx || !Array.isArray(visibleLines) || visibleLines.length === 0) return null;
+        if (!Array.isArray(resolvedWordTimings) || resolvedWordTimings.length === 0) return null;
+
+        const letterSpacing = Number(opts.letterSpacing) || 0;
+        const wordSpacing = Number(opts.wordSpacing) || 0;
+        const segStart = Number(opts.segStart) || 0;
+        const segEnd = Number(opts.segEnd) || segStart;
+        const segDur = Math.max(0.001, segEnd - segStart);
+        const totalWordCount = Math.max(1, Number(opts.totalWordCount) || resolvedWordTimings.length);
+        const style = opts.style || {};
+        const baseSpaceW = (Number(ctx.measureText(' ').width) || 0) + wordSpacing;
+
+        let spaceTokenCount = 0;
+        let nonSpaceCharCount = 0;
+        for (let li = 0; li < visibleLines.length; li++) {
+            const line = visibleLines[li];
+            if (!line || !line.trim()) continue;
+            const tokens = line.split(/\s+/).filter(Boolean);
+            spaceTokenCount += tokens.length;
+            for (let ti = 0; ti < tokens.length; ti++) {
+                nonSpaceCharCount += Array.from(tokens[ti]).length;
+            }
+        }
+        const useCharGranularity = (
+            spaceTokenCount > 0
+            && spaceTokenCount < resolvedWordTimings.length
+            && nonSpaceCharCount === resolvedWordTimings.length
+        );
+        if (!useCharGranularity && spaceTokenCount !== resolvedWordTimings.length) {
+            return null;
+        }
+
+        const anchors = [];
+        let lineAccum = 0;
+        let timingCursor = 0;
+        let lineWordIdx = 0;
+
+        for (let li = 0; li < visibleLines.length; li++) {
+            const line = visibleLines[li];
+            const lineScale = (lineScales && Number.isFinite(lineScales[li])) ? lineScales[li] : 1.0;
+            const sweepW = (sweepLineWidths && Number.isFinite(sweepLineWidths[li])) ? sweepLineWidths[li] : 0;
+            if (!line || !line.trim()) {
+                lineAccum += sweepW;
+                continue;
+            }
+
+            const lineWords = line.split(/\s+/).filter(Boolean);
+            const lineMaxDist = sweepW > 0 ? (lineAccum + sweepW) : Infinity;
+            let localOffset = 0;
+
+            for (let wi = 0; wi < lineWords.length; wi++) {
+                const wordStr = lineWords[wi];
+                const randSpaceW = this._computeRandomWordSpacing(style, lineWordIdx++, segStart, segStart);
+                const scaledGapW = (baseSpaceW + randSpaceW) * lineScale;
+
+                if (useCharGranularity) {
+                    const chars = Array.from(wordStr);
+                    for (let ci = 0; ci < chars.length; ci++) {
+                        const idx = timingCursor++;
+                        const wt = resolvedWordTimings[idx] || {
+                            start: segStart + segDur * (idx / totalWordCount),
+                            end: segStart + segDur * ((idx + 1) / totalWordCount),
+                        };
+                        const scaledChW = this._measureTextWithSpacing(ctx, chars[ci], 0) * lineScale;
+                        const startDist = lineAccum + localOffset;
+                        const endDist = Math.min(lineMaxDist, startDist + scaledChW);
+                        anchors.push({ start: wt.start, end: wt.end, startDist, endDist });
+                        localOffset += scaledChW + (ci < chars.length - 1 ? letterSpacing * lineScale : 0);
+                    }
+                    localOffset += scaledGapW;
+                } else {
+                    const idx = timingCursor++;
+                    const wt = resolvedWordTimings[idx] || {
+                        start: segStart + segDur * (idx / totalWordCount),
+                        end: segStart + segDur * ((idx + 1) / totalWordCount),
+                    };
+                    const scaledWordW = this._measureTextWithSpacing(ctx, wordStr, letterSpacing) * lineScale;
+                    const startDist = lineAccum + localOffset;
+                    const endDist = Math.min(lineMaxDist, startDist + scaledWordW);
+                    anchors.push({ start: wt.start, end: wt.end, startDist, endDist });
+                    localOffset += scaledWordW + scaledGapW;
+                }
+            }
+
+            lineAccum += sweepW;
+        }
+
+        return anchors.length > 0 ? anchors : null;
     }
 
     // ─── Wrap tokens by pixel width ───
@@ -7920,6 +8041,12 @@ function _resolveFontWeight(weight, fallback = 700, bold = undefined) {
 }
 
 function _resolveGenericFallback(fontFamily) {
+    if (typeof window !== 'undefined' && typeof window.getFontManager === 'function') {
+        try {
+            const meta = window.getFontManager()?._getFontMetadata?.(fontFamily);
+            if (meta && (meta.category === 'serif' || meta.subCategory === 'serif')) return 'serif';
+        } catch (_) {}
+    }
     const f = String(fontFamily || '').toLowerCase();
     const serifHints = [
         'serif', 'times', 'georgia', 'playfair', 'crimson', 'lora', 'gelasio',

@@ -47,6 +47,15 @@ function copyStaticFiles() {
             return `${prefix}${fileName}?v=${ver}${suffix}`
           }
         )
+        // Packaged Electron loads dist/index.html over file:// with webSecurity: true.
+        // Convert Vite's built IIFE bundle & stylesheet tags so Chromium file:// loads without CORS blocks.
+        html = html
+          .replace(/<script\b([^>]*?)\btype=["']module["']([^>]*?)\bsrc=(["']\.\/assets\/[^"']+["'])([^>]*)><\/script>/g,
+            (_m, pre, mid, src, post) => {
+              const attrs = `${pre}${mid}${post}`.replace(/\s*\bcrossorigin\b(?:=["'][^"']*["'])?/gi, '').trim()
+              return `<script defer src=${src}${attrs ? ' ' + attrs : ''}></script>`
+            })
+          .replace(/(<link\b[^>]*?)\s+\bcrossorigin\b(?:=["'][^"']*["'])?([^>]*>)/gi, '$1$2')
         writeFileSync(distHtmlPath, html, 'utf8')
       }
       console.log(`✅ Copied ${jsFiles.length} JS files to dist/ with V8 Code Cache busting`)
@@ -61,6 +70,13 @@ export default defineConfig({
   build: {
     outDir: '../dist',
     emptyOutDir: true,
+    modulePreload: { polyfill: false },
+    rollupOptions: {
+      output: {
+        format: 'iife',
+        inlineDynamicImports: true,
+      },
+    },
   },
   server: {
     host: 'localhost',

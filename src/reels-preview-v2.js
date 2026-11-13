@@ -293,13 +293,13 @@
                         <canvas data-role="canvas"></canvas>
                         <div class="rpv2-empty" data-role="empty">请选择一个 Reels 任务</div>
                     </div>
-                    <video class="rpv2-media" data-role="bg-video" playsinline preload="auto" loop></video>
-                    <video class="rpv2-media" data-role="bg-fade-video" playsinline preload="auto" loop></video>
-                    <video class="rpv2-media" data-role="content-video" playsinline preload="auto" loop></video>
-                    <video class="rpv2-media" data-role="hook-video" playsinline preload="auto" muted></video>
-                    <video class="rpv2-media" data-role="cover-video" playsinline preload="auto" muted></video>
-                    <audio class="rpv2-media" data-role="audio" preload="auto"></audio>
-                    <audio class="rpv2-media" data-role="bgm-audio" preload="auto" loop></audio>
+                    <video class="rpv2-media" data-role="bg-video" playsinline preload="auto" crossorigin="anonymous" loop></video>
+                    <video class="rpv2-media" data-role="bg-fade-video" playsinline preload="auto" crossorigin="anonymous" loop></video>
+                    <video class="rpv2-media" data-role="content-video" playsinline preload="auto" crossorigin="anonymous" loop></video>
+                    <video class="rpv2-media" data-role="hook-video" playsinline preload="auto" crossorigin="anonymous" muted></video>
+                    <video class="rpv2-media" data-role="cover-video" playsinline preload="auto" crossorigin="anonymous" muted></video>
+                    <audio class="rpv2-media" data-role="audio" preload="auto" crossorigin="anonymous"></audio>
+                    <audio class="rpv2-media" data-role="bgm-audio" preload="auto" crossorigin="anonymous" loop></audio>
                 </div>
                 <div class="rpv2-controls">
                     <span class="rpv2-pill" data-role="title">V2 预览</span>
@@ -1343,6 +1343,9 @@
     }
 
     function playMainMedia(task) {
+        if (state.audioCtx && state.audioCtx.state === 'suspended') {
+            state.audioCtx.resume().catch(() => {});
+        }
         if (state.audio.src && task && task.audioPath && state.audio.paused) state.audio.play().catch(() => {});
         if (state.bgVideo.src && state.bgVideo.paused) state.bgVideo.play().catch(() => {});
         if (state.bgFadeVideo.src && state.bgFadeVideo.paused) state.bgFadeVideo.play().catch(() => {});
@@ -1647,7 +1650,7 @@
 
         const setPreviewVideoGain = (video, gain) => {
             const nextGain = clamp(gain, 0, 1);
-            const gainNode = state.gainNodes && state.gainNodes.get(video);
+            const gainNode = state.mediaSources && state.mediaSources.has(video) && state.gainNodes && state.gainNodes.get(video);
             if (gainNode && state.audioCtx) {
                 gainNode.gain.setValueAtTime(nextGain, state.audioCtx.currentTime);
                 video.volume = nextGain > 0 ? 1 : 0;
@@ -2350,6 +2353,38 @@
         return !!(task && task.bgMode === 'multi' && getEffectiveBgClipPool(task).length > 0);
     }
 
+    function getWorkMode() {
+        const el = document.getElementById('reels-work-mode');
+        return (el && el.value) || 'srt';
+    }
+
+    function isSingleAutoEditTask(task) {
+        return Boolean(task && task.bgMode !== 'multi' && (task._autoEditSource || task.alignSource === 'auto_edit' || task.autoEditProject));
+    }
+
+    function usesBgAsVoice(task) {
+        if (typeof window._isTaskUsingBgAsVoice === 'function') {
+            return window._isTaskUsingBgAsVoice(task);
+        }
+        if (!task || task.audioPath || isMultiBackgroundTask(task)) return false;
+        if (getWorkMode() !== 'voiced_bg' && !isSingleAutoEditTask(task)) return false;
+        const bgPath = getBackgroundPath(task);
+        return Boolean(bgPath && !isImagePath(bgPath));
+    }
+
+    function resolvedVoicedBgVolume(task) {
+        if (typeof window._resolveTaskVoiceVolumePercent === 'function') {
+            return window._resolveTaskVoiceVolumePercent(task);
+        }
+        const voiceEff = effectiveVoiceVolume(task);
+        if (!usesBgAsVoice(task)) return effectiveBgVolume(task);
+        if (isSingleAutoEditTask(task)) return voiceEff;
+        const bgEff = effectiveBgVolume(task);
+        if (bgEff > 0) return bgEff;
+        if (task && task.bgVideoVolume != null && parseFloat(task.bgVideoVolume) === 0) return 0;
+        return voiceEff;
+    }
+
     function getPreviewMultiClipPool(task) {
         const pool = getEffectiveBgClipPool(task);
         const isRandom = task && (task.bgClipOrder === 'random' || task.bgClipOrder === 'random_align');
@@ -2747,12 +2782,14 @@
     function applyAudioVolumes(task) {
         const routed = setupAudioGraph(task);
         const voicePct = effectiveVoiceVolume(task);
-        const bgPct = effectiveBgVolume(task);
+        const bgAsVoice = usesBgAsVoice(task);
+        const bgPct = bgAsVoice ? resolvedVoicedBgVolume(task) : effectiveBgVolume(task);
+        const bgFadePct = bgAsVoice ? 0 : bgPct;
         const bgmPct = effectiveBgmVolume(task);
         const contentPct = numberOr(task && task.contentVideoVolume, 100);
         applyVolume(state.audio, voicePct, routed);
         applyVolume(state.bgVideo, bgPct, routed);
-        applyVolume(state.bgFadeVideo, bgPct, routed);
+        applyVolume(state.bgFadeVideo, bgFadePct, routed);
         applyVolume(state.bgmAudio, bgmPct, routed);
         applyVolume(state.contentVideo, contentPct, routed);
     }
@@ -2787,7 +2824,7 @@
     function applyVolume(media, pct, routed) {
         if (!media) return;
         const gain = Math.max(0, numberOr(pct, 100) / 100);
-        const gainNode = routed && state.gainNodes.get(media);
+        const gainNode = routed && state.mediaSources.has(media) && state.gainNodes.get(media);
         if (gainNode && state.audioCtx) {
             gainNode.gain.setValueAtTime(gain, state.audioCtx.currentTime);
             media.volume = gain > 0 ? 1 : 0;
@@ -2812,6 +2849,9 @@
                 console.warn('[PreviewV2] Web Audio unavailable', err);
                 return false;
             }
+        }
+        if (state.isPlaying && state.audioCtx.state === 'suspended') {
+            state.audioCtx.resume().catch(() => {});
         }
 
         for (const el of els) {
@@ -2925,6 +2965,7 @@
 
     function pickAudioFxTarget(target, task) {
         if ((target === 'voice' || target === 'all') && state.audio.src && task && task.audioPath) return state.audio;
+        if ((target === 'voice' || target === 'all') && usesBgAsVoice(task) && state.bgVideo.src) return state.bgVideo;
         if ((target === 'bg' || target === 'all') && state.bgVideo.src) return state.bgVideo;
         if ((target === 'content' || target === 'all') && state.contentVideo.src) return state.contentVideo;
         if ((target === 'bgm' || target === 'all') && state.bgmAudio.src && task && getBgmPath(task)) return state.bgmAudio;

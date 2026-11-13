@@ -1091,6 +1091,9 @@
         if ($('create-zip')) $('create-zip').onclick = createZipArchive;
 
         const tabBtn = document.querySelector('[data-tab="google-tts"]');
+        document.addEventListener('vk:panel-activated', (e) => {
+            if (e.detail?.tabName === 'google-tts') loadVoices(false);
+        });
         if (tabBtn) {
             tabBtn.addEventListener('click', () => {
                 loadVoices(false);

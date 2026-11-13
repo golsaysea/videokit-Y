@@ -146,3 +146,50 @@ test('frontend falls back if native error IPC is unavailable and rejects duplica
     await f.context._reelsShowExportError('failure detail');
     assert.equal(f.calls.filter(call => call[0] === 'alert').length, 1);
 });
+
+test('CPU budget helper falls back to installed Windows vendor Python when source tree lacks vendor/python', async () => {
+    const installedPython = path.join('C:\\Users\\Demo\\AppData\\Local', 'Programs', 'videokit', 'resources', 'vendor', 'python', 'python.exe');
+    const seen = [];
+    const module = { exports: {} };
+    let spawnedCmd = null;
+    const { EventEmitter } = require('node:events');
+    const builtin = name => name === 'fs'
+        ? { existsSync: p => { seen.push(p); return p === installedPython; } }
+        : name === 'child_process'
+            ? {
+                spawn(cmd) {
+                    spawnedCmd = cmd;
+                    const child = new EventEmitter();
+                    child.exitCode = null;
+                    child.signalCode = null;
+                    child.stdout = new EventEmitter();
+                    child.stderr = new EventEmitter();
+                    child.killed = false;
+                    child.kill = () => { child.killed = true; child.emit('close', 0); };
+                    child.stdin = Object.assign(new EventEmitter(), {
+                        write(line) {
+                            const req = JSON.parse(String(line).trim());
+                            queueMicrotask(() => child.stdout.emit('data', Buffer.from(JSON.stringify({ id: req.id, ok: true }) + '\n')));
+                        },
+                        end() { child.exitCode = 0; queueMicrotask(() => child.emit('close', 0)); },
+                    });
+                    queueMicrotask(() => child.stdout.emit('data', Buffer.from(JSON.stringify({ ready: true, version: 2 }) + '\n')));
+                    return child;
+                },
+            }
+            : require(name);
+    vm.runInNewContext(fs.readFileSync(path.join(root, 'resources/export-cpu-budget.js'), 'utf8'), {
+        module,
+        exports: module.exports,
+        require: builtin,
+        __dirname: path.join(root, 'resources'),
+        process: { platform: 'win32', env: { LOCALAPPDATA: 'C:\\Users\\Demo\\AppData\\Local' } },
+        setTimeout,
+        clearTimeout,
+    });
+    const assigned = await module.exports.assign(1234);
+    assert.equal(assigned.ok, true);
+    assert.ok(seen.includes(installedPython));
+    assert.equal(spawnedCmd, installedPython);
+    await module.exports.close().catch(() => {});
+});
