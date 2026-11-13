@@ -3306,29 +3306,41 @@ function _fitBatchTableToViewport() {
     const tableWrap = container.querySelector('.rbt-table-wrap');
     if (!panel || !tableWrap) return;
 
-    const viewportH = window.innerHeight || document.documentElement.clientHeight || 800;
+    const viewportH = window.innerHeight || document.documentElement?.clientHeight || 800;
     const cs = window.getComputedStyle ? getComputedStyle(container) : null;
     const padTop = cs ? parseFloat(cs.paddingTop) || 0 : 16;
     const padBottom = cs ? parseFloat(cs.paddingBottom) || 0 : 16;
-    const panelMaxH = Math.max(320, viewportH - padTop - padBottom);
+    const containerRect = container.getBoundingClientRect ? container.getBoundingClientRect() : null;
+    const chromeOffset = (containerRect && containerRect.height > 0)
+        ? 0
+        : (parseFloat(cs?.top) || 38);
+    const hostH = (containerRect && containerRect.height > 0)
+        ? containerRect.height
+        : (container.clientHeight || Math.max(320, viewportH - chromeOffset));
+    const panelMaxH = Math.max(260, Math.floor(hostH - padTop - padBottom));
+    const panelBorderY = (panel.offsetHeight && panel.clientHeight)
+        ? Math.max(0, panel.offsetHeight - panel.clientHeight)
+        : 2;
     const actionsPanel = panel.querySelector('.rbt-actions-panel');
-    if (actionsPanel && getComputedStyle(actionsPanel).display !== 'none') {
-        const actionsMaxH = Math.max(120, Math.min(360, Math.floor(panelMaxH * 0.42)));
+    if (actionsPanel && (!window.getComputedStyle || getComputedStyle(actionsPanel).display !== 'none')) {
+        const actionsMaxH = Math.max(100, Math.min(340, Math.floor(panelMaxH * 0.38)));
         actionsPanel.style.maxHeight = `${actionsMaxH}px`;
     }
 
     const fixedParts = [
+        panel.querySelector('.rbt-folder-scope-bar'),
         panel.querySelector('.rbt-tabbar'),
         panel.querySelector('.rbt-header'),
         actionsPanel,
         panel.querySelector('.rbt-footer'),
     ];
     const fixedHeight = fixedParts.reduce((sum, el) => {
-        if (!el || getComputedStyle(el).display === 'none') return sum;
-        return sum + el.getBoundingClientRect().height;
+        if (!el || (window.getComputedStyle && getComputedStyle(el).display === 'none')) return sum;
+        const h = el.getBoundingClientRect ? el.getBoundingClientRect().height : 0;
+        return sum + (h || el.offsetHeight || 0);
     }, 0);
 
-    const tableMaxH = Math.max(120, panelMaxH - fixedHeight - 8);
+    const tableMaxH = Math.max(88, Math.floor(panelMaxH - panelBorderY - fixedHeight - 4));
     panel.style.maxHeight = `${panelMaxH}px`;
     tableWrap.style.maxHeight = `${tableMaxH}px`;
 }
@@ -4159,6 +4171,7 @@ function _renderBatchTable() {
         newScrollWrap.scrollLeft = _savedScrollLeft;
     }
     _hydrateBatchVideoThumbnails(container);
+    _fitBatchTableToViewport();
     _scheduleFitBatchTableToViewport();
   } catch (fatalErr) {
     console.error('[BatchTable] _renderBatchTable FATAL:', fatalErr);
@@ -19999,23 +20012,23 @@ function _injectBatchTableCSS() {
         .rbt-panel {
             position:relative;
             display:flex; flex-direction:column; width:100%; max-width:none;
-            height:auto; max-height:calc(100vh - 32px);
+            height:auto; max-height:min(100%, calc(100vh - var(--window-chrome-height, 38px) - 32px));
             background:#0d0d1e; border:1px solid #1a1a3a; border-radius:12px;
             box-shadow:0 30px 80px rgba(0,0,0,0.7); margin:auto; overflow:hidden;
-            min-height:0; min-width:0;
+            min-height:0; min-width:0; box-sizing:border-box;
         }
         .rbt-body-row {
             display:flex; flex:0 1 auto; overflow:hidden; min-height:0; height:auto;
         }
         .rbt-main-col {
-            flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; min-height:0; height:auto;
+            flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0; min-height:0; max-height:100%; height:auto;
         }
         /* ═══ Media Pool Sidebar ═══ */
         .rbt-media-sidebar {
             width:240px; min-width:180px; max-width:500px;
             background:#12121e; border-right:none;
             display:flex; flex-direction:column; overflow:hidden;
-            position:relative; height:100%; max-height:100%;
+            position:relative; align-self:stretch; height:auto; max-height:100%; min-height:0;
         }
         .rbt-ms-resize-handle {
             position:absolute; top:0; right:0; width:5px; height:100%;

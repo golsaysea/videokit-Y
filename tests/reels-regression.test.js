@@ -8045,6 +8045,122 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     assert.strictEqual(appendedById['rop-scroll-style-picker-popover'], undefined, 'Modal must close and clean up after applying');
 });
 
+test('Batch table keeps bottom .rbt-footer visible below window chrome bar and .rbt-folder-scope-bar', () => {
+    const batchTableSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    const stylesCss = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+
+    assert.match(batchTableSrc, /\.rbt-panel\s*\{[^}]*max-height:\s*min\(100%,\s*calc\(100vh - var\(--window-chrome-height,\s*38px\) - 32px\)\)[^}]*box-sizing:\s*border-box;/);
+    assert.match(batchTableSrc, /\.rbt-main-col\s*\{[^}]*max-height:\s*100%/);
+    assert.match(batchTableSrc, /_fitBatchTableToViewport\(\);\s*_scheduleFitBatchTableToViewport\(\);/);
+    assert.match(stylesCss, /\.rbt-folder-scope-bar\s*\{[^}]*flex-shrink:\s*0;/);
+    assert.match(stylesCss, /\.rsl-backdrop\s*\{[^}]*inset:\s*var\(--window-chrome-height,\s*38px\)\s+0\s+0;/);
+    assert.match(stylesCss, /\.rsl-dialog\s*\{[^}]*height:\s*min\(890px,\s*100%\);/);
+
+    let containerRectH = 730;
+    let containerClientH = 730;
+    const makeRegion = (height) => ({
+        style: {},
+        offsetHeight: height,
+        clientHeight: height,
+        getBoundingClientRect: () => ({ height }),
+    });
+    const folderScopeBar = makeRegion(34);
+    const tabbar = makeRegion(42);
+    const header = makeRegion(36);
+    const actionsPanel = makeRegion(220);
+    const footer = makeRegion(40);
+    const tableWrap = { style: {} };
+    const panelSelectors = {
+        '.rbt-folder-scope-bar': folderScopeBar,
+        '.rbt-tabbar': tabbar,
+        '.rbt-header': header,
+        '.rbt-actions-panel': actionsPanel,
+        '.rbt-footer': footer,
+    };
+    const panel = {
+        style: {},
+        offsetHeight: 700,
+        clientHeight: 698,
+        querySelector: (sel) => panelSelectors[sel] || null,
+    };
+    const containerSelectors = {
+        '.rbt-panel': panel,
+        '.rbt-table-wrap': tableWrap,
+    };
+    const container = {
+        style: { display: 'flex' },
+        get clientHeight() { return containerClientH; },
+        getBoundingClientRect: () => ({ height: containerRectH }),
+        querySelector: (sel) => containerSelectors[sel] || null,
+    };
+    const mockComputedStyle = (el) => {
+        if (el === container) {
+            return { display: 'flex', paddingTop: '16px', paddingBottom: '16px', top: '38px' };
+        }
+        return { display: 'flex', paddingTop: '0px', paddingBottom: '0px', top: '0px' };
+    };
+    const winObj = {
+        innerWidth: 1280,
+        innerHeight: 768,
+        location: { hash: '' },
+        addEventListener() {},
+        removeEventListener() {},
+        getComputedStyle: mockComputedStyle,
+        electronAPI: { toFileUrl: (p) => p, getDefaultProjectDir: () => '' },
+    };
+    const sandbox = loadBrowserScript('src/reels-batch-table.js', {
+        window: winObj,
+        document: {
+            head: { appendChild() {} },
+            body: { appendChild() {}, querySelectorAll: () => [] },
+            documentElement: { clientHeight: 768 },
+            createElement: () => ({ style: {}, classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [], addEventListener() {} }),
+            getElementById: (id) => (id === 'reels-batch-table-container' ? container : null),
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {},
+            removeEventListener() {},
+        },
+        getComputedStyle: mockComputedStyle,
+        requestAnimationFrame: () => 0,
+        setTimeout: () => 0,
+        clearTimeout: () => {},
+        showToast: () => {},
+        alert: () => {},
+        confirm: () => true,
+    });
+
+    const first = JSON.parse(vm.runInContext(`(() => {
+        _batchTableState.container = document.getElementById('reels-batch-table-container');
+        _fitBatchTableToViewport();
+        return JSON.stringify({
+            panelMaxHeight: document.getElementById('reels-batch-table-container').querySelector('.rbt-panel').style.maxHeight,
+            actionsMaxHeight: document.getElementById('reels-batch-table-container').querySelector('.rbt-panel').querySelector('.rbt-actions-panel').style.maxHeight,
+            tableMaxHeight: document.getElementById('reels-batch-table-container').querySelector('.rbt-table-wrap').style.maxHeight,
+        });
+    })()`, sandbox));
+
+    assert.strictEqual(first.panelMaxHeight, '698px');
+    assert.strictEqual(first.actionsMaxHeight, '265px');
+    assert.strictEqual(first.tableMaxHeight, '320px');
+    assert.ok(34 + 42 + 36 + 220 + parseInt(first.tableMaxHeight, 10) + 40 <= 698 - 2, 'Total vertical children must leave room for .rbt-footer inside .rbt-panel');
+
+    // Fallback path before layout rect exists: must still subtract window chrome top offset (38px) + .rbt-folder-scope-bar
+    containerRectH = 0;
+    containerClientH = 0;
+    winObj.innerHeight = 680;
+    const fallback = JSON.parse(vm.runInContext(`(() => {
+        _fitBatchTableToViewport();
+        return JSON.stringify({
+            panelMaxHeight: document.getElementById('reels-batch-table-container').querySelector('.rbt-panel').style.maxHeight,
+            tableMaxHeight: document.getElementById('reels-batch-table-container').querySelector('.rbt-table-wrap').style.maxHeight,
+        });
+    })()`, sandbox));
+
+    assert.strictEqual(fallback.panelMaxHeight, '610px');
+    assert.strictEqual(fallback.tableMaxHeight, '232px');
+});
+
 
 
 
