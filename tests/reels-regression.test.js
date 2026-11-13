@@ -7644,6 +7644,408 @@ test('Decor panel supports explicit apply-this-page (task) and apply-this-tab (t
     assert.strictEqual(tB1.overlays.find(o => o.type === 'decor')?.decor_style, 'cinema_35mm_grain', 'In task mode, tabB must remain untouched');
 });
 
+test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 19 paper/photo/plaid boards, and 60 emblems render cleanly', () => {
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: { addEventListener() {} },
+    });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    sandbox.ReelsOverlay = sandbox.window.ReelsOverlay;
+    sandbox.ReelsBrushEngine = sandbox.window.ReelsBrushEngine;
+    loadBrowserScript('src/reels-style-engine.js', sandbox);
+    sandbox.ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+
+    const { ReelsOverlay, ReelsBrushEngine, REELS_BUILTIN_SCROLL_STYLE_PRESETS, REELS_SCROLL_PRESET_ID_MAP, resolveBuiltinPreset } = sandbox.window;
+
+    assert.strictEqual(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 148, 'Expected 148 built-in scroll style presets');
+    assert.strictEqual(Object.keys(REELS_SCROLL_PRESET_ID_MAP).length, 296, 'Expected 296 scroll preset ID mappings (sc-01..148 & scroll-01..148)');
+
+    const newBoardIds = [
+        'kraft_torn_note', 'kraft_stamped_letter', 'kraft_espresso_prayer',
+        'minimal_ivory_stationery', 'minimal_sage_linen', 'minimal_blush_vellum', 'minimal_slate_clean',
+        'plaid_buffalo_red', 'plaid_country_gingham', 'plaid_heritage_beige', 'plaid_forest_tartan', 'plaid_pastel_lilac',
+        'vintage_aged_manuscript', 'vintage_botanical_herbarium', 'vintage_hymnal_navy',
+        'old_photo_sepia_mount', 'old_photo_polaroid_frame', 'old_photo_film_strip', 'old_photo_archive_matte',
+    ];
+    for (const bid of newBoardIds) {
+        assert.ok(ReelsBrushEngine.CARD_BACKGROUND_STYLES[bid], `CARD_BACKGROUND_STYLES must define ${bid}`);
+    }
+
+    const emblemMeta = ReelsOverlay.NA_PRAYER_EMBLEM_META;
+    const emblemKeys = Object.keys(emblemMeta || {});
+    assert.strictEqual(emblemKeys.length, 60, 'Expected 60 North American & Catholic emblems in NA_PRAYER_EMBLEM_META');
+
+    const drawCalls = { fillText: 0, translate: 0 };
+    const mockCtx = {
+        canvas: { width: 1080, height: 1920 },
+        font: '700 44px Lora',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        save() {},
+        restore() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        rect() {},
+        clip() {},
+        translate() { drawCalls.translate++; },
+        rotate() {},
+        scale() {},
+        setLineDash() {},
+        fill() {},
+        stroke() {},
+        fillRect() {},
+        strokeRect() {},
+        clearRect() {},
+        drawImage() {},
+        fillText() { drawCalls.fillText++; },
+        strokeText() {},
+        measureText(t) { return { width: String(t || '').length * 20 }; },
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+        createPattern() { return null; },
+    };
+
+    // 1. Validate & render all 100 new scroll presets sc-49..sc-148 without any Canvas error
+    const seenNames = new Set();
+    const seenBoards = new Set();
+    const seenCategories = new Set();
+    for (let num = 49; num <= 148; num++) {
+        const scId = `sc-${num}`;
+        const aliasId = `scroll-${num}`;
+        const resolved = resolveBuiltinPreset(scId);
+        const aliasResolved = resolveBuiltinPreset(aliasId);
+        assert.ok(resolved && resolved.kind === 'scroll_style' && resolved.style, `${scId} must resolve`);
+        assert.ok(aliasResolved && aliasResolved.name === resolved.name, `${aliasId} must alias ${resolved.name}`);
+        assert.ok(!seenNames.has(resolved.name), `Duplicate scroll style name: ${resolved.name}`);
+        seenNames.add(resolved.name);
+        seenCategories.add(resolved.category);
+        seenBoards.add(resolved.style.bg_style);
+        assert.ok(ReelsBrushEngine.CARD_BACKGROUND_STYLES[resolved.style.bg_style], `${scId} bg_style ${resolved.style.bg_style} must exist`);
+
+        const ov = ReelsOverlay.createScrollOverlay({
+            ...resolved.style,
+            scroll_title: 'MORNING PRAYER',
+            content: 'Heavenly Father, thank You for grace.\nGuide our steps in peace today.\nAmen.',
+            x: 40,
+            y: 440,
+            w: 1000,
+            h: 980,
+            start: 0,
+            end: 12,
+            _taskSegments: [
+                { start: 0, end: 4, text: 'Heavenly Father, thank You for grace.' },
+                { start: 4, end: 8, text: 'Guide our steps in peace today.' },
+                { start: 8, end: 12, text: 'Amen.' },
+            ],
+        });
+        ReelsOverlay.drawOverlay(mockCtx, ov, 3.2, 1080, 1920);
+    }
+
+    assert.strictEqual(seenCategories.size, 6, 'Expected all 6 new scroll preset categories across sc-49..sc-148');
+    for (const bid of newBoardIds) {
+        assert.ok(seenBoards.has(bid), `At least one sc-49..sc-148 preset must showcase board ${bid}`);
+    }
+    assert.ok(drawCalls.fillText > 100, 'Expected fillText calls when rendering all 100 presets');
+
+    // 2. Render all 60 NA emblems both as corner ribbon badge AND top crest mascot
+    for (const emblemId of emblemKeys) {
+        const ovBadgeAndMascot = ReelsOverlay.createScrollOverlay({
+            scroll_title: 'BLESSING',
+            content: 'Peace and hope be with you.',
+            bg_enabled: true,
+            bg_style: 'kraft_torn_note',
+            bg_bookmark_enabled: true,
+            bg_bookmark_style: emblemId,
+            bg_top_mascot: emblemId,
+            start: 0,
+            end: 8,
+        });
+        ReelsOverlay.drawOverlay(mockCtx, ovBadgeAndMascot, 2.5, 1080, 1920);
+    }
+});
+
+test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, material filters, live search, HD stage text update, and Apply', () => {
+    const cssSrc = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+    for (const cls of ['.rsl-backdrop', '.rsl-dialog', '.rsl-body', '.rsl-aside', '.rsl-grid', '.rsl-stage', '.rsl-stage-canvas', '.rsl-apply-cta']) {
+        assert.ok(cssSrc.includes(cls), `src/styles.css must define spacious scroll studio selector ${cls}`);
+    }
+
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const makeClassList = (initial = []) => {
+        const set = new Set(initial.filter(Boolean));
+        return {
+            _set: set,
+            add(...names) { names.forEach(n => set.add(n)); },
+            remove(...names) { names.forEach(n => set.delete(n)); },
+            toggle(name, force) {
+                const on = force === undefined ? !set.has(name) : Boolean(force);
+                if (on) set.add(name); else set.delete(name);
+                return on;
+            },
+            contains(name) { return set.has(name); },
+        };
+    };
+    const makeCanvasMock = (w = 216, h = 384) => ({
+        width: w,
+        height: h,
+        dataset: {},
+        style: {},
+        classList: makeClassList(),
+        listeners: {},
+        addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); },
+        dispatchEvent(ev) { (this.listeners[ev.type] || []).forEach(fn => fn({ currentTarget: this, target: this, stopPropagation() {}, ...ev })); },
+        getContext() {
+            return {
+                canvas: { width: w, height: h },
+                save() {}, restore() {}, beginPath() {}, closePath() {}, moveTo() {}, lineTo() {},
+                quadraticCurveTo() {}, bezierCurveTo() {}, arc() {}, ellipse() {}, rect() {}, clip() {},
+                translate() {}, rotate() {}, scale() {}, setLineDash() {}, fill() {}, stroke() {},
+                fillRect() {}, strokeRect() {}, clearRect() {}, drawImage() {},
+                fillText() {}, strokeText() {},
+                measureText(t) { return { width: String(t || '').length * 16 }; },
+                createLinearGradient() { return { addColorStop() {} }; },
+                createRadialGradient() { return { addColorStop() {} }; },
+                createPattern() { return null; },
+            };
+        },
+    });
+    const makeNode = (opts = {}) => {
+        const classList = makeClassList(opts.classes || []);
+        const node = {
+            id: opts.id || '',
+            value: opts.value || '',
+            textContent: opts.textContent || '',
+            innerHTML: '',
+            style: {},
+            dataset: { ...(opts.dataset || {}) },
+            classList,
+            get className() { return Array.from(classList._set).join(' '); },
+            set className(val) {
+                classList._set.clear();
+                String(val || '').split(/\s+/).filter(Boolean).forEach(n => classList._set.add(n));
+            },
+            isConnected: false,
+            listeners: {},
+            childrenMap: {},
+            addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); },
+            dispatchEvent(ev = {}) {
+                const evt = { type: ev.type || 'click', currentTarget: node, target: ev.target || node, key: ev.key || '', stopPropagation() {}, ...ev };
+                (this.listeners[evt.type] || []).forEach(fn => fn(evt));
+            },
+            focus() {},
+            remove() { node.isConnected = false; if (appendedById[node.id] === node) delete appendedById[node.id]; },
+            querySelector(sel) { return node.childrenMap[sel] || node.querySelectorAll(sel)[0] || null; },
+            querySelectorAll(sel) { return node._allMap?.[sel] || []; },
+        };
+        return node;
+    };
+
+    const appendedById = {};
+    const rafQueue = [];
+    const docListeners = {};
+    const drawOverlayCalls = [];
+
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: { addEventListener() {} },
+    });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    sandbox.ReelsOverlay = sandbox.window.ReelsOverlay;
+    sandbox.ReelsBrushEngine = sandbox.window.ReelsBrushEngine;
+    loadBrowserScript('src/reels-style-engine.js', sandbox);
+    sandbox.ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+
+    const origDrawOverlay = sandbox.window.ReelsOverlay.drawOverlay.bind(sandbox.window.ReelsOverlay);
+    sandbox.window.ReelsOverlay.drawOverlay = (ctx, ov, t, w, h) => {
+        drawOverlayCalls.push({ id: ov.preset_id || '', title: ov.scroll_title, content: ov.content, t });
+        return origDrawOverlay(ctx, ov, t, w, h);
+    };
+
+    const mockBody = {
+        appendChild(el) {
+            el.isConnected = true;
+            if (el.id) appendedById[el.id] = el;
+        },
+    };
+    const buildModalWrapper = () => {
+        const m = makeNode();
+        let rawHtml = '';
+        Object.defineProperty(m, 'innerHTML', {
+            get() { return rawHtml; },
+            set(val) {
+                rawHtml = String(val || '');
+                const cards = [];
+                const cardCanvases = [];
+                const navBtns = [];
+                const chips = [];
+                const sceneBtns = [];
+                const scriptBtns = [];
+
+                const navRe = /<button[^>]*class="rsl-nav-btn(?:\s+active)?"[^>]*data-group="([^"]*)"/g;
+                for (let match; (match = navRe.exec(rawHtml)) !== null;) {
+                    navBtns.push(makeNode({ dataset: { group: match[1] }, classes: match[0].includes('active') ? ['rsl-nav-btn', 'active'] : ['rsl-nav-btn'] }));
+                }
+                const chipRe = /<button[^>]*class="rsl-chip"[^>]*data-flag="([^"]*)"/g;
+                for (let match; (match = chipRe.exec(rawHtml)) !== null;) {
+                    chips.push(makeNode({ dataset: { flag: match[1] }, classes: ['rsl-chip'] }));
+                }
+                const sceneRe = /data-scene="([^"]*)"/g;
+                for (let match; (match = sceneRe.exec(rawHtml)) !== null;) {
+                    sceneBtns.push(makeNode({ dataset: { scene: match[1] }, classes: match[1] === 'sanctuary' ? ['rsl-btn-sm', 'active'] : ['rsl-btn-sm'] }));
+                }
+                const scriptRe = /data-script="([^"]*)"/g;
+                for (let match; (match = scriptRe.exec(rawHtml)) !== null;) {
+                    scriptBtns.push(makeNode({ dataset: { script: match[1] } }));
+                }
+                const cardRe = /<article class="rsl-card([^"]*)" data-index="(\d+)" data-key="([^"]*)">/g;
+                for (let match; (match = cardRe.exec(rawHtml)) !== null;) {
+                    const cardNode = makeNode({
+                        dataset: { index: match[2], key: match[3] },
+                        classes: match[1].includes('is-selected') ? ['rsl-card', 'is-selected'] : ['rsl-card'],
+                    });
+                    const c = makeCanvasMock(216, 384);
+                    c.dataset.index = match[2];
+                    c.closest = () => cardNode;
+                    const favBtn = makeNode({ classes: ['rsl-fav-btn'] });
+                    const useBtn = makeNode({ classes: ['rsl-use-btn'] });
+                    cardNode.childrenMap = { '.rsl-canvas': c, '.rsl-fav-btn': favBtn, '.rsl-use-btn': useBtn };
+                    cards.push(cardNode);
+                    cardCanvases.push(c);
+                }
+
+                const searchInput = makeNode({ id: 'rop-scroll-picker-search' });
+                const closeBtn = makeNode({ id: 'rop-scroll-picker-close' });
+                const readout = makeNode();
+                const stageCanvas = makeCanvasMock(270, 480);
+                const stageCode = makeNode();
+                const stageName = makeNode();
+                const stageFav = makeNode();
+                const favCount = makeNode();
+                const specs = makeNode();
+                const scrub = makeNode({ value: '3.2' });
+                const timeVal = makeNode();
+                const playBtn = makeNode();
+                const speedSel = makeNode({ value: '1' });
+                const textArea = makeNode();
+                const applyCta = makeNode();
+                const gridPane = makeNode();
+
+                m.childrenMap = {
+                    '#rop-scroll-picker-search': searchInput,
+                    '#rop-scroll-picker-close': closeBtn,
+                    '.rsl-count-readout': readout,
+                    '.rsl-stage-canvas': stageCanvas,
+                    '.rsl-stage-code': stageCode,
+                    '.rsl-stage-name': stageName,
+                    '.rsl-stage-fav': stageFav,
+                    '.rsl-fav-count': favCount,
+                    '.rsl-specs': specs,
+                    '.rsl-scrub': scrub,
+                    '.rsl-time-val': timeVal,
+                    '.rsl-play-btn': playBtn,
+                    '.rsl-speed-sel': speedSel,
+                    '.rsl-text-input': textArea,
+                    '.rsl-apply-cta': applyCta,
+                    '.rsl-grid-pane': gridPane,
+                };
+                m._allMap = {
+                    '.rsl-card': cards,
+                    '.rsl-canvas': cardCanvases,
+                    '.rsl-canvas[data-rendered="1"]': [],
+                    '.rsl-nav-btn': navBtns,
+                    '.rsl-chip': chips,
+                    '[data-scene]': sceneBtns,
+                    '[data-script]': scriptBtns,
+                };
+            },
+        });
+        return m;
+    };
+
+    sandbox.document = {
+        body: mockBody,
+        head: { appendChild() {} },
+        getElementById: (id) => appendedById[id] || null,
+        createElement: (tag) => (tag === 'div' ? buildModalWrapper() : makeNode()),
+        addEventListener: (ev, fn) => { (docListeners[ev] ||= []).push(fn); },
+        removeEventListener: () => {},
+    };
+    sandbox.localStorage = { getItem: () => null, setItem: () => {} };
+    sandbox.requestAnimationFrame = (cb) => { rafQueue.push(cb); return rafQueue.length; };
+    sandbox.cancelAnimationFrame = () => {};
+    sandbox.setTimeout = () => 1;
+    sandbox.performance = { now: () => 1000 };
+    sandbox.REELS_BUILTIN_SCROLL_STYLE_PRESETS = sandbox.window.REELS_BUILTIN_SCROLL_STYLE_PRESETS;
+    sandbox._reelsState = sandbox.window._reelsState = { tasks: [], selectedIdx: 0 };
+
+    vm.runInContext(`${panelSrc}\nwindow.ReelsOverlayPanel = ReelsOverlayPanel;`, sandbox);
+
+    const appliedKeys = [];
+    const panel = Object.create(sandbox.window.ReelsOverlayPanel.prototype);
+    panel.container = makeNode();
+    panel._selectedOv = { scroll_style_preset_id: 'sc-49', scroll_title: '' };
+    panel._getCustomScrollStylePresets = () => ({});
+    panel._applyScrollStylePresetByKey = (k) => appliedKeys.push(k);
+
+    // 1. Open spacious scroll preview studio modal
+    panel._openScrollStylePresetPicker(null);
+    const modal = appendedById['rop-scroll-style-picker-popover'];
+    assert.ok(modal && modal.classList.contains('rsl-backdrop'), 'Modal #rop-scroll-style-picker-popover must use rsl-backdrop class');
+    assert.ok(modal.innerHTML.includes('rsl-dialog'), 'Modal must render centered .rsl-dialog');
+    assert.strictEqual(modal.querySelectorAll('.rsl-card').length, 148, 'All 148 scroll cards must render inside studio grid');
+    assert.ok(modal.querySelectorAll('.rsl-chip').length >= 11, 'Expected material/element filter chips');
+    assert.ok(rafQueue.length > 0, 'Lazy canvas thumbnail & stage RAF loops must be scheduled');
+
+    // Flush lazy thumbnail pump batch (renders first 4 cards cleanly)
+    const beforeThumbs = drawOverlayCalls.length;
+    if (rafQueue.length > 0) rafQueue[0](1016);
+    assert.ok(drawOverlayCalls.length > beforeThumbs, 'Lazy card pump should render card thumbnails onto canvases');
+
+    // 2. Material chip filter ('oldphoto') narrows visible cards cleanly
+    const oldPhotoChip = modal.querySelectorAll('.rsl-chip').find(c => c.dataset.flag === 'oldphoto');
+    assert.ok(oldPhotoChip, 'Expected 老照片 filter chip');
+    oldPhotoChip.dispatchEvent({ type: 'click' });
+    const visibleAfterChip = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
+    assert.ok(visibleAfterChip.length > 0 && visibleAfterChip.length < 148, 'Selecting oldphoto chip should filter cards');
+    assert.ok(modal.querySelector('.rsl-count-readout').textContent.includes(`显示 ${visibleAfterChip.length} / 148`));
+
+    // Clear chip & search for 白头鹰
+    oldPhotoChip.dispatchEvent({ type: 'click' });
+    const searchEl = modal.querySelector('#rop-scroll-picker-search');
+    searchEl.value = '白头鹰';
+    searchEl.dispatchEvent({ type: 'input' });
+    const eagleCards = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
+    assert.ok(eagleCards.length >= 1 && eagleCards.length < 15, 'Searching 白头鹰 must match the bald eagle prayer preset(s)');
+
+    // 3. Edit live stage sample prayer text & apply matched preset
+    const customInput = modal.querySelector('.rsl-text-input');
+    customInput.value = 'God bless this home with peace.\nAmen.';
+    customInput.dispatchEvent({ type: 'input' });
+    assert.ok(drawOverlayCalls.some(c => c.content === 'God bless this home with peace.\nAmen.'), 'Stage preview must re-render with user custom prayer text');
+
+    eagleCards[0].dispatchEvent({ type: 'click' });
+    modal.querySelector('.rsl-apply-cta').dispatchEvent({ type: 'click' });
+    assert.strictEqual(appliedKeys.length, 1);
+    assert.strictEqual(appliedKeys[0], eagleCards[0].dataset.key, 'One-click Apply must apply the selected preset key');
+    assert.strictEqual(appendedById['rop-scroll-style-picker-popover'], undefined, 'Modal must close and clean up after applying');
+});
+
+
 
 
 

@@ -936,15 +936,15 @@ class ReelsOverlayPanel {
                         </label>
                     </div>
 
-                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-47） -->
+                    <!-- 🎨 滚动字幕样式预设（像 T 字幕一样一键选样式 / 支持编号 sc-01 ~ sc-148） -->
                     <div class="rop-scroll-preset-card">
                         <div style="font-size:11px;font-weight:700;color:#7dd3fc;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
-                            <span>🎨 滚动字幕样式预设 (sc-01 ~ sc-47)</span>
-                            <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开可视化滚动字幕样式预览库">🎨 样式库预览</button>
+                            <span id="rop-scroll-style-preset-heading">🎨 滚动字幕样式预设 (sc-01 ~ sc-148)</span>
+                            <button type="button" id="rop-scroll-style-picker-btn" class="rop-btn" style="padding:2px 8px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);color:#ffffff;border:1px solid rgba(125,211,252,0.45);border-radius:5px;cursor:pointer;" title="打开大气全景滚动字幕样式预览弹窗库">🎨 样式库预览</button>
                         </div>
                         <div style="display:flex;gap:4px;align-items:center;">
                             <select id="rop-scroll-style-preset-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;">
-                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-47) —</option>
+                                <option value="">— 选择滚动字幕样式 (sc-01 ~ sc-148) —</option>
                             </select>
                             <button type="button" id="rop-scroll-style-preset-apply" class="rop-btn" style="padding:3px 8px;font-size:11px;white-space:nowrap;background:rgba(56,189,248,0.18);color:#e0f2fe;border:1px solid rgba(56,189,248,0.35);border-radius:4px;cursor:pointer;" title="应用所选滚动字幕样式">应用</button>
                             <button type="button" id="rop-scroll-style-preset-save" class="rop-btn" style="padding:3px 7px;font-size:11px;white-space:nowrap;background:rgba(34,197,94,0.16);color:#dcfce7;border:1px solid rgba(34,197,94,0.35);border-radius:4px;cursor:pointer;" title="将当前滚动字幕样式保存为自定义预设">保存</button>
@@ -1765,6 +1765,27 @@ class ReelsOverlayPanel {
                                         <option value="vet_honor_medal_board">🎖️ 退伍军人金章礼服画板 (美军礼服深蓝底+双层烫金线框+五星勋章)</option>
                                         <option value="vet_dogtag_steel_board">🏷️ 美军拉丝钢印铭牌画板 (重工金属铭牌底+四角铆钉+拉丝纹理)</option>
                                         <option value="vet_poppy_memorial_board">🌺 纪念虞美人花羊皮信纸板 (复古纪念羊皮纸+红蓝金线框+四角虞美人)</option>
+                                    </optgroup>
+                                    <optgroup label="📦 牛皮纸 / 简约纸张 / 格子 / 复古纸张 / 老照片 (新增)">
+                                        <option value="kraft_torn_note">📦 复古手撕牛皮纸祈祷卡 (手撕毛边+缝线框)</option>
+                                        <option value="kraft_stamped_letter">✉️ 邮戳牛皮信笺画板 (白边牛皮纸+铜铆钉+复古双线)</option>
+                                        <option value="kraft_espresso_prayer">🪵 深烘牛皮纸暗褐羽化卡 (深咖渐变+上下柔边)</option>
+                                        <option value="minimal_ivory_stationery">🤍 简约米白棉纸信笺 (干净象牙纸+极简细金线)</option>
+                                        <option value="minimal_sage_linen">🌿 简约鼠尾草亚麻纸 (淡雅灰绿亚麻纹)</option>
+                                        <option value="minimal_blush_vellum">🌸 简约柔粉硫酸羊皮纸 (奶油柔粉+玫瑰金极简框)</option>
+                                        <option value="minimal_slate_clean">🖤 极简深灰美术卡纸 (静谧石板底+极简银线)</option>
+                                        <option value="plaid_buffalo_red">🟥 红黑水牛格子边框信纸 (北美水牛格外框+暖白中心)</option>
+                                        <option value="plaid_country_gingham">🩵 美式乡村蓝白格子信纸 (天蓝格纹框+奶油卡心)</option>
+                                        <option value="plaid_heritage_beige">🟨 英伦暖卡其苏格兰格子卡 (驼色格纹外框+象牙卡心)</option>
+                                        <option value="plaid_forest_tartan">🌲 森林松绿苏格兰格纹金卡 (深绿金格框+墨绿阅读芯)</option>
+                                        <option value="plaid_pastel_lilac">🪻 春日丁香紫小格子花笺 (浅紫格纹+纯白清新卡心)</option>
+                                        <option value="vintage_aged_manuscript">📜 做旧茶渍古书手稿纸 (焦茶晕边+古典双框)</option>
+                                        <option value="vintage_botanical_herbarium">🌿 复古植物标本馆档案纸 (压花档案纸+精细双线框)</option>
+                                        <option value="vintage_hymnal_navy">⛪ 复古烫金赞美诗藏蓝卡 (午夜蓝精装+双层鎏金框)</option>
+                                        <option value="old_photo_sepia_mount">📸 复古棕调相册贴角老照片 (银盐做旧+四角黑色相角)</option>
+                                        <option value="old_photo_polaroid_frame">🖼️ 拍立得复古白边老照片框 (宽白边留白+深暖棕胶片底)</option>
+                                        <option value="old_photo_film_strip">🎞️ 35mm 怀旧老照片胶卷齿孔框 (滚动胶卷齿孔+银盐底)</option>
+                                        <option value="old_photo_archive_matte">🕰️ 馆藏老照片装裱灰黑卡框 (深炭卡纸垫板+黄铜角贴)</option>
                                     </optgroup>
                                 </select>
                                 <label>颜色</label><input type="color" id="rop-scroll-bg-color" class="rop-color" value="#000000">
@@ -8150,18 +8171,53 @@ class ReelsOverlayPanel {
         } catch (_) {}
     }
 
+    _syncScrollEmblemSelectOptions() {
+        const meta = window.ReelsOverlay?.NA_PRAYER_EMBLEM_META;
+        if (!meta || !this.container) return;
+        const grouped = new Map();
+        for (const [id, info] of Object.entries(meta)) {
+            const grp = info.group || '北美文化元素';
+            if (!grouped.has(grp)) grouped.set(grp, []);
+            grouped.get(grp).push({ id, label: info.label });
+        }
+        const appendGroups = (selectEl, prefixLabel) => {
+            if (!selectEl || selectEl.dataset.naPopulated === '1') return;
+            for (const [grpName, items] of grouped.entries()) {
+                const og = document.createElement('optgroup');
+                og.label = `${prefixLabel} · ${grpName} (${items.length})`;
+                for (const it of items) {
+                    const opt = document.createElement('option');
+                    opt.value = it.id;
+                    opt.textContent = it.label;
+                    og.appendChild(opt);
+                }
+                selectEl.appendChild(og);
+            }
+            selectEl.dataset.naPopulated = '1';
+        };
+        appendGroups(this.container.querySelector('#rop-scroll-bg-bookmark-style'), '📌 北美角标');
+        appendGroups(this.container.querySelector('#rop-scroll-bg-top-mascot'), '✨ 顶部挂饰');
+    }
+
     _refreshScrollStylePresetSelect(selectedKey = '') {
+        this._syncScrollEmblemSelectOptions();
         const sel = this.container?.querySelector('#rop-scroll-style-preset-select');
         if (!sel) return;
         const prevVal = selectedKey || sel.value || '';
         sel.innerHTML = '';
 
+        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
+        const totalBuiltins = Object.keys(builtins).length || 148;
+        const headingEl = this.container?.querySelector('#rop-scroll-style-preset-heading');
+        if (headingEl) {
+            headingEl.textContent = `🎨 滚动字幕样式预设 (sc-01 ~ sc-${totalBuiltins})`;
+        }
+
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = '— 选择滚动字幕样式 (sc-01 ~ sc-41) —';
+        placeholder.textContent = `— 选择滚动字幕样式 (sc-01 ~ sc-${totalBuiltins}) —`;
         sel.appendChild(placeholder);
 
-        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
         const groups = new Map();
         for (const [name, style] of Object.entries(builtins)) {
             if (!style || typeof style !== 'object') continue;
@@ -8320,9 +8376,11 @@ class ReelsOverlayPanel {
     _deleteCustomScrollStylePreset() {
         const sel = this.container?.querySelector('#rop-scroll-style-preset-select');
         const val = sel?.value || '';
+        const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
+        const totalBuiltins = Object.keys(builtins).length || 148;
         if (!val.startsWith('custom:')) {
             if (typeof window.alert === 'function') {
-                window.alert('内置滚动字幕样式 (sc-01 ~ sc-41) 不可删除，请选择“⭐ 自定义保存样式”后再删除。');
+                window.alert(`内置滚动字幕样式 (sc-01 ~ sc-${totalBuiltins}) 不可删除，请选择“⭐ 自定义保存样式”后再删除。`);
             }
             return;
         }
@@ -8337,260 +8395,589 @@ class ReelsOverlayPanel {
     _openScrollStylePresetPicker(anchorEl) {
         const existing = document.getElementById('rop-scroll-style-picker-popover');
         if (existing) {
-            existing.remove();
+            if (typeof existing._disposeScrollPicker === 'function') existing._disposeScrollPicker();
+            else existing.remove();
             return;
         }
 
-        const popover = document.createElement('div');
-        popover.id = 'rop-scroll-style-picker-popover';
-        popover.style.cssText = [
-            'position:fixed',
-            'z-index:10050',
-            'width:440px',
-            'max-width:94vw',
-            'max-height:80vh',
-            'display:flex',
-            'flex-direction:column',
-            'background:#111827',
-            'border:1px solid rgba(56,189,248,0.45)',
-            'border-radius:10px',
-            'box-shadow:0 16px 42px rgba(0,0,0,0.72)',
-            'color:#f8fafc',
-            'overflow:hidden',
-            'font-family:system-ui,-apple-system,sans-serif',
-        ].join(';');
-
-        const rect = anchorEl?.getBoundingClientRect?.() || { left: 100, bottom: 100, top: 80 };
-        const topPos = Math.min(window.innerHeight - 520, Math.max(16, rect.bottom + 6));
-        const leftPos = Math.min(window.innerWidth - 456, Math.max(16, rect.left - 180));
-        popover.style.top = `${Math.max(16, topPos)}px`;
-        popover.style.left = `${Math.max(16, leftPos)}px`;
-
-        const header = document.createElement('div');
-        header.style.cssText = 'padding:10px 12px;background:#1e293b;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;flex-direction:column;gap:8px;';
-        header.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:13px;font-weight:700;color:#7dd3fc;">🎨 滚动字幕样式库 (支持 CLI 编号 sc-01 ~ sc-41)</span>
-                <button type="button" id="rop-scroll-picker-close" style="background:none;border:none;color:#94a3b8;font-size:15px;cursor:pointer;padding:0 4px;">✕</button>
-            </div>
-            <input type="text" id="rop-scroll-picker-search" placeholder="🔍 搜索编号 (如 sc-39)、分类、字体或样式特征..." style="width:100%;box-sizing:border-box;padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid rgba(255,255,255,0.18);background:#0f172a;color:#f8fafc;outline:none;">
-        `;
-        popover.appendChild(header);
-
-        const body = document.createElement('div');
-        body.style.cssText = 'padding:10px 12px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px;';
-        popover.appendChild(body);
+        const esc = (v) => String(v ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        const loadFavs = () => {
+            try { return new Set(JSON.parse(localStorage.getItem('reels_scroll_style_favorites') || '[]')); }
+            catch (_) { return new Set(); }
+        };
+        const saveFavs = (set) => {
+            try { localStorage.setItem('reels_scroll_style_favorites', JSON.stringify([...set])); } catch (_) {}
+        };
 
         const builtins = window.REELS_BUILTIN_SCROLL_STYLE_PRESETS || {};
         const customPresets = this._getCustomScrollStylePresets();
-        const allItems = [];
-        for (const [name, style] of Object.entries(builtins)) {
-            if (!style || typeof style !== 'object') continue;
-            allItems.push({
-                key: style.preset_id || name,
-                id: style.preset_id || name,
+        const emblemMetaMap = window.ReelsOverlay?.NA_PRAYER_EMBLEM_META || {};
+        const favorites = loadFavs();
+
+        const deriveItemMeta = (id, name, category, st) => {
+            const hay = `${id} ${name} ${category} ${st.bg_style || ''} ${st.bg_bookmark_style || ''} ${st.bg_top_mascot || ''}`.toLowerCase();
+            const numMatch = String(id).match(/^sc-(\d+)$/i);
+            const num = numMatch ? Number(numMatch[1]) : 0;
+            const flags = new Set();
+            const tags = [];
+            if (/kraft|牛皮/.test(hay)) { flags.add('kraft'); tags.push('牛皮纸'); }
+            if (/minimal|简约|极简|linen|vellum/.test(hay)) { flags.add('minimal'); tags.push('简约纸张'); }
+            if (/plaid|grid|格子|格纹|方格/.test(hay)) { flags.add('plaid'); tags.push('格子'); }
+            if (/vintage|newspaper|parchment|herbarium|hymnal|复古|古书|报刊/.test(hay)) { flags.add('vintage'); tags.push('复古纸张'); }
+            if (/old_photo|老照片|拍立得|胶卷/.test(hay)) { flags.add('oldphoto'); tags.push('老照片'); }
+            if (/prayer_bookmark|祈祷|羽化|书签/.test(hay)) { flags.add('prayer'); tags.push('祈祷羽化'); }
+            if (/cross|us_|flag|eagle|praying|dove|vet_|十字|白头鹰|星条旗|美国|白鸽|祈祷手/.test(hay)) { flags.add('americana'); }
+            if (/flower|clover|butterfly|sunflower|morning_glory|tulip|stars_moon|rose|lily|daisy|carnation|daffodil|hydrangea|peony|violet|花|草|蝶|向日葵|月/.test(hay)) { flags.add('floral'); }
+            if (/dog|cat|cardinal|robin|sparrow|squirrel|rabbit|dinosaur|红雀|鸟|狗|猫|松鼠|兔|恐龙/.test(hay)) { flags.add('animal'); }
+            if (/burger|pizza|coffee|ice_cream|donut|chips|xmas|christmas|heart|season|fireworks|easter|woman|car|bicycle|airplane|train|sailboat|bus|guitar|vinyl|music|mic|speaker|book|football|home|camera|palette|pumpkin|lighthouse|汉堡|披萨|咖啡|冰淇淋|甜甜圈|薯片|圣诞|烟花|彩蛋|独立女性|汽车|自行车|飞机|火车|帆船|大巴|吉他|黑胶|音符|麦克风|音响|圣经|橄榄球|家园|相机|调色盘|南瓜|灯塔/.test(hay)) { flags.add('life'); }
+            if (st.scroll_typewriter_enabled) { flags.add('typewriter'); }
+            const emblemId = (st.bg_top_mascot && st.bg_top_mascot !== 'none' && emblemMetaMap[st.bg_top_mascot])
+                ? st.bg_top_mascot
+                : ((st.bg_bookmark_enabled && emblemMetaMap[st.bg_bookmark_style]) ? st.bg_bookmark_style : '');
+            const emblemInfo = emblemId ? emblemMetaMap[emblemId] : null;
+            if (emblemInfo) tags.push(emblemInfo.label.replace(/^\S+\s+/, ''));
+            if (st.scroll_tw_underline_enabled) tags.push('金线跟读');
+            return {
+                isNew100: num >= 49,
+                flags,
+                tags: tags.slice(0, 3),
+                emblemEmoji: emblemInfo?.emoji || '',
+            };
+        };
+
+        const items = [];
+        const categoryCounts = new Map();
+        const pushItem = (key, id, name, category, style, isCustom = false) => {
+            if (!style || typeof style !== 'object') return;
+            const meta = deriveItemMeta(id, name, category, style);
+            categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+            items.push({
+                index: items.length,
+                key,
+                id,
                 name,
-                category: style.category || '经典描边滚动',
+                category,
+                isCustom,
                 style,
+                ...meta,
+                searchBlob: `${key} ${id} ${name} ${category} ${style.font_family || ''} ${style.bg_style || ''} ${style.bg_bookmark_style || ''} ${style.bg_top_mascot || ''} ${meta.tags.join(' ')}`.toLowerCase(),
             });
+        };
+        for (const [name, style] of Object.entries(builtins)) {
+            pushItem(style.preset_id || name, style.preset_id || name, name, style.category || '经典描边滚动', style, false);
         }
         for (const [cName, style] of Object.entries(customPresets)) {
-            if (!style || typeof style !== 'object') continue;
-            allItems.push({
-                key: `custom:${cName}`,
-                id: '自定义',
-                name: cName,
-                category: '⭐ 自定义保存样式',
-                style,
-            });
+            pushItem(`custom:${cName}`, '自定义', cName, '⭐ 自定义保存样式', style, true);
         }
+
+        const SAMPLE_SCRIPTS = {
+            prayer_en: {
+                label: '✝️ 晨间祷告',
+                title: 'MORNING PRAYER',
+                body: 'Heavenly Father, thank You for this new day.\nGuide my steps with wisdom and grace.\nFill our home with peace, hope, and love.\nAmen.',
+            },
+            gratitude_en: {
+                label: '🙏 感恩祈福',
+                title: 'BLESSING & GRACE',
+                body: 'Lord, bless every soul reading this today.\nGrant strength in trials and joy in stillness.\nYour mercy endures forever.\nAmen.',
+            },
+            america_en: {
+                label: '🇺🇸 守护美国',
+                title: 'GOD BLESS AMERICA',
+                body: 'Lord, watch over this land and every family.\nUnite our hearts in faith, courage, and peace.\nLet Your light shine from sea to shining sea.',
+            },
+            zh_prayer: {
+                label: '🌸 温暖中文祷词',
+                title: '每日平安祝祷',
+                body: '愿慈爱的神看顾你今天的每一步，\n在微光与希望中赐下平静与喜乐，\n让爱与恩典常驻你的心房。阿们。',
+            },
+        };
 
         const currentActiveKey = this._selectedOv?.scroll_style_preset_id || '';
+        let selectedItem = items.find(it => it.key === currentActiveKey)
+            || items.find(it => it.id === 'sc-49')
+            || items[0]
+            || null;
+        let activeGroup = 'all';
+        let activeFlag = '';
+        let searchQuery = '';
+        let stageScene = 'sanctuary';
+        let activeScriptKey = 'prayer_en';
+        let customTitleText = this._selectedOv?.scroll_title || '';
+        let customBodyText = '';
+        let stagePlaying = true;
+        let stageTime = 3.2;
+        let stageSpeed = 1.0;
+        let lastFrameTs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        let stageRafId = null;
+        const activeCardRafs = new Set();
+        let disposed = false;
 
-        const renderList = (filterText = '') => {
-            body.innerHTML = '';
-            const q = String(filterText || '').trim().toLowerCase();
-            const grouped = new Map();
-            for (const item of allItems) {
-                const hay = `${item.id} ${item.name} ${item.category} ${item.style.font_family || ''}`.toLowerCase();
-                if (q && !hay.includes(q)) continue;
-                if (!grouped.has(item.category)) grouped.set(item.category, []);
-                grouped.get(item.category).push(item);
-            }
+        const modal = document.createElement('div');
+        modal.id = 'rop-scroll-style-picker-popover';
+        modal.className = 'rsl-backdrop';
 
-            if (grouped.size === 0) {
-                body.innerHTML = `<div style="padding:24px;text-align:center;color:#94a3b8;font-size:12px;">未找到匹配的滚动字幕样式</div>`;
-                return;
-            }
+        const builtinCount = Object.keys(builtins).length;
+        const new100Count = items.filter(it => it.isNew100).length;
+        const customCount = items.filter(it => it.isCustom).length;
+        const countBadgeText = `共 ${items.length} 款 · sc-01 ~ sc-${builtinCount}`;
 
-            for (const [cat, list] of grouped.entries()) {
-                const sec = document.createElement('div');
-                const catTitle = document.createElement('div');
-                catTitle.style.cssText = 'font-size:11px;font-weight:700;color:#93c5fd;margin-bottom:6px;padding-bottom:3px;border-bottom:1px solid rgba(147,197,253,0.2);';
-                catTitle.textContent = `📂 ${cat} (${list.length})`;
-                sec.appendChild(catTitle);
+        const FILTER_CHIPS = [
+            ['kraft', '📦 牛皮纸'],
+            ['minimal', '🤍 简约纸张'],
+            ['plaid', '🏁 格子/格纹'],
+            ['vintage', '📜 复古纸张'],
+            ['oldphoto', '📷 老照片'],
+            ['prayer', '🕊️ 羽化祈祷'],
+            ['americana', '🇺🇸 宗教与美国'],
+            ['floral', '🌸 花草自然'],
+            ['animal', '🐦 动物萌宠'],
+            ['life', '🍔 美食/节日/旅途/音乐'],
+            ['typewriter', '✍️ 打字跟读'],
+        ];
 
-                const grid = document.createElement('div');
-                grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:7px;';
+        const catButtonsHtml = Array.from(categoryCounts.entries()).map(([cat, cnt]) =>
+            `<button type="button" class="rsl-nav-btn" data-group="${esc(cat)}"><span>${esc(cat)}</span><small>${cnt}</small></button>`
+        ).join('');
+        const chipButtonsHtml = FILTER_CHIPS.map(([k, lbl]) =>
+            `<button type="button" class="rsl-chip" data-flag="${esc(k)}">${esc(lbl)}</button>`
+        ).join('');
+        const cardsHtml = items.map(it => {
+            const isFav = favorites.has(it.key);
+            const isSel = selectedItem?.key === it.key;
+            const tagsHtml = it.tags.map(t => `<span class="rsl-tag">${esc(t)}</span>`).join('');
+            return `<article class="rsl-card${isSel ? ' is-selected' : ''}" data-index="${it.index}" data-key="${esc(it.key)}">
+                <div class="rsl-card-media">
+                    <canvas class="rsl-canvas" width="216" height="384" data-index="${it.index}"></canvas>
+                    ${it.emblemEmoji ? `<span class="rsl-emblem-pill">${esc(it.emblemEmoji)}</span>` : ''}
+                    <button type="button" class="rsl-fav-btn${isFav ? ' is-fav' : ''}" title="收藏 / 取消收藏">${isFav ? '★' : '☆'}</button>
+                </div>
+                <div class="rsl-card-head">
+                    <span class="rsl-code">${esc(it.id)}</span>
+                    <span class="rsl-card-title" title="${esc(it.name)}">${esc(it.name)}</span>
+                </div>
+                <div class="rsl-card-tags">${tagsHtml}<span class="rsl-tag">${esc(it.style.font_family || 'Lora')}</span></div>
+                <button type="button" class="rsl-use-btn">✅ 立即应用</button>
+            </article>`;
+        }).join('');
 
-                for (const item of list) {
-                    const st = item.style;
-                    const card = document.createElement('div');
-                    const isSelected = currentActiveKey === item.key;
-                    card.style.cssText = [
-                        'padding:7px 8px',
-                        'border-radius:7px',
-                        `border:1px solid ${isSelected ? '#38bdf8' : 'rgba(255,255,255,0.12)'}`,
-                        `background:${isSelected ? 'rgba(56,189,248,0.16)' : 'rgba(255,255,255,0.04)'}`,
-                        'cursor:pointer',
-                        'display:flex',
-                        'flex-direction:column',
-                        'gap:5px',
-                        'transition:all 0.15s ease',
-                    ].join(';');
+        modal.innerHTML = `<div class="rsl-dialog" role="dialog" aria-modal="true" aria-label="滚动字幕样式库预览">
+            <header class="rsl-header">
+                <div class="rsl-title-group">
+                    <h2>🎨 滚动字幕 & 祷告卡样式预览库</h2>
+                    <span class="rsl-badge">${esc(countBadgeText)}</span>
+                </div>
+                <div class="rsl-header-actions">
+                    <input type="text" id="rop-scroll-picker-search" class="rsl-search" placeholder="🔍 搜索编号(如 sc-49) / 红雀鸟 / 白头鹰 / 牛皮纸 / 格子 / 老照片 / 恐龙...">
+                    <button type="button" id="rop-scroll-picker-close" class="rsl-close" title="关闭 (ESC)">✕</button>
+                </div>
+            </header>
+            <div class="rsl-body">
+                <aside class="rsl-aside">
+                    <div class="rsl-aside-label">⚡ 快速筛选</div>
+                    <button type="button" class="rsl-nav-btn active" data-group="all"><span>全部滚动样式</span><small>${items.length}</small></button>
+                    <button type="button" class="rsl-nav-btn" data-group="__new_100__"><span>✨ 新增100款祷告风</span><small>${new100Count}</small></button>
+                    <button type="button" class="rsl-nav-btn" data-group="__favorites__"><span>⭐ 我的收藏</span><small class="rsl-fav-count">${favorites.size}</small></button>
+                    <button type="button" class="rsl-nav-btn" data-group="__custom__"><span>💾 自定义保存</span><small>${customCount}</small></button>
+                    <div class="rsl-aside-label">🏷️ 纸张材质与北美元素</div>
+                    <div class="rsl-chips">${chipButtonsHtml}</div>
+                    <div class="rsl-aside-label">📂 全部分类</div>
+                    ${catButtonsHtml}
+                </aside>
+                <section class="rsl-grid-pane">
+                    <div class="rsl-status-bar"><span class="rsl-count-readout">显示 ${items.length} / ${items.length} 款样式（点击卡片右侧高清放大预览，双击或点「立即应用」）</span></div>
+                    <div class="rsl-grid">${cardsHtml}</div>
+                </section>
+                <aside class="rsl-stage">
+                    <div class="rsl-stage-top">
+                        <div style="min-width:0;flex:1;">
+                            <span class="rsl-code rsl-stage-code"></span>
+                            <h3 class="rsl-stage-name">点击左侧样式实时预览</h3>
+                        </div>
+                        <button type="button" class="rsl-btn-sm rsl-stage-fav" title="收藏此样式">☆</button>
+                    </div>
+                    <div class="rsl-stage-viewport">
+                        <canvas class="rsl-stage-canvas" width="270" height="480"></canvas>
+                    </div>
+                    <div class="rsl-transport">
+                        <button type="button" class="rsl-btn-sm rsl-play-btn">⏸ 暂停</button>
+                        <input type="range" class="rsl-scrub" style="flex:1;" min="0" max="12" step="0.05" value="3.2">
+                        <span class="rsl-time-val" style="font-family:monospace;width:36px;text-align:right;color:#94a3b8;">3.2s</span>
+                        <select class="rsl-speed-sel" style="background:#1e293b;color:#f8fafc;border:1px solid #334155;border-radius:5px;padding:3px 4px;font-size:11px;">
+                            <option value="0.5">0.5x</option>
+                            <option value="1" selected>1.0x</option>
+                            <option value="1.5">1.5x</option>
+                        </select>
+                    </div>
+                    <div class="rsl-row">
+                        <span>背景:</span>
+                        <button type="button" class="rsl-btn-sm active" data-scene="sanctuary">🕯️ 圣殿</button>
+                        <button type="button" class="rsl-btn-sm" data-scene="dawn">🌅 晨曦</button>
+                        <button type="button" class="rsl-btn-sm" data-scene="forest">🌲 森林</button>
+                        <button type="button" class="rsl-btn-sm" data-scene="daylight">☀️ 浅底</button>
+                        <button type="button" class="rsl-btn-sm" data-scene="video">🖼️ 视频帧</button>
+                    </div>
+                    <div class="rsl-row">
+                        ${Object.entries(SAMPLE_SCRIPTS).map(([k, s], idx) => `<button type="button" class="rsl-btn-sm${idx === 0 ? ' active' : ''}" data-script="${esc(k)}">${esc(s.label)}</button>`).join('')}
+                    </div>
+                    <textarea class="rsl-text-input" rows="2" placeholder="输入自定义测试祷告文案实时预览..."></textarea>
+                    <div class="rsl-specs"></div>
+                    <button type="button" class="rsl-apply-cta">✅ 立即应用此滚动样式</button>
+                </aside>
+            </div>
+        </div>`;
 
-                    const previewBox = document.createElement('div');
-                    let boxBg = 'rgba(15,23,42,0.85)';
-                    let boxBorder = '1px solid rgba(255,255,255,0.08)';
-                    let boxRadius = '6px';
-                    if (st.scroll_body_bg_enabled) {
-                        if (st.scroll_body_bg_style === 'xmas_candy_ribbon') {
-                            boxBg = 'linear-gradient(135deg, #88131b, #b91c1c)';
-                            boxBorder = '1px dashed #fca5a5';
-                        } else if (st.scroll_body_bg_style === 'newspaper_cutout') {
-                            boxBg = '#f3efe6';
-                            boxBorder = '1px solid #cbbba0';
-                        } else if (st.scroll_body_bg_style === 'newspaper_sepia') {
-                            boxBg = '#eadbc2';
-                            boxBorder = '1px solid #bfa376';
-                        } else if (st.scroll_body_bg_style === 'xmas_pine_snow') {
-                            boxBg = 'linear-gradient(135deg, #064e3b, #14532d)';
-                            boxBorder = '1px solid #86efac';
-                        } else if (st.scroll_body_bg_style === 'vet_stars_stripes_ribbon') {
-                            boxBg = 'linear-gradient(135deg, #0a1931 0%, #1e3a8a 45%, #b91c1c 100%)';
-                            boxBorder = '1px solid #fbbf24';
-                        } else if (st.scroll_body_bg_style === 'vet_honor_medal_banner') {
-                            boxBg = 'linear-gradient(135deg, #09152b, #172554)';
-                            boxBorder = '1px solid #f59e0b';
-                        } else if (st.scroll_body_bg_style === 'vet_dogtag_steel') {
-                            boxBg = 'linear-gradient(135deg, #cbd5e1, #94a3b8)';
-                            boxBorder = '1px solid #64748b';
-                        } else if (st.scroll_body_bg_style === 'vet_poppy_parchment') {
-                            boxBg = '#fbf7ef';
-                            boxBorder = '1px solid #dc2626';
-                        } else if (String(st.scroll_body_bg_color || '').toUpperCase() === '#FFFFFF') {
-                            boxBg = 'rgba(255,255,255,0.42)';
-                            boxBorder = '1px solid rgba(255,255,255,0.5)';
-                        } else {
-                            boxBg = 'rgba(0,0,0,0.65)';
-                            boxBorder = '1px solid rgba(255,255,255,0.18)';
-                        }
-                        if (Number(st.scroll_body_bg_radius) >= 30) boxRadius = '14px';
-                    } else if (st.bg_enabled) {
-                        if (st.bg_style === 'prayer_bookmark_green') {
-                            boxBg = 'linear-gradient(180deg, rgba(21,57,53,0.45) 0%, #153935 22%, #153935 78%, rgba(21,57,53,0.45) 100%)';
-                            boxBorder = '1px solid rgba(226,185,91,0.55)';
-                        } else if (st.bg_style === 'prayer_bookmark_brown') {
-                            boxBg = 'linear-gradient(180deg, rgba(44,30,24,0.45) 0%, #2C1E18 22%, #2C1E18 78%, rgba(44,30,24,0.45) 100%)';
-                            boxBorder = '1px solid rgba(217,172,66,0.55)';
-                        } else if (st.bg_style === 'prayer_bookmark_navy') {
-                            boxBg = 'linear-gradient(180deg, rgba(18,34,56,0.45) 0%, #122238 22%, #122238 78%, rgba(18,34,56,0.45) 100%)';
-                            boxBorder = '1px solid rgba(229,185,78,0.55)';
-                        }
-                    }
-                    previewBox.style.cssText = `min-height:44px;padding:5px 8px;border-radius:${boxRadius};background:${boxBg};border:${boxBorder};display:flex;flex-direction:column;justify-content:center;align-items:${st.text_align === 'left' ? 'flex-start' : 'center'};overflow:hidden;`;
+        document.body.appendChild(modal);
 
-                    if (st.scroll_title_font_family) {
-                        const titleEl = document.createElement('div');
-                        titleEl.textContent = 'PRAYER TITLE';
-                        titleEl.style.cssText = [
-                            `font-family:"${st.scroll_title_font_family}",sans-serif`,
-                            'font-size:11px',
-                            'font-weight:700',
-                            `color:${st.scroll_title_color || '#F50000'}`,
-                            `-webkit-text-stroke:${Math.min(2.2, (Number(st.scroll_title_stroke_width) || 0) * 0.22)}px ${st.scroll_title_stroke_color || '#FFFFFF'}`,
-                            'paint-order:stroke fill',
-                            'line-height:1.1',
-                            'margin-bottom:2px',
-                        ].join(';');
-                        previewBox.appendChild(titleEl);
-                    }
-
-                    const sampleLine = document.createElement('div');
-                    sampleLine.textContent = st.scroll_uppercase ? 'SCROLL SUBTITLE' : (st.scroll_tw_underline_enabled ? '🕊️ Heavenly Father' : 'Scroll Subtitle 滚动');
-                    const rawColor = String((st.scroll_tw_underline_enabled && st.scroll_tw_active_highlight && st.scroll_tw_active_color) ? st.scroll_tw_active_color : (st.color || '#FFFFFF')).trim();
-                    const isGrad = rawColor.includes(',');
-                    const strokeW = Math.min(3.2, Math.max(0, (Number(st.stroke_width) || 0) * 0.28));
-                    sampleLine.style.cssText = [
-                        `font-family:"${st.font_family || 'Kalam'}",sans-serif`,
-                        'font-size:15px',
-                        `font-weight:${st.bold ? '700' : (st.font_weight || 400)}`,
-                        `font-style:${st.italic ? 'italic' : 'normal'}`,
-                        isGrad
-                            ? `background:linear-gradient(90deg, ${rawColor});-webkit-background-clip:text;-webkit-text-fill-color:transparent;`
-                            : `color:${rawColor};`,
-                        strokeW > 0
-                            ? `-webkit-text-stroke:${strokeW}px ${st.stroke_color || '#000000'};paint-order:stroke fill;`
-                            : '',
-                        'line-height:1.2',
-                        'white-space:nowrap',
-                    ].join(';');
-                    previewBox.appendChild(sampleLine);
-                    if (st.scroll_tw_underline_enabled) {
-                        const ulEl = document.createElement('div');
-                        ulEl.style.cssText = `width:72%;height:2.5px;border-radius:2px;background:${st.scroll_tw_underline_color || '#E2B95B'};margin-top:2px;`;
-                        previewBox.appendChild(ulEl);
-                    }
-                    card.appendChild(previewBox);
-
-                    const metaRow = document.createElement('div');
-                    metaRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:4px;';
-                    const idBadge = document.createElement('span');
-                    idBadge.style.cssText = 'font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(56,189,248,0.2);color:#7dd3fc;border:1px solid rgba(56,189,248,0.35);flex-shrink:0;';
-                    idBadge.textContent = item.id;
-                    const fontBadge = document.createElement('span');
-                    fontBadge.style.cssText = 'font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-                    fontBadge.textContent = `${st.font_family || 'Kalam'} · ${st.fontsize || 89}px`;
-                    metaRow.appendChild(idBadge);
-                    metaRow.appendChild(fontBadge);
-                    card.appendChild(metaRow);
-
-                    const nameEl = document.createElement('div');
-                    nameEl.style.cssText = 'font-size:11px;font-weight:600;color:#e2e8f0;line-height:1.25;';
-                    nameEl.textContent = item.name;
-                    card.appendChild(nameEl);
-
-                    card.addEventListener('click', () => {
-                        this._applyScrollStylePresetByKey(item.key);
-                        popover.remove();
-                    });
-                    grid.appendChild(card);
+        const posterImg = (() => {
+            try {
+                const task = window._reelsState?.tasks?.[window._reelsState?.selectedIdx];
+                if (task?.video && typeof window.reelsGetBackgroundPoster === 'function') {
+                    return window.reelsGetBackgroundPoster(task.video);
                 }
+            } catch (_) {}
+            return null;
+        })();
 
-                sec.appendChild(grid);
-                body.appendChild(sec);
+        const drawBackdrop = (ctx, w, h, scene) => {
+            ctx.save();
+            if (scene === 'video' && posterImg && posterImg.complete && posterImg.naturalWidth > 0) {
+                const scale = Math.max(w / posterImg.naturalWidth, h / posterImg.naturalHeight);
+                const dw = posterImg.naturalWidth * scale;
+                const dh = posterImg.naturalHeight * scale;
+                ctx.drawImage(posterImg, (w - dw) / 2, (h - dh) / 2, dw, dh);
+                ctx.fillStyle = 'rgba(0,0,0,0.22)';
+                ctx.fillRect(0, 0, w, h);
+            } else {
+                const palettes = {
+                    sanctuary: ['#090d16', '#1e1b2e', '#2d1c16'],
+                    dawn: ['#2a1d35', '#7c3f2c', '#d97742'],
+                    forest: ['#071a12', '#103526', '#0c231a'],
+                    daylight: ['#cbd5e1', '#e2e8f0', '#f1f5f9'],
+                };
+                const cols = palettes[scene] || palettes.sanctuary;
+                const g = ctx.createLinearGradient(0, 0, 0, h);
+                g.addColorStop(0, cols[0]);
+                g.addColorStop(0.5, cols[1]);
+                g.addColorStop(1, cols[2]);
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, w, h);
+            }
+            ctx.restore();
+        };
+
+        const buildSampleOverlay = (style) => {
+            const presetScript = SAMPLE_SCRIPTS[activeScriptKey] || SAMPLE_SCRIPTS.prayer_en;
+            const titleText = customTitleText || presetScript.title;
+            const bodyText = customBodyText || presetScript.body;
+            const lines = bodyText.split('\n').filter(Boolean);
+            const segDur = 12 / Math.max(1, lines.length);
+            const mockSegments = lines.map((lineText, idx) => ({
+                start: idx * segDur,
+                end: (idx + 1) * segDur,
+                text: lineText,
+            }));
+            const base = (typeof window.ReelsOverlay?.createScrollOverlay === 'function')
+                ? window.ReelsOverlay.createScrollOverlay()
+                : {};
+            return {
+                ...base,
+                ...style,
+                id: '__scroll_preview__',
+                type: 'scroll',
+                scroll_title: titleText,
+                content: bodyText,
+                x: 40,
+                y: 440,
+                w: 1000,
+                h: 980,
+                scroll_from_y: 880,
+                scroll_to_y: -260,
+                start: 0,
+                end: 12,
+                scroll_speed: 0.75,
+                scroll_end_y_auto: false,
+                scroll_static: false,
+                opacity: 255,
+                _taskSegments: mockSegments,
+                _previewPlaying: true,
+            };
+        };
+
+        const renderPreviewToCanvas = (canvas, style, t, scene = 'sanctuary') => {
+            if (!canvas) return;
+            const ctx = canvas.getContext?.('2d');
+            if (!ctx || typeof window.ReelsOverlay?.drawOverlay !== 'function') return;
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBackdrop(ctx, canvas.width, canvas.height, scene);
+            ctx.scale(canvas.width / 1080, canvas.height / 1920);
+            try {
+                const sampleOv = buildSampleOverlay(style);
+                window.ReelsOverlay.drawOverlay(ctx, sampleOv, t, 1080, 1920);
+            } catch (_) {}
+            ctx.restore();
+            canvas.dataset.rendered = '1';
+        };
+
+        const applyFilterAndSearch = () => {
+            const q = String(searchQuery || '').trim().toLowerCase();
+            let visibleCount = 0;
+            modal.querySelectorAll('.rsl-card').forEach(cardEl => {
+                const it = items[Number(cardEl.dataset.index)];
+                if (!it) return;
+                let ok = true;
+                if (activeGroup === '__new_100__') ok = it.isNew100;
+                else if (activeGroup === '__favorites__') ok = favorites.has(it.key);
+                else if (activeGroup === '__custom__') ok = it.isCustom;
+                else if (activeGroup !== 'all') ok = it.category === activeGroup;
+                if (ok && activeFlag) ok = it.flags.has(activeFlag);
+                if (ok && q) ok = it.searchBlob.includes(q);
+                cardEl.style.display = ok ? '' : 'none';
+                if (ok) visibleCount++;
+            });
+            const readout = modal.querySelector('.rsl-count-readout');
+            if (readout) {
+                readout.textContent = `显示 ${visibleCount} / ${items.length} 款样式（点击卡片右侧高清实时预览，双击或点「立即应用」）`;
             }
         };
 
-        renderList('');
-        document.body.appendChild(popover);
+        const stageCanvas = modal.querySelector('.rsl-stage-canvas');
+        const syncStageDetails = () => {
+            if (!selectedItem) return;
+            const st = selectedItem.style || {};
+            const codeEl = modal.querySelector('.rsl-stage-code');
+            const nameEl = modal.querySelector('.rsl-stage-name');
+            const favBtn = modal.querySelector('.rsl-stage-fav');
+            const specsEl = modal.querySelector('.rsl-specs');
+            if (codeEl) codeEl.textContent = selectedItem.id;
+            if (nameEl) nameEl.textContent = selectedItem.name;
+            if (favBtn) {
+                const isFav = favorites.has(selectedItem.key);
+                favBtn.textContent = isFav ? '★' : '☆';
+                favBtn.classList.toggle('is-fav', isFav);
+            }
+            if (specsEl) {
+                const bgInfo = st.bg_enabled ? (window.ReelsOverlay?.ReelsBrushEngine?.CARD_BACKGROUND_STYLES?.[st.bg_style]?.label?.split(' ')[1] || st.bg_style) : '无背景卡';
+                const badgeInfo = emblemMetaMap[st.bg_top_mascot]?.label || emblemMetaMap[st.bg_bookmark_style]?.label || st.bg_bookmark_style || '无';
+                specsEl.innerHTML = [
+                    ['画板材质', bgInfo],
+                    ['徽章/挂饰', badgeInfo],
+                    ['字体字号', `${st.font_family || 'Lora'} · ${st.fontsize || 44}px`],
+                    ['跟读特效', st.scroll_tw_underline_enabled ? '金线跟读+出字' : (st.scroll_typewriter_enabled ? '逐词出字' : '纯滚动')],
+                ].map(([k, v]) => `<div class="rsl-spec"><span>${esc(k)}</span><strong title="${esc(v)}">${esc(v)}</strong></div>`).join('');
+            }
+            modal.querySelectorAll('.rsl-card').forEach(el => {
+                el.classList.toggle('is-selected', el.dataset.key === selectedItem.key);
+            });
+            renderPreviewToCanvas(stageCanvas, st, stageTime, stageScene);
+        };
 
-        const searchInput = popover.querySelector('#rop-scroll-picker-search');
+        const closeModal = () => {
+            disposed = true;
+            if (stageRafId !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(stageRafId);
+            activeCardRafs.forEach(rid => { try { cancelAnimationFrame(rid); } catch (_) {} });
+            activeCardRafs.clear();
+            try { thumbObserver?.disconnect(); } catch (_) {}
+            document.removeEventListener('keydown', onKeyDown);
+            modal.remove();
+        };
+        modal._disposeScrollPicker = closeModal;
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') closeModal();
+        };
+        document.addEventListener('keydown', onKeyDown);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        modal.querySelector('#rop-scroll-picker-close')?.addEventListener('click', closeModal);
+
+        // Lazy Canvas queue for fast 148+ card startup
+        const lazyQueue = [];
+        let lazyScheduled = false;
+        const schedulePump = () => {
+            if (lazyScheduled || disposed) return;
+            lazyScheduled = true;
+            const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn => setTimeout(fn, 16));
+            raf(() => {
+                lazyScheduled = false;
+                if (disposed) return;
+                const batch = lazyQueue.splice(0, 4);
+                for (const c of batch) {
+                    const card = c.closest?.('.rsl-card');
+                    const it = items[Number(c.dataset.index)];
+                    if (it && card?.style.display !== 'none') renderPreviewToCanvas(c, it.style, 3.2, 'sanctuary');
+                }
+                if (lazyQueue.length > 0) schedulePump();
+            });
+        };
+        let thumbObserver = null;
+        if (typeof IntersectionObserver === 'function') {
+            thumbObserver = new IntersectionObserver((entries) => {
+                for (const ent of entries) {
+                    if (ent.isIntersecting && ent.target.dataset.rendered !== '1') {
+                        lazyQueue.push(ent.target);
+                        schedulePump();
+                    }
+                }
+            }, { root: modal.querySelector('.rsl-grid-pane'), rootMargin: '220px' });
+            modal.querySelectorAll('.rsl-canvas').forEach(c => thumbObserver.observe(c));
+        } else {
+            modal.querySelectorAll('.rsl-canvas').forEach((c, idx) => {
+                if (idx < 16) lazyQueue.push(c);
+            });
+            schedulePump();
+        }
+
+        // Card events (select, fav, apply, hover animation)
+        modal.querySelectorAll('.rsl-card').forEach(cardEl => {
+            const it = items[Number(cardEl.dataset.index)];
+            if (!it) return;
+            const canvas = cardEl.querySelector('.rsl-canvas');
+            cardEl.querySelector('.rsl-fav-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (favorites.has(it.key)) favorites.delete(it.key); else favorites.add(it.key);
+                saveFavs(favorites);
+                e.currentTarget.textContent = favorites.has(it.key) ? '★' : '☆';
+                e.currentTarget.classList.toggle('is-fav', favorites.has(it.key));
+                const fc = modal.querySelector('.rsl-fav-count');
+                if (fc) fc.textContent = String(favorites.size);
+                syncStageDetails();
+                if (activeGroup === '__favorites__') applyFilterAndSearch();
+            });
+            cardEl.querySelector('.rsl-use-btn')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this._applyScrollStylePresetByKey(it.key);
+                closeModal();
+            });
+            cardEl.addEventListener('click', () => {
+                selectedItem = it;
+                syncStageDetails();
+            });
+            cardEl.addEventListener('dblclick', () => {
+                this._applyScrollStylePresetByKey(it.key);
+                closeModal();
+            });
+            let hoverRaf = null;
+            cardEl.addEventListener('mouseenter', () => {
+                if (typeof requestAnimationFrame !== 'function' || hoverRaf !== null) return;
+                const t0 = performance.now();
+                const tick = (now) => {
+                    activeCardRafs.delete(hoverRaf);
+                    if (disposed || !cardEl.isConnected) { hoverRaf = null; return; }
+                    renderPreviewToCanvas(canvas, it.style, 2.0 + (((now - t0) / 1000) % 8), 'sanctuary');
+                    hoverRaf = requestAnimationFrame(tick);
+                    activeCardRafs.add(hoverRaf);
+                };
+                hoverRaf = requestAnimationFrame(tick);
+                activeCardRafs.add(hoverRaf);
+            });
+            cardEl.addEventListener('mouseleave', () => {
+                if (hoverRaf !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(hoverRaf);
+                activeCardRafs.delete(hoverRaf);
+                hoverRaf = null;
+                renderPreviewToCanvas(canvas, it.style, 3.2, 'sanctuary');
+            });
+        });
+
+        // Navigation, chips, search & stage controls
+        modal.querySelectorAll('.rsl-nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeGroup = btn.dataset.group || 'all';
+                modal.querySelectorAll('.rsl-nav-btn').forEach(b => b.classList.toggle('active', b === btn));
+                applyFilterAndSearch();
+            });
+        });
+        modal.querySelectorAll('.rsl-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                const flag = chip.dataset.flag || '';
+                activeFlag = (activeFlag === flag) ? '' : flag;
+                modal.querySelectorAll('.rsl-chip').forEach(c => c.classList.toggle('active', c.dataset.flag === activeFlag));
+                applyFilterAndSearch();
+            });
+        });
+        const searchInput = modal.querySelector('#rop-scroll-picker-search');
         if (searchInput) {
-            searchInput.addEventListener('input', () => renderList(searchInput.value));
-            setTimeout(() => searchInput.focus(), 20);
+            searchInput.addEventListener('input', () => {
+                searchQuery = searchInput.value;
+                applyFilterAndSearch();
+            });
+            setTimeout(() => searchInput.focus?.(), 20);
         }
-        const closeBtn = popover.querySelector('#rop-scroll-picker-close');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => popover.remove());
-        }
-        const onDocClick = (e) => {
-            if (!popover.contains(e.target) && e.target !== anchorEl) {
-                popover.remove();
-                document.removeEventListener('mousedown', onDocClick);
+        modal.querySelector('.rsl-stage-fav')?.addEventListener('click', () => {
+            if (!selectedItem) return;
+            if (favorites.has(selectedItem.key)) favorites.delete(selectedItem.key); else favorites.add(selectedItem.key);
+            saveFavs(favorites);
+            const cardBtn = modal.querySelector(`.rsl-card[data-index="${selectedItem.index}"] .rsl-fav-btn`);
+            if (cardBtn) {
+                cardBtn.textContent = favorites.has(selectedItem.key) ? '★' : '☆';
+                cardBtn.classList.toggle('is-fav', favorites.has(selectedItem.key));
             }
-        };
-        setTimeout(() => document.addEventListener('mousedown', onDocClick), 10);
+            const fc = modal.querySelector('.rsl-fav-count');
+            if (fc) fc.textContent = String(favorites.size);
+            syncStageDetails();
+        });
+        const scrub = modal.querySelector('.rsl-scrub');
+        const timeVal = modal.querySelector('.rsl-time-val');
+        const playBtn = modal.querySelector('.rsl-play-btn');
+        playBtn?.addEventListener('click', () => {
+            stagePlaying = !stagePlaying;
+            playBtn.textContent = stagePlaying ? '⏸ 暂停' : '▶ 播放';
+        });
+        scrub?.addEventListener('input', () => {
+            stageTime = Number(scrub.value) || 0;
+            if (timeVal) timeVal.textContent = `${stageTime.toFixed(1)}s`;
+            if (selectedItem) renderPreviewToCanvas(stageCanvas, selectedItem.style, stageTime, stageScene);
+        });
+        modal.querySelector('.rsl-speed-sel')?.addEventListener('change', (e) => {
+            stageSpeed = Number(e.target.value) || 1;
+        });
+        modal.querySelectorAll('[data-scene]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                stageScene = btn.dataset.scene || 'sanctuary';
+                modal.querySelectorAll('[data-scene]').forEach(b => b.classList.toggle('active', b === btn));
+                if (selectedItem) renderPreviewToCanvas(stageCanvas, selectedItem.style, stageTime, stageScene);
+            });
+        });
+        const textArea = modal.querySelector('.rsl-text-input');
+        modal.querySelectorAll('[data-script]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeScriptKey = btn.dataset.script || 'prayer_en';
+                customBodyText = '';
+                if (textArea) textArea.value = '';
+                modal.querySelectorAll('[data-script]').forEach(b => b.classList.toggle('active', b === btn));
+                modal.querySelectorAll('.rsl-canvas[data-rendered="1"]').forEach(c => { c.dataset.rendered = '0'; lazyQueue.push(c); });
+                schedulePump();
+                syncStageDetails();
+            });
+        });
+        textArea?.addEventListener('input', () => {
+            customBodyText = textArea.value.trim();
+            syncStageDetails();
+        });
+        modal.querySelector('.rsl-apply-cta')?.addEventListener('click', () => {
+            if (!selectedItem) return;
+            this._applyScrollStylePresetByKey(selectedItem.key);
+            closeModal();
+        });
+
+        syncStageDetails();
+        if (typeof requestAnimationFrame === 'function') {
+            const loopStage = (now) => {
+                if (disposed || !modal.isConnected) return;
+                const dt = Math.min(0.1, Math.max(0, (now - lastFrameTs) / 1000));
+                lastFrameTs = now;
+                if (stagePlaying && selectedItem) {
+                    stageTime = (stageTime + dt * stageSpeed) % 12;
+                    if (scrub) scrub.value = String(stageTime.toFixed(2));
+                    if (timeVal) timeVal.textContent = `${stageTime.toFixed(1)}s`;
+                    renderPreviewToCanvas(stageCanvas, selectedItem.style, stageTime, stageScene);
+                }
+                stageRafId = requestAnimationFrame(loopStage);
+            };
+            stageRafId = requestAnimationFrame(loopStage);
+        }
     }
 
     _syncTextcardMaskEnabledUI() {

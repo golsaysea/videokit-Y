@@ -4462,11 +4462,785 @@ function _drawBookmarkFiveStar(ctx, cx, cy, outerR, innerR) {
     ctx.closePath();
 }
 
+const NA_PRAYER_EMBLEM_META = Object.freeze({
+    na_cross_gold:        { emoji: '✝️', label: '✝️ 圣洁十字架', group: '信仰与美国', accent: '#F5D061' },
+    na_cardinal_bird:     { emoji: '🐦', label: '🐦 北美红雀鸟', group: '信仰与美国', accent: '#DC2626' },
+    na_bald_eagle:        { emoji: '🦅', label: '🦅 美国白头鹰', group: '信仰与美国', accent: '#92400E' },
+    na_us_flag:           { emoji: '🇺🇸', label: '🇺🇸 美国星条旗', group: '信仰与美国', accent: '#B91C1C' },
+    na_praying_hands:     { emoji: '🙏', label: '🙏 虔诚祈祷手', group: '信仰与美国', accent: '#EAB308' },
+    na_peace_dove:        { emoji: '🕊️', label: '🕊️ 和平白鸽', group: '信仰与美国', accent: '#F8FAFC' },
+    na_minimal_flower:    { emoji: '🌼', label: '🌼 简约手绘花', group: '花卉与自然', accent: '#FBBF24' },
+    na_four_leaf_clover:  { emoji: '🍀', label: '🍀 幸运四叶草', group: '花卉与自然', accent: '#16A34A' },
+    na_butterfly:         { emoji: '🦋', label: '🦋 绚丽蝴蝶', group: '花卉与自然', accent: '#F97316' },
+    na_sunflower:         { emoji: '🌻', label: '🌻 阳光向日葵', group: '花卉与自然', accent: '#FACC15' },
+    na_morning_glory:     { emoji: '🪷', label: '🪷 晨曦牵牛花', group: '花卉与自然', accent: '#6366F1' },
+    na_tulip:             { emoji: '🌷', label: '🌷 春日郁金香', group: '花卉与自然', accent: '#EC4899' },
+    na_stars_moon:        { emoji: '🌙', label: '🌙 星星与月亮', group: '花卉与自然', accent: '#FDE047' },
+    na_rose:              { emoji: '🌹', label: '🌹 红玫瑰花', group: '花卉与自然', accent: '#E11D48' },
+    na_lily:              { emoji: '🪷', label: '🪷 纯洁百合花', group: '花卉与自然', accent: '#FEF3C7' },
+    na_daisy:             { emoji: '🌼', label: '🌼 清新雏菊', group: '花卉与自然', accent: '#FDE047' },
+    na_carnation:         { emoji: '🌺', label: '🌺 温馨康乃馨/雏红', group: '花卉与自然', accent: '#FB7185' },
+    na_daffodil:          { emoji: '🌼', label: '🌼 春日水仙/马蹄莲', group: '花卉与自然', accent: '#FACC15' },
+    na_hydrangea:         { emoji: '💠', label: '💠 梦幻绣球花', group: '花卉与自然', accent: '#60A5FA' },
+    na_peony:             { emoji: '🌸', label: '🌸 馥郁芍药花', group: '花卉与自然', accent: '#F472B6' },
+    na_violet:            { emoji: '🪻', label: '🪻 雅致紫罗兰', group: '花卉与自然', accent: '#8B5CF6' },
+    na_dog:               { emoji: '🐶', label: '🐶 忠诚小狗', group: '动物与萌宠', accent: '#D97706' },
+    na_cat:               { emoji: '🐱', label: '🐱 可爱猫咪', group: '动物与萌宠', accent: '#F59E0B' },
+    na_robin_sparrow:     { emoji: '🐦', label: '🐦 知更鸟与麻雀', group: '动物与萌宠', accent: '#EA580C' },
+    na_squirrel:          { emoji: '🐿️', label: '🐿️ 活泼松鼠', group: '动物与萌宠', accent: '#B45309' },
+    na_rabbit:            { emoji: '🐰', label: '🐰 温柔小兔', group: '动物与萌宠', accent: '#FBCFE8' },
+    na_dinosaur:          { emoji: '🦕', label: '🦕 萌趣恐龙', group: '动物与萌宠', accent: '#22C55E' },
+    na_burger:            { emoji: '🍔', label: '🍔 经典汉堡', group: '食物与饮料', accent: '#F59E0B' },
+    na_pizza:             { emoji: '🍕', label: '🍕 美式披萨', group: '食物与饮料', accent: '#EF4444' },
+    na_coffee_cup:        { emoji: '☕', label: '☕ 暖心咖啡杯', group: '食物与饮料', accent: '#92400E' },
+    na_ice_cream:         { emoji: '🍦', label: '🍦 甜筒冰淇淋', group: '食物与饮料', accent: '#F472B6' },
+    na_donut:             { emoji: '🍩', label: '🍩 糖霜甜甜圈', group: '食物与饮料', accent: '#EC4899' },
+    na_potato_chips:      { emoji: '🍟', label: '🍟 酥脆薯片', group: '食物与饮料', accent: '#FACC15' },
+    na_christmas_tree:    { emoji: '🎄', label: '🎄 圣诞树', group: '节日与季节', accent: '#15803D' },
+    na_sacred_heart:      { emoji: '❤️', label: '❤️ 温情爱心', group: '节日与季节', accent: '#E11D48' },
+    na_season_spring:     { emoji: '🌱', label: '🌱 春季嫩芽繁花', group: '节日与季节', accent: '#4ADE80' },
+    na_season_summer:     { emoji: '☀️', label: '☀️ 盛夏骄阳', group: '节日与季节', accent: '#FBBF24' },
+    na_season_autumn:     { emoji: '🍁', label: '🍁 金秋枫叶', group: '节日与季节', accent: '#EA580C' },
+    na_season_winter:     { emoji: '❄️', label: '❄️ 凛冬雪花', group: '节日与季节', accent: '#7DD3FC' },
+    na_fireworks:         { emoji: '🎆', label: '🎆 独立日烟花爆竹', group: '节日与季节', accent: '#EF4444' },
+    na_easter_egg:        { emoji: '🥚', label: '🥚 复活节彩蛋', group: '节日与季节', accent: '#A855F7' },
+    na_independent_woman: { emoji: '👩', label: '👩 独立女性徽章', group: '节日与季节', accent: '#C026D3' },
+    na_vintage_car:       { emoji: '🚗', label: '🚗 复古敞篷车', group: '交通工具', accent: '#DC2626' },
+    na_bicycle:           { emoji: '🚲', label: '🚲 休闲自行车', group: '交通工具', accent: '#0284C7' },
+    na_airplane:          { emoji: '✈️', label: '✈️ 旅途飞机', group: '交通工具', accent: '#38BDF8' },
+    na_train:             { emoji: '🚂', label: '🚂 怀旧火车', group: '交通工具', accent: '#475569' },
+    na_sailboat:          { emoji: '⛵', label: '⛵ 航海帆船', group: '交通工具', accent: '#0EA5E9' },
+    na_coach_bus:         { emoji: '🚌', label: '🚌 旅途大巴', group: '交通工具', accent: '#EAB308' },
+    na_guitar:            { emoji: '🎸', label: '🎸 乡村木吉他', group: '音乐与生活', accent: '#B45309' },
+    na_vinyl_record:      { emoji: '💿', label: '💿 黑胶唱片', group: '音乐与生活', accent: '#1E293B' },
+    na_music_notes:       { emoji: '🎵', label: '🎵 灵动音符', group: '音乐与生活', accent: '#F59E0B' },
+    na_microphone:        { emoji: '🎙️', label: '🎙️ 复古麦克风', group: '音乐与生活', accent: '#94A3B8' },
+    na_speaker:           { emoji: '🔊', label: '🔊 复古音响', group: '音乐与生活', accent: '#64748B' },
+    na_open_book:         { emoji: '📖', label: '📖 圣经与书卷', group: '音乐与生活', accent: '#FDE68A' },
+    na_sports_football:   { emoji: '🏈', label: '🏈 美式橄榄球', group: '音乐与生活', accent: '#9A3412' },
+    na_cozy_home:         { emoji: '🏡', label: '🏡 温馨家园', group: '音乐与生活', accent: '#D97706' },
+    na_camera_film:       { emoji: '📷', label: '📷 老照片胶片相机', group: '音乐与生活', accent: '#334155' },
+    na_palette_brush:     { emoji: '🎨', label: '🎨 艺术调色盘', group: '音乐与生活', accent: '#EC4899' },
+    na_farm_pumpkin:      { emoji: '🎃', label: '🎃 丰收南瓜', group: '音乐与生活', accent: '#EA580C' },
+    na_lighthouse_torch:  { emoji: '🗼', label: '🗼 灯塔圣光', group: '音乐与生活', accent: '#FBBF24' },
+});
+
+function _drawNaFlowerPetals(ctx, count, dist, rx, ry, fill, innerFill = null, centerR = 0.25) {
+    for (let i = 0; i < count; i++) {
+        ctx.save();
+        ctx.rotate((i * Math.PI * 2) / count);
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.ellipse(0, -dist, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+    if (innerFill) {
+        ctx.fillStyle = innerFill;
+        ctx.beginPath();
+        ctx.arc(0, 0, centerR, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+function _drawNaEmblemArtwork(ctx, rawId, cx, cy, r = 24, opts = {}) {
+    if (!ctx || !rawId || r <= 1) return false;
+    const id = String(rawId).startsWith('na_') ? String(rawId) : `na_${rawId}`;
+    if (!NA_PRAYER_EMBLEM_META[id]) return false;
+    const t = Number(opts.time) || 0;
+    const flutter = Math.sin(t * 7.5);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(r / 24, r / 24);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    switch (id) {
+        case 'na_cross_gold': {
+            const g = ctx.createLinearGradient(-10, -18, 10, 18);
+            g.addColorStop(0, '#FEF08A');
+            g.addColorStop(0.5, '#D97706');
+            g.addColorStop(1, '#92400E');
+            ctx.strokeStyle = 'rgba(255,251,235,0.85)';
+            ctx.lineWidth = 1.4;
+            ctx.fillStyle = g;
+            _roundRect(ctx, -3.6, -18, 7.2, 36, 2);
+            ctx.fill(); ctx.stroke();
+            _roundRect(ctx, -13, -10, 26, 7.2, 2);
+            ctx.fill(); ctx.stroke();
+            break;
+        }
+        case 'na_cardinal_bird': {
+            ctx.fillStyle = '#4B2E1B';
+            ctx.fillRect(-16, 12, 32, 3);
+            ctx.fillStyle = '#DC2626';
+            ctx.beginPath();
+            ctx.moveTo(4, 3); ctx.lineTo(18, 17); ctx.lineTo(10, 18); ctx.lineTo(1, 7);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(-1, 3, 10.5, 9, -0.25, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-7, -4); ctx.lineTo(-1, -19); ctx.lineTo(6, -8); ctx.lineTo(5, 1);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#991B1B';
+            ctx.beginPath();
+            ctx.ellipse(3, 4, 6.8, 4.2, -0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#111827';
+            ctx.beginPath();
+            ctx.ellipse(-7.5, -5.5, 4.4, 3.8, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath(); ctx.arc(-6.5, -6.5, 1.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#111827';
+            ctx.beginPath(); ctx.arc(-6.7, -6.5, 0.65, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath();
+            ctx.moveTo(-11, -7); ctx.lineTo(-18, -4.5); ctx.lineTo(-10.5, -2.2);
+            ctx.closePath(); ctx.fill();
+            break;
+        }
+        case 'na_bald_eagle': {
+            ctx.fillStyle = '#5C3A21';
+            ctx.beginPath();
+            ctx.moveTo(-2, -1); ctx.quadraticCurveTo(-15, -16, -22, -7);
+            ctx.lineTo(-17, 5); ctx.lineTo(-3, 7); ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(2, -1); ctx.quadraticCurveTo(15, -16, 22, -7);
+            ctx.lineTo(17, 5); ctx.lineTo(3, 7); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#F8FAFC';
+            ctx.beginPath();
+            ctx.moveTo(-5, 8); ctx.lineTo(0, 19); ctx.lineTo(5, 8);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#451A03';
+            ctx.beginPath(); ctx.ellipse(0, 4, 6.2, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath(); ctx.arc(0, -6.5, 6.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath();
+            ctx.moveTo(1, -8); ctx.quadraticCurveTo(9, -8.5, 8, -3.5);
+            ctx.quadraticCurveTo(5, -5.5, 1, -5.2);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#0F172A';
+            ctx.beginPath(); ctx.arc(1.8, -7.8, 1.0, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_us_flag': {
+            ctx.fillStyle = '#D97706';
+            ctx.fillRect(-17, -17, 2.6, 35);
+            ctx.beginPath(); ctx.arc(-15.7, -18, 2.2, 0, Math.PI * 2); ctx.fill();
+            const stripes = 7;
+            const fw = 30; const fh = 20; const fx = -14; const fy = -14;
+            const sh = fh / stripes;
+            for (let s = 0; s < stripes; s++) {
+                ctx.fillStyle = (s % 2 === 0) ? '#DC2626' : '#FFFFFF';
+                ctx.fillRect(fx, fy + s * sh, fw, sh + 0.5);
+            }
+            ctx.fillStyle = '#1E3A8A';
+            ctx.fillRect(fx, fy, fw * 0.44, sh * 4);
+            ctx.fillStyle = '#FFFFFF';
+            for (let r0 = 0; r0 < 3; r0++) {
+                for (let c0 = 0; c0 < 3; c0++) {
+                    ctx.beginPath();
+                    ctx.arc(fx + 2.6 + c0 * 3.8, fy + 2.5 + r0 * 3.2, 0.8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            break;
+        }
+        case 'na_praying_hands': {
+            ctx.strokeStyle = 'rgba(253,224,71,0.55)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.arc(0, -1, 17, 0, Math.PI * 2); ctx.stroke();
+            const hg = ctx.createLinearGradient(0, -14, 0, 14);
+            hg.addColorStop(0, '#FEF08A'); hg.addColorStop(1, '#CA8A04');
+            ctx.fillStyle = hg;
+            ctx.beginPath();
+            ctx.moveTo(-1.2, -13); ctx.bezierCurveTo(-6, -5, -10, 4, -6.5, 13);
+            ctx.lineTo(-1.2, 14.5); ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(1.2, -13); ctx.bezierCurveTo(6, -5, 10, 4, 6.5, 13);
+            ctx.lineTo(1.2, 14.5); ctx.closePath(); ctx.fill();
+            break;
+        }
+        case 'na_peace_dove': {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.strokeStyle = 'rgba(148,163,184,0.6)';
+            ctx.lineWidth = 0.8;
+            const wingY = -2 - flutter * 2.5;
+            ctx.beginPath();
+            ctx.moveTo(-2, -1); ctx.bezierCurveTo(2, -17, 15, -18, 18 + flutter * 2, wingY - 8);
+            ctx.quadraticCurveTo(10, -2, 3, 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.beginPath();
+            ctx.ellipse(-2, 4, 9.5, 5.8, -0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(-9.5, -2, 4.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath(); ctx.moveTo(-13.5, -2); ctx.lineTo(-18, -0.5); ctx.lineTo(-13, 0.8); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#16A34A'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-20, 6); ctx.stroke();
+            break;
+        }
+        case 'na_minimal_flower': {
+            ctx.strokeStyle = '#65A30D'; ctx.lineWidth = 1.8;
+            ctx.beginPath(); ctx.moveTo(0, 4); ctx.quadraticCurveTo(3, 12, 0, 19); ctx.stroke();
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 1.5;
+            _drawNaFlowerPetals(ctx, 5, 7.5, 3.8, 6.2, 'rgba(255,251,245,0.92)', '#FBBF24', 3.4);
+            for (let i = 0; i < 5; i++) {
+                ctx.save(); ctx.rotate((i * Math.PI * 2) / 5);
+                ctx.beginPath(); ctx.ellipse(0, -7.5, 3.8, 6.2, 0, 0, Math.PI * 2); ctx.stroke();
+                ctx.restore();
+            }
+            break;
+        }
+        case 'na_four_leaf_clover': {
+            ctx.strokeStyle = '#15803D'; ctx.lineWidth = 2.4;
+            ctx.beginPath(); ctx.moveTo(0, 2); ctx.quadraticCurveTo(3, 13, 5, 19); ctx.stroke();
+            for (let i = 0; i < 4; i++) {
+                ctx.save(); ctx.rotate(Math.PI / 4 + (i * Math.PI) / 2);
+                ctx.fillStyle = i % 2 === 0 ? '#22C55E' : '#16A34A';
+                ctx.beginPath(); ctx.ellipse(-2.5, -9, 4.8, 6.2, -0.25, 0, Math.PI * 2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(2.5, -9, 4.8, 6.2, 0.25, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+            ctx.fillStyle = '#BBF7D0';
+            ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_butterfly': {
+            const wingScaleX = 0.78 + Math.abs(flutter) * 0.22;
+            ctx.save(); ctx.scale(wingScaleX, 1);
+            for (const dir of [-1, 1]) {
+                ctx.fillStyle = '#F97316';
+                ctx.strokeStyle = '#1E293B'; ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.ellipse(dir * 9.5, -5.5, 9, 6.8, dir * 0.45, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#FB923C';
+                ctx.beginPath();
+                ctx.ellipse(dir * 7.2, 6, 6.2, 5.2, dir * -0.4, 0, Math.PI * 2);
+                ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#FFFBEB';
+                ctx.beginPath(); ctx.arc(dir * 12, -7.5, 1.8, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.restore();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.ellipse(0, 0, 2.1, 10.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#1E293B'; ctx.lineWidth = 1.1;
+            ctx.beginPath(); ctx.moveTo(-0.5, -10); ctx.quadraticCurveTo(-4, -15, -6, -15.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0.5, -10); ctx.quadraticCurveTo(4, -15, 6, -15.5); ctx.stroke();
+            break;
+        }
+        case 'na_sunflower': {
+            _drawNaFlowerPetals(ctx, 14, 11.2, 2.8, 6.8, '#FACC15', null, 0);
+            ctx.save(); ctx.rotate(Math.PI / 14);
+            _drawNaFlowerPetals(ctx, 14, 10.5, 2.4, 6.0, '#EAB308', '#451A03', 6.8);
+            ctx.restore();
+            ctx.fillStyle = '#92400E';
+            ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_morning_glory': {
+            const mg = ctx.createRadialGradient(0, -2, 2, 0, -2, 16);
+            mg.addColorStop(0, '#FEF08A'); mg.addColorStop(0.28, '#FFFFFF');
+            mg.addColorStop(0.65, '#6366F1'); mg.addColorStop(1, '#3730A3');
+            ctx.fillStyle = mg;
+            ctx.beginPath();
+            for (let i = 0; i < 10; i++) {
+                const ang = (i * Math.PI * 2) / 10;
+                const rad = i % 2 === 0 ? 15.5 : 12.8;
+                const px = Math.cos(ang) * rad; const py = -2 + Math.sin(ang) * rad * 0.92;
+                if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+            }
+            ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#15803D'; ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(2, 19); ctx.stroke();
+            break;
+        }
+        case 'na_tulip': {
+            ctx.strokeStyle = '#16A34A'; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(0, 3); ctx.lineTo(0, 19); ctx.stroke();
+            ctx.fillStyle = '#22C55E';
+            ctx.beginPath(); ctx.ellipse(-5.5, 13, 5.5, 2.2, -0.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#EC4899';
+            ctx.beginPath();
+            ctx.moveTo(-9, -6); ctx.lineTo(-9, 3);
+            ctx.bezierCurveTo(-9, 9, 9, 9, 9, 3);
+            ctx.lineTo(9, -6); ctx.lineTo(4, -2); ctx.lineTo(0, -11); ctx.lineTo(-4, -2);
+            ctx.closePath(); ctx.fill();
+            break;
+        }
+        case 'na_stars_moon': {
+            ctx.fillStyle = '#FDE047';
+            ctx.beginPath(); ctx.arc(-2, 0, 12.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = opts.badgeBg || '#1E293B';
+            ctx.beginPath(); ctx.arc(4.2, -2.5, 10.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FEF08A';
+            _drawBookmarkFiveStar(ctx, 10, -9, 5.2, 2.3); ctx.fill();
+            _drawBookmarkFiveStar(ctx, 12, 5, 3.6, 1.6); ctx.fill();
+            break;
+        }
+        case 'na_rose': {
+            ctx.fillStyle = '#16A34A';
+            ctx.beginPath(); ctx.ellipse(-8, 8, 6.2, 2.6, -0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(8, 8, 6.2, 2.6, 0.4, 0, Math.PI * 2); ctx.fill();
+            _drawNaFlowerPetals(ctx, 5, 5.2, 6.5, 6.5, '#BE123C', '#FB7185', 5.8);
+            ctx.strokeStyle = '#FFF1F2'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(0, 0, 3.2, 0.2, Math.PI * 1.6); ctx.stroke();
+            break;
+        }
+        case 'na_lily': {
+            _drawNaFlowerPetals(ctx, 6, 8.2, 3.8, 7.8, '#FFFBEB', '#FDE68A', 3.5);
+            ctx.strokeStyle = '#D97706'; ctx.lineWidth = 1.1;
+            for (const ang of [-0.45, 0, 0.45]) {
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.sin(ang) * 9, -Math.cos(ang) * 9); ctx.stroke();
+            }
+            break;
+        }
+        case 'na_daisy': {
+            _drawNaFlowerPetals(ctx, 12, 9.6, 2.4, 6.4, '#FFFFFF', '#FACC15', 5.0);
+            break;
+        }
+        case 'na_carnation': {
+            ctx.strokeStyle = '#15803D'; ctx.lineWidth = 2.2;
+            ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, 18); ctx.stroke();
+            _drawNaFlowerPetals(ctx, 9, 6.5, 4.5, 5.5, '#FB7185', '#E11D48', 5.2);
+            _drawNaFlowerPetals(ctx, 6, 3.8, 3.0, 3.8, '#FECDD3', null, 0);
+            break;
+        }
+        case 'na_daffodil': {
+            _drawNaFlowerPetals(ctx, 6, 8.8, 3.8, 6.5, '#FEF08A', '#F59E0B', 5.2);
+            ctx.strokeStyle = '#EA580C'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.arc(0, 0, 5.2, 0, Math.PI * 2); ctx.stroke();
+            break;
+        }
+        case 'na_hydrangea': {
+            const spots = [[-6, -6], [6, -6], [-7, 3], [7, 3], [0, -1], [0, 8]];
+            for (const [sx, sy] of spots) {
+                ctx.save(); ctx.translate(sx, sy);
+                _drawNaFlowerPetals(ctx, 4, 3.4, 2.6, 2.6, '#60A5FA', '#EFF6FF', 1.4);
+                ctx.restore();
+            }
+            break;
+        }
+        case 'na_peony': {
+            _drawNaFlowerPetals(ctx, 8, 7.5, 5.5, 5.5, '#F472B6', '#FBCFE8', 6.5);
+            _drawNaFlowerPetals(ctx, 6, 3.5, 3.4, 3.4, '#EC4899', '#FEF08A', 2.2);
+            break;
+        }
+        case 'na_violet': {
+            ctx.fillStyle = '#15803D';
+            ctx.beginPath(); ctx.arc(0, 10, 7, 0, Math.PI * 2); ctx.fill();
+            _drawNaFlowerPetals(ctx, 5, 7.2, 5.0, 5.6, '#7C3AED', '#FACC15', 2.8);
+            break;
+        }
+        case 'na_dog': {
+            ctx.fillStyle = '#B45309';
+            ctx.beginPath(); ctx.ellipse(-10.5, -1, 4.2, 8.5, 0.25, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(10.5, -1, 4.2, 8.5, -0.25, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath(); ctx.ellipse(0, 1, 9.5, 10, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FEF3C7';
+            ctx.beginPath(); ctx.ellipse(0, 5.5, 5.8, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-4.2, -2, 1.5, 0, Math.PI * 2); ctx.arc(4.2, -2, 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0, 3.5, 2.8, 2.0, 0, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_cat': {
+            ctx.fillStyle = '#FBBF24';
+            ctx.beginPath(); ctx.moveTo(-10, -2); ctx.lineTo(-12, -15); ctx.lineTo(-2, -9); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(10, -2); ctx.lineTo(12, -15); ctx.lineTo(2, -9); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0, 2, 11, 9.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-4.2, 0, 1.5, 0, Math.PI * 2); ctx.arc(4.2, 0, 1.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F43F5E';
+            ctx.beginPath(); ctx.moveTo(-2, 3); ctx.lineTo(2, 3); ctx.lineTo(0, 5.5); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#78350F'; ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(-7, 3.5); ctx.lineTo(-14, 2.2); ctx.moveTo(-7, 5); ctx.lineTo(-14, 5.8);
+            ctx.moveTo(7, 3.5); ctx.lineTo(14, 2.2); ctx.moveTo(7, 5); ctx.lineTo(14, 5.8);
+            ctx.stroke();
+            break;
+        }
+        case 'na_robin_sparrow': {
+            ctx.fillStyle = '#78350F';
+            ctx.beginPath(); ctx.moveTo(5, 2); ctx.lineTo(18, 12); ctx.lineTo(9, 14); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-1, 2, 11, 8.2, -0.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#EA580C';
+            ctx.beginPath(); ctx.ellipse(-4, 4.5, 6.8, 5.2, -0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#451A03';
+            ctx.beginPath(); ctx.arc(-6, -5.5, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(-7, -6.2, 1.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FACC15';
+            ctx.beginPath(); ctx.moveTo(-11, -6.5); ctx.lineTo(-17, -4.5); ctx.lineTo(-11, -3); ctx.closePath(); ctx.fill();
+            break;
+        }
+        case 'na_squirrel': {
+            ctx.fillStyle = '#92400E';
+            ctx.beginPath();
+            ctx.moveTo(3, 10); ctx.bezierCurveTo(18, 12, 20, -14, 7, -14);
+            ctx.bezierCurveTo(2, -14, 6, -4, 3, 2); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#B45309';
+            ctx.beginPath(); ctx.ellipse(-3, 5, 7.5, 8.8, 0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-6, -5, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-4, -11, 2, 4, -0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath(); ctx.arc(-11, 3, 3.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1E293B'; ctx.beginPath(); ctx.arc(-7.5, -5.8, 1.2, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_rabbit': {
+            ctx.fillStyle = '#FFFDF9';
+            ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.1;
+            ctx.beginPath(); ctx.ellipse(-4.5, -9, 3.2, 8.8, -0.15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(4.5, -9, 3.2, 8.8, 0.15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#FBCFE8';
+            ctx.beginPath(); ctx.ellipse(-4.5, -8.5, 1.5, 5.5, -0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(4.5, -8.5, 1.5, 5.5, 0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FFFDF9';
+            ctx.beginPath(); ctx.ellipse(0, 5, 10, 8.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-3.5, 3, 1.3, 0, Math.PI * 2); ctx.arc(3.5, 3, 1.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F472B6'; ctx.beginPath(); ctx.arc(0, 6, 1.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_dinosaur': {
+            ctx.fillStyle = '#16A34A';
+            ctx.fillRect(-5, 6, 4.2, 9); ctx.fillRect(3, 6, 4.2, 9);
+            ctx.beginPath();
+            ctx.moveTo(7, 6); ctx.lineTo(18, 9); ctx.lineTo(7, 1);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#22C55E';
+            ctx.beginPath(); ctx.ellipse(0, 3.5, 9.5, 6.8, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(-7, 2); ctx.quadraticCurveTo(-11, -11, -13, -13);
+            ctx.lineTo(-6, -13); ctx.quadraticCurveTo(-4, -5, -2, 0); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-11.5, -13, 5.2, 3.8, -0.1, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#86EFAC';
+            ctx.beginPath(); ctx.arc(-2, 1, 1.8, 0, Math.PI * 2); ctx.arc(3, 3, 2.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#0F172A'; ctx.beginPath(); ctx.arc(-13, -13.8, 1.1, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_burger': {
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath(); ctx.arc(0, -2, 13.5, Math.PI, 0); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#22C55E'; ctx.fillRect(-14.5, -1.5, 29, 3.2);
+            ctx.fillStyle = '#EF4444'; ctx.fillRect(-13.5, 1.8, 27, 2.4);
+            ctx.fillStyle = '#78350F'; _roundRect(ctx, -14, 4.2, 28, 5, 2.2); ctx.fill();
+            ctx.fillStyle = '#D97706'; _roundRect(ctx, -13, 9.5, 26, 4.5, 2); ctx.fill();
+            ctx.fillStyle = '#FEF3C7';
+            for (const [sx, sy] of [[-5, -9], [0, -11], [5, -9]]) {
+                ctx.beginPath(); ctx.arc(sx, sy, 1, 0, Math.PI * 2); ctx.fill();
+            }
+            break;
+        }
+        case 'na_pizza': {
+            ctx.fillStyle = '#FACC15';
+            ctx.beginPath(); ctx.moveTo(0, 16); ctx.lineTo(-13, -12); ctx.lineTo(13, -12); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#D97706';
+            _roundRect(ctx, -14, -15, 28, 4.8, 2.4); ctx.fill();
+            ctx.fillStyle = '#DC2626';
+            ctx.beginPath(); ctx.arc(-4, -5, 2.8, 0, Math.PI * 2); ctx.arc(4, -2, 2.6, 0, Math.PI * 2); ctx.arc(0, 6, 2.5, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_coffee_cup': {
+            ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.moveTo(-4, -10); ctx.quadraticCurveTo(-7, -14, -3, -18);
+            ctx.moveTo(3, -10); ctx.quadraticCurveTo(0, -14, 4, -18); ctx.stroke();
+            ctx.strokeStyle = '#FFFDF9'; ctx.lineWidth = 2.6;
+            ctx.beginPath(); ctx.arc(10, 2, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+            ctx.fillStyle = '#FFFDF9';
+            _roundRect(ctx, -11, -7, 21, 19, 4); ctx.fill();
+            ctx.fillStyle = '#78350F';
+            _roundRect(ctx, -9, -6, 17, 4, 2); ctx.fill();
+            ctx.fillStyle = '#E11D48';
+            ctx.beginPath(); ctx.arc(-1.8, 2.5, 2.2, 0, Math.PI * 2); ctx.arc(1.2, 2.5, 2.2, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_ice_cream': {
+            ctx.fillStyle = '#D97706';
+            ctx.beginPath(); ctx.moveTo(-8, 1); ctx.lineTo(8, 1); ctx.lineTo(0, 18); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#F472B6'; ctx.beginPath(); ctx.arc(-4.5, -2, 6.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#38BDF8'; ctx.beginPath(); ctx.arc(4.5, -2, 6.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FFFBEB'; ctx.beginPath(); ctx.arc(0, -8.5, 6.8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.arc(0, -15.5, 2.5, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_donut': {
+            ctx.fillStyle = '#D97706'; ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F472B6'; ctx.beginPath(); ctx.arc(0, -1, 12.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = opts.badgeBg || '#1E293B'; ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#FDE047'; ctx.fillRect(-7, -8, 3, 1.5); ctx.fillRect(5, 5, 3, 1.5);
+            ctx.fillStyle = '#38BDF8'; ctx.fillRect(5, -7, 3, 1.5); ctx.fillRect(-8, 4, 3, 1.5);
+            break;
+        }
+        case 'na_potato_chips': {
+            ctx.fillStyle = '#FACC15';
+            for (const fx of [-8, -4, 0, 4, 8]) {
+                _roundRect(ctx, fx - 1.6, -15 + Math.abs(fx) * 0.35, 3.2, 16, 1.2); ctx.fill();
+            }
+            ctx.fillStyle = '#DC2626';
+            ctx.beginPath(); ctx.moveTo(-11, -3); ctx.lineTo(11, -3); ctx.lineTo(8, 15); ctx.lineTo(-8, 15); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#FDE047'; ctx.beginPath(); ctx.arc(0, 6, 3.2, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_christmas_tree': {
+            ctx.fillStyle = '#78350F'; ctx.fillRect(-2.5, 11, 5, 6);
+            ctx.fillStyle = '#15803D';
+            for (const [y0, w0, h0] of [[-12, 9, 10], [-5, 13, 11], [2, 16, 11]]) {
+                ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(-w0, y0 + h0); ctx.lineTo(w0, y0 + h0); ctx.closePath(); ctx.fill();
+            }
+            ctx.fillStyle = '#FACC15'; _drawBookmarkFiveStar(ctx, 0, -14, 4.5, 2.0); ctx.fill();
+            ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.arc(-4, 2, 1.8, 0, Math.PI * 2); ctx.arc(5, 7, 1.8, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#38BDF8'; ctx.beginPath(); ctx.arc(3, -1, 1.6, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_sacred_heart': {
+            const g = ctx.createLinearGradient(0, -13, 0, 15);
+            g.addColorStop(0, '#FB7185'); g.addColorStop(1, '#BE123C');
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.moveTo(0, 14);
+            ctx.bezierCurveTo(-18, 2, -15, -14, 0, -5);
+            ctx.bezierCurveTo(15, -14, 18, 2, 0, 14);
+            ctx.closePath(); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.45)';
+            ctx.beginPath(); ctx.ellipse(-5.5, -5, 3, 1.8, -0.5, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_season_spring': {
+            _drawNaFlowerPetals(ctx, 5, 6.2, 4.8, 5.2, '#FBCFE8', '#F472B6', 3.2);
+            ctx.fillStyle = '#22C55E';
+            ctx.beginPath(); ctx.ellipse(-8, 10, 6, 2.8, -0.45, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_season_summer': {
+            ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2.2;
+            for (let i = 0; i < 10; i++) {
+                const a = (i * Math.PI * 2) / 10;
+                ctx.beginPath(); ctx.moveTo(Math.cos(a) * 10.5, Math.sin(a) * 10.5); ctx.lineTo(Math.cos(a) * 16.5, Math.sin(a) * 16.5); ctx.stroke();
+            }
+            ctx.fillStyle = '#FACC15'; ctx.beginPath(); ctx.arc(0, 0, 8.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_season_autumn': {
+            ctx.fillStyle = '#EA580C';
+            ctx.strokeStyle = '#9A3412'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, -16); ctx.lineTo(4, -7); ctx.lineTo(14, -9); ctx.lineTo(9, 0);
+            ctx.lineTo(15, 5); ctx.lineTo(4, 7); ctx.lineTo(1.5, 16); ctx.lineTo(-1.5, 16);
+            ctx.lineTo(-4, 7); ctx.lineTo(-15, 5); ctx.lineTo(-9, 0); ctx.lineTo(-14, -9);
+            ctx.lineTo(-4, -7); ctx.closePath(); ctx.fill(); ctx.stroke();
+            break;
+        }
+        case 'na_season_winter': {
+            ctx.strokeStyle = '#BAE6FD'; ctx.lineWidth = 2.0;
+            for (let i = 0; i < 6; i++) {
+                ctx.save(); ctx.rotate((i * Math.PI) / 3);
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -16);
+                ctx.moveTo(0, -10); ctx.lineTo(-4, -13.5); ctx.moveTo(0, -10); ctx.lineTo(4, -13.5);
+                ctx.stroke(); ctx.restore();
+            }
+            ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_fireworks': {
+            const cols = ['#EF4444', '#FFFFFF', '#3B82F6', '#FACC15'];
+            for (let i = 0; i < 12; i++) {
+                const a = (i * Math.PI * 2) / 12;
+                ctx.strokeStyle = cols[i % cols.length]; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); ctx.lineTo(Math.cos(a) * 16, Math.sin(a) * 16); ctx.stroke();
+                ctx.fillStyle = cols[i % cols.length]; ctx.beginPath(); ctx.arc(Math.cos(a) * 16.5, Math.sin(a) * 16.5, 1.8, 0, Math.PI * 2); ctx.fill();
+            }
+            break;
+        }
+        case 'na_easter_egg': {
+            ctx.fillStyle = '#E9D5FF';
+            ctx.beginPath(); ctx.ellipse(0, 1, 10.5, 14.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F472B6'; ctx.fillRect(-9.5, -3, 19, 4);
+            ctx.fillStyle = '#FACC15'; ctx.fillRect(-9.5, 4, 19, 3.2);
+            ctx.strokeStyle = '#7E22CE'; ctx.lineWidth = 1.3;
+            ctx.beginPath(); ctx.ellipse(0, 1, 10.5, 14.5, 0, 0, Math.PI * 2); ctx.stroke();
+            break;
+        }
+        case 'na_independent_woman': {
+            ctx.fillStyle = '#FDE047'; _drawBookmarkFiveStar(ctx, 0, -12.5, 5, 2.2); ctx.fill();
+            ctx.fillStyle = '#C026D3';
+            ctx.beginPath(); ctx.arc(0, -4, 5.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(-11, 14); ctx.quadraticCurveTo(0, 2, 11, 14); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#F5D0FE'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(0, 1, 16.5, 0, Math.PI * 2); ctx.stroke();
+            break;
+        }
+        case 'na_vintage_car': {
+            ctx.fillStyle = '#DC2626';
+            _roundRect(ctx, -16, -2, 32, 9, 3); ctx.fill();
+            ctx.fillStyle = '#BAE6FD';
+            ctx.beginPath(); ctx.moveTo(-9, -2); ctx.lineTo(-4, -9); ctx.lineTo(5, -9); ctx.lineTo(8, -2); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-9, 8, 4.2, 0, Math.PI * 2); ctx.arc(9, 8, 4.2, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#E2E8F0';
+            ctx.beginPath(); ctx.arc(-9, 8, 1.8, 0, Math.PI * 2); ctx.arc(9, 8, 1.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_bicycle': {
+            ctx.strokeStyle = '#0284C7'; ctx.lineWidth = 2.0;
+            ctx.beginPath(); ctx.arc(-9.5, 6, 6, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(9.5, 6, 6, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = '#F97316'; ctx.lineWidth = 2.0;
+            ctx.beginPath();
+            ctx.moveTo(-9.5, 6); ctx.lineTo(-1, -4); ctx.lineTo(7, -4); ctx.lineTo(0, 6); ctx.closePath();
+            ctx.moveTo(7, -4); ctx.lineTo(9.5, 6); ctx.moveTo(5, -8); ctx.lineTo(9, -8);
+            ctx.stroke();
+            break;
+        }
+        case 'na_airplane': {
+            ctx.save(); ctx.rotate(-0.45);
+            ctx.fillStyle = '#E0F2FE';
+            ctx.beginPath(); ctx.ellipse(0, 0, 16, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#38BDF8';
+            ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(3, -14); ctx.lineTo(6, -14); ctx.lineTo(3, -2); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(3, 14); ctx.lineTo(6, 14); ctx.lineTo(3, 2); ctx.closePath(); ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'na_train': {
+            ctx.fillStyle = '#334155'; _roundRect(ctx, -14, -6, 26, 13, 3); ctx.fill();
+            ctx.fillStyle = '#EF4444'; _roundRect(ctx, -14, 4, 28, 4, 1.5); ctx.fill();
+            ctx.fillStyle = '#FACC15'; ctx.fillRect(5, -12, 4, 6);
+            ctx.fillStyle = '#F8FAFC'; ctx.beginPath(); ctx.arc(9, -15, 2.5, 0, Math.PI * 2); ctx.arc(14, -17, 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-9, 11, 3.6, 0, Math.PI * 2); ctx.arc(0, 11, 3.6, 0, Math.PI * 2); ctx.arc(9, 11, 3.6, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_sailboat': {
+            ctx.fillStyle = '#0284C7'; ctx.fillRect(-16, 11, 32, 3);
+            ctx.fillStyle = '#92400E';
+            ctx.beginPath(); ctx.moveTo(-13, 5); ctx.lineTo(13, 5); ctx.lineTo(9, 11); ctx.lineTo(-9, 11); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.beginPath(); ctx.moveTo(-1, -15); ctx.lineTo(-1, 3); ctx.lineTo(-11, 3); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#E0F2FE';
+            ctx.beginPath(); ctx.moveTo(1, -11); ctx.lineTo(1, 3); ctx.lineTo(10, 3); ctx.closePath(); ctx.fill();
+            break;
+        }
+        case 'na_coach_bus': {
+            ctx.fillStyle = '#EAB308'; _roundRect(ctx, -15, -8, 30, 16, 4); ctx.fill();
+            ctx.fillStyle = '#0EA5E9';
+            for (const wx of [-12, -5, 2, 9]) ctx.fillRect(wx, -5, 5, 5.5);
+            ctx.fillStyle = '#1E293B';
+            ctx.beginPath(); ctx.arc(-8, 10, 3.8, 0, Math.PI * 2); ctx.arc(8, 10, 3.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_guitar': {
+            ctx.save(); ctx.rotate(0.55);
+            ctx.fillStyle = '#B45309';
+            ctx.beginPath(); ctx.arc(0, 8, 7.5, 0, Math.PI * 2); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#451A03'; ctx.beginPath(); ctx.arc(0, 4, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#78350F'; ctx.fillRect(-1.5, -16, 3, 15);
+            ctx.restore();
+            break;
+        }
+        case 'na_vinyl_record': {
+            ctx.fillStyle = '#0F172A'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = 'rgba(148,163,184,0.38)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(0, 0, 11.5, 0, Math.PI * 2); ctx.arc(0, 0, 8.5, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = '#DC2626'; ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F8FAFC'; ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_music_notes': {
+            ctx.fillStyle = '#F59E0B';
+            ctx.beginPath(); ctx.ellipse(-7, 8, 4.5, 3.4, -0.35, 0, Math.PI * 2); ctx.ellipse(7, 5, 4.5, 3.4, -0.35, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 2.6;
+            ctx.beginPath(); ctx.moveTo(-3.5, 7); ctx.lineTo(-3.5, -10); ctx.lineTo(10.5, -13); ctx.lineTo(10.5, 4); ctx.stroke();
+            break;
+        }
+        case 'na_microphone': {
+            ctx.fillStyle = '#CBD5E1'; _roundRect(ctx, -6, -15, 12, 17, 6); ctx.fill();
+            ctx.strokeStyle = '#64748B'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.moveTo(-5, -8); ctx.lineTo(5, -8); ctx.moveTo(-5, -4); ctx.lineTo(5, -4); ctx.stroke();
+            ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.4;
+            ctx.beginPath(); ctx.arc(0, -4, 9.5, 0, Math.PI); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 5.5); ctx.lineTo(0, 15); ctx.moveTo(-6, 15); ctx.lineTo(6, 15); ctx.stroke();
+            break;
+        }
+        case 'na_speaker': {
+            ctx.fillStyle = '#334155'; _roundRect(ctx, -11, -15, 22, 30, 4); ctx.fill();
+            ctx.fillStyle = '#0F172A'; ctx.beginPath(); ctx.arc(0, 4, 7.2, 0, Math.PI * 2); ctx.arc(0, -8, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#F59E0B'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 4, 3.2, 0, Math.PI * 2); ctx.stroke();
+            break;
+        }
+        case 'na_open_book': {
+            ctx.fillStyle = '#FFFDF5'; ctx.strokeStyle = '#92400E'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(0, -9); ctx.quadraticCurveTo(-8, -12, -16, -8); ctx.lineTo(-16, 11); ctx.quadraticCurveTo(-8, 7, 0, 11); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -9); ctx.quadraticCurveTo(8, -12, 16, -8); ctx.lineTo(16, 11); ctx.quadraticCurveTo(8, 7, 0, 11); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#D97706'; ctx.lineWidth = 1.3;
+            ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, 4); ctx.moveTo(-3, -1); ctx.lineTo(3, -1); ctx.stroke();
+            break;
+        }
+        case 'na_sports_football': {
+            ctx.fillStyle = '#9A3412';
+            ctx.beginPath(); ctx.ellipse(0, 0, 15, 9.5, -0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#FFFDF5'; ctx.lineWidth = 1.8;
+            ctx.beginPath(); ctx.moveTo(-6, 1.5); ctx.lineTo(6, -1.5);
+            for (const lx of [-3.5, 0, 3.5]) { ctx.moveTo(lx - 0.8, -3); ctx.lineTo(lx + 0.8, 3); }
+            ctx.stroke();
+            break;
+        }
+        case 'na_cozy_home': {
+            ctx.fillStyle = '#FDE68A'; _roundRect(ctx, -11, -1, 22, 15, 1.5); ctx.fill();
+            ctx.fillStyle = '#B91C1C';
+            ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-15, 0); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#78350F'; ctx.fillRect(-3, 5, 6, 9);
+            ctx.fillStyle = '#38BDF8'; ctx.fillRect(-8.5, 3, 4, 4); ctx.fillRect(4.5, 3, 4, 4);
+            break;
+        }
+        case 'na_camera_film': {
+            ctx.fillStyle = '#334155'; _roundRect(ctx, -15, -7, 30, 20, 4); ctx.fill();
+            ctx.fillStyle = '#94A3B8'; ctx.fillRect(-9, -11, 12, 4);
+            ctx.fillStyle = '#0EA5E9'; ctx.strokeStyle = '#E2E8F0'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 3, 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#FACC15'; ctx.beginPath(); ctx.arc(9, -3, 1.8, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_palette_brush': {
+            ctx.fillStyle = '#FDE68A';
+            ctx.beginPath(); ctx.ellipse(0, 1, 14, 11, -0.2, 0, Math.PI * 2); ctx.fill();
+            for (const [dx, dy, c] of [[-7, -3, '#EF4444'], [-1, -6, '#FACC15'], [6, -4, '#3B82F6'], [8, 3, '#22C55E']]) {
+                ctx.fillStyle = c; ctx.beginPath(); ctx.arc(dx, dy, 2.5, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.strokeStyle = '#78350F'; ctx.lineWidth = 2.4;
+            ctx.beginPath(); ctx.moveTo(-12, 13); ctx.lineTo(11, -12); ctx.stroke();
+            break;
+        }
+        case 'na_farm_pumpkin': {
+            ctx.fillStyle = '#15803D'; ctx.fillRect(-2, -14, 4, 6);
+            ctx.fillStyle = '#EA580C';
+            ctx.beginPath(); ctx.ellipse(-5, 2, 7.5, 10.5, 0, 0, Math.PI * 2); ctx.ellipse(5, 2, 7.5, 10.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#F97316';
+            ctx.beginPath(); ctx.ellipse(0, 2, 6.2, 11, 0, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+        case 'na_lighthouse_torch': {
+            ctx.fillStyle = 'rgba(253,224,71,0.35)';
+            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-17, -16); ctx.lineTo(-17, -4); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(17, -16); ctx.lineTo(17, -4); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#F8FAFC';
+            ctx.beginPath(); ctx.moveTo(-3.5, -8); ctx.lineTo(3.5, -8); ctx.lineTo(6.5, 15); ctx.lineTo(-6.5, 15); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = '#DC2626'; ctx.fillRect(-5, 0, 10, 5);
+            ctx.fillStyle = '#FACC15'; ctx.beginPath(); ctx.arc(0, -10, 3.2, 0, Math.PI * 2); ctx.fill();
+            break;
+        }
+    }
+    ctx.restore();
+    return true;
+}
+
 /**
  * 绘制卡片顶部书签丝带与设计师左上角小图标角标
  * 支持: swallowtail / cross_tag / rounded_tab / us_star_shield / gold_wax_seal /
  *       rose_emblem / olive_wreath_tag / folded_dog_ear / royal_crown_tag /
- *       heart_prayer_tag / poppy_honor_tag / quote_mark_badge
+ *       heart_prayer_tag / poppy_honor_tag / quote_mark_badge / na_* 北美文化元素徽章
  */
 function _drawScrollCardBookmarkRibbon(ctx, rx, ry, rw, rh, edgeFeatherPx = 0, opts = {}) {
     if (!ctx || rw <= 20 || rh <= 20) return;
@@ -4822,6 +5596,18 @@ function _drawScrollCardBookmarkRibbon(ctx, rx, ry, rw, rh, edgeFeatherPx = 0, o
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText('“', cx, cy + iconR * 0.25);
+    } else if (style.startsWith('na_') && NA_PRAYER_EMBLEM_META[style]) {
+        // Unified North American / Catholic vector medallion inside the bookmark ribbon
+        const medR = Math.max(iconR * 1.32, bmW * 0.38);
+        const badgeBg = '#1E293B';
+        ctx.fillStyle = badgeBg;
+        ctx.beginPath();
+        ctx.arc(cx, cy, medR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 251, 235, 0.85)';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        _drawNaEmblemArtwork(ctx, style, cx, cy, medR * 0.86, { badgeBg });
     }
 
     ctx.restore();
@@ -5248,6 +6034,40 @@ function _drawScrollCardTopMascot(ctx, rx, ry, rw, rh, currentTime = 0, opts = {
         ctx.lineTo(2, 34);
         ctx.closePath();
         ctx.fill();
+    } else if (mascot.startsWith('na_') && NA_PRAYER_EMBLEM_META[mascot]) {
+        const meta = NA_PRAYER_EMBLEM_META[mascot];
+        const s = 1.16 * scale;
+        const bobY = Math.sin(t * 3.4) * 6.5 * scale;
+        const sway = Math.sin(t * 2.2) * 0.04;
+        ctx.translate(baseCx, baseCy + 14 * scale + bobY);
+        ctx.scale(s, s);
+        ctx.rotate(sway);
+
+        // Soft glowing medallion aura above the prayer card
+        const aura = ctx.createRadialGradient(0, 0, 8, 0, 0, 68);
+        aura.addColorStop(0, 'rgba(255, 250, 235, 0.30)');
+        aura.addColorStop(0.65, 'rgba(255, 215, 0, 0.10)');
+        aura.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(0, 0, 68, 0, Math.PI * 2);
+        ctx.fill();
+
+        const crestR = 46;
+        const badgeBg = '#141A29';
+        ctx.fillStyle = badgeBg;
+        ctx.beginPath();
+        ctx.arc(0, 0, crestR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = meta.accent || '#F5D061';
+        ctx.lineWidth = 3.2;
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255, 251, 235, 0.55)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, crestR - 5, 0, Math.PI * 2);
+        ctx.stroke();
+        _drawNaEmblemArtwork(ctx, mascot, 0, 0, crestR * 0.78, { time: t, badgeBg });
     }
     ctx.restore();
 }
@@ -9288,6 +10108,130 @@ const ReelsBrushEngine = {
             bookmarkStyle: 'royal_crown_tag',
             innerAccentColor: '#F0D580',
         },
+        kraft_torn_note: {
+            label: '📦 复古手撕牛皮纸祈祷卡 (温润牛皮纸+手撕毛边+手作缝线框)',
+            tileStyle: 'kraft_sticker',
+            baseColor: '#CBA67A',
+            tornEdge: true,
+        },
+        kraft_stamped_letter: {
+            label: '✉️ 邮戳牛皮信笺画板 (白边牛皮纸+四角铜铆钉+复古双线)',
+            tileStyle: 'kraft_sticker',
+            baseColor: '#D2B087',
+            tornEdge: false,
+        },
+        kraft_espresso_prayer: {
+            label: '🪵 深烘牛皮纸暗褐羽化卡 (深咖牛皮纸渐变+上下柔边+暖金手账风)',
+            tileStyle: null,
+            baseColor: '#3A271B',
+            tornEdge: false,
+            isPrayerBookmark: true,
+            edgeFeather: 38,
+            bookmarkColor: '#E5C165',
+            bookmarkStyle: 'swallowtail',
+            innerAccentColor: '#D6B17E',
+        },
+        minimal_ivory_stationery: {
+            label: '🤍 简约米白棉纸信笺 (干净象牙棉纸+极简细金线边框)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FCF9F2',
+            tornEdge: false,
+        },
+        minimal_sage_linen: {
+            label: '🌿 简约鼠尾草亚麻纸 (淡雅灰绿亚麻纹+极简细线)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#E5EEE6',
+            tornEdge: false,
+        },
+        minimal_blush_vellum: {
+            label: '🌸 简约柔粉硫酸羊皮纸 (柔和奶油粉+玫瑰金极简细框)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FAF0EC',
+            tornEdge: false,
+        },
+        minimal_slate_clean: {
+            label: '🖤 极简深灰美术卡纸 (静谧深石板底+极简银线框)',
+            tileStyle: 'dark_film_matte',
+            baseColor: '#1E2530',
+            tornEdge: false,
+        },
+        plaid_buffalo_red: {
+            label: '🟥 红黑水牛格子边框信纸 (北美经典红黑格外框+暖白中心阅读卡)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FAF5EB',
+            tornEdge: false,
+            plaidPalette: { base: '#991B1B', bandA: '#1E1B18', bandB: 'rgba(153,27,27,0.45)', inner: '#FCF8F0', frame: '#7F1D1D', darkCenter: false },
+        },
+        plaid_country_gingham: {
+            label: '🩵 美式乡村蓝白格子信纸 (清爽天蓝格纹框+奶油白祷告卡心)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FBF9F4',
+            tornEdge: false,
+            plaidPalette: { base: '#DCE8F5', bandA: 'rgba(59,130,246,0.34)', bandB: 'rgba(30,64,175,0.18)', inner: '#FFFFFF', frame: '#3B82F6', darkCenter: false },
+        },
+        plaid_heritage_beige: {
+            label: '🟨 英伦暖卡其苏格兰格子卡 (驼色格纹外框+经典红黑交织+象牙卡心)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#F9F3E6',
+            tornEdge: false,
+            plaidPalette: { base: '#D6BE96', bandA: 'rgba(68,51,34,0.36)', bandB: 'rgba(185,28,28,0.42)', inner: '#FCF8EE', frame: '#78350F', darkCenter: false },
+        },
+        plaid_forest_tartan: {
+            label: '🌲 森林松绿苏格兰格纹金卡 (深绿金格边框+墨绿天鹅绒阅读芯)',
+            tileStyle: null,
+            baseColor: '#112B1E',
+            tornEdge: false,
+            plaidPalette: { base: '#14452B', bandA: 'rgba(10,32,20,0.58)', bandB: 'rgba(217,172,66,0.42)', inner: '#102B1E', frame: '#DEC075', darkCenter: true },
+        },
+        plaid_pastel_lilac: {
+            label: '🪻 春日丁香紫小格子花笺 (温柔浅紫格纹+纯白清新卡心)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#FDFCFE',
+            tornEdge: false,
+            plaidPalette: { base: '#EFE7FA', bandA: 'rgba(167,139,250,0.36)', bandB: 'rgba(139,92,246,0.22)', inner: '#FFFFFF', frame: '#8B5CF6', darkCenter: false },
+        },
+        vintage_aged_manuscript: {
+            label: '📜 做旧茶渍古书手稿纸 (焦茶复古做旧晕边+古典双框)',
+            tileStyle: 'newspaper_sepia',
+            baseColor: '#EAD7B5',
+            tornEdge: true,
+        },
+        vintage_botanical_herbarium: {
+            label: '🌿 复古植物标本馆档案纸 (旧奶油压花纸+博物馆精细双线框)',
+            tileStyle: 'gold_parchment',
+            baseColor: '#F2EBD9',
+            tornEdge: false,
+        },
+        vintage_hymnal_navy: {
+            label: '⛪ 复古烫金赞美诗藏蓝卡 (古典午夜蓝精装面+双层鎏金压框)',
+            tileStyle: 'dark_film_matte',
+            baseColor: '#172234',
+            tornEdge: false,
+        },
+        old_photo_sepia_mount: {
+            label: '📸 复古棕调相册贴角老照片 (银盐做旧渐变+四角黑色相角固定贴)',
+            tileStyle: 'torn_cream_paper',
+            baseColor: '#E3D4B7',
+            tornEdge: false,
+        },
+        old_photo_polaroid_frame: {
+            label: '🖼️ 拍立得复古白边老照片框 (米白宽相纸留白+深暖棕胶片暗房底)',
+            tileStyle: null,
+            baseColor: '#231E1B',
+            tornEdge: false,
+        },
+        old_photo_film_strip: {
+            label: '🎞️ 35mm 怀旧老照片胶卷齿孔框 (左右滚动胶片齿孔+暗调银盐底)',
+            tileStyle: null,
+            baseColor: '#1B1612',
+            tornEdge: false,
+        },
+        old_photo_archive_matte: {
+            label: '🕰️ 馆藏老照片装裱灰黑卡框 (深炭卡纸垫板+奶油切口框+黄铜角贴)',
+            tileStyle: null,
+            baseColor: '#1C1A17',
+            tornEdge: false,
+        },
     },
 
     _backingTileCache: {},
@@ -10262,6 +11206,136 @@ const ReelsBrushEngine = {
                     ctx.lineWidth = 1.6;
                     _roundRect(ctx, rx + inset + 7, ry + inset + 7, rw - (inset + 7) * 2, rh - (inset + 7) * 2, Math.max(2, r - 10));
                     ctx.stroke();
+                } else if (styleId === 'kraft_torn_note' || styleId === 'kraft_stamped_letter') {
+                    const inset = styleId === 'kraft_torn_note' ? 14 : 18;
+                    ctx.strokeStyle = 'rgba(92, 61, 30, 0.55)';
+                    ctx.lineWidth = 1.6;
+                    ctx.setLineDash(styleId === 'kraft_torn_note' ? [7, 5] : []);
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    // Soft warm vignette
+                    const kg = ctx.createRadialGradient(rx + rw * 0.5, ry + rh * 0.5, rw * 0.15, rx + rw * 0.5, ry + rh * 0.5, Math.max(rw, rh) * 0.72);
+                    kg.addColorStop(0, 'rgba(255, 245, 225, 0.12)');
+                    kg.addColorStop(1, 'rgba(72, 42, 16, 0.24)');
+                    ctx.fillStyle = kg;
+                    ctx.fillRect(rx, ry, rw, rh);
+                } else if (styleId === 'minimal_ivory_stationery' || styleId === 'minimal_sage_linen' || styleId === 'minimal_blush_vellum' || styleId === 'minimal_slate_clean') {
+                    const inset = 16;
+                    const lineColor = styleId === 'minimal_slate_clean'
+                        ? 'rgba(203, 213, 225, 0.45)'
+                        : (styleId === 'minimal_sage_linen' ? 'rgba(46, 86, 62, 0.32)' : (styleId === 'minimal_blush_vellum' ? 'rgba(159, 68, 92, 0.28)' : 'rgba(148, 120, 78, 0.35)'));
+                    ctx.strokeStyle = lineColor;
+                    ctx.lineWidth = 1.3;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+                    ctx.lineWidth = 0.7;
+                    _roundRect(ctx, rx + inset + 5, ry + inset + 5, rw - (inset + 5) * 2, rh - (inset + 5) * 2, Math.max(2, r - 8));
+                    ctx.stroke();
+                } else if (cfg.plaidPalette) {
+                    const pl = cfg.plaidPalette;
+                    const matPad = Math.max(16, Math.min(28, Math.min(rw, rh) * 0.048));
+                    const step = 28;
+                    const modP = ((rawScrollY % (step * 2)) + step * 2) % (step * 2);
+                    ctx.fillStyle = pl.base;
+                    ctx.fillRect(rx, ry, rw, rh);
+                    // Vertical plaid weave
+                    ctx.fillStyle = pl.bandA;
+                    for (let px = rx; px < rx + rw; px += step * 2) {
+                        ctx.fillRect(px, ry, step, rh);
+                    }
+                    // Horizontal plaid weave (scrolls with text)
+                    ctx.fillStyle = pl.bandB;
+                    for (let py = ry - step * 2 + modP; py < ry + rh + step * 2; py += step * 2) {
+                        ctx.fillRect(rx, py, rw, step);
+                    }
+                    // Crisp inner stationery card panel for high-contrast readability
+                    const irx = rx + matPad;
+                    const iry = ry + matPad;
+                    const irw = Math.max(20, rw - matPad * 2);
+                    const irh = Math.max(20, rh - matPad * 2);
+                    const irad = Math.max(4, r - 4);
+                    ctx.fillStyle = pl.inner;
+                    _roundRect(ctx, irx, iry, irw, irh, irad);
+                    ctx.fill();
+                    ctx.strokeStyle = pl.frame;
+                    ctx.lineWidth = 2.0;
+                    _roundRect(ctx, irx, iry, irw, irh, irad);
+                    ctx.stroke();
+                } else if (styleId === 'vintage_aged_manuscript' || styleId === 'vintage_botanical_herbarium' || styleId === 'vintage_hymnal_navy') {
+                    const isDark = styleId === 'vintage_hymnal_navy';
+                    const vg = ctx.createRadialGradient(rx + rw * 0.5, ry + rh * 0.45, Math.min(rw, rh) * 0.12, rx + rw * 0.5, ry + rh * 0.5, Math.max(rw, rh) * 0.72);
+                    vg.addColorStop(0, isDark ? 'rgba(30, 58, 100, 0.25)' : 'rgba(255, 250, 235, 0.25)');
+                    vg.addColorStop(1, isDark ? 'rgba(8, 12, 22, 0.55)' : 'rgba(110, 72, 28, 0.34)');
+                    ctx.fillStyle = vg;
+                    ctx.fillRect(rx, ry, rw, rh);
+                    const inset = 14;
+                    ctx.strokeStyle = isDark ? '#D4AF37' : '#78350F';
+                    ctx.lineWidth = 2.0;
+                    _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                    ctx.stroke();
+                    ctx.strokeStyle = isDark ? 'rgba(212, 175, 55, 0.48)' : 'rgba(120, 53, 15, 0.38)';
+                    ctx.lineWidth = 1.0;
+                    _roundRect(ctx, rx + inset + 6, ry + inset + 6, rw - (inset + 6) * 2, rh - (inset + 6) * 2, Math.max(2, r - 8));
+                    ctx.stroke();
+                } else if (styleId === 'old_photo_sepia_mount' || styleId === 'old_photo_polaroid_frame' || styleId === 'old_photo_film_strip' || styleId === 'old_photo_archive_matte') {
+                    if (styleId === 'old_photo_sepia_mount') {
+                        const sg = ctx.createRadialGradient(rx + rw * 0.5, ry + rh * 0.5, Math.min(rw, rh) * 0.15, rx + rw * 0.5, ry + rh * 0.5, Math.max(rw, rh) * 0.72);
+                        sg.addColorStop(0, 'rgba(255, 248, 232, 0.18)');
+                        sg.addColorStop(1, 'rgba(68, 42, 18, 0.38)');
+                        ctx.fillStyle = sg;
+                        ctx.fillRect(rx, ry, rw, rh);
+                        ctx.strokeStyle = '#6B4423';
+                        ctx.lineWidth = 2;
+                        _roundRect(ctx, rx + 10, ry + 10, rw - 20, rh - 20, Math.max(3, r - 4));
+                        ctx.stroke();
+                    } else if (styleId === 'old_photo_polaroid_frame') {
+                        ctx.fillStyle = '#F7F3EA';
+                        ctx.fillRect(rx, ry, rw, rh);
+                        const padSide = Math.max(14, rw * 0.032);
+                        const padBot = Math.max(32, rh * 0.068);
+                        ctx.fillStyle = '#241F1B';
+                        _roundRect(ctx, rx + padSide, ry + padSide, Math.max(20, rw - padSide * 2), Math.max(20, rh - padSide - padBot), 4);
+                        ctx.fill();
+                        ctx.strokeStyle = 'rgba(214, 198, 170, 0.55)';
+                        ctx.lineWidth = 1.2;
+                        ctx.stroke();
+                    } else if (styleId === 'old_photo_film_strip') {
+                        ctx.fillStyle = '#14100D';
+                        ctx.fillRect(rx, ry, rw, rh);
+                        const railW = Math.max(22, Math.min(34, rw * 0.055));
+                        const holePeriod = 34;
+                        const modHole = ((rawScrollY % holePeriod) + holePeriod) % holePeriod;
+                        ctx.fillStyle = '#EFE9DD';
+                        for (let hy = ry - holePeriod + modHole; hy < ry + rh + holePeriod; hy += holePeriod) {
+                            _roundRect(ctx, rx + 5, hy, railW - 10, 18, 3);
+                            ctx.fill();
+                            _roundRect(ctx, rx + rw - railW + 5, hy, railW - 10, 18, 3);
+                            ctx.fill();
+                        }
+                        const fg = ctx.createLinearGradient(rx, ry, rx, ry + rh);
+                        fg.addColorStop(0, '#231D18');
+                        fg.addColorStop(0.5, '#1B1612');
+                        fg.addColorStop(1, '#261F1A');
+                        ctx.fillStyle = fg;
+                        ctx.fillRect(rx + railW + 4, ry + 10, Math.max(20, rw - (railW + 4) * 2), Math.max(20, rh - 20));
+                        ctx.strokeStyle = 'rgba(217, 178, 118, 0.38)';
+                        ctx.lineWidth = 1.4;
+                        ctx.strokeRect(rx + railW + 4, ry + 10, Math.max(20, rw - (railW + 4) * 2), Math.max(20, rh - 20));
+                    } else {
+                        // old_photo_archive_matte
+                        ctx.fillStyle = '#1E1B18';
+                        ctx.fillRect(rx, ry, rw, rh);
+                        const inset = 18;
+                        ctx.strokeStyle = '#E5D5B5';
+                        ctx.lineWidth = 3.2;
+                        _roundRect(ctx, rx + inset, ry + inset, rw - inset * 2, rh - inset * 2, Math.max(4, r - 6));
+                        ctx.stroke();
+                        ctx.strokeStyle = '#B4915A';
+                        ctx.lineWidth = 1.1;
+                        _roundRect(ctx, rx + inset + 6, ry + inset + 6, rw - (inset + 6) * 2, rh - (inset + 6) * 2, Math.max(2, r - 10));
+                        ctx.stroke();
+                    }
                 }
             } finally {
                 ctx.restore(); // end clip
@@ -10333,6 +11407,30 @@ const ReelsBrushEngine = {
                 this._drawRemembrancePoppyOrnament(ctx, rx + rw - padC, ry + padC, ornScale, true);
                 this._drawRemembrancePoppyOrnament(ctx, rx + padC, ry + rh - padC, ornScale, false);
                 this._drawRemembrancePoppyOrnament(ctx, rx + rw - padC, ry + rh - padC, ornScale, true);
+            } else if (styleId === 'old_photo_sepia_mount' || styleId === 'old_photo_archive_matte') {
+                // Classic vintage black/brass triangle photo corner mounts
+                const cornerS = Math.max(18, Math.min(34, Math.min(rw, rh) * 0.05));
+                const off = styleId === 'old_photo_archive_matte' ? 8 : 6;
+                const cornerColor = styleId === 'old_photo_archive_matte' ? '#C49A45' : '#29221C';
+                ctx.save();
+                ctx.fillStyle = cornerColor;
+                ctx.strokeStyle = 'rgba(255, 248, 225, 0.45)';
+                ctx.lineWidth = 1.1;
+                for (const [cx0, cy0, dx, dy] of [
+                    [rx + off, ry + off, 1, 1],
+                    [rx + rw - off, ry + off, -1, 1],
+                    [rx + off, ry + rh - off, 1, -1],
+                    [rx + rw - off, ry + rh - off, -1, -1],
+                ]) {
+                    ctx.beginPath();
+                    ctx.moveTo(cx0, cy0);
+                    ctx.lineTo(cx0 + dx * cornerS, cy0);
+                    ctx.lineTo(cx0, cy0 + dy * cornerS);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+                ctx.restore();
             }
         } finally {
             ctx.restore();
@@ -13116,6 +14214,7 @@ const ReelsOverlay = {
     splitBodyText,
     OverlayManager,
     ReelsBrushEngine,
+    NA_PRAYER_EMBLEM_META,
     _resolveOverlayTextFill,
     _computeScrollFeatherAxis,
 };
