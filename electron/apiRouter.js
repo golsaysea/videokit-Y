@@ -2761,16 +2761,20 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
         case 'status':
             return { status: 'ok', backend: 'nodejs', uptime: process.uptime() };
 
-        // ==================== 视频模板预设 ====================
+        // ==================== 视频模板 / 工程管理库 ====================
         case 'templates/folders/delete': return templateService.deleteEmptyTemplateFolder(data.id);
-        case 'templates/folders/reorder': return templateService.reorderTemplateLibrary(data.order);
+        case 'templates/folders/reorder': return templateService.reorderTemplateLibrary(data.order, data.parentId);
         case 'templates/folders/list': return templateService.readTemplateFolders();
-        case 'templates/folders/create': return templateService.createTemplateFolder(data.name);
-        case 'templates/folders/rename': return templateService.renameTemplateFolder(data.id,data.name);
-        case 'templates/folders/move': return templateService.moveTemplatesToFolder(data.ids,data.folderId);
+        case 'templates/folders/create': return templateService.createTemplateFolder(data.name, data.parentId);
+        case 'templates/folders/rename': return templateService.renameTemplateFolder(data.id, data.name);
+        case 'templates/folders/move': return templateService.moveTemplatesToFolder(data.ids, data.folderId);
+        case 'templates/folders/move-folders': return templateService.moveTemplateFolders(data.folderIds, data.targetParentId);
 
         case 'templates/list':
             return templateService.listTemplates();
+
+        case 'templates/get-many':
+            return templateService.getTemplatesByIds(data.ids);
 
         case 'templates/reorder':
             return templateService.reorderTemplates(data.ids);

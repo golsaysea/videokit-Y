@@ -305,9 +305,22 @@ function renameTemplate(id, newName) {
     return { success: true };
 }
 
+function getTemplatesByIds(ids) {
+    if (!Array.isArray(ids) || !ids.length) return [];
+    const results = [];
+    for (const rawId of ids) {
+        if (!rawId) continue;
+        try {
+            results.push(getTemplate(rawId));
+        } catch (_) { /* 跳过已删除或损坏的工程文件 */ }
+    }
+    return results;
+}
+
 module.exports = {
     listTemplates,
     getTemplate,
+    getTemplatesByIds,
     saveTemplate,
     deleteTemplate,
     renameTemplate,
@@ -346,12 +359,44 @@ function updateTemplateThumbnail(id, thumbnail) {
 module.exports.reorderTemplates = reorderTemplates;
 module.exports.updateTemplateThumbnail = updateTemplateThumbnail;
 
+function _collectDescendantFolderIds(folders, rootId) {
+    const result = new Set();
+    const queue = [rootId];
+    while (queue.length) {
+        const cur = queue.shift();
+        for (const f of folders) {
+            if ((f.parentId || '') === cur && !result.has(f.id)) {
+                result.add(f.id);
+                queue.push(f.id);
+            }
+        }
+    }
+    return result;
+}
+function _normalizeTemplateFoldersData(raw) {
+    const data = raw && typeof raw === 'object' ? raw : {};
+    if (!Array.isArray(data.folders) || !data.assignments || typeof data.assignments !== 'object' || Array.isArray(data.assignments)) {
+        throw new Error('文件夹数据无效');
+    }
+    const folderIds = new Set(data.folders.map(f => f && f.id).filter(Boolean));
+    data.folders = data.folders.map(f => {
+        const pid = String(f.parentId || '');
+        const cleanParent = (pid && pid !== f.id && folderIds.has(pid)) ? pid : '';
+        return { ...f, parentId: cleanParent };
+    });
+    if (!data.folderOrders || typeof data.folderOrders !== 'object' || Array.isArray(data.folderOrders)) {
+        data.folderOrders = {};
+    }
+    if (Array.isArray(data.libraryOrder) && !Array.isArray(data.folderOrders[''])) {
+        data.folderOrders[''] = [...data.libraryOrder];
+    }
+    return data;
+}
 function readTemplateFolders() {
     const file = path.join(getTemplatesDir(),'folders.json');
-    if (!fs.existsSync(file)) return {folders:[],assignments:{}};
+    if (!fs.existsSync(file)) return {folders:[],assignments:{},folderOrders:{}};
     const data = JSON.parse(fs.readFileSync(file,'utf8'));
-    if (!Array.isArray(data.folders) || !data.assignments || typeof data.assignments !== 'object' || Array.isArray(data.assignments)) throw new Error('文件夹数据无效');
-    return data;
+    return _normalizeTemplateFoldersData(data);
 }
 function writeTemplateFolders(data) {
     const file = path.join(getTemplatesDir(),'folders.json');
@@ -359,47 +404,104 @@ function writeTemplateFolders(data) {
     const tmp = `${file}.${process.pid}.tmp`;
     fs.writeFileSync(tmp,JSON.stringify(data,null,2),'utf8');fs.renameSync(tmp,file);
 }
-function createTemplateFolder(name) {
+function createTemplateFolder(name, parentId = '') {
     name=String(name || '').trim();if(!name || name.length>200)throw new Error('请输入有效的文件夹名称（最多200字）');
     const data=readTemplateFolders();
-    if(data.folders.some(f=>f.name===name))throw new Error('已有同名文件夹');
-    const now=new Date().toISOString();const folder={id:'folder_'+crypto.randomUUID(),name,createdAt:now,updatedAt:now};
+    const cleanParentId = String(parentId || '').trim();
+    if (cleanParentId && !data.folders.some(f => f.id === cleanParentId)) {
+        throw new Error('上级文件夹不存在');
+    }
+    if(data.folders.some(f=>(f.parentId || '')===cleanParentId && f.name===name))throw new Error('当前目录已有同名文件夹');
+    const now=new Date().toISOString();
+    const folder={id:'folder_'+crypto.randomUUID(),name,parentId:cleanParentId,createdAt:now,updatedAt:now};
     data.folders.push(folder);writeTemplateFolders(data);return {success:true,folder};
 }
 function renameTemplateFolder(id,name) {
     name=String(name || '').trim();if(!name || name.length>200)throw new Error('请输入有效的文件夹名称（最多200字）');
     const data=readTemplateFolders(),folder=data.folders.find(f=>f.id===id);if(!folder)throw new Error('文件夹不存在');
-    if(data.folders.some(f=>f.id!==id&&f.name===name))throw new Error('已有同名文件夹');
+    const pid = folder.parentId || '';
+    if(data.folders.some(f=>f.id!==id&&(f.parentId || '')===pid&&f.name===name))throw new Error('当前目录已有同名文件夹');
     folder.name=name;folder.updatedAt=new Date().toISOString();writeTemplateFolders(data);return {success:true};
 }
 function moveTemplatesToFolder(ids,folderId) {
-    if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))throw new Error('请选择模板');
+    if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'))throw new Error('请选择工程');
     const data=readTemplateFolders();folderId=folderId || '';
     if(folderId&&!data.folders.some(f=>f.id===folderId))throw new Error('文件夹不存在');
-    const available=new Set(readIndex().map(t=>t.id));if(ids.some(id=>!available.has(id)))throw new Error('模板不存在');
+    const available=new Set(readIndex().map(t=>t.id));if(ids.some(id=>!available.has(id)))throw new Error('工程不存在');
     const affected=new Set([folderId]);
-    for(const id of ids){affected.add(data.assignments[id]);if(folderId)data.assignments[id]=folderId;else delete data.assignments[id];}
+    for(const id of ids){affected.add(data.assignments[id]||'');if(folderId)data.assignments[id]=folderId;else delete data.assignments[id];}
     for(const f of data.folders)if(affected.has(f.id))f.updatedAt=new Date().toISOString();
     writeTemplateFolders(data);return {success:true};
+}
+function moveTemplateFolders(folderIds, targetParentId = '') {
+    if (!Array.isArray(folderIds) || !folderIds.length || folderIds.some(id => typeof id !== 'string')) {
+        throw new Error('请选择要移动的文件夹');
+    }
+    const data = readTemplateFolders();
+    const cleanTarget = String(targetParentId || '').trim();
+    if (cleanTarget && !data.folders.some(f => f.id === cleanTarget)) {
+        throw new Error('目标文件夹不存在');
+    }
+    const movingSet = new Set(folderIds);
+    for (const fid of movingSet) {
+        const folder = data.folders.find(f => f.id === fid);
+        if (!folder) throw new Error('文件夹不存在');
+        if (cleanTarget === fid) throw new Error('不能把文件夹移入自己');
+        const descendants = _collectDescendantFolderIds(data.folders, fid);
+        if (cleanTarget && descendants.has(cleanTarget)) {
+            throw new Error('不能把文件夹移入自己的子文件夹');
+        }
+        const collision = data.folders.find(f =>
+            !movingSet.has(f.id) &&
+            (f.parentId || '') === cleanTarget &&
+            f.name === folder.name
+        );
+        if (collision) throw new Error(`目标文件夹内已存在同名子文件夹「${folder.name}」`);
+    }
+    const now = new Date().toISOString();
+    const touched = new Set([cleanTarget]);
+    for (const f of data.folders) {
+        if (movingSet.has(f.id)) {
+            touched.add(f.parentId || '');
+            f.parentId = cleanTarget;
+            f.updatedAt = now;
+        }
+    }
+    for (const f of data.folders) {
+        if (touched.has(f.id)) f.updatedAt = now;
+    }
+    writeTemplateFolders(data);
+    return { success: true };
 }
 module.exports.readTemplateFolders=readTemplateFolders;
 module.exports.createTemplateFolder=createTemplateFolder;
 module.exports.renameTemplateFolder=renameTemplateFolder;
 module.exports.moveTemplatesToFolder=moveTemplatesToFolder;
+module.exports.moveTemplateFolders=moveTemplateFolders;
 
 function deleteEmptyTemplateFolder(id) {
     const data=readTemplateFolders();if(!data.folders.some(f=>f.id===id))throw new Error('文件夹不存在');
+    if(data.folders.some(f=>(f.parentId || '')===id))throw new Error('请先移出或删除子文件夹');
     const available=new Set(readIndex().map(t=>t.id));
-    if(Object.entries(data.assignments).some(([key,value])=>value===id&&available.has(key)))throw new Error('请先移出文件夹内的模板');
-    data.folders=data.folders.filter(f=>f.id!==id);for(const key of Object.keys(data.assignments))if(data.assignments[key]===id)delete data.assignments[key];
+    if(Object.entries(data.assignments).some(([key,value])=>value===id&&available.has(key)))throw new Error('请先移出文件夹内的工程');
+    data.folders=data.folders.filter(f=>f.id!==id);
+    for(const key of Object.keys(data.assignments))if(data.assignments[key]===id)delete data.assignments[key];
+    if(data.folderOrders)delete data.folderOrders[id];
     writeTemplateFolders(data);return {success:true};
 }
 module.exports.deleteEmptyTemplateFolder=deleteEmptyTemplateFolder;
 
-function reorderTemplateLibrary(order){
+function reorderTemplateLibrary(order, parentId = ''){
     if(!Array.isArray(order)||order.some(id=>typeof id!=='string')||new Set(order).size!==order.length)throw new Error('无效的排列顺序');
-    const data=readTemplateFolders(),expected=[...data.folders.map(f=>'f:'+f.id),...readIndex().filter(t=>!data.assignments[t.id]).map(t=>'t:'+t.id)];
-    const valid=new Set(expected);if(order.length!==expected.length||order.some(id=>!valid.has(id)))throw new Error('模板库已变化，请刷新后重试');
-    data.libraryOrder=order;writeTemplateFolders(data);return {success:true};
+    const cleanParentId = String(parentId || '').trim();
+    const data=readTemplateFolders();
+    const childFolders = data.folders.filter(f=>(f.parentId || '')===cleanParentId);
+    const directTemplates = readIndex().filter(t=>(data.assignments[t.id] || '')===cleanParentId);
+    const expected=[...childFolders.map(f=>'f:'+f.id),...directTemplates.map(t=>'t:'+t.id)];
+    const valid=new Set(expected);if(order.length!==expected.length||order.some(id=>!valid.has(id)))throw new Error('工程库当前目录已变化，请刷新后重试');
+    if(!data.folderOrders||typeof data.folderOrders!=='object')data.folderOrders={};
+    data.folderOrders[cleanParentId]=order;
+    if(!cleanParentId)data.libraryOrder=order;
+    writeTemplateFolders(data);return {success:true};
 }
 module.exports.reorderTemplateLibrary=reorderTemplateLibrary;

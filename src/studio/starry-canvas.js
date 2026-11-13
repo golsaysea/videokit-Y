@@ -197,8 +197,8 @@ export function createStarryBackdrop(options = {}) {
 
     function drawFrame(nowMs, staticMode = false) {
         if (destroyed || !width || !height) return;
-        const sceneId = getActiveSceneId() || 'starry-lantern';
-        const palette = ATMOSPHERIC_SCENES[sceneId] || ATMOSPHERIC_SCENES['starry-lantern'];
+        const sceneId = getActiveSceneId() || 'christmas-eve';
+        const palette = ATMOSPHERIC_SCENES[sceneId] || ATMOSPHERIC_SCENES['christmas-eve'];
 
         ctx.save();
         ctx.scale(dpr, dpr);

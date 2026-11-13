@@ -21,10 +21,48 @@ function _tplEscapeHtml(value) {
 
 let _tplSearchTerm = '';
 let _tplSearchTimer = null;
-function _templateMatchesSearch(template, query) {
+function _getTemplateFolderChain(folderId, folders = _tplFolderData.folders || []) {
+    const map = new Map((folders || []).filter(Boolean).map(f => [String(f.id), f]));
+    const chain = [];
+    const seen = new Set();
+    let curId = String(folderId || '').trim();
+    while (curId && map.has(curId) && !seen.has(curId)) {
+        seen.add(curId);
+        const f = map.get(curId);
+        chain.unshift(f);
+        curId = String(f.parentId || '').trim();
+    }
+    return chain;
+}
+
+function _buildTemplateFolderPathText(folderId, folders = _tplFolderData.folders || []) {
+    const chain = _getTemplateFolderChain(folderId, folders);
+    return chain.length ? chain.map(f => f.name).join(' / ') : '主工程库';
+}
+
+function _collectTplDescendantFolderIds(rootFolderId, folders = _tplFolderData.folders || []) {
+    const root = String(rootFolderId || '').trim();
+    const out = new Set();
+    if (!root) return out;
+    out.add(root);
+    let added = true;
+    while (added) {
+        added = false;
+        for (const f of (folders || [])) {
+            if (!f || !f.id || out.has(f.id)) continue;
+            if (f.parentId && out.has(f.parentId)) {
+                out.add(f.id);
+                added = true;
+            }
+        }
+    }
+    return out;
+}
+
+function _templateMatchesSearch(template, query, folderPathText = '') {
     const tokens = String(query || '').trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
     if (!tokens.length) return true;
-    const searchable = [template?.name, template?.templateType, template?.id].map(value => String(value ?? '').toLocaleLowerCase()).join(' ');
+    const searchable = [template?.name, template?.templateType, template?.id, folderPathText].map(value => String(value ?? '').toLocaleLowerCase()).join(' ');
     return tokens.every(token => searchable.includes(token));
 }
 function _templateSearchChanged(value) {
@@ -44,7 +82,7 @@ function _clearTemplateSearch() {
     _refreshTemplateList();
 }
 let _tplFolderId = '';
-let _tplFolderData = {folders:[],assignments:{}};
+let _tplFolderData = {folders:[],assignments:{},folderOrders:{}};
 
 let _currentTemplateContext = {
     id: '',
@@ -81,82 +119,120 @@ function _setCurrentTemplateContext(id, name) {
 function _updateCurrentTemplateButton() {
     const btn = document.getElementById('tpl-update-current-btn');
     const label = document.getElementById('tpl-current-template-label');
+    const wsStatus = typeof window.reelsGetWorkspaceLibraryStatus === 'function'
+        ? window.reelsGetWorkspaceLibraryStatus()
+        : null;
+    const modal = document.getElementById('template-library-modal');
+    const allIds = modal?._allTemplateSummaries
+        ? new Set(modal._allTemplateSummaries.map(t => String(t.id)))
+        : null;
+    const candInfo = (! _currentTemplateContext.id && !wsStatus?.folderId && typeof window.reelsGetWorkspaceSaveCandidateInfo === 'function')
+        ? window.reelsGetWorkspaceSaveCandidateInfo(allIds)
+        : null;
     if (btn) {
         btn.disabled = !_currentTemplateContext.id;
         btn.style.opacity = _currentTemplateContext.id ? '1' : '0.45';
         btn.style.cursor = _currentTemplateContext.id ? 'pointer' : 'not-allowed';
         btn.title = _currentTemplateContext.id
-            ? `用当前工程覆盖模板「${_currentTemplateContext.name || _currentTemplateContext.id}」`
-            : '请先载入一个模板';
+            ? `用当前工程覆盖库内工程「${_currentTemplateContext.name || _currentTemplateContext.id}」`
+            : '请先载入单个工程卡片以单独更新，或直接用「保存当前工程」整体归档';
     }
     if (label) {
-        label.textContent = _currentTemplateContext.id
-            ? `当前: ${_currentTemplateContext.name || _currentTemplateContext.id}`
-            : '当前: 未载入模板';
-        label.title = _currentTemplateContext.name || _currentTemplateContext.id || '';
+        if (_currentTemplateContext.id) {
+            label.textContent = `当前: ${_currentTemplateContext.name || _currentTemplateContext.id}`;
+            label.title = _currentTemplateContext.name || _currentTemplateContext.id || '';
+        } else if (wsStatus?.folderId) {
+            const folderShort = String(wsStatus.folderPath || '已绑定文件夹').split(' / ').pop();
+            const countText = wsStatus.folderTotalCount > 0
+                ? `${wsStatus.openTabCount}/${wsStatus.folderTotalCount}`
+                : `${wsStatus.openTabCount}`;
+            label.textContent = `已绑定: ${folderShort} (${countText})`;
+            label.title = `${wsStatus.folderPath} · 已打开 ${wsStatus.openTabCount} 个标签`;
+        } else if (candInfo && candInfo.totalGroups > 0) {
+            label.textContent = `工作区: ${candInfo.totalGroups} 个标签(未归档)`;
+            label.title = `工作区当前有 ${candInfo.totalGroups} 个标签（${candInfo.totalTasks} 条任务），可点击上方一键自动保存并管理`;
+        } else {
+            label.textContent = '当前: 未载入工程';
+            label.title = '';
+        }
     }
 }
 
 function openTemplateLibrary(onSelectCallback = null, opts = {}) {
-    // 如果已存在就显示
+    const isPicker = !!onSelectCallback;
     let modal = document.getElementById('template-library-modal');
-    if (modal) {
+    if (typeof opts?.folderId === 'string') {
+        _tplFolderId = opts.folderId;
+    } else if (!isPicker && opts?.preserveRoot !== true && !_tplFolderId) {
+        const activeFolder = window.reelsGetWorkspaceLibraryStatus?.().folderId || '';
+        if (activeFolder) _tplFolderId = activeFolder;
+    }
+
+    if (modal && modal._wasPicker === isPicker) {
         modal.style.display = 'flex';
-        // 绑定回调到全局，方便 _refreshTemplateList 中使用
         modal._onSelectCallback = onSelectCallback;
         modal._pickerDisabledIds = new Set(opts.disabledIds || []);
         _updateCurrentTemplateButton();
         _refreshTemplateList();
+        if (!isPicker && typeof window.reelsSyncWorkspaceTabsBackToLibraryFolder === 'function') {
+            window.reelsSyncWorkspaceTabsBackToLibraryFolder({ silent: true, onlyDirty: true, autoCreateNew: !!window.reelsGetWorkspaceLibraryStatus?.().folderId })
+                .then(res => { if (res && (res.updated || res.created)) _refreshTemplateList(); })
+                .catch(() => {});
+        }
         return;
     }
+    if (modal) modal.remove();
 
     modal = document.createElement('div');
     modal.id = 'template-library-modal';
+    modal._wasPicker = isPicker;
     modal._onSelectCallback = onSelectCallback;
     modal._pickerDisabledIds = new Set(opts.disabledIds || []);
     modal._selectedTemplateIds = new Set();
     modal.style.cssText = 'display:flex;align-items:center;justify-content:center;z-index:400000;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);';
     
-    // UI elements hide/show based on mode
-    const isPicker = !!onSelectCallback;
-    
     modal.innerHTML = `
         <div class="modal-content" style="width:90vw;max-width:96vw;min-width:min(640px,96vw);height:80vh;max-height:96vh;min-height:min(360px,96vh);resize:both;display:flex;flex-direction:column;background:var(--bg-secondary,#1a1a2e);border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
             <div class="tpl-library-header" style="display:flex;align-items:center;justify-content:space-between;padding:14px 54px 14px 20px;border-bottom:1px solid rgba(255,255,255,0.06);">
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <span style="font-size:22px;">📂</span>
-                    <h2 id="tpl-lib-title" style="margin:0;font-size:18px;font-weight:700;color:#fff;">${isPicker ? '选择视频模板' : '视频模板库'}</h2>
+                    <span style="font-size:22px;">🗂️</span>
+                    <h2 id="tpl-lib-title" style="margin:0;font-size:18px;font-weight:700;color:#fff;">${isPicker ? '选择工程模板' : '工程管理库'}</h2>
                     <span id="tpl-count-badge" style="font-size:11px;padding:2px 8px;background:rgba(110,231,183,0.15);color:#6ee7b7;border-radius:10px;"></span>
                 </div>
                 <div class="tpl-library-actions" style="display:flex;gap:6px;align-items:center;">
                     ${isPicker ? '' : `
-                    <button onclick="saveCurrentAsTemplate()" style="padding:5px 12px;font-size:11px;font-weight:600;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;cursor:pointer;">💾 保存当前工程</button>
-                    <button id="tpl-update-current-btn" onclick="updateCurrentTemplate()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(245,158,11,0.16);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);border-radius:8px;cursor:pointer;">♻️ 更新当前模板</button>
+                    <button id="tpl-new-folder-btn" onclick="_newTemplateFolder()" style="padding:5px 11px;font-size:11px;font-weight:600;background:rgba(139,92,246,0.18);color:#ddd6fe;border:1px solid rgba(167,139,250,0.38);border-radius:8px;cursor:pointer;" title="在当前所在文件夹下新建文件夹（支持多级目录）">📁 新建文件夹</button>
+                    <button id="tpl-apply-selected-btn" onclick="tplApplySelectedProjects()" style="padding:5px 12px;font-size:11px;font-weight:600;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:8px;cursor:pointer;" title="将多选勾选的工程卡片应用为工作区标签（批量表格与工作面板仅同步当前所选）">✅ 应用所选标签</button>
+                    <button id="tpl-apply-folder-btn" onclick="tplApplyCurrentFolderProjects()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(99,102,241,0.22);color:#e0e7ff;border:1px solid rgba(129,140,248,0.42);border-radius:8px;cursor:pointer;" title="一键载入当前文件夹直属全部标签到工作面板与批量表格（不识别其他层文件夹）">📂 应用本文件夹</button>
+                    <button onclick="saveCurrentAsTemplate()" style="padding:5px 12px;font-size:11px;font-weight:600;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:8px;cursor:pointer;" title="自动识别工作区全部标签页（含后台保留标签与小分组）并保存到工程管理库文件夹">💾 保存当前工程</button>
+                    <button id="tpl-update-current-btn" onclick="updateCurrentTemplate()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(245,158,11,0.16);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);border-radius:8px;cursor:pointer;">♻️ 更新当前工程</button>
                     <button id="tpl-repair-thumbnails-btn" onclick="repairDuplicateTemplateThumbnails()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(14,165,233,0.15);color:#7dd3fc;border:1px solid rgba(14,165,233,0.35);border-radius:8px;cursor:pointer;">📸 修复重复封面</button>
                     <button onclick="_importTemplate()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);border-radius:8px;cursor:pointer;">📥 导入</button>
                     <button onclick="_exportAllTemplates()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(236,72,153,0.15);color:#ec4899;border:1px solid rgba(236,72,153,0.3);border-radius:8px;cursor:pointer;">📤 导出全部</button>
-                    <button id="tpl-select-all-btn" onclick="tplSelectAllTemplates()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(59,130,246,0.14);color:#93c5fd;border:1px solid rgba(59,130,246,0.34);border-radius:8px;cursor:pointer;">☑ 全选模板</button>
+                    <button id="tpl-select-all-btn" onclick="tplSelectAllTemplates()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(59,130,246,0.14);color:#93c5fd;border:1px solid rgba(59,130,246,0.34);border-radius:8px;cursor:pointer;">☑ 全选</button>
                     <button id="tpl-save-selected-presets-btn" onclick="tplSaveSelectedPresets()" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(16,185,129,0.16);color:#6ee7b7;border:1px solid rgba(16,185,129,0.36);border-radius:8px;cursor:pointer;">💾 保存所选预设</button>
                     <span id="tpl-selected-count" style="font-size:10px;color:#94a3b8;white-space:nowrap;">未选择</span>
                     <span id="tpl-current-template-label" style="max-width:170px;font-size:10px;color:#777;white-space:normal;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.45;min-height:2.9em;"></span>
                     `}
-                    <button id="tpl-library-close" aria-label="关闭模板库" onclick="document.getElementById('template-library-modal').style.display='none'" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px 8px;position:absolute;right:12px;top:12px;">✕</button>
+                    <button id="tpl-library-close" aria-label="关闭工程管理库" onclick="document.getElementById('template-library-modal').style.display='none'" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:4px 8px;position:absolute;right:12px;top:12px;">✕</button>
                 </div>
             </div>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.06);">
                 <div style="position:relative;flex:1 1 260px;max-width:530px;min-width:180px;">
                     <span aria-hidden="true" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:15px;">⌕</span>
-                    <input id="tpl-search-input" type="search" autocomplete="off" aria-label="搜索视频模板" placeholder="搜索模板名称或关键词（支持跨文件夹）" oninput="_templateSearchChanged(this.value)" onkeydown="if(event.key==='Escape'){event.stopPropagation();_clearTemplateSearch();}" style="box-sizing:border-box;width:100%;padding:9px 37px 9px 36px;background:#111827;color:#f8fafc;border:1px solid #475569;border-radius:9px;outline:none;font-size:13px;" />
-                    <button id="tpl-search-clear" onclick="_clearTemplateSearch()" title="清空搜索" aria-label="清空模板搜索" style="display:none;position:absolute;right:9px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:18px;">×</button>
+                    <input id="tpl-search-input" type="search" autocomplete="off" aria-label="搜索工程或文件夹" placeholder="搜索工程/文件夹名称或关键词（支持跨文件夹）" oninput="_templateSearchChanged(this.value)" onkeydown="if(event.key==='Escape'){event.stopPropagation();_clearTemplateSearch();}" style="box-sizing:border-box;width:100%;padding:9px 37px 9px 36px;background:#111827;color:#f8fafc;border:1px solid #475569;border-radius:9px;outline:none;font-size:13px;" />
+                    <button id="tpl-search-clear" onclick="_clearTemplateSearch()" title="清空搜索" aria-label="清空工程搜索" style="display:none;position:absolute;right:9px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#cbd5e1;cursor:pointer;font-size:18px;">×</button>
                 </div>
                 <span id="tpl-search-result" aria-live="polite" style="font-size:12px;color:#94a3b8;white-space:nowrap;"></span>
+                <span style="margin-left:auto;font-size:11px;color:#64748b;">💡 勾选多张工程标签卡片点「应用所选标签」或点「应用本文件夹」，工作面板与批量表格仅同步当前文件夹本级标签</span>
             </div>
-            <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:#bbb;">
-                <button id="tpl-folder-home" onclick="_openTemplateFolder('')" title="点击返回主模板库，或将模板拖到这里移出文件夹" style="background:#ffffff08;border:1px dashed #ffffff35;border-radius:7px;padding:6px 10px;color:#cbd5e1;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">${_templateHomeIcon()}<span>主模板库</span></button>
-                <span id="tpl-folder-path" style="margin-right:auto;color:#ddd;"></span>
-                <button id="tpl-move-to-root" onclick="_moveSelectedTemplatesToRoot()" style="background:#ffffff0a;color:#ddd;border:1px solid #ffffff20;border-radius:6px;padding:5px 9px;cursor:pointer;">移出所选模板</button>
-
+            <div style="display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:6px;padding:10px 24px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:#bbb;">
+                <button id="tpl-folder-home" data-folder-id="" onclick="_openTemplateFolder('')" title="点击返回主工程库，或将工程/文件夹拖到这里" style="background:#ffffff08;border:1px dashed #ffffff35;border-radius:7px;padding:6px 10px;color:#cbd5e1;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">${_templateHomeIcon()}<span>主工程库</span></button>
+                <div id="tpl-breadcrumbs" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1;min-width:120px;"></div>
+                <span id="tpl-folder-path" style="display:none;"></span>
+                <button id="tpl-move-to-root" onclick="_moveSelectedTemplatesToRoot()" style="background:#ffffff0a;color:#ddd;border:1px solid #ffffff20;border-radius:6px;padding:5px 9px;cursor:pointer;">移到上级</button>
             </div>
+            <div id="tpl-workspace-banner" style="display:none;padding:10px 24px;border-bottom:1px solid rgba(16,185,129,0.22);background:linear-gradient(90deg,rgba(16,185,129,0.12),rgba(99,102,241,0.12));flex-shrink:0;"></div>
             <div id="tpl-grid-container" style="flex:1;overflow-y:auto;padding:20px 24px;">
                 <div style="color:#666;text-align:center;padding:60px 0;">加载中...</div>
             </div>
@@ -178,7 +254,163 @@ function openTemplateLibrary(onSelectCallback = null, opts = {}) {
     _initTemplateLibrarySizing(modal);
     _updateCurrentTemplateButton();
     _refreshTemplateList();
+    if (!isPicker && typeof window.reelsSyncWorkspaceTabsBackToLibraryFolder === 'function') {
+        window.reelsSyncWorkspaceTabsBackToLibraryFolder({ silent: true, onlyDirty: true, autoCreateNew: !!window.reelsGetWorkspaceLibraryStatus?.().folderId })
+            .then(res => { if (res && (res.updated || res.created)) _refreshTemplateList(); })
+            .catch(() => {});
+    }
 }
+window.openTemplateLibrary = openTemplateLibrary;
+window.openProjectLibrary = openTemplateLibrary;
+window.reelsRefreshTemplateLibraryIfOpen = function() {
+    const modal = document.getElementById('template-library-modal');
+    if (modal && getComputedStyle(modal).display !== 'none') {
+        _refreshTemplateList();
+    }
+};
+
+function _toggleTemplateCardSelection(id) {
+    const modal = document.getElementById('template-library-modal');
+    if (!modal || modal._onSelectCallback || !id) return;
+    const selected = modal._selectedTemplateIds || (modal._selectedTemplateIds = new Set());
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
+    _paintTemplateSelection();
+}
+
+async function _fetchLibraryTemplatesFull(ids) {
+    const cleanIds = [...new Set((ids || []).map(v => String(v || '').trim()).filter(Boolean))];
+    if (!cleanIds.length) return [];
+    try {
+        const resp = await apiFetch(`${API_BASE}/templates/get-many`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: cleanIds }),
+        });
+        const parsed = await resp.json();
+        const items = parsed.data || parsed;
+        if (Array.isArray(items) && items.length) return items;
+    } catch (_) {}
+    const out = [];
+    for (const id of cleanIds) {
+        try {
+            const resp = await apiFetch(`${API_BASE}/templates/get`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id }),
+            });
+            const parsed = await resp.json();
+            const item = parsed.data || parsed;
+            if (item && item.projectData) out.push(item);
+        } catch (err) {
+            console.warn('[ProjectLibrary] 读取工程失败:', id, err);
+        }
+    }
+    return out;
+}
+
+async function _applyLibraryIdsToWorkspace(ids, options = {}) {
+    const cleanIds = [...new Set((ids || []).map(v => String(v || '').trim()).filter(Boolean))];
+    if (!cleanIds.length) return false;
+    const modal = document.getElementById('template-library-modal');
+    const allSummaries = modal?._allTemplateSummaries || [];
+    const summaryMap = new Map(allSummaries.map(s => [String(s.id), s]));
+    const fullList = await _fetchLibraryTemplatesFull(cleanIds);
+    const fullMap = new Map(fullList.map(item => [String(item.id), item]));
+    const entries = cleanIds.map(id => {
+        const tplData = fullMap.get(id);
+        if (!tplData || !tplData.projectData) return null;
+        return { tplData, summary: summaryMap.get(id) || { id, name: tplData.name, updatedAt: tplData.updatedAt } };
+    }).filter(Boolean);
+    if (!entries.length) {
+        if (typeof showToast === 'function') showToast('所选工程缺少工程数据，无法载入', 'warning');
+        return false;
+    }
+
+    const folderId = typeof options.folderId === 'string' ? options.folderId : (_tplFolderId || '');
+    const folderPath = options.folderPath || _buildTemplateFolderPathText(folderId);
+    const folderDirectCount = Number(options.folderTotalCount) || allSummaries.filter(t => (_tplFolderData.assignments[t.id] || '') === folderId).length || entries.length;
+    const scopeMode = options.scopeMode || (entries.length >= folderDirectCount ? 'folder' : 'selected');
+
+    if (typeof window.reelsApplyLibraryProjects === 'function') {
+        const ok = await window.reelsApplyLibraryProjects(entries, {
+            folderId,
+            folderPath,
+            folderTotalCount: folderDirectCount,
+            scopeMode,
+            loadMode: options.loadMode || 'replace',
+            confirmSwitch: options.confirmSwitch !== false,
+        });
+        if (!ok) return false;
+    }
+
+    const first = entries[0].tplData;
+    if (entries.length === 1) _setCurrentTemplateContext(first.id, first.name);
+    else _setCurrentTemplateContext('', '');
+
+    if (modal && options.closeModal !== false) modal.style.display = 'none';
+    if (typeof openPanelByName === 'function') openPanelByName('batch-reels');
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已应用「${folderPath}」中的 ${entries.length} 个工程标签（工作区与表格仅识别当前选定范围）`, 'success', 4500);
+    }
+    return true;
+}
+
+async function tplApplySelectedProjects() {
+    const modal = document.getElementById('template-library-modal');
+    if (!modal || modal._onSelectCallback) return;
+    const selected = modal._selectedTemplateIds || new Set();
+    const visibleOrder = (modal._templateSummaries || []).map(t => String(t.id));
+    const ids = visibleOrder.filter(id => selected.has(id));
+    if (!ids.length) {
+        if (typeof showToast === 'function') showToast('请先勾选要应用的工程标签卡片', 'info');
+        return;
+    }
+    const visibleDirectCount = (modal._templateSummaries || []).length;
+    const folderId = _tplSearchTerm.trim()
+        ? (_tplFolderData.assignments[ids[0]] || '')
+        : _tplFolderId;
+    const folderTotalCount = _tplSearchTerm.trim()
+        ? (modal._allTemplateSummaries || []).filter(t => (_tplFolderData.assignments[t.id] || '') === folderId).length
+        : visibleDirectCount;
+    const scopeMode = (!_tplSearchTerm.trim() && ids.length >= visibleDirectCount && !!folderId) ? 'folder' : 'selected';
+    await _applyLibraryIdsToWorkspace(ids, { folderId, folderTotalCount, scopeMode });
+}
+
+async function tplApplyCurrentFolderProjects() {
+    await window.reelsApplyFolderById(_tplFolderId);
+}
+
+window.reelsApplyFolderById = async function(targetFolderId = '') {
+    const folderId = String(targetFolderId || '').trim();
+    const listResp = await apiFetch(`${API_BASE}/templates/list`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const listParsed = await listResp.json();
+    const allTemplates = listParsed.data || listParsed || [];
+    const foldersData = await _templateFolderRequest('list');
+    _tplFolderData = { folders: [], assignments: {}, folderOrders: {}, ...foldersData };
+
+    const directTemplates = _sortTemplateSummaries(allTemplates.filter(t => (_tplFolderData.assignments[t.id] || '') === folderId));
+    const keyOrder = _tplFolderData.folderOrders?.[folderId || ''] || (folderId ? [] : _tplFolderData.libraryOrder) || [];
+    const orderedTemplates = (localStorage.getItem('videokit_template_sort') || 'manual') === 'manual' && Array.isArray(keyOrder) && keyOrder.length
+        ? (() => {
+            const rank = new Map(keyOrder.map((k, i) => [k, i]));
+            return [...directTemplates].sort((a, b) => (rank.get('t:' + a.id) ?? -1) - (rank.get('t:' + b.id) ?? -1));
+        })()
+        : directTemplates;
+
+    if (!orderedTemplates.length) {
+        if (typeof showToast === 'function') showToast('该文件夹当前没有直属工程标签（仅直属工程会被识别，不跨级拉取子文件夹）', 'info');
+        return false;
+    }
+    const modal = document.getElementById('template-library-modal');
+    if (modal) modal._allTemplateSummaries = allTemplates;
+    return await _applyLibraryIdsToWorkspace(orderedTemplates.map(t => t.id), {
+        folderId,
+        folderPath: _buildTemplateFolderPathText(folderId, _tplFolderData.folders),
+        folderTotalCount: orderedTemplates.length,
+        scopeMode: 'folder',
+    });
+};
 
 async function _refreshTemplateList() {
     _closeTemplateContextMenu();
@@ -193,28 +425,69 @@ async function _refreshTemplateList() {
         const resp = await apiFetch(`${API_BASE}/templates/list`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         const parsed = await resp.json();
         const allTemplates = _sortTemplateSummaries(parsed.data || parsed || []);
-        _tplFolderData = await _templateFolderRequest('list');
-        if (_tplFolderId && !_tplFolderData.folders.some(f=>f.id===_tplFolderId)) _tplFolderId='';
+        const rawFolders = await _templateFolderRequest('list');
+        _tplFolderData = { folders: [], assignments: {}, folderOrders: {}, ...(rawFolders || {}) };
+        if (typeof window !== 'undefined') {
+            if (!window._reelsLibraryThumbCache || typeof window._reelsLibraryThumbCache !== 'object') {
+                window._reelsLibraryThumbCache = {};
+            }
+            for (const tpl of allTemplates) {
+                if (tpl?.id && tpl.thumbnail) window._reelsLibraryThumbCache[tpl.id] = tpl.thumbnail;
+            }
+        }
+        if (_tplFolderId && !_tplFolderData.folders.some(f => f.id === _tplFolderId)) _tplFolderId = '';
         const query = _tplSearchTerm.trim();
         const searching = !!query;
         const templates = searching
-            ? allTemplates.filter(t => _templateMatchesSearch(t, query))
+            ? allTemplates.filter(t => _templateMatchesSearch(t, query, _buildTemplateFolderPathText(_tplFolderData.assignments[t.id] || '')))
             : allTemplates.filter(t => (_tplFolderData.assignments[t.id] || '') === _tplFolderId);
-        const folders = searching || _tplFolderId ? [] : _sortTemplateSummaries(_tplFolderData.folders.map(folder=>({...folder,templateType:'文件夹',sizeBytes:allTemplates.filter(t=>_tplFolderData.assignments[t.id]===folder.id).reduce((n,t)=>n+(t.sizeBytes||0),0)})));
-        const currentFolder=_tplFolderData.folders.find(f=>f.id===_tplFolderId);
-        document.getElementById('tpl-folder-path').textContent=currentFolder ? ' / '+currentFolder.name : '';
-        document.getElementById('tpl-move-to-root').style.display=currentFolder?'':'none';
-        document.getElementById('tpl-folder-home').innerHTML=_templateHomeIcon()+(currentFolder?'<span>主模板库 · 拖到这里移出</span>':'<span>主模板库</span>');
-        modal._allTemplateSummaries=allTemplates;
+        const childFoldersRaw = searching
+            ? []
+            : _tplFolderData.folders.filter(f => (f.parentId || '') === _tplFolderId);
+        const folders = _sortTemplateSummaries(childFoldersRaw.map(folder => {
+            const descIds = _collectTplDescendantFolderIds(folder.id, _tplFolderData.folders);
+            return {
+                ...folder,
+                templateType: '文件夹',
+                sizeBytes: allTemplates.filter(t => descIds.has(_tplFolderData.assignments[t.id] || '')).reduce((n, t) => n + (t.sizeBytes || 0), 0),
+            };
+        }));
+
+        const folderChain = _getTemplateFolderChain(_tplFolderId, _tplFolderData.folders);
+        const currentFolder = folderChain[folderChain.length - 1] || null;
+        const parentFolderId = currentFolder?.parentId || '';
+        const moveOutBtn = document.getElementById('tpl-move-to-root');
+        if (moveOutBtn) {
+            moveOutBtn.style.display = currentFolder ? '' : 'none';
+            moveOutBtn.textContent = parentFolderId ? '移出到上级' : '移出到主库';
+        }
+        const homeBtn = document.getElementById('tpl-folder-home');
+        if (homeBtn) {
+            homeBtn.dataset.folderId = '';
+            homeBtn.innerHTML = _templateHomeIcon() + '<span>主工程库</span>';
+        }
+        const bcEl = document.getElementById('tpl-breadcrumbs');
+        if (bcEl) {
+            bcEl.innerHTML = folderChain.map((f, idx) => {
+                const isLast = idx === folderChain.length - 1;
+                return `<span style="color:#64748b;">›</span><button class="tpl-breadcrumb-chip ${isLast ? 'is-current' : ''}" data-folder-id="${_tplEscapeHtml(f.id)}" title="${isLast ? '当前文件夹' : '点击进入此文件夹，或将工程/文件夹拖到这里'}">${_tplEscapeHtml(f.name)}</button>`;
+            }).join('');
+        }
+        const legacyPath = document.getElementById('tpl-folder-path');
+        if (legacyPath) legacyPath.textContent = folderChain.length ? ' / ' + folderChain.map(f => f.name).join(' / ') : '';
+
+        modal._allTemplateSummaries = allTemplates;
         _syncTemplateSortControls();
         modal._templateSummaries = templates;
         if (!modal._selectedTemplateIds) modal._selectedTemplateIds = new Set();
         const availableIds = new Set(allTemplates.map(tpl => String(tpl.id)));
         [...modal._selectedTemplateIds].forEach(id => { if (!availableIds.has(String(id))) modal._selectedTemplateIds.delete(id); });
+        _renderWorkspaceAutoSaveBanner(availableIds, isPicker);
+        _updateCurrentTemplateButton();
 
         badge.textContent = searching
-            ? `找到 ${templates.length} / ${allTemplates.length} 个模板`
-            : `${_tplFolderId ? templates.length : allTemplates.length} 个模板`;
+            ? `找到 ${templates.length} / ${allTemplates.length} 个工程`
+            : (_tplFolderId ? `本级 ${folders.length ? folders.length + ' 文件夹 · ' : ''}${templates.length} 个工程` : `共 ${allTemplates.length} 个工程`);
         const searchStatus = document.getElementById('tpl-search-result');
         if (searchStatus) searchStatus.textContent = searching ? `全库搜索 · ${templates.length} 个结果` : '';
         const searchInput = document.getElementById('tpl-search-input');
@@ -222,30 +495,44 @@ async function _refreshTemplateList() {
         const searchClear = document.getElementById('tpl-search-clear');
         if (searchClear) searchClear.style.display = searching ? '' : 'none';
 
-        // Also update title in case mode changed via display='flex'
         const titleEl = document.getElementById('tpl-lib-title');
-        if (titleEl) titleEl.textContent = isPicker ? '选择视频模板' : '视频模板库';
+        if (titleEl) titleEl.textContent = isPicker ? '选择工程模板' : '工程管理库';
+
+        const applyFolderBtn = document.getElementById('tpl-apply-folder-btn');
+        if (applyFolderBtn) {
+            applyFolderBtn.disabled = searching || templates.length === 0;
+            applyFolderBtn.style.opacity = (!searching && templates.length > 0) ? '1' : '0.45';
+            applyFolderBtn.style.cursor = (!searching && templates.length > 0) ? 'pointer' : 'not-allowed';
+            applyFolderBtn.textContent = _tplFolderId ? `📂 应用本级全部(${templates.length})` : `📂 应用主库直属(${templates.length})`;
+        }
 
         if (!searching && templates.length === 0 && folders.length === 0 && !_tplFolderId) {
             container.innerHTML = `
                 <div style="text-align:center;padding:80px 0;color:#555;">
-                    <div style="font-size:48px;margin-bottom:16px;opacity:0.4;">📂</div>
-                    <p style="font-size:14px;margin:0;">还没有保存任何模板</p>
-                    ${isPicker ? '' : '<p style="font-size:12px;color:#444;margin-top:6px;">点击上方「保存当前工程为模板」开始</p>'}
+                    <div style="font-size:48px;margin-bottom:16px;opacity:0.4;">🗂️</div>
+                    <p style="font-size:14px;margin:0;">工程管理库还没有保存任何工程</p>
+                    ${isPicker ? '' : '<p style="font-size:12px;color:#444;margin-top:6px;">点击上方「📁 新建文件夹」建多级目录，或点「💾 保存当前工程」开始</p>'}
                 </div>
             `;
-            return;
-        }
-
-        if (searching && templates.length === 0) {
-            container.innerHTML = `<div style="padding:65px 20px;text-align:center;color:#94a3b8;"><div style="font-size:30px;margin-bottom:12px;">⌕</div><div>没有找到匹配的模板</div><div style="font-size:12px;margin-top:10px;">尝试缩短关键词，或清空搜索查看全部模板</div><button onclick="_clearTemplateSearch()" style="margin-top:18px;padding:8px 16px;background:#334155;color:#fff;border:0;border-radius:8px;cursor:pointer;">清空搜索</button></div>`;
             _updateTemplatePresetSelectionUI();
             return;
         }
 
+        if (searching && templates.length === 0) {
+            container.innerHTML = `<div style="padding:65px 20px;text-align:center;color:#94a3b8;"><div style="font-size:30px;margin-bottom:12px;">⌕</div><div>没有找到匹配的工程</div><div style="font-size:12px;margin-top:10px;">尝试缩短关键词，或清空搜索查看全部工程</div><button onclick="_clearTemplateSearch()" style="margin-top:18px;padding:8px 16px;background:#334155;color:#fff;border:0;border-radius:8px;cursor:pointer;">清空搜索</button></div>`;
+            _updateTemplatePresetSelectionUI();
+            return;
+        }
+
+        const activeWorkspaceIds = typeof window.reelsGetWorkspaceLibraryTemplateIds === 'function'
+            ? window.reelsGetWorkspaceLibraryTemplateIds()
+            : new Set();
+
         let html = `<div id="tpl-card-grid" style="--tpl-card-size:${_getTemplateCardSize()}px;--tpl-scale:${_getTemplateZoom()/100};display:grid;grid-template-columns:repeat(auto-fill,minmax(0,min(max(96px,var(--tpl-card-size)),100%)));grid-auto-rows:1px;grid-auto-flow:row dense;column-gap:${Math.max(2,Math.round(12*_getTemplateZoom()/100))}px;row-gap:0;justify-content:start;align-items:start;">`;
-        html += folders.map(folder=>_renderTemplateFolderCard(folder,allTemplates)).join('');
-        if (!templates.length && _tplFolderId) html += '<div style="grid-column:1/-1;text-align:center;color:#888;padding:50px;">这个文件夹还没有模板，可从模板库拖入。</div>';
+        html += folders.map(folder => _renderTemplateFolderCard(folder, allTemplates)).join('');
+        if (!searching && !templates.length && _tplFolderId) {
+            html += `<div style="grid-column:1/-1;text-align:center;color:#888;padding:34px;">${folders.length ? '当前文件夹下有子文件夹，暂无直属工程标签。' : '这个文件夹还没有工程标签，可新建子文件夹、保存当前工程或拖入卡片。'}</div>`;
+        }
         for (const tpl of templates) {
             const thumbSrc = tpl.thumbnail || '';
             const dateStr = tpl.updatedAt ? new Date(tpl.updatedAt).toLocaleDateString('zh-CN') : '';
@@ -255,31 +542,37 @@ async function _refreshTemplateList() {
             const safeThumb = _tplEscapeHtml(thumbSrc);
             const safeDate = _tplEscapeHtml(dateStr);
             const safeTaskInfo = _tplEscapeHtml(taskInfo);
+            const folderPathBadge = searching
+                ? `<span style="color:#a5b4fc;font-size:10px;white-space:normal;overflow-wrap:anywhere;">📂 ${_tplEscapeHtml(_buildTemplateFolderPathText(_tplFolderData.assignments[tpl.id] || ''))}</span>`
+                : '';
             const isDisabledPick = isPicker && modal._pickerDisabledIds && modal._pickerDisabledIds.has(tpl.id);
-            const isSelected = !isPicker && modal._selectedTemplateIds.has(String(tpl.id));
+            const isWorkspaceActive = !isPicker && activeWorkspaceIds.has(String(tpl.id));
             const thumbHtml = thumbSrc
                 ? `<img draggable="false" src="${safeThumb}" style="width:100%;height:100%;object-fit:cover;" />`
                 : `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#555;font-size:36px;">🎬</div>`;
 
             const actionsHtml = isPicker ? `
                 <div class="tpl-actions" style="position:absolute;top:8px;right:8px;left:8px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;opacity:0;transition:opacity 0.2s;background:rgba(0,0,0,0.7);padding:6px;border-radius:8px;">
-                    <button data-action="pick" ${isDisabledPick ? 'disabled' : ''} style="padding:4px 12px;font-size:12px;font-weight:600;background:${isDisabledPick ? 'rgba(120,120,130,0.35)' : 'linear-gradient(135deg,#7c5cff,#a855f7)'};color:${isDisabledPick ? '#999' : '#fff'};border:none;border-radius:6px;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};">${isDisabledPick ? '已添加' : '✅ 选用此模板'}</button>
+                    <button data-action="pick" ${isDisabledPick ? 'disabled' : ''} style="padding:4px 12px;font-size:12px;font-weight:600;background:${isDisabledPick ? 'rgba(120,120,130,0.35)' : 'linear-gradient(135deg,#7c5cff,#a855f7)'};color:${isDisabledPick ? '#999' : '#fff'};border:none;border-radius:6px;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};">${isDisabledPick ? '已添加' : '✅ 选用此工程'}</button>
                 </div>
             ` : '';
 
             html += `
-                <div class="tpl-card" draggable="true" title="拖动卡片可调整模板顺序" data-id="${safeId}" data-name="${safeName}" data-disabled-pick="${isDisabledPick ? 'true' : 'false'}" style="background:rgba(255,255,255,${isDisabledPick ? '0.018' : '0.03'});border:1px solid ${isDisabledPick ? 'rgba(120,120,130,0.28)' : 'rgba(255,255,255,0.06)'};border-radius:12px;overflow:hidden;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};transition:all 0.2s;position:relative;${isDisabledPick ? 'opacity:0.58;' : ''}"
+                <div class="tpl-card" draggable="true" title="单击选择 / 勾选多选 · 双击载入到工作区 · 右键菜单" data-id="${safeId}" data-name="${safeName}" data-disabled-pick="${isDisabledPick ? 'true' : 'false'}" style="background:rgba(255,255,255,${isDisabledPick ? '0.018' : '0.03'});border:1px solid ${isDisabledPick ? 'rgba(120,120,130,0.28)' : 'rgba(255,255,255,0.06)'};border-radius:12px;overflow:hidden;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};transition:all 0.2s;position:relative;${isDisabledPick ? 'opacity:0.58;' : ''}"
                      onmouseenter="this.style.borderColor='rgba(99,102,241,0.4)';this.style.transform='translateY(-2px)'"
                      onmouseleave="this.style.borderColor='rgba(255,255,255,0.06)';this.style.transform='none'">
                     <div class="tpl-template-cover" style="width:100%;aspect-ratio:9/16;background:#0a0a1a;overflow:hidden;">
                         ${thumbHtml}
                     </div>
+                    ${!isPicker ? `<button type="button" class="tpl-card-check" data-id="${safeId}" title="勾选/取消多选此工程标签" aria-label="多选"></button>` : ''}
+                    ${isWorkspaceActive ? '<div style="position:absolute;right:8px;top:8px;z-index:3;background:rgba(16,185,129,0.92);color:#041e13;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;">工作区</div>' : ''}
                     ${isDisabledPick ? '<div style="position:absolute;left:8px;top:8px;background:rgba(16,185,129,0.9);color:#06150f;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">已添加</div>' : ''}
                     <div class="tpl-card-info" style="padding:10px 8px;background:#242424;">
                         <div class="tpl-name" style="font-size:calc(12px * var(--tpl-scale,1));font-weight:500;color:#eeeeee;text-align:center;white-space:normal;overflow:visible;overflow-wrap:anywhere;word-break:break-word;display:block;line-height:1.5;" title="${safeName}">${safeName}</div>
                         <div class="tpl-meta" style="font-size:calc(10px * var(--tpl-scale,1));color:#888;margin-top:calc(8px * var(--tpl-scale,1));padding-top:calc(7px * var(--tpl-scale,1));border-top:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;align-items:center;text-align:center;gap:calc(3px * var(--tpl-scale,1));line-height:1.4;">
                             <span style="white-space:nowrap;">${safeDate}</span>
                             <span style="white-space:nowrap;">${safeTaskInfo}</span>
+                            ${folderPathBadge}
                         </div>
                     </div>
                     ${actionsHtml}
@@ -287,24 +580,33 @@ async function _refreshTemplateList() {
             `;
         }
         html += '</div>';
-        const savedScroll=container._tplRenderedFolder===_tplFolderId && container._tplRenderedSearch===query ? container.scrollTop : 0;
+        const savedScroll = container._tplRenderedFolder === _tplFolderId && container._tplRenderedSearch === query ? container.scrollTop : 0;
         container.innerHTML = html;
-        if(!searching && !_tplFolderId&&(localStorage.getItem('videokit_template_sort')||'manual')==='manual'&&Array.isArray(_tplFolderData.libraryOrder)){
-            const grid=container.querySelector('#tpl-card-grid'),rank=new Map(_tplFolderData.libraryOrder.map((id,i)=>[id,i]));
-            if(grid)Array.from(grid.children).sort((a,b)=>(rank.get(_templateLibraryItemKey(a))??-1)-(rank.get(_templateLibraryItemKey(b))??-1)).forEach(card=>grid.appendChild(card));
+        const folderOrderKey = _tplFolderId || '';
+        const manualOrderList = _tplFolderData.folderOrders?.[folderOrderKey] || (!_tplFolderId ? _tplFolderData.libraryOrder : null);
+        if (!searching && (localStorage.getItem('videokit_template_sort') || 'manual') === 'manual' && Array.isArray(manualOrderList) && manualOrderList.length) {
+            const grid = container.querySelector('#tpl-card-grid');
+            const rank = new Map(manualOrderList.map((id, i) => [id, i]));
+            if (grid) {
+                Array.from(grid.children).filter(el => el.matches('.tpl-card,.tpl-folder-card')).sort((a, b) => (rank.get(_templateLibraryItemKey(a)) ?? -1) - (rank.get(_templateLibraryItemKey(b)) ?? -1)).forEach(card => grid.appendChild(card));
+            }
         }
 
         _bindTemplateFolderCards(container);
-        container.oncontextmenu=event=>{if(event.target.closest('.tpl-card,.tpl-folder-card,button,input,select,[contenteditable]'))return;event.preventDefault();event.stopPropagation();_showTemplateBlankMenu(event);};
-        // 显示操作按钮的 hover 效果
+        container.oncontextmenu = event => { if (event.target.closest('.tpl-card,.tpl-folder-card,button,input,select,[contenteditable]')) return; event.preventDefault(); event.stopPropagation(); _showTemplateBlankMenu(event); };
         container.querySelectorAll('.tpl-card').forEach(card => {
             if (isPicker) {
                 card.addEventListener('mouseenter', () => card.querySelector('.tpl-actions').style.opacity = '1');
                 card.addEventListener('mouseleave', () => card.querySelector('.tpl-actions').style.opacity = '0');
             } else {
                 card.addEventListener('contextmenu', event => {
-                    if(event.target.isContentEditable)return;
-                    event.preventDefault();event.stopPropagation();_showTemplateContextMenu(event,card);
+                    if (event.target.isContentEditable) return;
+                    event.preventDefault(); event.stopPropagation(); _showTemplateContextMenu(event, card);
+                });
+                card.querySelector('.tpl-card-check')?.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    _toggleTemplateCardSelection(card.dataset.id || '');
                 });
             }
             
@@ -318,7 +620,6 @@ async function _refreshTemplateList() {
                 
                 if (action === 'pick') {
                     if (btn.disabled || card.dataset.disabledPick === 'true') return;
-                    // Fetch full data and pass to callback
                     btn.textContent = '加载中...';
                     try {
                         const r = await apiFetch(`${API_BASE}/templates/get`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({id}) });
@@ -330,28 +631,26 @@ async function _refreshTemplateList() {
                         btn.textContent = '✅ 已添加';
                         btn.style.background = 'rgba(16,185,129,0.8)';
                         setTimeout(() => {
-                            btn.textContent = '✅ 选用此模板';
+                            btn.textContent = '✅ 选用此工程';
                             btn.style.background = 'linear-gradient(135deg,#7c5cff,#a855f7)';
                         }, 1500);
                     } catch(err) {
-                        alert('读取模板失败');
-                        btn.textContent = '✅ 选用此模板';
+                        alert('读取工程失败');
+                        btn.textContent = '✅ 选用此工程';
                     }
                 }
                 else if (action === 'load') _loadTemplateInCurrentWindow(id);
                 else if (action === 'window') _openTemplateInWindow(id, name);
                 else if (action === 'export') _exportTemplate(id, name);
                 else if (action === 'export_archive') _exportArchiveTemplate(id, name);
-                else if (action === 'move-root') await _moveTemplateIds([id],'');
+                else if (action === 'move-root') await _moveTemplateIds([id], _getParentFolderId(_tplFolderId));
                 else if (action === 'rename') _renameTemplate(id);
                 else if (action === 'delete') _deleteTemplate(id, name);
             });
             
-            card.querySelector('.tpl-name')?.addEventListener('dblclick', event => {event.preventDefault();event.stopPropagation();_renameTemplate(card.dataset.id);});
-            // 双击打开
+            card.querySelector('.tpl-name')?.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); _renameTemplate(card.dataset.id); });
             card.addEventListener('dblclick', async () => {
                 const id = card.dataset.id;
-                const name = card.dataset.name || '';
                 if (isPicker) {
                     if (card.dataset.disabledPick === 'true') return;
                     try {
@@ -360,7 +659,7 @@ async function _refreshTemplateList() {
                         if (modal._onSelectCallback) modal._onSelectCallback(res.data || res);
                     } catch(err) {}
                 } else {
-                    _openTemplateInWindow(id, name);
+                    await _loadTemplateInCurrentWindow(id);
                 }
             });
         });
@@ -370,12 +669,12 @@ async function _refreshTemplateList() {
         _bindTemplateMixedGridLayout(container);
         _paintTemplateSelection();
         _updateTemplatePresetSelectionUI();
-        container._tplRenderedFolder=_tplFolderId;
-        container._tplRenderedSearch=query;
-        container.scrollTop=savedScroll;
+        container._tplRenderedFolder = _tplFolderId;
+        container._tplRenderedSearch = query;
+        container.scrollTop = savedScroll;
 
     } catch (e) {
-        container.innerHTML = `<div style="color:#f87171;text-align:center;padding:40px;">加载失败: ${e.message}</div>`;
+        container.innerHTML = `<div style="color:#f87171;text-align:center;padding:40px;">加载失败: ${_tplEscapeHtml(e?.message || String(e))}</div>`;
     }
 }
 
@@ -383,15 +682,23 @@ function _updateTemplatePresetSelectionUI() {
     const modal = document.getElementById('template-library-modal');
     if (!modal || modal._onSelectCallback) return;
     const selected = modal._selectedTemplateIds || new Set();
-    const total = (modal._templateSummaries || []).length;
+    const visibleIds = (modal._templateSummaries || []).map(tpl => String(tpl.id));
+    const visibleSelectedCount = visibleIds.filter(id => selected.has(id)).length;
+    const total = visibleIds.length;
     const count = selected.size;
     const label = document.getElementById('tpl-selected-count');
     const allButton = document.getElementById('tpl-select-all-btn');
     const saveButton = document.getElementById('tpl-save-selected-presets-btn');
+    const applySelectedBtn = document.getElementById('tpl-apply-selected-btn');
     if (label) label.textContent = count ? `已选 ${count} / ${total}` : '未选择';
     if (allButton) {
-        const visibleIds = (modal._templateSummaries || []).map(tpl => String(tpl.id));
-        allButton.textContent = visibleIds.length && visibleIds.every(id => selected.has(id)) ? '☐ 取消全选' : '☑ 全选模板';
+        allButton.textContent = visibleIds.length && visibleIds.every(id => selected.has(id)) ? '☐ 取消全选' : '☑ 全选';
+    }
+    if (applySelectedBtn) {
+        applySelectedBtn.disabled = visibleSelectedCount === 0;
+        applySelectedBtn.style.opacity = visibleSelectedCount ? '1' : '.48';
+        applySelectedBtn.style.cursor = visibleSelectedCount ? 'pointer' : 'not-allowed';
+        applySelectedBtn.textContent = visibleSelectedCount ? `✅ 应用所选标签(${visibleSelectedCount})` : '✅ 应用所选标签';
     }
     if (saveButton) {
         saveButton.disabled = count === 0;
@@ -581,13 +888,17 @@ async function _repairTemplateThumbnailsByIds(templateIds, options = {}) {
             button.disabled = false;
             button.textContent = originalText || '📸 修复重复封面';
         }
+        if (repaired > 0 && typeof window.reelsOnLibraryFolderChanged === 'function') {
+            window.reelsOnLibraryFolderChanged([], { skipWorkspaceSync: true });
+        }
         if (document.getElementById('template-library-modal')) _refreshTemplateList();
     }
     if (!options.silent && typeof showToast === 'function') {
-        showToast(`已重新生成 ${repaired} 张模板封面${failed ? `，${failed} 张失败` : ''}`, failed ? 'warning' : 'success', 6000);
+        showToast(`已重新生成 ${repaired} 张工程封面${failed ? `，${failed} 张失败` : ''}`, failed ? 'warning' : 'success', 6000);
     }
     return { repaired, failed };
 }
+window.captureTemplateThumbnailForTasks = _captureTemplateThumbnailForTasks;
 
 async function repairDuplicateTemplateThumbnails() {
     try {
@@ -693,13 +1004,469 @@ function _syncTemplatePresetAssets(templateName, projectData, category = '模板
     return result;
 }
 
+let _tplDismissedBannerSig = '';
+let _tplArchivingInProgress = false;
+
+function _renderWorkspaceAutoSaveBanner(availableIds, isPicker) {
+    const banner = document.getElementById('tpl-workspace-banner');
+    if (!banner) return;
+    if (isPicker || typeof window.reelsGetWorkspaceSaveCandidateInfo !== 'function') {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+        return;
+    }
+    const info = window.reelsGetWorkspaceSaveCandidateInfo(availableIds);
+    const sig = `${info.totalGroups}|${info.unarchivedGroups.length}|${info.unarchivedTasks}|${info.unarchivedGroups.slice(0, 6).map(g => g.key).join(',')}`;
+    if (!info.unarchivedGroups.length || _tplDismissedBannerSig === sig) {
+        banner.style.display = 'none';
+        banner.innerHTML = '';
+        return;
+    }
+
+    const previewText = info.previewNames.join(' · ') + (info.unarchivedGroups.length > info.previewNames.length ? ` 等 ${info.unarchivedGroups.length} 个` : '');
+    const hasSubGroups = info.groupNames.length > 0;
+    const inSubfolder = !!_tplFolderId;
+
+    banner.style.display = 'flex';
+    banner.style.alignItems = 'center';
+    banner.style.justifyContent = 'space-between';
+    banner.style.gap = '10px';
+    banner.style.flexWrap = 'wrap';
+    banner.innerHTML = `
+        <div style="flex:1 1 280px;min-width:220px;">
+            <div style="font-size:12.5px;color:#ecfdf5;font-weight:600;line-height:1.4;">
+                ⚡ 检测到工作区共有 <b style="color:#6ee7b7;">${info.unarchivedGroups.length}</b> 个未入库工程标签（${info.unarchivedTasks} 条任务${hasSubGroups ? ` · ${info.groupNames.length} 个小分组` : ''}）
+            </div>
+            <div style="font-size:11px;color:#a5b4fc;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${_tplEscapeHtml(previewText)}">
+                已识别标签：${_tplEscapeHtml(previewText)}
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="tpl-auto-archive-name" type="text" value="${_tplEscapeHtml(info.suggestedName)}" placeholder="目标工程文件夹名..." style="width:170px;padding:5px 9px;background:#0f172a;color:#f8fafc;border:1px solid rgba(129,140,248,0.45);border-radius:7px;font-size:11.5px;outline:none;" />
+            ${hasSubGroups ? `<label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#ddd6fe;cursor:pointer;white-space:nowrap;" title="把各标签的小分组自动建成二级子文件夹"><input type="checkbox" id="tpl-auto-archive-split-groups" checked style="accent-color:#8b5cf6;">按小分组建子文件夹</label>` : ''}
+            <label style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#cbd5e1;cursor:pointer;white-space:nowrap;" title="自动渲染截取各标签封面图"><input type="checkbox" id="tpl-auto-archive-capture-thumbs" checked style="accent-color:#10b981;">生成封面</label>
+            <button type="button" id="tpl-auto-archive-btn" style="padding:6px 13px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:7px;cursor:pointer;white-space:nowrap;">✨ 一键自动保存并管理</button>
+            ${inSubfolder ? '<button type="button" id="tpl-auto-archive-here-btn" style="padding:6px 11px;font-size:11px;font-weight:600;background:rgba(99,102,241,0.22);color:#e0e7ff;border:1px solid rgba(129,140,248,0.45);border-radius:7px;cursor:pointer;white-space:nowrap;" title="不新建外层目录，直接存入当前打开的文件夹">存入当前文件夹</button>' : ''}
+            <button type="button" id="tpl-auto-archive-dismiss-btn" style="padding:4px 8px;font-size:11px;background:transparent;color:#94a3b8;border:1px solid rgba(148,163,184,0.28);border-radius:6px;cursor:pointer;">暂不提示</button>
+        </div>
+    `;
+
+    const runArchive = async (folderMode) => {
+        const nameInput = document.getElementById('tpl-auto-archive-name');
+        const folderName = String(nameInput?.value || info.suggestedName || '工作区工程').trim() || '工作区工程';
+        const splitGroups = !!document.getElementById('tpl-auto-archive-split-groups')?.checked;
+        const captureThumbs = document.getElementById('tpl-auto-archive-capture-thumbs')?.checked !== false;
+        await reelsAutoArchiveWorkspaceToLibrary({
+            folderMode,
+            folderName,
+            parentFolderId: _tplFolderId || '',
+            splitByGroup: splitGroups,
+            captureThumbnails: captureThumbs,
+            bindWorkspace: true,
+        });
+    };
+
+    banner.querySelector('#tpl-auto-archive-btn')?.addEventListener('click', () => runArchive('new-folder'));
+    banner.querySelector('#tpl-auto-archive-here-btn')?.addEventListener('click', () => runArchive('current-folder'));
+    banner.querySelector('#tpl-auto-archive-dismiss-btn')?.addEventListener('click', () => {
+        _tplDismissedBannerSig = sig;
+        banner.style.display = 'none';
+    });
+}
+
+async function _ensureLibraryFolder(parentId, desiredName, existingFolders, options = {}) {
+    const cleanParent = String(parentId || '').trim();
+    const cleanBase = String(desiredName || '新建工程文件夹').trim().slice(0, 180) || '新建工程文件夹';
+    const siblings = (existingFolders || []).filter(f => f && (f.parentId || '') === cleanParent);
+    if (options.reuseExisting) {
+        const hit = siblings.find(f => f.name === cleanBase);
+        if (hit) return hit;
+    }
+    const existingNames = new Set(siblings.map(f => f.name));
+    let candidateName = cleanBase;
+    let suffix = 2;
+    while (existingNames.has(candidateName)) {
+        candidateName = `${cleanBase} (${suffix++})`;
+    }
+    const res = await _templateFolderRequest('create', { name: candidateName, parentId: cleanParent });
+    const created = res.folder || res;
+    if (created && created.id && Array.isArray(existingFolders)) {
+        existingFolders.push(created);
+    }
+    return created;
+}
+
+async function _reorderLibraryFolderTail(folderId, newlyOrderedCardIds = []) {
+    if (!newlyOrderedCardIds.length) return;
+    try {
+        const [foldersRes, listResp] = await Promise.all([
+            _templateFolderRequest('list'),
+            apiFetch(`${API_BASE}/templates/list`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
+        ]);
+        const foldersParsed = foldersRes || { folders: [], assignments: {}, folderOrders: {} };
+        const listParsed = await listResp.json();
+        const allTemplates = listParsed.data || listParsed || [];
+        const cleanParent = String(folderId || '').trim();
+        const childFolders = (foldersParsed.folders || []).filter(f => f && (f.parentId || '') === cleanParent);
+        const directTemplates = allTemplates.filter(t => t && (foldersParsed.assignments?.[t.id] || '') === cleanParent);
+        const prevOrder = foldersParsed.folderOrders?.[cleanParent] || (!cleanParent ? foldersParsed.libraryOrder : []) || [];
+        const prevRank = new Map((Array.isArray(prevOrder) ? prevOrder : []).map((k, idx) => [k, idx]));
+        const newRank = new Map(newlyOrderedCardIds.map((id, idx) => [String(id), idx]));
+
+        const folderKeys = [...childFolders]
+            .sort((a, b) => (prevRank.get('f:' + a.id) ?? Number.MAX_SAFE_INTEGER) - (prevRank.get('f:' + b.id) ?? Number.MAX_SAFE_INTEGER))
+            .map(f => 'f:' + f.id);
+        const existingCardKeys = directTemplates
+            .filter(t => !newRank.has(String(t.id)))
+            .sort((a, b) => (prevRank.get('t:' + a.id) ?? Number.MAX_SAFE_INTEGER) - (prevRank.get('t:' + b.id) ?? Number.MAX_SAFE_INTEGER))
+            .map(t => 't:' + t.id);
+        const newCardKeys = newlyOrderedCardIds
+            .filter(id => directTemplates.some(t => String(t.id) === String(id)))
+            .map(id => 't:' + id);
+        const fullOrder = [...folderKeys, ...existingCardKeys, ...newCardKeys];
+        if (fullOrder.length > 0) {
+            await _templateFolderRequest('reorder', { order: fullOrder, parentId: cleanParent });
+        }
+    } catch (err) {
+        console.warn('[ProjectLibrary] 保留标签排序失败（不影响已保存数据）:', err);
+    }
+}
+
+async function _archiveGroupsToLibrary(groups, options = {}) {
+    const validGroups = (Array.isArray(groups) ? groups : []).filter(g => g && Array.isArray(g.tasks) && g.tasks.length > 0);
+    if (!validGroups.length) throw new Error('没有可保存的非空工程标签');
+
+    window.reelsSyncWatermarkFromUI?.();
+    const sharedStyle = options.style
+        || (typeof _readStyleFromUI === 'function' ? _readStyleFromUI() : null)
+        || window._reelsState?.globalSubtitleStyle
+        || {};
+    const sharedGlobalStyle = options.globalStyle || window._reelsState?.globalSubtitleStyle || sharedStyle;
+    const sharedExportOpts = options.exportOpts || (() => {
+        try { return _captureCurrentTemplatePayload('').projectData?.exportOpts || {}; } catch (_) { return {}; }
+    })();
+    const sharedWatermarks = Array.isArray(options.watermarks)
+        ? options.watermarks
+        : (Array.isArray(window._reelsState?.watermarks) ? window._reelsState.watermarks : []);
+    const sharedBgLib = Array.isArray(options.backgroundLibrary)
+        ? options.backgroundLibrary
+        : (Array.isArray(window._reelsState?.backgroundLibrary) ? window._reelsState.backgroundLibrary : []);
+
+    const foldersRes = await _templateFolderRequest('list');
+    const foldersList = Array.isArray(foldersRes?.folders) ? [...foldersRes.folders] : [];
+    const listResp = await apiFetch(`${API_BASE}/templates/list`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const listParsed = await listResp.json();
+    const allTemplates = listParsed.data || listParsed || [];
+    const existingById = new Map(allTemplates.map(t => [String(t.id), t]));
+    const assignments = foldersRes?.assignments || {};
+
+    let rootFolderId = String(options.parentFolderId ?? (_tplFolderId || '')).trim();
+    if (options.folderMode !== 'current-folder') {
+        const createdRoot = await _ensureLibraryFolder(rootFolderId, options.folderName || '新建工程', foldersList, { reuseExisting: false });
+        rootFolderId = String(createdRoot?.id || '').trim();
+    }
+
+    const folderMapByGroup = new Map();
+    const hasGroups = options.splitByGroup !== false && validGroups.some(g => String(g.group || '').trim());
+    if (hasGroups) {
+        for (const g of validGroups) {
+            const gName = String(g.group || '').trim();
+            if (!gName || folderMapByGroup.has(gName)) continue;
+            const sub = await _ensureLibraryFolder(rootFolderId, gName, foldersList, { reuseExisting: true });
+            if (sub?.id) folderMapByGroup.set(gName, sub.id);
+        }
+    }
+
+    const activeSelectedTask = window._reelsState?.tasks?.[window._reelsState?.selectedIdx];
+    const activeTabId = typeof _batchTableState !== 'undefined' ? _batchTableState.activeTabId : '';
+    const usedNamesPerFolder = new Map();
+    const getUsedSet = (fId) => {
+        const key = String(fId || '');
+        if (!usedNamesPerFolder.has(key)) {
+            const existingNames = allTemplates
+                .filter(t => String(assignments[t.id] || '') === key)
+                .map(t => t.name);
+            usedNamesPerFolder.set(key, new Set(existingNames));
+        }
+        return usedNamesPerFolder.get(key);
+    };
+
+    const savedResults = [];
+    const savedIdsByFolder = new Map();
+    const failed = [];
+    let syncedSubtitle = 0;
+    let syncedOverlay = 0;
+
+    for (let i = 0; i < validGroups.length; i++) {
+        const group = validGroups[i];
+        const targetFolderId = (hasGroups && group.group && folderMapByGroup.get(group.group))
+            ? folderMapByGroup.get(group.group)
+            : rootFolderId;
+
+        const existingLibId = group.libraryTemplateId && existingById.has(group.libraryTemplateId)
+            ? group.libraryTemplateId
+            : '';
+        const existingInSameFolder = existingLibId && String(assignments[existingLibId] || '') === String(targetFolderId || '');
+
+        const rawName = String(group.name || `标签${i + 1}`).trim() || `标签${i + 1}`;
+        let finalName = rawName;
+        if (!existingInSameFolder) {
+            const usedSet = getUsedSet(targetFolderId);
+            if (usedSet.has(finalName)) {
+                let n = 2;
+                while (usedSet.has(`${rawName} (${n})`)) n++;
+                finalName = `${rawName} (${n})`;
+            }
+            usedSet.add(finalName);
+        }
+
+        if (typeof options.onProgress === 'function') {
+            options.onProgress(i + 1, validGroups.length, finalName);
+        }
+
+        let thumb = String(group.thumbnail || (existingLibId ? window._reelsLibraryThumbCache?.[existingLibId] : '') || '').trim();
+        if (!thumb && activeSelectedTask && ((group.tabId && activeTabId === group.tabId) || group.tasks.some(t => t?.id && t.id === activeSelectedTask.id))) {
+            thumb = _captureVisibleTemplateThumbnail() || '';
+        }
+        if (!thumb && options.captureThumbnails !== false) {
+            thumb = await _captureTemplateThumbnailForTasks(group.tasks, '');
+        }
+
+        const projectData = ReelsProject.collectProjectData({
+            tasks: group.tasks,
+            backgroundLibrary: sharedBgLib,
+            style: sharedGlobalStyle,
+            exportOpts: sharedExportOpts,
+            watermarks: sharedWatermarks,
+            selectedIdx: group.tasks.length ? 0 : -1,
+        });
+
+        try {
+            const saveBody = {
+                ...(existingInSameFolder ? { id: existingLibId } : {}),
+                name: finalName,
+                description: group.group ? `分组：${group.group}` : '',
+                folderId: targetFolderId,
+                thumbnail: thumb,
+                projectData,
+            };
+            const resp = await apiFetch(`${API_BASE}/templates/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(saveBody),
+            });
+            const parsed = await resp.json();
+            const res = parsed.data || parsed;
+            if (!res?.success && !res?.id) throw new Error(res?.error || parsed?.error || '保存失败');
+            const savedId = res.id || (existingInSameFolder ? existingLibId : '');
+            if (options.syncPresetAssets) {
+                const synced = _syncTemplatePresetAssets(finalName, projectData);
+                if (synced.subtitle) syncedSubtitle++;
+                if (synced.overlay) syncedOverlay++;
+            }
+            savedResults.push({
+                ...group,
+                name: finalName,
+                libraryTemplateId: savedId,
+                libraryFolderId: targetFolderId,
+                thumbnail: thumb,
+                updatedAt: new Date().toISOString(),
+            });
+            if (savedId) {
+                if (!savedIdsByFolder.has(targetFolderId)) savedIdsByFolder.set(targetFolderId, []);
+                savedIdsByFolder.get(targetFolderId).push(savedId);
+            }
+        } catch (err) {
+            failed.push(`${finalName}: ${err.message}`);
+        }
+    }
+
+    if (!savedResults.length) {
+        throw new Error(failed.join('；') || '所有标签保存失败');
+    }
+
+    for (const [fId, cardIds] of savedIdsByFolder.entries()) {
+        await _reorderLibraryFolderTail(fId, cardIds);
+    }
+
+    const folderPaths = {};
+    const folderCounts = {};
+    const updatedFoldersRes = await _templateFolderRequest('list');
+    const latestFolders = updatedFoldersRes?.folders || foldersList;
+    const latestAssign = updatedFoldersRes?.assignments || {};
+    const touchedFolderIds = new Set([rootFolderId, ...savedResults.map(r => r.libraryFolderId)]);
+    for (const fId of touchedFolderIds) {
+        folderPaths[fId] = _buildTemplateFolderPathText(fId, latestFolders);
+        folderCounts[fId] = Object.values(latestAssign).filter(v => String(v || '') === String(fId || '')).length;
+    }
+
+    if (options.bindWorkspace && typeof window.reelsBindSavedGroupsToWorkspace === 'function') {
+        window.reelsBindSavedGroupsToWorkspace(savedResults, {
+            rootFolderId,
+            rootFolderPath: folderPaths[rootFolderId] || '主工程库',
+            rootFolderDirectCount: folderCounts[rootFolderId] || savedResults.length,
+            folderPaths,
+            folderCounts,
+        });
+    }
+
+    return {
+        rootFolderId,
+        rootFolderPath: folderPaths[rootFolderId] || '主工程库',
+        savedResults,
+        failed,
+        syncedSubtitle,
+        syncedOverlay,
+        folderCountCreated: folderMapByGroup.size + (options.folderMode !== 'current-folder' ? 1 : 0),
+    };
+}
+
+async function reelsAutoArchiveWorkspaceToLibrary(options = {}) {
+    if (_tplArchivingInProgress) return false;
+    const groups = typeof window.reelsCollectWorkspaceProjectGroups === 'function'
+        ? window.reelsCollectWorkspaceProjectGroups()
+        : [];
+    if (!groups.length) {
+        showToast?.('当前工作区没有可保存的非空任务标签', 'info');
+        return false;
+    }
+
+    _tplArchivingInProgress = true;
+    const mainBtn = document.getElementById('tpl-auto-archive-btn');
+    const hereBtn = document.getElementById('tpl-auto-archive-here-btn');
+    const origMainText = mainBtn?.textContent || '';
+    const origHereText = hereBtn?.textContent || '';
+    if (mainBtn) mainBtn.disabled = true;
+    if (hereBtn) hereBtn.disabled = true;
+
+    try {
+        const res = await _archiveGroupsToLibrary(groups, {
+            folderMode: options.folderMode || 'new-folder',
+            folderName: options.folderName || `工作区工程_${new Date().toISOString().slice(0, 10)}`,
+            parentFolderId: options.parentFolderId ?? (_tplFolderId || ''),
+            splitByGroup: options.splitByGroup !== false,
+            captureThumbnails: options.captureThumbnails !== false,
+            bindWorkspace: options.bindWorkspace !== false,
+            syncPresetAssets: !!options.syncPresetAssets,
+            onProgress: (done, total) => {
+                const txt = `⏳ 保存并生成封面 ${done}/${total}...`;
+                if (options.folderMode === 'current-folder' && hereBtn) hereBtn.textContent = txt;
+                else if (mainBtn) mainBtn.textContent = txt;
+            },
+        });
+        _tplFolderId = res.rootFolderId;
+        if (res.savedResults.length === 1) {
+            _setCurrentTemplateContext(res.savedResults[0].libraryTemplateId, res.savedResults[0].name);
+        } else {
+            _setCurrentTemplateContext('', '');
+        }
+        window.reelsOnLibraryFolderChanged?.([res.rootFolderId].filter(Boolean), { skipWorkspaceSync: true });
+        await _refreshTemplateList();
+        showToast?.(
+            `✅ 已自动识别并保存 ${res.savedResults.length} 个标签到「${res.rootFolderPath}」${res.failed.length ? `（${res.failed.length} 个失败）` : '，可直接勾选或管理应用'}`,
+            res.failed.length ? 'warning' : 'success',
+            5000
+        );
+        return true;
+    } catch (err) {
+        showToast?.(`自动保存失败：${err.message}`, 'error');
+        return false;
+    } finally {
+        _tplArchivingInProgress = false;
+        if (mainBtn) { mainBtn.disabled = false; mainBtn.textContent = origMainText || '✨ 一键自动保存并管理'; }
+        if (hereBtn) { hereBtn.disabled = false; hereBtn.textContent = origHereText || '存入当前文件夹'; }
+    }
+}
+window.reelsAutoArchiveWorkspaceToLibrary = reelsAutoArchiveWorkspaceToLibrary;
+
+function _showSaveWorkspaceProjectModal(info, groups) {
+    return new Promise(resolve => {
+        const inFolderLabel = _tplFolderId ? _buildTemplateFolderPathText(_tplFolderId) : '主工程库';
+        const hasSubGroups = info.groupNames.length > 0;
+        const ov = document.createElement('div');
+        ov.id = 'tpl-save-workspace-modal';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:400100;background:rgba(4,7,18,0.82);backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:16px;';
+        ov.innerHTML = `
+            <div style="background:#14182b;border:1px solid rgba(129,140,248,0.42);border-radius:14px;padding:18px 20px;width:min(490px,94vw);color:#e2e8f0;box-shadow:0 24px 60px rgba(0,0,0,0.75);display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="margin:0;font-size:15.5px;color:#fff;">💾 保存当前工作区工程到管理库</h3>
+                    <button type="button" id="tsw-close" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+                </div>
+                <div style="font-size:12px;color:#cbd5e1;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.28);border-radius:8px;padding:9px 11px;line-height:1.55;">
+                    已自动识别工作区 <b>${groups.length}</b> 个标签页（共 <b>${info.totalTasks}</b> 条任务${hasSubGroups ? ` · 含 <b>${info.groupNames.length}</b> 个小分组` : ''}）：<br>
+                    <span style="color:#a5b4fc;font-size:11px;">${_tplEscapeHtml(groups.slice(0, 6).map(g => g.name).join(' · ') + (groups.length > 6 ? ` 等 ${groups.length} 个` : ''))}</span>
+                </div>
+                <div>
+                    <div style="font-size:11.5px;color:#94a3b8;margin-bottom:5px;">工程文件夹 / 名称（将保存于「${_tplEscapeHtml(inFolderLabel)}」）：</div>
+                    <input type="text" id="tsw-folder-name" value="${_tplEscapeHtml(info.suggestedName)}" style="width:100%;box-sizing:border-box;padding:8px 10px;background:#0b1020;color:#fff;border:1px solid #475569;border-radius:8px;font-size:13px;outline:none;" />
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;font-size:12px;color:#cbd5e1;">
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;">
+                        <input type="radio" name="tsw-mode" value="new-folder" checked style="accent-color:#8b5cf6;">
+                        <span>在「${_tplEscapeHtml(inFolderLabel)}」下新建同名工程文件夹并归档</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;">
+                        <input type="radio" name="tsw-mode" value="current-folder" style="accent-color:#8b5cf6;">
+                        <span>直接保存到「${_tplEscapeHtml(inFolderLabel)}」当前目录</span>
+                    </label>
+                    ${hasSubGroups ? `<label style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-top:2px;">
+                        <input type="checkbox" id="tsw-split-groups" checked style="accent-color:#10b981;">
+                        <span>按小分组（${_tplEscapeHtml(info.groupNames.slice(0, 3).join('、'))}${info.groupNames.length > 3 ? '…' : ''}）自动建二级子文件夹</span>
+                    </label>` : ''}
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;">
+                        <input type="checkbox" id="tsw-bind-ws" checked style="accent-color:#10b981;">
+                        <span>保存后自动绑定当前工作区，直接在工程库管理与应用</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;">
+                        <input type="checkbox" id="tsw-capture-thumbs" checked style="accent-color:#10b981;">
+                        <span>自动截取并生成各标签封面缩略图</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;color:#94a3b8;">
+                        <input type="checkbox" id="tsw-sync-presets" style="accent-color:#6366f1;">
+                        <span>同时把字幕样式与覆层导出为独立“我的预设”</span>
+                    </label>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+                    <button type="button" id="tsw-cancel" style="padding:7px 14px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;font-size:12px;cursor:pointer;">取消</button>
+                    <button type="button" id="tsw-confirm" style="padding:7px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#10b981);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">✨ 确认保存</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+        const input = ov.querySelector('#tsw-folder-name');
+        input?.focus();
+        input?.select();
+        const done = (val) => { ov.remove(); resolve(val); };
+        ov.querySelector('#tsw-close').onclick = () => done(null);
+        ov.querySelector('#tsw-cancel').onclick = () => done(null);
+        ov.addEventListener('click', e => { if (e.target === ov) done(null); });
+        ov.querySelector('#tsw-confirm').onclick = () => {
+            const folderMode = ov.querySelector('input[name="tsw-mode"]:checked')?.value || 'new-folder';
+            const folderName = String(input?.value || '').trim();
+            if (folderMode === 'new-folder' && !folderName) {
+                input?.focus();
+                return;
+            }
+            done({
+                folderMode,
+                folderName: folderName || info.suggestedName || '新建工程',
+                splitByGroup: !!ov.querySelector('#tsw-split-groups')?.checked,
+                bindWorkspace: ov.querySelector('#tsw-bind-ws')?.checked !== false,
+                captureThumbnails: ov.querySelector('#tsw-capture-thumbs')?.checked !== false,
+                syncPresetAssets: !!ov.querySelector('#tsw-sync-presets')?.checked,
+            });
+        };
+    });
+}
+
 async function _resolveTemplateSaveFolderId() {
-    // The last folder explicitly entered in this library is the save target.
     if (_tplFolderId) return _tplFolderId;
     const modal = document.getElementById('template-library-modal');
     if (modal && getComputedStyle(modal).display !== 'none') return '';
-    // A separate template editor has its own library state. Inherit the
-    // source template's folder until the user chooses another destination.
+    const activeWorkspaceFolder = typeof window.reelsGetWorkspaceLibraryStatus === 'function'
+        ? (window.reelsGetWorkspaceLibraryStatus().folderId || '')
+        : '';
+    if (activeWorkspaceFolder) return activeWorkspaceFolder;
     if (_currentTemplateContext.id) {
         const folders = await _templateFolderRequest('list');
         return folders.assignments?.[_currentTemplateContext.id] || '';
@@ -708,141 +1475,83 @@ async function _resolveTemplateSaveFolderId() {
 }
 
 async function saveCurrentAsTemplate() {
+    if (_tplArchivingInProgress) return;
+    const groups = typeof window.reelsCollectWorkspaceProjectGroups === 'function'
+        ? window.reelsCollectWorkspaceProjectGroups()
+        : [];
+    const info = typeof window.reelsGetWorkspaceSaveCandidateInfo === 'function'
+        ? window.reelsGetWorkspaceSaveCandidateInfo()
+        : { totalGroups: groups.length, totalTasks: groups.reduce((s, g) => s + (g.tasks?.length || 0), 0), groupNames: [], suggestedName: `工作区工程_${new Date().toISOString().slice(0, 10)}` };
+
+    if (groups.length > 1) {
+        const opts = await _showSaveWorkspaceProjectModal(info, groups);
+        if (!opts) return;
+        _tplArchivingInProgress = true;
+        try {
+            showToast?.(`正在识别并保存 ${groups.length} 个标签页，请稍候...`, 'info');
+            const res = await _archiveGroupsToLibrary(groups, {
+                folderMode: opts.folderMode,
+                folderName: opts.folderName,
+                parentFolderId: _tplFolderId || '',
+                splitByGroup: opts.splitByGroup,
+                bindWorkspace: opts.bindWorkspace,
+                captureThumbnails: opts.captureThumbnails,
+                syncPresetAssets: opts.syncPresetAssets,
+            });
+            _tplFolderId = res.rootFolderId;
+            _setCurrentTemplateContext('', '');
+            window.reelsOnLibraryFolderChanged?.([res.rootFolderId].filter(Boolean), { skipWorkspaceSync: true });
+            await _refreshTemplateList();
+            showToast?.(
+                `✅ 已保存 ${res.savedResults.length} 个工程标签到「${res.rootFolderPath}」${opts.syncPresetAssets ? `；同步字幕 ${res.syncedSubtitle}、覆层 ${res.syncedOverlay}` : ''}${res.failed.length ? `（${res.failed.length} 个失败）` : ''}`,
+                res.failed.length ? 'warning' : 'success',
+                5000
+            );
+        } catch (e) {
+            showToast?.('保存工程失败: ' + e.message, 'error');
+        } finally {
+            _tplArchivingInProgress = false;
+        }
+        return;
+    }
+
     const saveFolderId = await _resolveTemplateSaveFolderId();
-    const name = await (typeof _showInputDialog === 'function' ? _showInputDialog('请输入模板名称', `模板_${new Date().toLocaleDateString('zh-CN')}`) : prompt('请输入模板名称：', `模板_${new Date().toLocaleDateString('zh-CN')}`));
+    const defaultSingleName = (groups[0]?.name && groups[0].name !== '默认' && groups[0].name !== '未命名标签')
+        ? groups[0].name
+        : `工程_${new Date().toLocaleDateString('zh-CN')}`;
+    const name = await (typeof _showInputDialog === 'function'
+        ? _showInputDialog('保存当前工程', '请输入工程卡片名称', defaultSingleName)
+        : prompt('请输入工程卡片名称：', defaultSingleName));
     if (!name || !name.trim()) return;
-    const syncPresetAssets = confirm('是否同时同步保存独立预设？\n\n“是”：把模板内的动态字幕样式和覆层分别保存为同名独立预设。\n“否”：仅保存模板工程。');
 
     try {
         const baseName = name.trim();
         const basePayload = _captureCurrentTemplatePayload(baseName);
         basePayload.folderId = saveFolderId;
-
-        // 按任务列表实际显示的分组分别保存：批量标签页、文件夹/账号队列、
-        // 以及未归档的已有任务，都是独立模板。不能只看批量表格标签页，
-        // 因为文件夹导入的账号队列没有标签页时，也应当分开保存。
-        let groups = [];
-        if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState.tabs)) {
-            if (typeof _syncTasksToActiveTab === 'function') _syncTasksToActiveTab();
-
-            const visibleGroups = new Map();
-            const visibleTasks = window._reelsState?.tasks || [];
-            visibleTasks.forEach(task => {
-                let id = 'legacy';
-                let name = '已有任务（未归档）';
-                if (task._batchTabId) {
-                    id = `tab:${task._batchTabId}`;
-                    name = task._batchTabName || '未命名分组';
-                } else if (task._folderQueueId) {
-                    id = `folder:${task._folderQueueId}`;
-                    name = task._folderQueueName || '文件夹队列';
-                }
-                if (!visibleGroups.has(id)) {
-                    visibleGroups.set(id, { id, name, tasks: [], isActive: false });
-                }
-                visibleGroups.get(id).tasks.push(task);
-            });
-
-            // 当前任务列表已经汇总显示多个组时，以它为准；否则回退到批量表格标签页。
-            if (visibleGroups.size > 1) {
-                groups = Array.from(visibleGroups.values());
-            } else {
-                groups = _batchTableState.tabs
-                    .filter(tab => Array.isArray(tab.tasks) && tab.tasks.length > 0)
-                    .map(tab => ({ ...tab, isActive: tab.id === _batchTableState.activeTabId }));
-            }
-        }
-
-        if (groups.length > 1) {
-            let saved = 0;
-            let syncedSubtitle = 0, syncedOverlay = 0;
-            const failed = [];
-            const usedNames = new Map();
-
-            for (let index = 0; index < groups.length; index++) {
-                const group = groups[index];
-                const rawGroupName = String(group.name || `分组${index + 1}`).trim() || `分组${index + 1}`;
-                const seenCount = (usedNames.get(rawGroupName) || 0) + 1;
-                usedNames.set(rawGroupName, seenCount);
-                const groupName = seenCount > 1 ? `${rawGroupName}_${seenCount}` : rawGroupName;
-                const queueIdentity = group.id || _templateQueueIdentityFromTasks(group.tasks) || `group:${index}`;
-                const queueShortId = _templateQueueShortId(queueIdentity);
-                const templateName = `${baseName}_${groupName} [Q-${queueShortId}]`;
-                const stableTemplateId = _templateIdForQueue(baseName, queueIdentity);
-                const projectData = ReelsProject.collectProjectData({
-                    tasks: group.tasks,
-                    backgroundLibrary: basePayload.projectData.backgroundLibrary || [],
-                    style: basePayload.projectData.style || {},
-                    exportOpts: basePayload.projectData.exportOpts || {},
-                    selectedIdx: group.tasks.length ? 0 : -1,
-                });
-
-                try {
-                    const groupThumbnail = await _captureTemplateThumbnailForTasks(group.tasks, basePayload.thumbnail);
-                    const resp = await apiFetch(`${API_BASE}/templates/save`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: stableTemplateId,
-                            name: templateName,
-                            folderId: saveFolderId,
-                            // 账号队列拆分保存时，当前预览画面可作为本次保存的可见缩略图。
-                            // 之前只给“激活标签”写缩略图，队列分组 ID 与标签 ID 不同，
-                            // 导致所有新模板都显示为空白场记板。
-                            thumbnail: groupThumbnail,
-                            projectData,
-                        }),
-                    });
-                    const result = await resp.json();
-                    if (!(result.success || result.data?.success)) {
-                        throw new Error(result.error || '保存失败');
-                    }
-                    if (syncPresetAssets) {
-                        const synced = _syncTemplatePresetAssets(templateName, projectData);
-                        if (synced.subtitle) syncedSubtitle++;
-                        if (synced.overlay) syncedOverlay++;
-                    }
-                    saved++;
-                } catch (e) {
-                    failed.push(`${groupName}: ${e.message}`);
-                }
-            }
-
-            if (!saved) throw new Error(failed.join('；') || '所有分组保存失败');
-            _setCurrentTemplateContext('', '');
-            if (typeof showToast === 'function') {
-                showToast(
-                    `已按分组保存 ${saved} 个模板${syncPresetAssets ? `；同步字幕 ${syncedSubtitle} 个、覆层 ${syncedOverlay} 个` : ''}${failed.length ? `，${failed.length} 个失败` : ''} ✅`,
-                    failed.length ? 'warning' : 'success'
-                );
-            }
-            if (failed.length) console.warn('[Template] 分组模板保存失败:', failed);
-            _refreshTemplateList();
-            return;
-        }
-
-        const payload = basePayload;
-        const singleQueueIdentity = _templateQueueIdentityFromTasks(window._reelsState?.tasks || []);
-        if (singleQueueIdentity) {
-            const queueShortId = _templateQueueShortId(singleQueueIdentity);
-            payload.name = `${baseName} [Q-${queueShortId}]`;
-            payload.id = _templateIdForQueue(baseName, singleQueueIdentity);
-        }
-        const resp = await apiFetch(`${API_BASE}/templates/save`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+        const singleGroup = groups[0]
+            ? [{ ...groups[0], name: baseName, thumbnail: basePayload.thumbnail }]
+            : [{ key: 'single', tabId: '', name: baseName, group: '', hidden: false, tasks: basePayload.projectData?.tasks || [], thumbnail: basePayload.thumbnail }];
+        const res = await _archiveGroupsToLibrary(singleGroup, {
+            folderMode: 'current-folder',
+            parentFolderId: saveFolderId,
+            splitByGroup: false,
+            bindWorkspace: true,
+            captureThumbnails: true,
+            syncPresetAssets: false,
+            style: basePayload.projectData?.style,
+            exportOpts: basePayload.projectData?.exportOpts,
+            backgroundLibrary: basePayload.projectData?.backgroundLibrary,
+            watermarks: basePayload.projectData?.watermarks,
         });
-        const result = await resp.json();
-        if (!(result.success || result.data?.success)) throw new Error(result.error || '保存失败');
-        const synced = syncPresetAssets ? _syncTemplatePresetAssets(payload.name || baseName, payload.projectData) : { subtitle:false, overlay:false };
-
-        const savedId = result.id || result.data?.id || '';
-        if (savedId) _setCurrentTemplateContext(savedId, payload.name || baseName);
-        if (typeof showToast === 'function') showToast(`模板「${payload.name || baseName}」已保存${syncPresetAssets ? `；已同步${synced.subtitle ? '动态字幕' : ''}${synced.subtitle && synced.overlay ? '、' : ''}${synced.overlay ? '覆层预设' : ''}` : ''} ✅`, 'success');
+        const saved = res.savedResults[0];
+        if (saved?.libraryTemplateId) {
+            _setCurrentTemplateContext(saved.libraryTemplateId, saved.name);
+        }
+        window.reelsOnLibraryFolderChanged?.(saveFolderId ? [saveFolderId] : [], { skipWorkspaceSync: true });
+        showToast?.(`工程「${saved?.name || baseName}」已保存并绑定 ✅`, 'success');
         _refreshTemplateList();
     } catch (e) {
-        if (typeof showToast === 'function') showToast('保存模板失败: ' + e.message, 'error');
+        showToast?.('保存工程失败: ' + e.message, 'error');
     }
 }
 
@@ -869,7 +1578,12 @@ async function updateCurrentTemplate() {
         });
         const result = await resp.json();
         if (result.success || result.data?.success) {
-            if (typeof showToast === 'function') showToast(`模板「${name}」已更新 ✅`, 'success');
+            if (payload.thumbnail) {
+                window._reelsLibraryThumbCache = window._reelsLibraryThumbCache || {};
+                window._reelsLibraryThumbCache[_currentTemplateContext.id] = payload.thumbnail;
+            }
+            window.reelsOnLibraryFolderChanged?.([], { skipWorkspaceSync: true });
+            if (typeof showToast === 'function') showToast(`工程「${name}」已更新 ✅`, 'success');
             _refreshTemplateList();
         } else {
             throw new Error(result.error || '更新失败');
@@ -902,8 +1616,39 @@ async function _openTemplateInWindow(templateId, templateName) {
     }
 }
 
-async function _loadTemplateInCurrentWindow(templateId) {
+async function _loadTemplateInCurrentWindow(templateId, options = {}) {
     try {
+        if (typeof window.reelsApplyLibraryProjects === 'function' && !window.location?.hash?.startsWith('#template=')) {
+            const modal = document.getElementById('template-library-modal');
+            const summary = (modal?._allTemplateSummaries || []).find(t => String(t.id) === String(templateId));
+            const assignedFolder = _tplFolderData?.assignments?.[templateId];
+            const targetFolderId = typeof options.folderId === 'string'
+                ? options.folderId
+                : (assignedFolder !== undefined ? assignedFolder : (_tplFolderId || ''));
+            const folderTotalCount = (modal?._allTemplateSummaries || []).filter(t => (_tplFolderData.assignments[t.id] || '') === targetFolderId).length || 1;
+            const resp = await apiFetch(`${API_BASE}/templates/get`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: templateId }),
+            });
+            const result = await resp.json();
+            const tplData = result.data || result;
+            if (result.error || !tplData.projectData) throw new Error(result.error || '工程缺少数据');
+            const ok = await window.reelsApplyLibraryProjects([{ tplData, summary: summary || { id: tplData.id, name: tplData.name, updatedAt: tplData.updatedAt } }], {
+                folderId: targetFolderId,
+                folderPath: _buildTemplateFolderPathText(targetFolderId),
+                folderTotalCount,
+                scopeMode: folderTotalCount <= 1 && targetFolderId ? 'folder' : (targetFolderId ? 'selected' : 'selected'),
+                loadMode: options.append ? 'append' : 'replace',
+            });
+            if (!ok) return;
+            _setCurrentTemplateContext(tplData.id || templateId, tplData.name || '');
+            if (modal) modal.style.display = 'none';
+            if (typeof openPanelByName === 'function') openPanelByName('batch-reels');
+            if (typeof showToast === 'function') showToast(`工程「${tplData.name}」已载入到工作区`, 'success');
+            return;
+        }
+
         const resp = await apiFetch(`${API_BASE}/templates/get`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -911,74 +1656,36 @@ async function _loadTemplateInCurrentWindow(templateId) {
         });
         const result = await resp.json();
         const tplData = result.data || result;
-        if(result.error || !tplData.projectData)throw new Error(result.error || '模板缺少工程数据');
+        if(result.error || !tplData.projectData)throw new Error(result.error || '工程缺少数据');
 
         if (tplData.projectData && typeof ReelsProject !== 'undefined') {
-            // ── 诊断日志：模板加载数据追踪 ──
-            const rawTasks = tplData.projectData.tasks || [];
-            console.log(`[Template] 📦 原始模板数据: ${rawTasks.length} 个任务`);
-            rawTasks.forEach((t, i) => {
-                const ovCount = (t.overlays || []).length;
-                const segCount = (t.segments || []).length;
-                const coverOvCount = (t.cover?.overlays || []).length;
-                console.log(`  [${i}] overlays=${ovCount}, segments=${segCount}, cover.overlays=${coverOvCount}, txtContent=${(t.txtContent || '').slice(0, 30)}`);
-            });
-
             const restored = ReelsProject.applyProjectData(tplData.projectData);
-            // A template owns its saved tasks, not the previously opened workspace tabs.
             if (typeof _batchTableState !== 'undefined') {
                 const tabId = 'tab_template_' + Date.now();
-                _batchTableState.tabs = [{id:tabId,name:tplData.name || '模板',tasks:[],materialDir:''}];
+                _batchTableState.tabs = [{id:tabId,name:tplData.name || '工程',libraryTemplateId:tplData.id || templateId,tasks:[],materialDir:''}];
                 _batchTableState.activeTabId = tabId;
                 _batchTableState.appliedTabIds = [tabId];
                 _batchTableState.openSnapshotTasks = null;
                 _batchTableState.selectedRows = new Set();
-                for(const task of restored.tasks){task._batchTabId=tabId;task._batchTabName=tplData.name || '模板';}
+                for(const task of restored.tasks){task._batchTabId=tabId;task._batchTabName=tplData.name || '工程';task._libraryTemplateId=tplData.id || templateId;}
             }
-            // Newly loaded template tasks must be visible instead of inheriting a collapsed workspace.
             if(window._reelsState){
                 _reelsState.batchGroupCollapsed={'__reels_existing_tasks__':false};
                 _reelsState.folderQueueCollapsed={};
                 for(const task of restored.tasks){if(task._batchTabId)_reelsState.batchGroupCollapsed[task._batchTabId]=false;if(task._folderQueueId)_reelsState.folderQueueCollapsed[task._folderQueueId]=false;}
             }
-            // Older templates have no style-scope metadata; their per-task snapshots remain authoritative.
             if (restored.exportOpts?.subtitleStyleScopeVersion !== 2) {
                 restored.exportOpts = {...restored.exportOpts, subtitleStyleScopeVersion:2, subtitleStyleScope:'task', subtitleStyleApplyAll:false};
             }
-
-            console.log(`[Template] 🔄 反序列化后: ${restored.tasks.length} 个任务`);
-            restored.tasks.forEach((t, i) => {
-                const ovCount = (t.overlays || []).length;
-                const segCount = (t.segments || []).length;
-                const coverOvCount = (t.cover?.overlays || []).length;
-                console.log(`  [${i}] overlays=${ovCount}, segments=${segCount}, cover.overlays=${coverOvCount}`);
-            });
-
-            if (typeof applyRestoredProject === 'function') {
-                applyRestoredProject(restored);
-            }
-
-            console.log(`[Template] ✅ applyRestoredProject 完成后:`);
-            (_reelsState?.tasks || []).forEach((t, i) => {
-                const ovCount = (t.overlays || []).length;
-                const segCount = (t.segments || []).length;
-                const coverOvCount = (t.cover?.overlays || []).length;
-                console.log(`  [${i}] overlays=${ovCount}, segments=${segCount}, cover.overlays=${coverOvCount}`);
-            });
+            if (typeof applyRestoredProject === 'function') applyRestoredProject(restored);
             _setCurrentTemplateContext(tplData.id || templateId, tplData.name || '');
-            if (typeof showToast === 'function') showToast(`模板「${tplData.name}」已加载`, 'success');
-
-            // 关闭模板库面板
+            if (typeof showToast === 'function') showToast(`工程「${tplData.name}」已加载`, 'success');
             const modal = document.getElementById('template-library-modal');
             if (modal) modal.style.display = 'none';
-
-            // 自动切换到批量 Reels 标签页
-            if (typeof openPanelByName === 'function') {
-                openPanelByName('batch-reels');
-            }
+            if (typeof openPanelByName === 'function') openPanelByName('batch-reels');
         }
     } catch (e) {
-        if (typeof showToast === 'function') showToast('加载模板失败: ' + e.message, 'error');
+        if (typeof showToast === 'function') showToast('加载工程失败: ' + e.message, 'error');
     }
 }
 
@@ -987,8 +1694,8 @@ async function _loadTemplateInCurrentWindow(templateId) {
 // ═══════════════════════════════════════════════════════
 
 async function _deleteTemplate(id, name) {
-    if (!confirm(`确定删除模板「${name}」？此操作不可恢复。`)) return;
-
+    if (!confirm(`确定删除工程「${name}」？此操作不可恢复。`)) return;
+    const prevFolder = _tplFolderData?.assignments?.[id] || _tplFolderId || '';
     try {
         await apiFetch(`${API_BASE}/templates/delete`, {
             method: 'POST',
@@ -998,7 +1705,8 @@ async function _deleteTemplate(id, name) {
         if (_currentTemplateContext.id === id) {
             _setCurrentTemplateContext('', '');
         }
-        if (typeof showToast === 'function') showToast(`模板「${name}」已删除`, 'success');
+        if (typeof showToast === 'function') showToast(`工程「${name}」已删除`, 'success');
+        window.reelsOnLibraryFolderChanged?.(prevFolder ? [prevFolder] : []);
         _refreshTemplateList();
     } catch (e) {
         if (typeof showToast === 'function') showToast('删除失败: ' + e.message, 'error');
@@ -1006,15 +1714,17 @@ async function _deleteTemplate(id, name) {
 }
 
 async function _renameTemplate(id) {
-    const card=Array.from(document.querySelectorAll('.tpl-card')).find(card=>card.dataset.id===id);
-    const title=card?.querySelector('.tpl-name');
-    if(!title)return;
-    _editTemplateNameInPlace(title,async name=>{
-        const response=await apiFetch(`${API_BASE}/templates/rename`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,name})});
-        const parsed=await response.json(),result=parsed.data || parsed;
-        if(parsed.error || result.error || result.success===false)throw new Error(parsed.error || result.error || '重命名失败');
-        if(_currentTemplateContext.id===id)_setCurrentTemplateContext(id,name);
-        _updateRenamedLibraryCard('template',id,name);
+    const card = Array.from(document.querySelectorAll('.tpl-card')).find(card => card.dataset.id === id);
+    const title = card?.querySelector('.tpl-name');
+    if (!title) return;
+    _editTemplateNameInPlace(title, async name => {
+        const response = await apiFetch(`${API_BASE}/templates/rename`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, name }) });
+        const parsed = await response.json(), result = parsed.data || parsed;
+        if (parsed.error || result.error || result.success === false) throw new Error(parsed.error || result.error || '重命名失败');
+        if (_currentTemplateContext.id === id) _setCurrentTemplateContext(id, name);
+        _updateRenamedLibraryCard('template', id, name);
+        const fId = _tplFolderData?.assignments?.[id] || _tplFolderId || '';
+        window.reelsOnLibraryFolderChanged?.(fId ? [fId] : []);
     });
 }
 
@@ -1093,6 +1803,147 @@ async function _exportArchiveTemplate(id, name) {
 /**
  * 导入 .vktpl 或 .vkpkg 模板文件
  */
+function _extractTabsFromProjectPayload(data, fallbackName = '导入工程') {
+    if (!data || typeof data !== 'object') return null;
+    if (data._format === 'videokit-template-collection' && Array.isArray(data.templates)) {
+        const items = data.templates.filter(t => t && t.projectData);
+        return items.length ? { mode: 'collection', items } : null;
+    }
+
+    const inner = (data.projectData && typeof data.projectData === 'object') ? data.projectData : data;
+    const sharedStyle = inner.style || data.style || inner.uiState?.globalSubtitleStyle || data.uiState?.globalSubtitleStyle || {};
+    const sharedExportOpts = inner.exportOpts || data.exportOpts || {};
+    const sharedWatermarks = Array.isArray(inner.watermarks) ? inner.watermarks : (Array.isArray(data.watermarks) ? data.watermarks : []);
+    const sharedBgLib = Array.isArray(inner.backgroundLibrary) ? inner.backgroundLibrary : (Array.isArray(data.backgroundLibrary) ? data.backgroundLibrary : []);
+
+    const splitTasksHelper = typeof window.reelsSplitTasksIntoTabs === 'function'
+        ? window.reelsSplitTasksIntoTabs
+        : (rawTasks, fb) => {
+            const groups = new Map();
+            let grouped = false;
+            for (const raw of (Array.isArray(rawTasks) ? rawTasks : [])) {
+                if (!raw || typeof raw !== 'object') continue;
+                const qId = String(raw._folderQueueId || '').trim();
+                const qName = String(raw._folderQueueName || '').trim();
+                const tId = String(raw._batchTabId || '').trim();
+                const tName = String(raw._batchTabName || '').trim();
+                const tGroup = String(raw._batchTabGroup || '').trim();
+                const key = qId ? `q:${qId}` : (tId ? `t:${tId}` : '__default__');
+                const name = qName || tName || fb;
+                if (qId || tId || qName || tName) grouped = true;
+                if (!groups.has(key)) groups.set(key, { name, group: tGroup, queueId: qId, tasks: [] });
+                groups.get(key).tasks.push(raw);
+            }
+            const tabs = [...groups.values()];
+            return { tabs: tabs.length ? tabs : [{ name: fb, group: '', queueId: '', tasks: rawTasks || [] }], grouped: grouped && tabs.length > 1 };
+        };
+
+    if (Array.isArray(inner.tabs) && inner.tabs.length > 0 && typeof ReelsProject !== 'undefined') {
+        const nonEmptyTabs = inner.tabs.filter(tab => tab && Array.isArray(tab.tasks) && tab.tasks.length > 0);
+        if (nonEmptyTabs.length > 0) {
+            if (nonEmptyTabs.length === 1 && data.projectData) {
+                const only = nonEmptyTabs[0];
+                return {
+                    mode: 'single',
+                    style: sharedStyle,
+                    exportOpts: sharedExportOpts,
+                    watermarks: sharedWatermarks,
+                    backgroundLibrary: sharedBgLib,
+                    items: [{
+                        name: data.name || only.name || fallbackName,
+                        description: data.description || (only.group ? `分组：${only.group}` : ''),
+                        thumbnail: data.thumbnail || only.thumbnail || '',
+                        tags: data.tags || [],
+                        projectData: ReelsProject.collectProjectData({
+                            tasks: only.tasks,
+                            backgroundLibrary: sharedBgLib,
+                            style: sharedStyle,
+                            exportOpts: sharedExportOpts,
+                            watermarks: sharedWatermarks,
+                            selectedIdx: 0,
+                        }),
+                    }],
+                };
+            }
+            return {
+                mode: nonEmptyTabs.length > 1 ? 'multi-tab' : 'single',
+                style: sharedStyle,
+                exportOpts: sharedExportOpts,
+                watermarks: sharedWatermarks,
+                backgroundLibrary: sharedBgLib,
+                items: nonEmptyTabs.map((tab, idx) => ({
+                    key: `import_tab_${idx}`,
+                    name: String(tab.name || `${fallbackName}_${idx + 1}`).trim(),
+                    group: String(tab.group || '').trim(),
+                    thumbnail: tab.thumbnail || (nonEmptyTabs.length === 1 ? (data.thumbnail || '') : ''),
+                    description: tab.group ? `分组：${tab.group}` : '',
+                    tasks: tab.tasks,
+                })),
+            };
+        }
+    }
+
+    if (Array.isArray(inner.tasks) && inner.tasks.length > 0) {
+        const split = splitTasksHelper(inner.tasks, fallbackName);
+        if (split.grouped && split.tabs.length > 1) {
+            return {
+                mode: 'multi-tab',
+                style: sharedStyle,
+                exportOpts: sharedExportOpts,
+                watermarks: sharedWatermarks,
+                backgroundLibrary: sharedBgLib,
+                items: split.tabs.map((tab, idx) => ({
+                    key: `import_split_${idx}`,
+                    name: String(tab.name || `${fallbackName}_${idx + 1}`).trim(),
+                    group: String(tab.group || '').trim(),
+                    thumbnail: '',
+                    description: tab.group ? `分组：${tab.group}` : '',
+                    tasks: tab.tasks,
+                })),
+            };
+        }
+        if (data.projectData) {
+            return {
+                mode: 'single',
+                style: sharedStyle,
+                exportOpts: sharedExportOpts,
+                watermarks: sharedWatermarks,
+                backgroundLibrary: sharedBgLib,
+                items: [data],
+            };
+        }
+        if (typeof ReelsProject !== 'undefined') {
+            return {
+                mode: 'single',
+                style: sharedStyle,
+                exportOpts: sharedExportOpts,
+                watermarks: sharedWatermarks,
+                backgroundLibrary: sharedBgLib,
+                items: [{
+                    name: data.name || (split.grouped ? split.tabs[0]?.name : fallbackName) || fallbackName,
+                    description: data.description || '',
+                    thumbnail: data.thumbnail || '',
+                    tags: data.tags || [],
+                    projectData: ReelsProject.collectProjectData({
+                        tasks: inner.tasks,
+                        backgroundLibrary: sharedBgLib,
+                        style: sharedStyle,
+                        exportOpts: sharedExportOpts,
+                        watermarks: sharedWatermarks,
+                        selectedIdx: 0,
+                    }),
+                }],
+            };
+        }
+    }
+
+    if (data.projectData) {
+        return { mode: 'single', items: [data] };
+    }
+    return null;
+}
+window.reelsExtractTabsFromProjectPayload = _extractTabsFromProjectPayload;
+
 async function _importTemplate() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1131,32 +1982,56 @@ async function _importTemplate() {
                 const text = await file.text();
                 const data = JSON.parse(text);
 
-                // 校验是否为合集
-                const templatesToImport = [];
-                if (data._format === 'videokit-template-collection' && Array.isArray(data.templates)) {
-                    templatesToImport.push(...data.templates);
-                } else if (data.projectData) {
-                    templatesToImport.push(data);
-                } else {
-                    if (typeof showToast === 'function') showToast(`跳过 ${file.name}: 不是有效的模板文件`, 'warning');
-                    else alert(`跳过 ${file.name}: 不是有效的模板文件`);
+                const fileBaseName = file.name.replace(/\.(vktpl|json)$/i, '').trim() || '导入工程';
+                const extracted = _extractTabsFromProjectPayload(data, fileBaseName);
+                if (!extracted || !extracted.items.length) {
+                    if (typeof showToast === 'function') showToast(`跳过 ${file.name}: 不是有效的工程/模板文件`, 'warning');
+                    else alert(`跳过 ${file.name}: 不是有效的工程/模板文件`);
                     continue;
                 }
 
-                for (const tpl of templatesToImport) {
-                    const resp = await apiFetch(`${API_BASE}/templates/save`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            name: tpl.name || file.name.replace(/\.(vktpl|json)$/i, ''),
+                if (extracted.mode === 'multi-tab' && extracted.items.length > 1) {
+                    const res = await _archiveGroupsToLibrary(extracted.items, {
+                        folderMode: 'new-folder',
+                        folderName: fileBaseName,
+                        parentFolderId: _tplFolderId || '',
+                        splitByGroup: true,
+                        bindWorkspace: false,
+                        captureThumbnails: false,
+                        syncPresetAssets: false,
+                        style: extracted.style,
+                        exportOpts: extracted.exportOpts,
+                        watermarks: extracted.watermarks,
+                        backgroundLibrary: extracted.backgroundLibrary,
+                    });
+                    imported += res.savedResults.length;
+                    _tplFolderId = res.rootFolderId;
+                } else {
+                    for (const tpl of extracted.items) {
+                        const saveBody = {
+                            name: tpl.name || fileBaseName,
                             description: tpl.description || '',
                             thumbnail: tpl.thumbnail || '',
                             tags: tpl.tags || [],
+                            folderId: _tplFolderId || '',
+                            projectData: tpl.projectData || ReelsProject.collectProjectData({
+                                tasks: tpl.tasks || [],
+                                backgroundLibrary: extracted.backgroundLibrary || [],
+                                style: extracted.style || {},
+                                exportOpts: extracted.exportOpts || {},
+                                watermarks: extracted.watermarks || [],
+                                selectedIdx: 0,
                             }),
-                    });
-                    const result = await resp.json();
-                    if (result.success || result.data?.success) {
-                        imported++;
+                        };
+                        const resp = await apiFetch(`${API_BASE}/templates/save`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(saveBody),
+                        });
+                        const result = await resp.json();
+                        if (result.success || result.data?.success) {
+                            imported++;
+                        }
                     }
                 }
             } catch (err) {
@@ -1167,8 +2042,9 @@ async function _importTemplate() {
         }
 
         if (imported > 0) {
-            if (typeof showToast === 'function') showToast(`成功导入 ${imported} 个模板 ✅`, 'success');
-            else alert(`成功导入 ${imported} 个模板 ✅`);
+            window.reelsOnLibraryFolderChanged?.(_tplFolderId ? [_tplFolderId] : []);
+            if (typeof showToast === 'function') showToast(`成功导入 ${imported} 个工程 ✅`, 'success');
+            else alert(`成功导入 ${imported} 个工程 ✅`);
             _refreshTemplateList();
         }
     };
@@ -1310,13 +2186,13 @@ function _initTemplateReordering(container){
         if(kind==='template'&&folderTarget){const ids=moving.map(c=>c.dataset.id);resetOpacity();restore();dragged=null;await _moveTemplateIds(ids,folderTarget.dataset.folderId);return;}
         resetOpacity();dragged=null;const current=cards();if(current.every((card,i)=>card===original[i]))return;saving=true;
         try{
-            if(!_tplFolderId){const order=current.map(_templateLibraryItemKey);await _templateFolderRequest('reorder',{order});_tplFolderData.libraryOrder=order;}
-            else{
-                const visible=current.filter(c=>c.classList.contains('tpl-card')).map(c=>c.dataset.id),visibleSet=new Set(visible);let next=0;
-                const all=document.getElementById('template-library-modal')._allTemplateSummaries||[],ids=all.map(t=>visibleSet.has(t.id)?visible[next++]:t.id);
-                const response=await apiFetch(`${API_BASE}/templates/reorder`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});const parsed=await response.json(),result=parsed.data||parsed;if(!result.success)throw Error(result.error||'排序保存失败');
-            }
+            const order=current.map(_templateLibraryItemKey);
+            await _templateFolderRequest('reorder',{order,parentId:_tplFolderId});
+            if(!_tplFolderData.folderOrders || typeof _tplFolderData.folderOrders!=='object') _tplFolderData.folderOrders={};
+            _tplFolderData.folderOrders[_tplFolderId || '']=order;
+            if(!_tplFolderId) _tplFolderData.libraryOrder=order;
             localStorage.setItem('videokit_template_sort','manual');_syncTemplateSortControls();
+            window.reelsOnLibraryFolderChanged?.(_tplFolderId ? [_tplFolderId] : []);
         }catch(error){restore();if(typeof showToast==='function')showToast(error.message,'error');}finally{saving=false;}
     });
     grid.addEventListener('dragend',()=>{if(dragged){resetOpacity();restore();dragged=null;}});
@@ -1350,16 +2226,111 @@ async function _templateFolderRequest(action,data={}) {
     if(parsed.error || result.error || result.success===false)throw new Error(parsed.error || result.error || '文件夹操作失败');
     return result;
 }
-async function _newTemplateFolder() {
-    const name=typeof _showInputDialog==='function'?await _showInputDialog('新建文件夹','文件夹名称','新建文件夹'):prompt('文件夹名称','新建文件夹');
-    if(!name?.trim())return;
-    try{await _templateFolderRequest('create',{name:name.trim()});await _refreshTemplateList();}catch(e){showToast?.(e.message,'error');}
+function _getParentFolderId(folderId) {
+    const f = (_tplFolderData.folders || []).find(item => item.id === folderId);
+    return f?.parentId || '';
 }
+
+async function _newTemplateFolder(parentOverride) {
+    const parentId = typeof parentOverride === 'string' ? parentOverride : _tplFolderId;
+    const parentLabel = parentId ? `（位于「${_buildTemplateFolderPathText(parentId)}」）` : '（位于主工程库）';
+    const name = typeof _showInputDialog === 'function'
+        ? await _showInputDialog(`新建文件夹 ${parentLabel}`, '文件夹名称', '新建文件夹')
+        : prompt(`文件夹名称 ${parentLabel}`, '新建文件夹');
+    if (!name?.trim()) return;
+    try {
+        await _templateFolderRequest('create', { name: name.trim(), parentId });
+        await _refreshTemplateList();
+    } catch (e) {
+        showToast?.(e.message, 'error');
+    }
+}
+
 async function _renameTemplateFolder(id) {
-    const card=Array.from(document.querySelectorAll('.tpl-folder-card')).find(card=>card.dataset.folderId===id);
-    const title=card?.querySelector('.tpl-folder-name');
-    if(!title)return;
-    _editTemplateNameInPlace(title,async name=>{await _templateFolderRequest('rename',{id,name});_updateRenamedLibraryCard('folder',id,name);});
+    const card = Array.from(document.querySelectorAll('.tpl-folder-card')).find(card => card.dataset.folderId === id);
+    const title = card?.querySelector('.tpl-folder-name');
+    if (!title) return;
+    _editTemplateNameInPlace(title, async name => {
+        await _templateFolderRequest('rename', { id, name });
+        _updateRenamedLibraryCard('folder', id, name);
+        window.reelsOnLibraryFolderChanged?.([id], { skipWorkspaceSync: false });
+    });
+}
+
+async function _deleteTemplateFolder(id) {
+    const folder = (_tplFolderData.folders || []).find(f => f.id === id);
+    const name = folder?.name || '该文件夹';
+    if (!confirm(`确定删除空文件夹「${name}」？`)) return;
+    try {
+        await _templateFolderRequest('delete', { id });
+        if (_tplFolderId === id) {
+            _tplFolderId = folder?.parentId || '';
+        }
+        await _refreshTemplateList();
+        showToast?.(`文件夹「${name}」已删除`, 'success');
+    } catch (e) {
+        showToast?.(e.message, 'error');
+    }
+}
+
+async function _moveFolderIds(folderIds, targetParentId) {
+    try {
+        await _templateFolderRequest('move-folders', { folderIds, targetParentId });
+        await _refreshTemplateList();
+        showToast?.('文件夹已移动 ✅', 'success');
+    } catch (e) {
+        showToast?.(e.message, 'error');
+    }
+}
+
+function _pickLibraryTargetFolder(options = {}) {
+    return new Promise(resolve => {
+        const excludeIds = new Set(options.excludeFolderIds || []);
+        const folders = _tplFolderData.folders || [];
+        const byParent = new Map();
+        for (const f of folders) {
+            if (!f || !f.id || excludeIds.has(f.id)) continue;
+            const p = f.parentId || '';
+            if (!byParent.has(p)) byParent.set(p, []);
+            byParent.get(p).push(f);
+        }
+        const flattened = [{ id: '', label: '🏠 主工程库（根目录）', depth: 0 }];
+        const walk = (parentId, depth) => {
+            const list = _sortTemplateSummaries(byParent.get(parentId) || []);
+            for (const f of list) {
+                flattened.push({ id: f.id, label: `📁 ${f.name}`, depth });
+                walk(f.id, depth + 1);
+            }
+        };
+        walk('', 1);
+
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center;';
+        ov.innerHTML = `
+            <div style="width:420px;max-width:92vw;max-height:76vh;background:#161626;border:1px solid rgba(255,255,255,0.14);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.65);">
+                <div style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:14px;font-weight:700;color:#fff;">${_tplEscapeHtml(options.title || '选择目标文件夹')}</span>
+                    <button id="tpl-pick-close" style="background:none;border:none;color:#94a3b8;font-size:18px;cursor:pointer;">✕</button>
+                </div>
+                <div style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:4px;">
+                    ${flattened.map(item => `
+                        <button type="button" class="tpl-pick-folder-row" data-folder-id="${_tplEscapeHtml(item.id)}" style="text-align:left;padding:7px 10px 7px ${10 + item.depth * 18}px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:6px;color:#e2e8f0;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px;"
+                                onmouseenter="this.style.background='rgba(99,102,241,0.22)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
+                            <span>${_tplEscapeHtml(item.label)}</span>
+                            ${item.id === (_tplFolderId || '') ? '<span style="margin-left:auto;font-size:10px;color:#94a3b8;">当前位置</span>' : ''}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+        document.body.appendChild(ov);
+        const done = (val) => { ov.remove(); resolve(val); };
+        ov.querySelector('#tpl-pick-close').onclick = () => done(null);
+        ov.addEventListener('click', e => { if (e.target === ov) done(null); });
+        ov.querySelectorAll('.tpl-pick-folder-row').forEach(btn => {
+            btn.onclick = () => done(btn.dataset.folderId ?? '');
+        });
+    });
 }
 
 let _tplFolderHistory=[{id:'',scrollTop:0}],_tplFolderHistoryIndex=0,_tplLastNavigation={direction:'',time:0};
@@ -1385,41 +2356,94 @@ window.addEventListener('videokit-template-navigation',event=>{_navigateTemplate
 window.addEventListener('mouseup',event=>{if(event.button===3||event.button===4){const modal=document.getElementById('template-library-modal');if(modal&&getComputedStyle(modal).display!=='none'){event.preventDefault();_navigateTemplateFolder(event.button===3?'back':'forward');}}},{capture:true});
 window.addEventListener('auxclick',event=>{if(event.button===3||event.button===4){const modal=document.getElementById('template-library-modal');if(modal&&getComputedStyle(modal).display!=='none')event.preventDefault();}},{capture:true});
 
-async function _moveTemplateIds(ids,folderId) {
-    try {await _templateFolderRequest('move',{ids,folderId});for(const id of ids)document.getElementById('template-library-modal')?._selectedTemplateIds?.delete(id);await _refreshTemplateList();}
-    catch(e){showToast?.(e.message,'error');}
+async function _moveTemplateIds(ids, folderId) {
+    const prevFolderId = _tplFolderId;
+    try {
+        await _templateFolderRequest('move', { ids, folderId });
+        for (const id of ids) document.getElementById('template-library-modal')?._selectedTemplateIds?.delete(id);
+        await _refreshTemplateList();
+        window.reelsOnLibraryFolderChanged?.([prevFolderId, folderId].filter(Boolean));
+    } catch (e) {
+        showToast?.(e.message, 'error');
+    }
 }
 async function _moveSelectedTemplatesToRoot() {
-    const modal=document.getElementById('template-library-modal');const ids=(modal?._templateSummaries||[]).filter(t=>modal._selectedTemplateIds?.has(t.id)).map(t=>t.id);
-    if(!ids.length){showToast?.('请先勾选要移出的模板','info');return;}
-    await _moveTemplateIds(ids,'');
+    const modal = document.getElementById('template-library-modal');
+    const ids = (modal?._templateSummaries || []).filter(t => modal._selectedTemplateIds?.has(t.id)).map(t => t.id);
+    if (!ids.length) { showToast?.('请先勾选要移出的工程', 'info'); return; }
+    await _moveTemplateIds(ids, _getParentFolderId(_tplFolderId));
 }
-function _renderTemplateFolderCard(folder,all) {
-    const members=all.filter(t=>_tplFolderData.assignments[t.id]===folder.id);
-    const recent=[...members].sort((a,b)=>(Date.parse(b.updatedAt||b.createdAt)||0)-(Date.parse(a.updatedAt||a.createdAt)||0));
-    const images=Array.from({length:4},(_,i)=>`<div class="tpl-folder-preview" style="aspect-ratio:9/16;width:100%;min-height:0;overflow:hidden;border-radius:7px;background:#ffffff08;display:flex;align-items:center;justify-content:center;color:#8a6da055;">${recent[i]?.thumbnail?`<img draggable="false" loading="lazy" decoding="async" src="${_tplEscapeHtml(recent[i].thumbnail)}" style="display:block;width:100%;height:100%;object-fit:contain;">`:'🎬'}</div>`).join('');
-    const date=new Date(Math.max(Date.parse(folder.updatedAt||folder.createdAt)||0,...members.map(t=>Date.parse(t.updatedAt||t.createdAt)||0))).toLocaleDateString('zh-CN');
-    return `<div class="tpl-folder-card" draggable="true" tabindex="0" role="button" aria-label="${_tplEscapeHtml(folder.name)}，${members.length} 个模板" title="双击打开文件夹；F2 修改名称" data-folder-id="${_tplEscapeHtml(folder.id)}" style="cursor:pointer;min-width:0;border-radius:18px;border:1px solid #ffffff12;overflow:hidden;background:#08080c;">
+function _renderTemplateFolderCard(folder, all) {
+    const directMembers = all.filter(t => _tplFolderData.assignments[t.id] === folder.id);
+    const childFolders = (_tplFolderData.folders || []).filter(f => f && f.parentId === folder.id);
+    const descIds = _collectTplDescendantFolderIds(folder.id, _tplFolderData.folders);
+    const previewMembers = directMembers.length > 0
+        ? directMembers
+        : all.filter(t => descIds.has(_tplFolderData.assignments[t.id] || ''));
+    const recent = [...previewMembers].sort((a, b) => (Date.parse(b.updatedAt || b.createdAt) || 0) - (Date.parse(a.updatedAt || a.createdAt) || 0));
+    const images = Array.from({ length: 4 }, (_, i) => `<div class="tpl-folder-preview" style="aspect-ratio:9/16;width:100%;min-height:0;overflow:hidden;border-radius:7px;background:#ffffff08;display:flex;align-items:center;justify-content:center;color:#8a6da055;">${recent[i]?.thumbnail ? `<img draggable="false" loading="lazy" decoding="async" src="${_tplEscapeHtml(recent[i].thumbnail)}" style="display:block;width:100%;height:100%;object-fit:contain;">` : '🎬'}</div>`).join('');
+    const date = new Date(Math.max(Date.parse(folder.updatedAt || folder.createdAt) || 0, ...previewMembers.map(t => Date.parse(t.updatedAt || t.createdAt) || 0))).toLocaleDateString('zh-CN');
+    const countLabel = childFolders.length > 0 && directMembers.length > 0
+        ? `${childFolders.length} 子文件夹 · ${directMembers.length} 工程`
+        : (childFolders.length > 0 ? `${childFolders.length} 个子文件夹` : `${directMembers.length} 个工程`);
+    return `<div class="tpl-folder-card" draggable="true" tabindex="0" role="button" aria-label="${_tplEscapeHtml(folder.name)}，${countLabel}" title="双击打开文件夹 · 右键菜单 · F2 修改名称" data-folder-id="${_tplEscapeHtml(folder.id)}" style="cursor:pointer;min-width:0;border-radius:18px;border:1px solid #ffffff12;overflow:hidden;background:#08080c;">
         <div class="tpl-folder-cover" style="aspect-ratio:9/16;position:relative;padding:calc(8px * var(--tpl-scale,1)) calc(12px * var(--tpl-scale,1)) calc(12px * var(--tpl-scale,1));box-sizing:border-box;background:#08080c;">
             <div class="tpl-folder-mark" style="position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(90deg,#8152b8,#39234f);"></div>
             <div style="position:relative;height:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:calc(8px * var(--tpl-scale,1));align-content:start;max-width:100%;margin:0 auto;">${images}</div>
         </div>
         <div class="tpl-card-info tpl-folder-info" style="padding:calc(12px * var(--tpl-scale,1)) calc(10px * var(--tpl-scale,1));background:#242424;"><div class="tpl-folder-name" title="双击修改名称" style="font-size:calc(12px * var(--tpl-scale,1));font-weight:500;line-height:1.5;text-align:center;color:#eee;overflow-wrap:anywhere;">${_tplEscapeHtml(folder.name)}</div>
-        <div class="tpl-meta" style="font-size:calc(10px * var(--tpl-scale,1));color:#999;margin-top:calc(9px * var(--tpl-scale,1));padding-top:calc(7px * var(--tpl-scale,1));border-top:1px solid #ffffff12;text-align:center;line-height:1.6;"><div>${_tplEscapeHtml(date)}</div><div>${members.length} 个模板</div></div></div></div>`;
+        <div class="tpl-meta" style="font-size:calc(10px * var(--tpl-scale,1));color:#999;margin-top:calc(9px * var(--tpl-scale,1));padding-top:calc(7px * var(--tpl-scale,1));border-top:1px solid #ffffff12;text-align:center;line-height:1.6;"><div>${_tplEscapeHtml(date)}</div><div>${_tplEscapeHtml(countLabel)}</div></div></div></div>`;
 }
 function _bindTemplateFolderCards(container) {
-    for(const card of container.querySelectorAll('.tpl-folder-card')) {
-        card.addEventListener('dblclick',()=>_openTemplateFolder(card.dataset.folderId));
-        card.addEventListener('keydown',event=>{if(event.target.isContentEditable)return;if(event.key==='Enter'){event.preventDefault();_openTemplateFolder(card.dataset.folderId);}else if(event.key==='F2'){event.preventDefault();_renameTemplateFolder(card.dataset.folderId);}});
-        card.querySelector('.tpl-folder-name').addEventListener('dblclick',event=>{event.stopPropagation();_renameTemplateFolder(card.dataset.folderId);});
-        card.addEventListener('dragover',event=>{if(Array.from(event.dataTransfer.types).includes('application/x-videokit-folder'))return;event.preventDefault();card.style.outline='2px solid #8b9cff';});
-        card.addEventListener('dragleave',()=>card.style.outline='');
-        card.addEventListener('drop',event=>{if(Array.from(event.dataTransfer.types).includes('application/x-videokit-folder'))return;event.preventDefault();event.stopPropagation();card.style.outline='';const ids=_templateDragIds(event);if(ids.length)_moveTemplateIds(ids,card.dataset.folderId);});
+    for (const card of container.querySelectorAll('.tpl-folder-card')) {
+        card.addEventListener('dblclick', () => _openTemplateFolder(card.dataset.folderId));
+        card.addEventListener('keydown', event => {
+            if (event.target.isContentEditable) return;
+            if (event.key === 'Enter') { event.preventDefault(); _openTemplateFolder(card.dataset.folderId); }
+            else if (event.key === 'F2') { event.preventDefault(); _renameTemplateFolder(card.dataset.folderId); }
+        });
+        card.querySelector('.tpl-folder-name')?.addEventListener('dblclick', event => { event.stopPropagation(); _renameTemplateFolder(card.dataset.folderId); });
+        card.addEventListener('contextmenu', event => {
+            if (event.target.isContentEditable) return;
+            event.preventDefault(); event.stopPropagation();
+            _showTemplateFolderContextMenu(event, card);
+        });
+        card.addEventListener('dragover', event => {
+            if (Array.from(event.dataTransfer.types).includes('application/x-videokit-folder')) return;
+            event.preventDefault();
+            card.style.outline = '2px solid #8b9cff';
+        });
+        card.addEventListener('dragleave', () => card.style.outline = '');
+        card.addEventListener('drop', event => {
+            if (Array.from(event.dataTransfer.types).includes('application/x-videokit-folder')) return;
+            event.preventDefault(); event.stopPropagation(); card.style.outline = '';
+            const ids = _templateDragIds(event);
+            if (ids.length) _moveTemplateIds(ids, card.dataset.folderId);
+        });
     }
-    const home=document.getElementById('tpl-folder-home');
-    home.ondragover=event=>{event.preventDefault();event.dataTransfer.dropEffect='move';home.style.background='#6366f144';};
-    home.ondragleave=()=>home.style.background='#ffffff08';
-    home.ondrop=event=>{event.preventDefault();event.stopPropagation();home.style.background='#ffffff08';if(Array.from(event.dataTransfer.types).includes('application/x-videokit-folder'))return;const ids=_templateDragIds(event);if(ids.length)_moveTemplateIds(ids,'');};
+    const bindBreadcrumbDropTarget = (el, targetFolderId) => {
+        if (!el) return;
+        if (!el.classList.contains('is-current') && el.id !== 'tpl-folder-home') {
+            el.onclick = () => _openTemplateFolder(targetFolderId);
+        }
+        el.ondragover = event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; el.style.background = '#6366f144'; };
+        el.ondragleave = () => { el.style.background = el.id === 'tpl-folder-home' ? '#ffffff08' : ''; };
+        el.ondrop = async event => {
+            event.preventDefault(); event.stopPropagation();
+            el.style.background = el.id === 'tpl-folder-home' ? '#ffffff08' : '';
+            const folderDragId = event.dataTransfer.getData('application/x-videokit-folder');
+            if (folderDragId) {
+                if (folderDragId !== targetFolderId) await _moveFolderIds([folderDragId], targetFolderId);
+                return;
+            }
+            const ids = _templateDragIds(event);
+            if (ids.length) await _moveTemplateIds(ids, targetFolderId);
+        };
+    };
+    bindBreadcrumbDropTarget(document.getElementById('tpl-folder-home'), '');
+    for (const chip of document.querySelectorAll('#tpl-breadcrumbs .tpl-breadcrumb-chip')) {
+        bindBreadcrumbDropTarget(chip, chip.dataset.folderId || '');
+    }
 }
 
 let _tplInlineEditing = null;
@@ -1453,6 +2477,8 @@ function _paintTemplateSelection() {
         card.classList.toggle('tpl-selected',!!selected);card.setAttribute('aria-selected',String(!!selected));
         card.style.boxShadow=selected?'inset 0 0 0 2px #8b9cff,0 0 0 1px #8b9cff':'';
         card.style.background=selected?'rgba(99,102,241,.18)':'rgba(255,255,255,.03)';
+        const cb=card.querySelector('.tpl-card-check');
+        if(cb){cb.textContent=selected?'✓':'';}
     }
     _updateTemplatePresetSelectionUI();
 }
@@ -1497,13 +2523,90 @@ function _initTemplateMarquee(container) {
 
 let _tplContextMenuCleanup=null;
 function _closeTemplateContextMenu(){if(_tplContextMenuCleanup)_tplContextMenuCleanup();}
-function _showTemplateContextMenu(event,card){
+function _showTemplateFolderContextMenu(event, card) {
     _closeTemplateContextMenu();
-    const modal=document.getElementById('template-library-modal'),id=card.dataset.id,name=card.dataset.name || '';
-    if(!modal._selectedTemplateIds.has(id)){modal._selectedTemplateIds=new Set([id]);_paintTemplateSelection();}
-    const items=[['载入当前工程',()=>_loadTemplateInCurrentWindow(id)],['在新窗口打开',()=>_openTemplateInWindow(id,name)],['导出模板配置',()=>_exportTemplate(id,name)],['打包导出模板和素材',()=>_exportArchiveTemplate(id,name)],['重命名',()=>_renameTemplate(id)],['删除模板',()=>_deleteTemplate(id,name)]];
-    if(_tplFolderId)items.splice(4,0,['移出文件夹',()=>{const ids=(modal._templateSummaries||[]).filter(t=>modal._selectedTemplateIds.has(t.id)).map(t=>t.id);return _moveTemplateIds(ids,'');}]);
-    _showTemplateTextMenu(event,items,card);
+    const folderId = card.dataset.folderId || '';
+    const descIds = _collectTplDescendantFolderIds(folderId, _tplFolderData.folders);
+    const items = [
+        ['📂 打开文件夹', () => _openTemplateFolder(folderId)],
+        ['📑 应用本文件夹全部标签', () => window.reelsApplyFolderById(folderId)],
+        ['📁 在此新建子文件夹', () => _newTemplateFolder(folderId)],
+        ['', null],
+        ['✏️ 重命名文件夹', () => _renameTemplateFolder(folderId)],
+        ['📦 移动到其他文件夹...', async () => {
+            const target = await _pickLibraryTargetFolder({ title: '移动文件夹到...', excludeFolderIds: [...descIds] });
+            if (target !== null) await _moveFolderIds([folderId], target);
+        }],
+        ['🗑️ 删除空文件夹', () => _deleteTemplateFolder(folderId)],
+    ];
+    _showTemplateTextMenu(event, items, card);
+}
+
+async function _splitSavedTemplateIntoFolder(id, fallbackName = '') {
+    try {
+        const resp = await apiFetch(`${API_BASE}/templates/get`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        const parsed = await resp.json();
+        const tplData = parsed.data || parsed;
+        if (!tplData || !tplData.projectData) throw new Error(parsed.error || '工程缺少数据');
+        const folderBaseName = String(tplData.name || fallbackName || '拆分工程').trim() || '拆分工程';
+        const extracted = _extractTabsFromProjectPayload(tplData, folderBaseName);
+        if (!extracted || extracted.mode !== 'multi-tab' || extracted.items.length <= 1) {
+            showToast?.('该工程内部只有 1 个标签页，无需拆分', 'info');
+            return false;
+        }
+        const parentFolderId = _tplFolderData?.assignments?.[id] ?? _tplFolderId ?? '';
+        showToast?.(`已识别内部 ${extracted.items.length} 个标签页，正在拆分存入文件夹...`, 'info');
+        const res = await _archiveGroupsToLibrary(extracted.items, {
+            folderMode: 'new-folder',
+            folderName: folderBaseName,
+            parentFolderId,
+            splitByGroup: true,
+            bindWorkspace: false,
+            captureThumbnails: true,
+            syncPresetAssets: false,
+            style: extracted.style,
+            exportOpts: extracted.exportOpts,
+            watermarks: extracted.watermarks,
+            backgroundLibrary: extracted.backgroundLibrary,
+        });
+        _tplFolderId = res.rootFolderId;
+        await _refreshTemplateList();
+        showToast?.(`✅ 已拆分出 ${res.savedResults.length} 个独立标签卡片到「${res.rootFolderPath}」`, 'success', 5000);
+        return true;
+    } catch (err) {
+        showToast?.(`拆分工程标签失败：${err.message}`, 'error');
+        return false;
+    }
+}
+
+function _showTemplateContextMenu(event, card) {
+    _closeTemplateContextMenu();
+    const modal = document.getElementById('template-library-modal'), id = card.dataset.id, name = card.dataset.name || '';
+    if (!modal._selectedTemplateIds.has(id)) { modal._selectedTemplateIds = new Set([id]); _paintTemplateSelection(); }
+    const selectedIds = (modal._templateSummaries || []).filter(t => modal._selectedTemplateIds.has(t.id)).map(t => t.id);
+    const activeIds = selectedIds.length ? selectedIds : [id];
+    const items = [
+        ['✅ 载入到工作区', () => _loadTemplateInCurrentWindow(id)],
+        ['📥 追加到当前工作区', () => _loadTemplateInCurrentWindow(id, { append: true })],
+        ...(activeIds.length > 1 ? [[`📑 应用所选 ${activeIds.length} 个标签到工作区`, () => tplApplySelectedProjects()]] : []),
+        ['🪄 识别并拆分内部标签页', () => _splitSavedTemplateIntoFolder(id, name)],
+        ['🪟 在新窗口打开', () => _openTemplateInWindow(id, name)],
+        ['', null],
+        ['📦 移动到文件夹...', async () => {
+            const target = await _pickLibraryTargetFolder({ title: `移动 ${activeIds.length} 个工程到...` });
+            if (target !== null) await _moveTemplateIds(activeIds, target);
+        }],
+        ...(_tplFolderId ? [[`↩ 移出到${_getParentFolderId(_tplFolderId) ? '上级文件夹' : '主工程库'}`, () => _moveTemplateIds(activeIds, _getParentFolderId(_tplFolderId))]] : []),
+        ['导出工程配置', () => _exportTemplate(id, name)],
+        ['打包导出工程和素材', () => _exportArchiveTemplate(id, name)],
+        ['重命名', () => _renameTemplate(id)],
+        ['删除模板', () => _deleteTemplate(id, name)],
+    ];
+    _showTemplateTextMenu(event, items, card);
 }
 function _showTemplateTextMenu(event,items,focusTarget){
     _closeTemplateContextMenu();

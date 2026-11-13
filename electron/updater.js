@@ -148,14 +148,67 @@ function detectPortableMode() {
 }
 
 /**
+ * 读取更新通道与提醒偏好（正式版提醒默认开启，测试版提醒默认关闭）
+ */
+function getUpdatePrefs() {
+    const notifyStable = store ? store.get('notifyStableUpdates', true) !== false : true;
+    const notifyBeta = store ? store.get('notifyBetaUpdates', false) === true : false;
+    return {
+        channel: notifyBeta ? 'beta' : 'stable',
+        notifyStable,
+        notifyBeta,
+    };
+}
+
+/**
  * 获取当前更新通道
  * @returns {'stable' | 'beta'}
  */
 function getUpdateChannel() {
-    if (store) {
-        return store.get('updateChannel', 'stable');
+    return getUpdatePrefs().channel;
+}
+
+function _applyChannelToAutoUpdater(prefs = getUpdatePrefs()) {
+    if (!autoUpdater) return;
+    autoUpdater.allowPrerelease = Boolean(prefs.notifyBeta);
+
+    // 关键：如果当前是测试版，关闭测试版并切回 stable 时允许降级到正式版
+    const currentVersion = require('electron').app.getVersion();
+    const currentIsBeta = isBetaVersion(currentVersion);
+    if (!prefs.notifyBeta && currentIsBeta) {
+        autoUpdater.allowDowngrade = true;
+        log(`[Updater] 当前为测试版 v${currentVersion}，已启用降级模式，可回退到正式版`);
+    } else {
+        autoUpdater.allowDowngrade = false;
     }
-    return 'stable';
+
+    log(`[Updater] 更新通道已切换为: ${prefs.channel} (allowPrerelease=${autoUpdater.allowPrerelease}, allowDowngrade=${autoUpdater.allowDowngrade}, notifyStable=${prefs.notifyStable}, notifyBeta=${prefs.notifyBeta})`);
+}
+
+/**
+ * 更新提醒偏好及更新通道
+ */
+function setUpdatePrefs(prefs = {}) {
+    const cur = getUpdatePrefs();
+    let nextStable = cur.notifyStable;
+    let nextBeta = cur.notifyBeta;
+    if (typeof prefs.notifyStable === 'boolean') {
+        nextStable = prefs.notifyStable;
+    }
+    if (typeof prefs.notifyBeta === 'boolean') {
+        nextBeta = prefs.notifyBeta;
+    } else if (typeof prefs.channel === 'string') {
+        nextBeta = prefs.channel === 'beta';
+    }
+    const nextChannel = nextBeta ? 'beta' : 'stable';
+    if (store) {
+        store.set('notifyStableUpdates', nextStable);
+        store.set('notifyBetaUpdates', nextBeta);
+        store.set('updateChannel', nextChannel);
+    }
+    const resolved = getUpdatePrefs();
+    _applyChannelToAutoUpdater(resolved);
+    return resolved;
 }
 
 /**
@@ -163,33 +216,26 @@ function getUpdateChannel() {
  * @param {'stable' | 'beta'} channel
  */
 function setUpdateChannel(channel) {
-    const valid = ['stable', 'beta'];
-    if (!valid.includes(channel)) channel = 'stable';
-    if (store) {
-        store.set('updateChannel', channel);
-    }
-    // 立即生效
-    if (!autoUpdater) return;
-    autoUpdater.allowPrerelease = (channel === 'beta');
-
-    // 关键：如果当前是测试版，切回 stable 时允许降级到正式版
-    const currentVersion = require('electron').app.getVersion();
-    const currentIsBeta = isBetaVersion(currentVersion);
-    if (channel === 'stable' && currentIsBeta) {
-        autoUpdater.allowDowngrade = true;
-        log(`[Updater] 当前为测试版 v${currentVersion}，已启用降级模式，可回退到正式版`);
-    } else {
-        autoUpdater.allowDowngrade = false;
-    }
-
-    log(`[Updater] 更新通道已切换为: ${channel} (allowPrerelease=${autoUpdater.allowPrerelease}, allowDowngrade=${autoUpdater.allowDowngrade})`);
+    return setUpdatePrefs({ channel: channel === 'beta' ? 'beta' : 'stable' });
 }
 
 /**
  * 检测当前版本是否为测试版
  */
 function isBetaVersion(version) {
-    return /-(beta|alpha|rc|dev)/.test(version || '');
+    return /-(beta|alpha|rc|dev)\b/i.test(version || '');
+}
+
+function buildUpdateAvailableMessage(version, isBeta) {
+    return isBeta
+        ? `发现测试版 v${version}，是否尝试？（备注：测试版本不稳定，不建议尝试）`
+        : `最终版本 v${version} 更新了，是否尝试？`;
+}
+
+function shouldSuppressUpdateToast(isBeta, isManual) {
+    if (isManual) return false;
+    const prefs = getUpdatePrefs();
+    return isBeta ? !prefs.notifyBeta : !prefs.notifyStable;
 }
 
 // ==================== 绿色版更新逻辑 ====================
@@ -222,16 +268,18 @@ async function fetchLatestZipUrl(allowPrerelease) {
     }
 
     const currentVersion = app.getVersion();
+    const candidates = [];
 
     // 过滤：选择合适的 release
     for (const release of releases) {
         if (release.draft) continue;
-        if (!allowPrerelease && release.prerelease) continue;
 
         const tagVersion = (release.tag_name || '').replace(/^v/, '');
         if (!tagVersion) continue;
+        const releaseIsBeta = Boolean(release.prerelease || isBetaVersion(tagVersion));
+        if (!allowPrerelease && releaseIsBeta) continue;
 
-        // 比较版本号，只更新到更高版本（或降级时也允许）
+        // 比较版本号，只更新到更高版本
         if (compareVersions(tagVersion, currentVersion) <= 0) {
             continue;
         }
@@ -243,14 +291,19 @@ async function fetchLatestZipUrl(allowPrerelease) {
         });
 
         if (zipAsset) {
-            return {
+            candidates.push({
                 version: tagVersion,
                 zipUrl: zipAsset.browser_download_url,
                 zipSize: zipAsset.size,
                 releaseNotes: release.body || '',
-                isBeta: release.prerelease,
-            };
+                isBeta: releaseIsBeta,
+            });
         }
+    }
+
+    if (candidates.length > 0) {
+        candidates.sort((a, b) => compareVersions(b.version, a.version));
+        return candidates[0];
     }
 
     return null; // 没有新版本
@@ -461,52 +514,80 @@ async function portableUpdate(info) {
 /**
  * 绿色版检查更新
  */
-async function portableCheckForUpdates() {
+async function portableCheckForUpdates(options = {}) {
+    const isManual = Boolean(options && options.manual);
     try {
-        const channel = getUpdateChannel();
-        sendToRenderer('update-status', { status: 'checking', message: '正在检查更新...' });
+        const prefs = getUpdatePrefs();
+        sendToRenderer('update-status', { status: 'checking', message: '正在检查更新...', manual: isManual });
 
-        const info = await fetchLatestZipUrl(channel === 'beta');
+        const info = await fetchLatestZipUrl(Boolean(prefs.notifyBeta));
 
         if (!info) {
             log('[Updater-Portable] 当前已是最新版本');
-            sendToRenderer('update-status', { status: 'up-to-date', message: '当前已是最新版本' });
+            sendToRenderer('update-status', { status: 'up-to-date', message: '当前已是最新版本', manual: isManual });
             return { success: true, version: null };
         }
 
-        const isBeta = info.isBeta;
+        const isBeta = Boolean(info.isBeta);
         const channelLabel = isBeta ? '🧪 测试版' : '✅ 正式版';
-        log(`[Updater-Portable] 发现新版本: v${info.version} (${channelLabel})`);
+        const availableMsg = buildUpdateAvailableMessage(info.version, isBeta);
+        const notifySuppressed = shouldSuppressUpdateToast(isBeta, isManual);
+        log(`[Updater-Portable] 发现新版本: v${info.version} (${channelLabel}, suppressed=${notifySuppressed})`);
 
         _pendingPortableUpdate = info;
 
         sendToRenderer('update-status', {
             status: 'available',
-            message: `发现新版本 v${info.version} (${channelLabel})`,
+            message: availableMsg,
             version: info.version,
             isBeta,
+            manual: isManual,
+            notifySuppressed,
             zipSize: info.zipSize || 0,
             releaseNotes: info.releaseNotes,
         });
 
         // 不再弹出阻塞式更新询问框，由渲染层右上角更新提醒卡片非阻塞提示
 
-        return { success: true, version: info.version };
+        return { success: true, version: info.version, isBeta };
     } catch (err) {
         log(`[Updater-Portable] 检查更新失败: ${err.message}`);
-        sendToRenderer('update-status', { status: 'error', message: `更新检查失败: ${err.message}` });
+        sendToRenderer('update-status', { status: 'error', message: `更新检查失败: ${err.message}`, manual: isManual });
         return { success: false, error: err.message };
     }
 }
 
 // ==================== 主初始化 ====================
 
+function _buildUpdatePrefsPayload() {
+    const prefs = getUpdatePrefs();
+    const ver = app.getVersion();
+    return {
+        ...prefs,
+        currentVersion: ver,
+        isBeta: isBetaVersion(ver),
+        isPortable: _isPortable,
+    };
+}
+
 function initAutoUpdater(win, logFn) {
     mainWindow = win;
     if (logFn) log = logFn;
 
+    // 偏好读写始终可用（含开发/预览模式）
+    ipcMain.handle('get-update-channel', () => _buildUpdatePrefsPayload());
+    ipcMain.handle('get-update-prefs', () => _buildUpdatePrefsPayload());
+    ipcMain.handle('set-update-channel', (event, ch) => {
+        setUpdateChannel(ch);
+        return { success: true, ..._buildUpdatePrefsPayload() };
+    });
+    ipcMain.handle('set-update-prefs', (event, prefs) => {
+        setUpdatePrefs(prefs || {});
+        return { success: true, ..._buildUpdatePrefsPayload() };
+    });
+
     if (!autoUpdater) {
-        log('[Updater] autoUpdater 不可用（开发模式），跳过初始化');
+        log('[Updater] autoUpdater 不可用（开发模式），跳过自动更新检查初始化');
         return;
     }
 
@@ -521,16 +602,17 @@ function initAutoUpdater(win, logFn) {
     _portableDir = path.dirname(process.execPath);
     log(`[Updater] 运行模式: ${_isPortable ? '绿色版 (portable)' : '安装版 (NSIS)'}, 目录: ${_portableDir}`);
 
-    // 读取用户通道偏好
-    const channel = getUpdateChannel();
+    // 读取用户通道与提醒偏好
+    const initPrefs = getUpdatePrefs();
 
     if (_isPortable) {
         // ═══════════════ 绿色版：自定义更新流程 ═══════════════
-        log(`[Updater-Portable] 初始化绿色版更新 — 通道: ${channel}`);
+        log(`[Updater-Portable] 初始化绿色版更新 — 通道: ${initPrefs.channel}, 正式版提醒: ${initPrefs.notifyStable}, 测试版提醒: ${initPrefs.notifyBeta}`);
 
         // IPC: 手动检查更新
-        ipcMain.handle('check-for-updates', async () => {
-            return portableCheckForUpdates();
+        ipcMain.handle('check-for-updates', async (_event, opts) => {
+            const isManual = opts && typeof opts.manual === 'boolean' ? opts.manual : true;
+            return portableCheckForUpdates({ manual: isManual });
         });
 
         // IPC: 手动下载更新（绿色版下载 + 解压一体化）
@@ -557,23 +639,15 @@ function initAutoUpdater(win, logFn) {
             }
         });
 
-        // IPC: 获取/设置通道
-        ipcMain.handle('get-update-channel', () => ({
-            channel: getUpdateChannel(),
-            currentVersion: app.getVersion(),
-            isBeta: isBetaVersion(app.getVersion()),
-            isPortable: true,
-        }));
-
-        ipcMain.handle('set-update-channel', (event, ch) => {
-            setUpdateChannel(ch);
-            return { success: true, channel: getUpdateChannel() };
-        });
-
-        // 启动后延迟 8 秒自动检查
+        // 启动后延迟 8 秒自动检查（当开启任意提醒开关时触发）
         setTimeout(() => {
+            const curPrefs = getUpdatePrefs();
+            if (!curPrefs.notifyStable && !curPrefs.notifyBeta) {
+                log('[Updater-Portable] 已关闭正式版与测试版自动更新提醒，跳过启动检查');
+                return;
+            }
             log('[Updater-Portable] 自动检查更新...');
-            portableCheckForUpdates().catch(err => {
+            portableCheckForUpdates({ manual: false }).catch(err => {
                 log(`[Updater-Portable] 自动检查失败: ${err.message}`);
             });
         }, 8000);
@@ -584,31 +658,30 @@ function initAutoUpdater(win, logFn) {
 
     // ═══════════════ 安装版：标准 electron-updater 流程 ═══════════════
 
+    let _currentCheckIsManual = false;
+
     // 配置
     autoUpdater.autoDownload = false;           // 不自动下载，先提示用户
     autoUpdater.autoInstallOnAppQuit = true;    // 退出时自动安装
-    autoUpdater.allowPrerelease = (channel === 'beta'); // 是否接收测试版
+    _applyChannelToAutoUpdater(initPrefs);
 
-    // 如果当前是测试版且用户选了 stable，允许降级
-    const currentVersion = require('electron').app.getVersion();
-    if (channel === 'stable' && isBetaVersion(currentVersion)) {
-        autoUpdater.allowDowngrade = true;
-        log(`[Updater] 当前测试版 v${currentVersion}，启用降级模式`);
-    }
-
-    log(`[Updater] 初始化 — 通道: ${channel}, allowPrerelease: ${autoUpdater.allowPrerelease}, allowDowngrade: ${autoUpdater.allowDowngrade || false}`);
+    log(`[Updater] 初始化 — 通道: ${initPrefs.channel}, allowPrerelease: ${autoUpdater.allowPrerelease}, allowDowngrade: ${autoUpdater.allowDowngrade || false}, notifyStable: ${initPrefs.notifyStable}, notifyBeta: ${initPrefs.notifyBeta}`);
 
     // ==================== 事件监听 ====================
 
     autoUpdater.on('checking-for-update', () => {
         log('[Updater] 正在检查更新...');
-        sendToRenderer('update-status', { status: 'checking', message: '正在检查更新...' });
+        sendToRenderer('update-status', { status: 'checking', message: '正在检查更新...', manual: _currentCheckIsManual });
     });
 
     autoUpdater.on('update-available', (info) => {
         const isBeta = isBetaVersion(info.version);
+        const isManual = _currentCheckIsManual;
+        _currentCheckIsManual = false;
         const channelLabel = isBeta ? '🧪 测试版' : '✅ 正式版';
-        log(`[Updater] 发现新版本: v${info.version} (${channelLabel})`);
+        const availableMsg = buildUpdateAvailableMessage(info.version, isBeta);
+        const notifySuppressed = shouldSuppressUpdateToast(isBeta, isManual);
+        log(`[Updater] 发现新版本: v${info.version} (${channelLabel}, suppressed=${notifySuppressed})`);
 
         // 兼容处理不同格式的 releaseNotes (string / Array)
         let notesText = '无更新说明';
@@ -630,9 +703,11 @@ function initAutoUpdater(win, logFn) {
 
         sendToRenderer('update-status', {
             status: 'available',
-            message: `发现新版本 v${info.version} (${channelLabel})`,
+            message: availableMsg,
             version: info.version,
             isBeta,
+            manual: isManual,
+            notifySuppressed,
             releaseNotes: notesText,
             releaseDate: info.releaseDate || '',
         });
@@ -640,9 +715,11 @@ function initAutoUpdater(win, logFn) {
         // 不再弹出阻塞式更新询问框，由渲染层右上角更新提醒卡片非阻塞引导下载
     });
 
-    autoUpdater.on('update-not-available', (info) => {
+    autoUpdater.on('update-not-available', () => {
+        const isManual = _currentCheckIsManual;
+        _currentCheckIsManual = false;
         log('[Updater] 当前已是最新版本');
-        sendToRenderer('update-status', { status: 'up-to-date', message: '当前已是最新版本' });
+        sendToRenderer('update-status', { status: 'up-to-date', message: '当前已是最新版本', manual: isManual });
     });
 
     autoUpdater.on('download-progress', (progress) => {
@@ -672,21 +749,26 @@ function initAutoUpdater(win, logFn) {
     });
 
     autoUpdater.on('error', (error) => {
+        const isManual = _currentCheckIsManual;
+        _currentCheckIsManual = false;
         log(`[Updater] 更新错误: ${error.message}`);
         sendToRenderer('update-status', {
             status: 'error',
             message: `更新检查失败: ${error.message}`,
+            manual: isManual,
         });
     });
 
     // ==================== IPC 接口 ====================
 
     // 手动检查更新
-    ipcMain.handle('check-for-updates', async () => {
+    ipcMain.handle('check-for-updates', async (_event, opts) => {
+        _currentCheckIsManual = opts && typeof opts.manual === 'boolean' ? opts.manual : true;
         try {
             const result = await autoUpdater.checkForUpdates();
             return { success: true, version: result?.updateInfo?.version };
         } catch (error) {
+            _currentCheckIsManual = false;
             return { success: false, error: error.message };
         }
     });
@@ -712,25 +794,17 @@ function initAutoUpdater(win, logFn) {
         }
     });
 
-    // 获取/设置更新通道
-    ipcMain.handle('get-update-channel', () => {
-        return {
-            channel: getUpdateChannel(),
-            currentVersion: require('electron').app.getVersion(),
-            isBeta: isBetaVersion(require('electron').app.getVersion()),
-            isPortable: false,
-        };
-    });
-
-    ipcMain.handle('set-update-channel', (event, channel) => {
-        setUpdateChannel(channel);
-        return { success: true, channel: getUpdateChannel() };
-    });
-
-    // 启动后延迟 5 秒自动检查更新
+    // 启动后延迟 5 秒自动检查更新（当开启任意提醒开关时触发）
     setTimeout(() => {
+        const curPrefs = getUpdatePrefs();
+        if (!curPrefs.notifyStable && !curPrefs.notifyBeta) {
+            log('[Updater] 已关闭正式版与测试版自动更新提醒，跳过启动检查');
+            return;
+        }
         log('[Updater] 自动检查更新...');
+        _currentCheckIsManual = false;
         autoUpdater.checkForUpdates().catch(err => {
+            _currentCheckIsManual = false;
             log(`[Updater] 自动检查失败: ${err.message}`);
         });
     }, 5000);

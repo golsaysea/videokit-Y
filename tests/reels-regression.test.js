@@ -4432,22 +4432,27 @@ test('starry-lantern theme, Chinese flower lantern SVG, command palette, and fil
 
     const freshBoot = runThemeSandbox({});
     assert.ok(freshBoot.sandbox.window.THEME_PRESETS['starry-lantern'], 'THEME_PRESETS should include starry-lantern');
+    assert.ok(freshBoot.sandbox.window.THEME_PRESETS['christmas-eve'], 'THEME_PRESETS should include christmas-eve');
     assert.ok(freshBoot.sandbox.window.THEME_PRESETS['starry-ink'], 'THEME_PRESETS should include starry-ink');
     for (const existing of ['dark', 'light', 'eyecare', 'midnight', 'contrast']) {
         assert.ok(freshBoot.sandbox.window.THEME_PRESETS[existing], `Existing theme '${existing}' must be preserved`);
     }
-    assert.strictEqual(freshBoot.store['videokit-theme'], 'starry-lantern', 'Fresh boot should default to starry-lantern');
-    assert.strictEqual(freshBoot.store['vk_starry_default_v1'], '1');
-    assert.ok(freshBoot.bodyClassesSet.has('theme-starry-lantern'));
-    assert.strictEqual(freshBoot.getStudioTheme(), 'starry-lantern');
+    assert.strictEqual(freshBoot.store['videokit-theme'], 'christmas-eve', 'Fresh boot should default to christmas-eve');
+    assert.strictEqual(freshBoot.store['vk_christmas_default_v1'], '1');
+    assert.ok(freshBoot.bodyClassesSet.has('theme-christmas-eve'));
+    assert.strictEqual(freshBoot.getStudioTheme(), 'christmas-eve');
 
-    const explicitDarkBoot = runThemeSandbox({ 'videokit-theme': 'dark', 'vk_starry_default_v1': '1' });
+    const migratedLegacyStarry = runThemeSandbox({ 'videokit-theme': 'starry-lantern', 'vk_starry_default_v1': '1' });
+    assert.strictEqual(migratedLegacyStarry.store['videokit-theme'], 'christmas-eve', 'Legacy default starry-lantern should migrate once to christmas-eve');
+    assert.ok(migratedLegacyStarry.bodyClassesSet.has('theme-christmas-eve'));
+
+    const explicitDarkBoot = runThemeSandbox({ 'videokit-theme': 'dark', 'vk_christmas_default_v1': '1' });
     assert.strictEqual(explicitDarkBoot.store['videokit-theme'], 'dark', 'Explicit dark preference after migration must stay dark');
-    assert.ok(!explicitDarkBoot.bodyClassesSet.has('theme-starry-lantern'));
+    assert.ok(!explicitDarkBoot.bodyClassesSet.has('theme-christmas-eve'));
 
     // 5) Electron instant dark window background & packaged dist file:// compatibility
     const mainJs = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
-    assert.match(mainJs, /backgroundColor:\s*'#060913'/, 'Electron mainWindow should pre-paint deep starry dark background');
+    assert.match(mainJs, /backgroundColor:\s*'#060d0a'/, 'Electron mainWindow should pre-paint deep Christmas pine dark background');
     const distHtmlPath = path.join(ROOT, 'dist/index.html');
     if (fs.existsSync(distHtmlPath)) {
         const distHtml = fs.readFileSync(distHtmlPath, 'utf8');
@@ -6757,6 +6762,705 @@ test('Cloud Hub SSRF & unsafe protocol/prototype guards reject dangerous inputs'
         fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
 });
+
+test('Project Library nested 3-level folders, move cycle guard, scoped rename & per-folder reorder', () => {
+    const os = require('node:os');
+    const Module = require('node:module');
+    const origLoad = Module._load;
+    const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-tpl-nest-'));
+    const templatesResolved = require.resolve('../electron/services/templates');
+    const mockApp = { getPath: () => tmpUserData };
+    const mockShared = {
+        getCandidateTemplateDirs: () => [path.join(tmpUserData, 'videokit-templates')],
+        isIsolatedTestProfile: () => true,
+    };
+
+    try {
+        Module._load = function (request, parent, isMain) {
+            if (request === 'electron') return { app: mockApp };
+            if (request === './sharedProfile' && parent && parent.filename.endsWith(`${path.sep}templates.js`)) {
+                return mockShared;
+            }
+            return origLoad.apply(this, arguments);
+        };
+        delete require.cache[templatesResolved];
+        const templates = require('../electron/services/templates');
+
+        const l1 = templates.createTemplateFolder('2026-11').folder;
+        const l1b = templates.createTemplateFolder('2026-12').folder;
+        const l2 = templates.createTemplateFolder('祈祷赛道', l1.id).folder;
+        const l2SameInOtherParent = templates.createTemplateFolder('祈祷赛道', l1b.id).folder;
+        const l3 = templates.createTemplateFolder('早上账号组', l2.id).folder;
+        const l3Sib = templates.createTemplateFolder('晚上账号组', l2.id).folder;
+
+        assert.equal(l2.parentId, l1.id);
+        assert.equal(l2SameInOtherParent.parentId, l1b.id);
+        assert.equal(l3.parentId, l2.id);
+
+        assert.throws(() => templates.createTemplateFolder('祈祷赛道', l1.id), /同名文件夹/);
+        assert.throws(() => templates.moveTemplateFolders([l1.id], l3.id), /子文件夹/);
+        assert.throws(() => templates.moveTemplateFolders([l1.id], l1.id), /自己/);
+        assert.throws(() => templates.deleteEmptyTemplateFolder(l1.id), /子文件夹/);
+
+        const p1 = templates.saveTemplate({
+            name: '层级1直接工程',
+            folderId: l1.id,
+            projectData: { tasks: [{ baseName: 't1' }] },
+        });
+        const p3 = templates.saveTemplate({
+            name: '层级3账号1',
+            folderId: l3.id,
+            thumbnail: 'data:image/png;base64,thumb_lvl3',
+            projectData: { tasks: [{ baseName: 't3' }] },
+        });
+        assert.throws(() => templates.deleteEmptyTemplateFolder(l3.id), /移出文件夹内的工程/);
+
+        const fetched = templates.getTemplatesByIds([p3.id, p1.id]);
+        assert.equal(fetched.length, 2);
+        assert.equal(fetched[0].id, p3.id);
+        assert.equal(fetched[0].projectData.tasks[0].baseName, 't3');
+        assert.equal(fetched[1].id, p1.id);
+
+        // Reorder Level-1 directory (child folder + direct project) independently from root
+        templates.reorderTemplateLibrary([`t:${p1.id}`, `f:${l2.id}`], l1.id);
+        const foldersState = templates.readTemplateFolders();
+        assert.deepEqual(foldersState.folderOrders[l1.id], [`t:${p1.id}`, `f:${l2.id}`]);
+
+        // Move empty sibling folder l3Sib from l2 -> l1b cleanly
+        templates.moveTemplateFolders([l3Sib.id], l1b.id);
+        const moved = templates.readTemplateFolders().folders.find(f => f.id === l3Sib.id);
+        assert.equal(moved.parentId, l1b.id);
+
+        // Once l3Sib has no children or templates, delete succeeds
+        assert.equal(templates.deleteEmptyTemplateFolder(l3Sib.id).success, true);
+    } finally {
+        Module._load = origLoad;
+        delete require.cache[templatesResolved];
+        fs.rmSync(tmpUserData, { recursive: true, force: true });
+    }
+});
+
+test('Project Library strict Level-3 workspace + Batch Table + working panel sync & thumbnails', async () => {
+    const foldersDb = [
+        { id: 'f_lvl1', name: '一级', parentId: '', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+        { id: 'f_lvl2', name: '二级', parentId: 'f_lvl1', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+        { id: 'f_lvl3', name: '三级', parentId: 'f_lvl2', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+        { id: 'f_lvl3_sib', name: '三级兄弟', parentId: 'f_lvl2', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+        { id: 'f_lvl4', name: '四级子目录', parentId: 'f_lvl3', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z' },
+    ];
+    const assignmentsDb = {
+        tpl_l1: 'f_lvl1',
+        tpl_l2: 'f_lvl2',
+        tpl_sib3: 'f_lvl3_sib',
+        tpl_l4: 'f_lvl4',
+    };
+    const templatesDb = new Map([
+        ['tpl_l1', { id: 'tpl_l1', name: '一级直属', thumbnail: 'data:image/png;base64,l1', updatedAt: '2026-11-01T00:00:00Z', projectData: { tasks: [{ id: 'x1', baseName: 'l1_task' }] } }],
+        ['tpl_l2', { id: 'tpl_l2', name: '二级直属', thumbnail: 'data:image/png;base64,l2', updatedAt: '2026-11-01T00:00:00Z', projectData: { tasks: [{ id: 'x2', baseName: 'l2_task' }] } }],
+        ['tpl_sib3', { id: 'tpl_sib3', name: '兄弟文件夹工程', thumbnail: 'data:image/png;base64,sib3', updatedAt: '2026-11-01T00:00:00Z', projectData: { tasks: [{ id: 'x3', baseName: 'sib3_task' }] } }],
+        ['tpl_l4', { id: 'tpl_l4', name: '四级子工程', thumbnail: 'data:image/png;base64,l4', updatedAt: '2026-11-01T00:00:00Z', projectData: { tasks: [{ id: 'x4', baseName: 'l4_task' }] } }],
+    ]);
+    for (let i = 1; i <= 10; i++) {
+        const id = `tpl_3_${i}`;
+        assignmentsDb[id] = 'f_lvl3';
+        templatesDb.set(id, {
+            id,
+            name: `三级标签_${i}`,
+            thumbnail: `data:image/png;base64,thumb_${i}`,
+            updatedAt: `2026-11-13T08:${String(i).padStart(2, '0')}:00Z`,
+            projectData: {
+                tasks: [{ id: `task_${i}`, baseName: `video_${i}`, txtContent: `hello_${i}` }],
+                style: { fontSize: 52 },
+            },
+        });
+    }
+
+    const savedBackPayloads = [];
+    const apiFetchMock = async (url, init = {}) => {
+        const body = init.body ? JSON.parse(init.body) : {};
+        const okJson = (data) => ({ ok: true, status: 200, json: async () => ({ data }) });
+        if (String(url).endsWith('/templates/folders/list')) {
+            return okJson({ folders: foldersDb, assignments: assignmentsDb, folderOrders: {} });
+        }
+        if (String(url).endsWith('/templates/list')) {
+            const list = [...templatesDb.values()].map(t => ({
+                id: t.id, name: t.name, thumbnail: t.thumbnail, updatedAt: t.updatedAt, taskCount: t.projectData.tasks.length,
+            }));
+            return okJson(list);
+        }
+        if (String(url).endsWith('/templates/get-many')) {
+            const list = (body.ids || []).map(id => templatesDb.get(id)).filter(Boolean);
+            return okJson(list);
+        }
+        if (String(url).endsWith('/templates/get')) {
+            return okJson(templatesDb.get(body.id) || null);
+        }
+        if (String(url).endsWith('/templates/save')) {
+            savedBackPayloads.push(body);
+            const id = body.id || `tpl_new_${savedBackPayloads.length}`;
+            const updated = {
+                id,
+                name: body.name,
+                thumbnail: body.thumbnail || '',
+                updatedAt: '2026-11-13T09:30:00Z',
+                projectData: body.projectData,
+            };
+            templatesDb.set(id, updated);
+            if (body.folderId !== undefined) {
+                if (body.folderId) assignmentsDb[id] = body.folderId;
+                else delete assignmentsDb[id];
+            }
+            return okJson({ id, success: true });
+        }
+        if (String(url).endsWith('/templates/rename')) {
+            const t = templatesDb.get(body.id);
+            if (t) t.name = body.name;
+            return okJson({ success: true });
+        }
+        return okJson({ success: true });
+    };
+
+    const makeEl = (overrides = {}) => ({
+        value: '',
+        checked: false,
+        disabled: false,
+        textContent: '',
+        innerHTML: '',
+        style: {},
+        dataset: {},
+        options: [],
+        children: [],
+        classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+        appendChild() {},
+        removeChild() {},
+        remove() {},
+        contains: () => false,
+        addEventListener() {},
+        setAttribute() {},
+        focus() {},
+        click() {},
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0 }),
+        getContext: () => ({
+            font: '', globalAlpha: 1, save() {}, restore() {}, beginPath() {}, closePath() {},
+            moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {}, arc() {}, arcTo() {},
+            rect() {}, clip() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {}, clearRect() {},
+            fillText() {}, strokeText() {}, translate() {}, rotate() {}, scale() {}, setLineDash() {},
+            createPattern: () => ({}), createLinearGradient: () => ({ addColorStop() {} }),
+            createRadialGradient: () => ({ addColorStop() {} }),
+            measureText: (txt) => ({ width: String(txt || '').length * 10 }),
+        }),
+        ...overrides,
+    });
+    const domElements = new Map([
+        ['reels-task-list', makeEl()],
+        ['reels-task-count', makeEl()],
+        ['reels-task-panel-count', makeEl()],
+        ['reels-active-folder-bar', makeEl()],
+        ['reels-batch-table-container', makeEl({ style: { display: 'none' } })],
+        ['reels-work-mode', makeEl({ value: 'srt' })],
+        ['reels-quality', makeEl({ value: 'medium' })],
+        ['reels-export-engine', makeEl({ value: 'precise' })],
+        ['reels-suffix', makeEl({ value: '_subtitled' })],
+        ['reels-naming-mode', makeEl({ value: 'text' })],
+        ['reels-task-name-display', makeEl({ value: 'full' })],
+    ]);
+    const documentStub = {
+        head: makeEl(),
+        body: makeEl(),
+        createElement: () => makeEl(),
+        getElementById: (id) => domElements.get(id) || null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {},
+        removeEventListener() {},
+    };
+
+    const sandbox = loadBrowserScript('src/reels-project.js', {
+        window: {
+            innerWidth: 1280,
+            innerHeight: 800,
+            location: { hash: '' },
+            addEventListener() {},
+            removeEventListener() {},
+            electronAPI: {
+                toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/'),
+                getDefaultProjectDir: () => '',
+                saveBatchWorkspace: () => true,
+                readBatchWorkspace: () => '',
+            },
+        },
+        document: documentStub,
+        API_BASE: 'http://127.0.0.1:0/api',
+        apiFetch: apiFetchMock,
+        setTimeout: () => 0,
+        clearTimeout: () => {},
+        setInterval: () => 0,
+        clearInterval: () => {},
+        requestAnimationFrame: () => 0,
+        getComputedStyle: () => ({ display: 'none', height: '0px' }),
+        getWritingVisualStyle: (s) => s,
+        reelsRefreshWritingTitleEditor: () => {},
+        reelsRefreshSpeechWritingImageUI: () => {},
+        showToast: () => {},
+        alert: () => {},
+        confirm: () => true,
+    });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8'), sandbox, { filename: 'src/reels-batch-table.js' });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8'), sandbox, { filename: 'src/batch-reels.js' });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-templates.js'), 'utf8'), sandbox, { filename: 'src/reels-templates.js' });
+
+    // 1. Apply Level-3 folder: strictly imports its 10 direct children ONLY
+    const appliedAll = await sandbox.window.reelsApplyFolderById('f_lvl3');
+    assert.equal(appliedAll, true);
+    const fullState = JSON.parse(vm.runInContext(`JSON.stringify({
+        tabCount: _batchTableState.tabs.length,
+        tabNames: _batchTableState.tabs.map(t => t.name),
+        tplIds: _batchTableState.tabs.map(t => t.libraryTemplateId),
+        folderId: _batchTableState.activeLibraryFolderId,
+        folderPath: _batchTableState.activeLibraryFolderPath,
+        scopeMode: _batchTableState.libraryScopeMode,
+        taskCount: window._reelsState.tasks.length,
+        taskTabNames: window._reelsState.tasks.map(t => t._batchTabName),
+    })`, sandbox));
+    assert.equal(fullState.tabCount, 10);
+    assert.equal(fullState.folderId, 'f_lvl3');
+    assert.equal(fullState.folderPath, '一级 / 二级 / 三级');
+    assert.equal(fullState.scopeMode, 'folder');
+    assert.equal(fullState.taskCount, 10);
+    assert.ok(!fullState.tplIds.includes('tpl_l1'));
+    assert.ok(!fullState.tplIds.includes('tpl_l2'));
+    assert.ok(!fullState.tplIds.includes('tpl_sib3'));
+    assert.ok(!fullState.tplIds.includes('tpl_l4'));
+
+    // Working panel renders Level-3 breadcrumb banner + 10 group thumbnails
+    const taskListHtml = domElements.get('reels-task-list').innerHTML;
+    assert.match(taskListHtml, /class="reels-batch-group-thumb"/);
+    assert.match(taskListHtml, /data:image\/png;base64,thumb_1/);
+    assert.match(taskListHtml, /data:image\/png;base64,thumb_10/);
+    const activeBar = domElements.get('reels-active-folder-bar');
+    assert.match(activeBar.innerHTML, /一级 \/ 二级 \/ 三级/);
+    assert.match(activeBar.innerHTML, /10 个标签/);
+
+    // Batch Table renders folder scope pill + tab thumbnails
+    vm.runInContext(`reelsToggleBatchTable();`, sandbox);
+    const tableHtml = domElements.get('reels-batch-table-container').innerHTML;
+    assert.match(tableHtml, /class="rbt-folder-scope-bar"/);
+    assert.match(tableHtml, /一级 \/ 二级 \/ 三级/);
+    assert.match(tableHtml, /class="rbt-tab-thumb"/);
+    assert.match(tableHtml, /data:image\/png;base64,thumb_1/);
+
+    // Close Batch Table -> restores all 10 Level-3 tabs back onto working panel
+    vm.runInContext(`reelsToggleBatchTable({ saveOnClose: true });`, sandbox);
+    assert.equal(sandbox.window._reelsState.tasks.length, 10);
+
+    // 2. Multi-select apply 2 cards -> workspace & Batch Table show ONLY those 2, then upgrade back to full folder
+    await sandbox.window.reelsApplyLibraryProjects(
+        [templatesDb.get('tpl_3_1'), templatesDb.get('tpl_3_4')],
+        { folderId: 'f_lvl3', folderPath: '一级 / 二级 / 三级', folderTotalCount: 10, scopeMode: 'selected', confirmSwitch: false }
+    );
+    const subState = JSON.parse(vm.runInContext(`JSON.stringify({
+        tabCount: _batchTableState.tabs.length,
+        scopeMode: _batchTableState.libraryScopeMode,
+        taskCount: window._reelsState.tasks.length,
+    })`, sandbox));
+    assert.equal(subState.tabCount, 2);
+    assert.equal(subState.scopeMode, 'selected');
+    assert.equal(subState.taskCount, 2);
+
+    // Clicking "读取本级全部" expands back cleanly to all 10 Level-3 tabs only
+    await sandbox.window.reelsSyncWorkspaceWithActiveFolder({ upgradeToFolderScope: true, forceFullFolder: true });
+    assert.equal(vm.runInContext(`_batchTableState.tabs.length`, sandbox), 10);
+
+    // Editing tab & syncing back updates library inside f_lvl3
+    vm.runInContext(`_batchTableState.tabs[0].tasks[0].txtContent = 'edited_lvl3_text'; _batchTableState.tabs[0]._libraryDirty = true;`, sandbox);
+    const writeRes = await sandbox.window.reelsSyncWorkspaceTabsBackToLibraryFolder({ silent: true, onlyDirty: true });
+    assert.equal(writeRes.updated, 1);
+    assert.equal(savedBackPayloads.length, 1);
+    assert.equal(savedBackPayloads[0].folderId, 'f_lvl3');
+    assert.equal(savedBackPayloads[0].projectData.tasks[0].txtContent, 'edited_lvl3_text');
+
+    // Verify UI & CRLF contracts
+    const indexHtml = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const templatesRaw = fs.readFileSync(path.join(ROOT, 'src/reels-templates.js'), 'utf8');
+    assert.match(indexHtml, /🗂️ 工程管理库/);
+    assert.match(indexHtml, /id="reels-active-folder-bar"/);
+    assert.match(templatesRaw, /tpl-card-check/);
+    assert.match(templatesRaw, /tpl-apply-selected-btn/);
+    assert.match(templatesRaw, /tpl-apply-folder-btn/);
+    assert.ok(templatesRaw.includes('\r\n'), 'src/reels-templates.js must keep CRLF line endings');
+});
+
+test('Project Library auto-archives live workspace tabs (open, hidden & combined queues) and extracts multi-tab project payloads', async () => {
+    const os = require('node:os');
+    const Module = require('node:module');
+    const origLoad = Module._load;
+    const tmpUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-tpl-auto-'));
+    const templatesResolved = require.resolve('../electron/services/templates');
+    const mockApp = { getPath: () => tmpUserData };
+    const mockShared = {
+        getCandidateTemplateDirs: () => [path.join(tmpUserData, 'videokit-templates')],
+        isIsolatedTestProfile: () => true,
+    };
+
+    try {
+        Module._load = function (request, parent, isMain) {
+            if (request === 'electron') return { app: mockApp };
+            if (request === './sharedProfile' && parent && parent.filename.endsWith(`${path.sep}templates.js`)) {
+                return mockShared;
+            }
+            return origLoad.apply(this, arguments);
+        };
+        delete require.cache[templatesResolved];
+        const tplService = require('../electron/services/templates');
+
+        const apiFetchMock = async (url, init = {}) => {
+            const u = String(url || '');
+            const body = init.body ? JSON.parse(init.body) : {};
+            let res = { success: true };
+            if (u.endsWith('/templates/folders/list')) res = tplService.readTemplateFolders();
+            else if (u.endsWith('/templates/folders/create')) res = tplService.createTemplateFolder(body.name, body.parentId || '');
+            else if (u.endsWith('/templates/folders/reorder')) res = tplService.reorderTemplateLibrary(body.order, body.parentId || '');
+            else if (u.endsWith('/templates/list')) res = tplService.listTemplates();
+            else if (u.endsWith('/templates/get')) res = tplService.getTemplate(body.id);
+            else if (u.endsWith('/templates/get-many')) res = tplService.getTemplatesByIds(body.ids || []);
+            else if (u.endsWith('/templates/save')) res = tplService.saveTemplate(body);
+            return { ok: true, async json() { return { data: res }; } };
+        };
+
+        const makeEl = (overrides = {}) => ({
+            value: '', checked: false, disabled: false, textContent: '', innerHTML: '', style: {}, dataset: {},
+            options: [], children: [], classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+            appendChild() {}, removeChild() {}, remove() {}, contains: () => false, addEventListener() {},
+            setAttribute() {}, focus() {}, click() {}, querySelector: () => null, querySelectorAll: () => [],
+            getBoundingClientRect: () => ({ width: 800, height: 600, top: 0, left: 0 }),
+            ...overrides,
+        });
+        const domElements = new Map([
+            ['reels-task-list', makeEl()],
+            ['reels-task-count', makeEl()],
+            ['reels-task-panel-count', makeEl()],
+            ['reels-active-folder-bar', makeEl()],
+            ['reels-batch-table-container', makeEl({ style: { display: 'none' } })],
+            ['reels-work-mode', makeEl({ value: 'srt' })],
+        ]);
+        const documentStub = {
+            head: makeEl(),
+            body: makeEl(),
+            createElement: () => makeEl(),
+            getElementById: (id) => domElements.get(id) || null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {},
+            removeEventListener() {},
+        };
+
+        const sandbox = loadBrowserScript('src/reels-project.js', {
+            window: {
+                innerWidth: 1280, innerHeight: 800, location: { hash: '' },
+                addEventListener() {}, removeEventListener() {},
+                electronAPI: { toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/'), getDefaultProjectDir: () => '', saveBatchWorkspace: () => true, readBatchWorkspace: () => '' },
+            },
+            document: documentStub,
+            API_BASE: 'http://127.0.0.1:0/api',
+            apiFetch: apiFetchMock,
+            setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, requestAnimationFrame: () => 0,
+            getComputedStyle: () => ({ display: 'none', height: '0px' }),
+            getWritingVisualStyle: (s) => s,
+            reelsRefreshWritingTitleEditor: () => {},
+            reelsRefreshSpeechWritingImageUI: () => {},
+            showToast: () => {}, alert: () => {}, confirm: () => true,
+        });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8'), sandbox, { filename: 'src/reels-batch-table.js' });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8'), sandbox, { filename: 'src/batch-reels.js' });
+        vm.runInContext(fs.readFileSync(path.join(ROOT, 'src/reels-templates.js'), 'utf8'), sandbox, { filename: 'src/reels-templates.js' });
+
+        // Simulate realistic pre-existing unarchived workspace:
+        // - tab_open (visible, group: '分组A')
+        // - tab_bg (hidden in background, group: '分组B')
+        // - tab_combined (_externalFolderQueuesCombined with 2 queue groups inside one tab)
+        // - orphan task with _folderQueueId in window._reelsState.tasks not yet inside tabs
+        vm.runInContext(`
+            _batchTableState.tabs = [
+                { id: 'tab_open', name: '早班号1', group: '分组A', hidden: false, tasks: [{ id: 'task_a1', baseName: 'vA1', bgPath: 'C:/a1.mp4', _batchTabId: 'tab_open', _batchTabName: '早班号1' }] },
+                { id: 'tab_bg', name: '晚班号2', group: '分组B', hidden: true, tasks: [{ id: 'task_b1', baseName: 'vB1', bgPath: 'C:/b1.mp4' }] },
+                { id: 'tab_combined', name: '批量导入任务', group: '', hidden: false, _externalFolderQueuesCombined: true, tasks: [
+                    { id: 'task_q1', baseName: 'vq1', bgPath: 'C:/q1.mp4', _batchTabId: 'tab_combined', _folderQueueId: 'q_1', _folderQueueName: '队列账号X' },
+                    { id: 'task_q2', baseName: 'vq2', bgPath: 'C:/q2.mp4', _batchTabId: 'tab_combined', _folderQueueId: 'q_2', _folderQueueName: '队列账号Y' }
+                ] }
+            ];
+            _batchTableState.activeTabId = 'tab_open';
+            _batchTableState.nextTabId = 10;
+            window._reelsState.tasks = [
+                { id: 'task_a1', baseName: 'vA1', bgPath: 'C:/a1.mp4', _batchTabId: 'tab_open', _batchTabName: '早班号1', _batchProjection: true },
+                { id: 'task_orphan', baseName: 'vo1', bgPath: 'C:/o1.mp4', _folderQueueId: 'q_3', _folderQueueName: '新拖入账号Z' }
+            ];
+        `, sandbox);
+
+        const groups = JSON.parse(JSON.stringify(sandbox.window.reelsCollectWorkspaceProjectGroups()));
+        assert.equal(groups.length, 5);
+        assert.deepEqual(groups.map(g => g.name), ['早班号1', '晚班号2', '队列账号X', '队列账号Y', '新拖入账号Z']);
+        assert.equal(groups[1].hidden, true);
+
+        const cand = JSON.parse(JSON.stringify(sandbox.window.reelsGetWorkspaceSaveCandidateInfo()));
+        assert.equal(cand.totalGroups, 5);
+        assert.equal(cand.unarchivedGroups.length, 5);
+        assert.deepEqual(cand.groupNames, ['分组A', '分组B']);
+
+        // Auto-archive with group subfolders enabled
+        const ok1 = await sandbox.window.reelsAutoArchiveWorkspaceToLibrary({
+            folderName: '我的自动工程',
+            splitByGroup: true,
+            captureThumbnails: false,
+        });
+        assert.equal(ok1, true);
+
+        const foldersAfter = tplService.readTemplateFolders();
+        const rootFolder = foldersAfter.folders.find(f => f.name === '我的自动工程');
+        assert.ok(rootFolder);
+        const subA = foldersAfter.folders.find(f => f.parentId === rootFolder.id && f.name === '分组A');
+        const subB = foldersAfter.folders.find(f => f.parentId === rootFolder.id && f.name === '分组B');
+        assert.ok(subA && subB);
+
+        const listAfter = tplService.listTemplates();
+        assert.equal(listAfter.length, 5);
+        assert.ok(listAfter.every(t => !t.name.includes('[Q-')), 'Clean tab names should not append [Q-xxxx]');
+        assert.equal(foldersAfter.assignments[listAfter.find(t => t.name === '早班号1').id], subA.id);
+        assert.equal(foldersAfter.assignments[listAfter.find(t => t.name === '晚班号2').id], subB.id);
+        assert.equal(foldersAfter.assignments[listAfter.find(t => t.name === '队列账号X').id], rootFolder.id);
+
+        // Verify combined tab was cleanly split into promoted real tabs & bound with libraryTemplateId
+        const boundTabState = JSON.parse(vm.runInContext(`JSON.stringify(_batchTableState.tabs.map(t => ({
+            name: t.name, hidden: t.hidden, tplId: t.libraryTemplateId, fId: t.libraryFolderId
+        })))`, sandbox));
+        assert.equal(boundTabState.length, 5);
+        assert.ok(boundTabState.every(t => !!t.tplId && !!t.fId));
+        assert.equal(boundTabState.find(t => t.name === '晚班号2').hidden, true);
+
+        // Next, verify single-folder auto-archive without subgroup split binds activeLibraryFolderId immediately
+        vm.runInContext(`
+            _batchTableState.tabs.forEach(t => { t.libraryTemplateId = ''; t.libraryFolderId = ''; t.group = ''; });
+            _batchTableState.activeLibraryFolderId = '';
+        `, sandbox);
+        const ok2 = await sandbox.window.reelsAutoArchiveWorkspaceToLibrary({
+            folderName: '统一管理工程',
+            splitByGroup: false,
+            captureThumbnails: false,
+        });
+        assert.equal(ok2, true);
+        const unifiedState = JSON.parse(vm.runInContext(`JSON.stringify({
+            folderId: _batchTableState.activeLibraryFolderId,
+            folderPath: _batchTableState.activeLibraryFolderPath,
+            barHtml: document.getElementById('reels-active-folder-bar').innerHTML
+        })`, sandbox));
+        const unifiedFolder = tplService.readTemplateFolders().folders.find(f => f.name === '统一管理工程');
+        assert.equal(unifiedState.folderId, unifiedFolder.id);
+        assert.match(unifiedState.folderPath, /统一管理工程/);
+        assert.match(unifiedState.barHtml, /统一管理工程/);
+
+        // Verify multi-format tab recognition in _extractTabsFromProjectPayload
+        const p200 = JSON.parse(JSON.stringify(sandbox.window.reelsExtractTabsFromProjectPayload({
+            version: '2.0.0',
+            tabs: [
+                { id: 't1', name: '标签一', group: '组1', tasks: [{ baseName: 'a' }] },
+                { id: 't2', name: '标签二', group: '组2', tasks: [{ baseName: 'b' }] },
+            ],
+        }, '测试文件')));
+        assert.equal(p200.mode, 'multi-tab');
+        assert.equal(p200.items.length, 2);
+        assert.equal(p200.items[0].group, '组1');
+
+        const pWrapped = JSON.parse(JSON.stringify(sandbox.window.reelsExtractTabsFromProjectPayload({
+            name: '打包卡片',
+            projectData: {
+                version: '2.0.0',
+                tasks: [
+                    { baseName: 'q1a', _folderQueueId: 'qf1', _folderQueueName: '内部标签1' },
+                    { baseName: 'q2a', _folderQueueId: 'qf2', _folderQueueName: '内部标签2' },
+                ],
+            },
+        }, '打包卡片')));
+        assert.equal(pWrapped.mode, 'multi-tab');
+        assert.deepEqual(pWrapped.items.map(i => i.name), ['内部标签1', '内部标签2']);
+
+        const pFlatSingle = JSON.parse(JSON.stringify(sandbox.window.reelsExtractTabsFromProjectPayload({
+            version: '2.0.0',
+            tasks: [{ baseName: 'single_1' }, { baseName: 'single_2' }],
+        }, '独立工程JSON')));
+        assert.equal(pFlatSingle.mode, 'single');
+        assert.equal(pFlatSingle.items[0].name, '独立工程JSON');
+        assert.equal(pFlatSingle.items[0].projectData.tasks.length, 2);
+    } finally {
+        Module._load = origLoad;
+        delete require.cache[templatesResolved];
+        fs.rmSync(tmpUserData, { recursive: true, force: true });
+    }
+});
+
+test('Christmas default theme and update reminder prefs (stable ON by default, beta OFF by default with warning remark)', () => {
+    const appSrc = fs.readFileSync(path.join(ROOT, 'src/app.js'), 'utf8');
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const preloadSrc = fs.readFileSync(path.join(ROOT, 'electron/preload.js'), 'utf8');
+    const updaterSrc = fs.readFileSync(path.join(ROOT, 'electron/updater.js'), 'utf8');
+    const studioSrc = fs.readFileSync(path.join(ROOT, 'src/studio/main.js'), 'utf8');
+
+    // 1) UI & preload expose default Christmas action + update reminder switches
+    assert.ok(htmlSrc.includes(`onclick="applyTheme('christmas-eve')"`), 'Settings reset-default theme button must restore christmas-eve');
+    assert.ok(htmlSrc.includes('id="update-notify-stable-checkbox" checked'), 'Stable update reminder checkbox must default to checked');
+    const betaInputTag = htmlSrc.match(/<input[^>]*id="update-notify-beta-checkbox"[^>]*>/)?.[0] || '';
+    assert.ok(betaInputTag && !/\schecked(?:\s|>|=)/i.test(betaInputTag), 'Beta update reminder checkbox must default to unchecked');
+    assert.ok(preloadSrc.includes("getUpdatePrefs: () => ipcRenderer.invoke('get-update-prefs')"));
+    assert.ok(preloadSrc.includes("setUpdatePrefs: (prefs) => ipcRenderer.invoke('set-update-prefs', prefs)"));
+    assert.match(studioSrc, /function resolveCurrentThemeId[\s\S]*?return 'christmas-eve';/);
+
+    // 2) updater.js defaults notifyStableUpdates=true, notifyBetaUpdates=false and registers prefs IPCs
+    const Module = require('node:module');
+    const updaterResolved = require.resolve(path.join(ROOT, 'electron/updater.js'));
+    const origLoad = Module._load;
+    const storeMap = new Map();
+    const ipcHandlers = new Map();
+    const sentEvents = [];
+    const autoUpdaterMock = {
+        allowPrerelease: false,
+        allowDowngrade: false,
+        autoDownload: true,
+        autoInstallOnAppQuit: false,
+        on() {},
+        checkForUpdates: async () => ({ updateInfo: { version: '4.6.0' } }),
+    };
+
+    try {
+        Module._load = function patchedLoad(request, parent, isMain) {
+            if (request === 'electron') {
+                return {
+                    app: { getVersion: () => '4.6.0', isPackaged: false, exit() {}, relaunch() {}, releaseSingleInstanceLock() {} },
+                    BrowserWindow: { getAllWindows: () => [] },
+                    ipcMain: { handle: (ch, fn) => ipcHandlers.set(ch, fn) },
+                    dialog: { showMessageBox: async () => ({ response: 0 }) },
+                };
+            }
+            if (request === 'electron-updater') return { autoUpdater: autoUpdaterMock };
+            if (request === 'electron-store') {
+                return class MockStore {
+                    get(k, def) { return storeMap.has(k) ? storeMap.get(k) : def; }
+                    set(k, v) { storeMap.set(k, v); }
+                };
+            }
+            if (request === './services/trustedRenderer') {
+                return { assertTrustedRenderer() {} };
+            }
+            return origLoad.apply(this, arguments);
+        };
+        delete require.cache[updaterResolved];
+        const { initAutoUpdater } = require(updaterResolved);
+        const mockWin = { isDestroyed: () => false, webContents: { send: (ch, data) => sentEvents.push({ ch, data }) } };
+        initAutoUpdater(mockWin, () => {});
+
+        const getPrefsFn = ipcHandlers.get('get-update-prefs');
+        const setPrefsFn = ipcHandlers.get('set-update-prefs');
+        assert.ok(typeof getPrefsFn === 'function' && typeof setPrefsFn === 'function', 'Updater must register pref IPC handlers');
+
+        const initial = getPrefsFn({});
+        assert.strictEqual(initial.notifyStable, true, 'notifyStable must default to true');
+        assert.strictEqual(initial.notifyBeta, false, 'notifyBeta must default to false');
+        assert.strictEqual(initial.channel, 'stable');
+
+        const enabledBeta = setPrefsFn({}, { notifyBeta: true });
+        assert.strictEqual(enabledBeta.notifyBeta, true);
+        assert.strictEqual(enabledBeta.channel, 'beta');
+        assert.strictEqual(autoUpdaterMock.allowPrerelease, true);
+
+        const disabledBeta = setPrefsFn({}, { notifyBeta: false });
+        assert.strictEqual(disabledBeta.notifyBeta, false);
+        assert.strictEqual(disabledBeta.channel, 'stable');
+        assert.strictEqual(autoUpdaterMock.allowPrerelease, false);
+    } finally {
+        Module._load = origLoad;
+        delete require.cache[updaterResolved];
+    }
+
+    assert.ok(updaterSrc.includes('发现测试版 v${version}，是否尝试？（备注：测试版本不稳定，不建议尝试）'));
+    assert.ok(updaterSrc.includes('最终版本 v${version} 更新了，是否尝试？'));
+
+    // 3) Renderer toast gating & copy for stable vs beta updates
+    const escMatch = appSrc.match(/function escapeHtml\(str\)\s*\{[\s\S]*?\n\}/);
+    const helperMatch = appSrc.match(/const _appUpdateUiState = \{[\s\S]*?async function _installDownloadedAppUpdate\(\)\s*\{[\s\S]*?\n\}/);
+    assert.ok(escMatch && helperMatch);
+
+    const created = new Map();
+    const localMap = new Map();
+    const makeClassList = () => {
+        const set = new Set();
+        return {
+            add: (...cls) => cls.forEach((c) => set.add(c)),
+            remove: (...cls) => cls.forEach((c) => set.delete(c)),
+            contains: (c) => set.has(c),
+        };
+    };
+    const makeEl = (tag) => {
+        const attrs = {};
+        return {
+            tagName: tag.toUpperCase(),
+            id: '',
+            classList: makeClassList(),
+            dataset: {},
+            innerHTML: '',
+            setAttribute: (k, v) => { attrs[k] = String(v); },
+            getAttribute: (k) => attrs[k] || null,
+            querySelectorAll: () => [],
+            querySelector: () => null,
+        };
+    };
+
+    const sandbox = {
+        requestAnimationFrame: (fn) => fn(),
+        localStorage: {
+            getItem: (k) => (localMap.has(k) ? localMap.get(k) : null),
+            setItem: (k, v) => localMap.set(k, String(v)),
+        },
+        window: { electronAPI: { downloadUpdate: async () => ({ success: true }), installUpdate: async () => ({ success: true }) } },
+        document: {
+            body: { appendChild(el) { if (el.id) created.set(el.id, el); } },
+            getElementById: (id) => created.get(id) || null,
+            createElement: makeEl,
+            querySelector: () => null,
+        },
+        showToast: () => {},
+    };
+    vm.runInNewContext(
+        `${escMatch[0]}\n${helperMatch[0]}\nthis._handleAppUpdateStatusEvent = _handleAppUpdateStatusEvent;\nthis._dismissUpdateCornerToast = _dismissUpdateCornerToast;\nthis._appUpdateUiState = _appUpdateUiState;\nthis._writeUpdateNotifyPrefsToStorage = _writeUpdateNotifyPrefsToStorage;`,
+        sandbox
+    );
+
+    // Default: notifyBeta=false -> background beta update stays suppressed
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.1-beta.1', isBeta: true });
+    assert.strictEqual(created.get('vk-update-toast'), undefined, 'Background beta notification must stay suppressed when notifyBeta is off');
+
+    // Default: notifyStable=true -> background final release pops up with expected wording
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.1', isBeta: false });
+    const toast = created.get('vk-update-toast');
+    assert.ok(toast && toast.classList.contains('is-visible'));
+    assert.ok(toast.innerHTML.includes('最终版本更新了，是否尝试？'), 'Stable prompt must tell user final version updated and ask whether to try');
+    sandbox._dismissUpdateCornerToast(false);
+
+    // Turn ON beta reminder -> background beta notification shows with explicit unstable warning remark
+    sandbox._writeUpdateNotifyPrefsToStorage({ notifyBeta: true });
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.1-beta.2', isBeta: true });
+    assert.ok(toast.classList.contains('is-visible'), 'Enabled beta reminder must show beta update toast');
+    assert.ok(toast.innerHTML.includes('是否尝试？'), 'Beta toast must ask whether to try');
+    assert.ok(toast.innerHTML.includes('备注：测试版本不稳定，不建议尝试'), 'Beta toast must display unstable warning remark');
+    sandbox._dismissUpdateCornerToast(false);
+
+    // Turn OFF stable reminder -> background stable notification suppressed, manual check still shows
+    sandbox._writeUpdateNotifyPrefsToStorage({ notifyStable: false });
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.2', isBeta: false });
+    assert.ok(!toast.classList.contains('is-visible'), 'Background stable toast must stay hidden when notifyStable is disabled');
+    sandbox._handleAppUpdateStatusEvent({ status: 'available', version: '4.6.2', isBeta: false, manual: true });
+    assert.ok(toast.classList.contains('is-visible'), 'Manual update check must still show toast even if background reminder is muted');
+});
+
+
 
 
 

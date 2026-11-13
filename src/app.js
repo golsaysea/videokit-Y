@@ -11769,6 +11769,24 @@ const CUSTOM_THEME_KEY = 'videokit-custom-theme';
 
 /** 预设主题库 */
 const THEME_PRESETS = {
+    'christmas-eve': {
+        name: '🎄 圣诞 · 圣诞暖夜',
+        desc: '深松绿雪夜与暖金圣诞灯饰（默认）',
+        colors: {
+            '--bg-primary': '#060d0a', '--bg-secondary': 'rgba(10,22,17,0.85)', '--bg-tertiary': '#10261d',
+            '--bg-card': 'rgba(16,34,26,0.88)', '--bg-input': 'rgba(5,12,9,0.90)', '--bg-titlebar': '#050b08',
+            '--bg-hover': 'rgba(245,196,81,0.08)', '--bg-hover-strong': 'rgba(217,72,72,0.15)',
+            '--accent': '#f5c451', '--accent-hover': '#fde088',
+            '--accent-alpha': 'rgba(245,196,81,0.20)',
+            '--text-primary': '#f6f3ea', '--text-secondary': '#9bb3a5',
+            '--text-muted': '#60786b', '--text-color': '#f6f3ea',
+            '--border-color': 'rgba(110,231,183,0.14)',
+            '--scrollbar-thumb': 'rgba(245,196,81,0.22)', '--scrollbar-thumb-hover': 'rgba(245,196,81,0.46)',
+            '--success': '#34d399', '--warning': '#f5c451', '--error': '#ef4444',
+            '--shadow': 'rgba(0,0,0,0.52)'
+        },
+        preview: ['#060d0a', '#10261d', '#f5c451', '#d94848']
+    },
     'starry-lantern': {
         name: '🏮 夜景 · 静夜花灯',
         desc: '深邃静夜星空与暖意中国花灯',
@@ -11822,24 +11840,6 @@ const THEME_PRESETS = {
             '--shadow': 'rgba(0,0,0,0.50)'
         },
         preview: ['#050a14', '#10203a', '#7dd3fc', '#e0f2fe']
-    },
-    'christmas-eve': {
-        name: '🎄 圣诞 · 圣诞暖夜',
-        desc: '深松绿雪夜与暖金圣诞灯饰',
-        colors: {
-            '--bg-primary': '#060d0a', '--bg-secondary': 'rgba(10,22,17,0.85)', '--bg-tertiary': '#10261d',
-            '--bg-card': 'rgba(16,34,26,0.88)', '--bg-input': 'rgba(5,12,9,0.90)', '--bg-titlebar': '#050b08',
-            '--bg-hover': 'rgba(245,196,81,0.08)', '--bg-hover-strong': 'rgba(217,72,72,0.15)',
-            '--accent': '#f5c451', '--accent-hover': '#fde088',
-            '--accent-alpha': 'rgba(245,196,81,0.20)',
-            '--text-primary': '#f6f3ea', '--text-secondary': '#9bb3a5',
-            '--text-muted': '#60786b', '--text-color': '#f6f3ea',
-            '--border-color': 'rgba(110,231,183,0.14)',
-            '--scrollbar-thumb': 'rgba(245,196,81,0.22)', '--scrollbar-thumb-hover': 'rgba(245,196,81,0.46)',
-            '--success': '#34d399', '--warning': '#f5c451', '--error': '#ef4444',
-            '--shadow': 'rgba(0,0,0,0.52)'
-        },
-        preview: ['#060d0a', '#10261d', '#f5c451', '#d94848']
     },
     'starry-ink': {
         name: '🌌 夜景 · 静谧深空',
@@ -11971,8 +11971,8 @@ function applyTheme(themeId, customColors) {
         colors = THEME_PRESETS[themeId].colors;
         isLight = (themeId === 'light');
     } else {
-        colors = THEME_PRESETS['starry-lantern'].colors;
-        themeId = 'starry-lantern';
+        colors = THEME_PRESETS['christmas-eve'].colors;
+        themeId = 'christmas-eve';
     }
 
     // 设置所有 CSS 变量
@@ -12093,7 +12093,7 @@ function _lightenHex(hex, amount) {
 function renderThemeCards() {
     const container = document.getElementById('theme-cards');
     if (!container) return;
-    const current = localStorage.getItem(THEME_KEY) || 'starry-lantern';
+    const current = localStorage.getItem(THEME_KEY) || 'christmas-eve';
 
     container.innerHTML = '';
     for (const [id, preset] of Object.entries(THEME_PRESETS)) {
@@ -12109,7 +12109,7 @@ function renderThemeCards() {
             transition: all 0.2s;
         `;
         card.onmouseenter = () => { if (!card.style.boxShadow.includes('accent')) card.style.borderColor = 'rgba(255,255,255,0.2)'; };
-        card.onmouseleave = () => { if (card.dataset.theme !== (localStorage.getItem(THEME_KEY) || 'starry-lantern')) card.style.borderColor = 'var(--border-color)'; };
+        card.onmouseleave = () => { if (card.dataset.theme !== (localStorage.getItem(THEME_KEY) || 'christmas-eve')) card.style.borderColor = 'var(--border-color)'; };
         card.onclick = () => applyTheme(id);
 
         // 色块预览
@@ -12132,15 +12132,15 @@ function initTheme() {
         window.THEME_PRESETS = THEME_PRESETS;
         window.applyTheme = applyTheme;
     }
-    const MIGRATE_KEY = 'vk_starry_default_v1';
+    const MIGRATE_KEY = 'vk_christmas_default_v1';
     let saved = localStorage.getItem(THEME_KEY);
     if (!localStorage.getItem(MIGRATE_KEY)) {
         localStorage.setItem(MIGRATE_KEY, '1');
-        if (!saved || saved === 'dark') {
-            saved = 'starry-lantern';
+        if (!saved || saved === 'dark' || saved === 'starry-lantern') {
+            saved = 'christmas-eve';
         }
     }
-    saved = saved || 'starry-lantern';
+    saved = saved || 'christmas-eve';
 
     if (saved === 'custom') {
         let customColors = null;
@@ -12150,7 +12150,7 @@ function initTheme() {
         if (customColors) {
             applyTheme('custom', customColors);
         } else {
-            applyTheme('starry-lantern');
+            applyTheme('christmas-eve');
         }
     } else {
         applyTheme(saved);
@@ -29117,15 +29117,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusEl.style.color = 'var(--text-secondary)';
                     if (btn) { btn.disabled = true; btn.onclick = checkAppUpdate; }
                     break;
-                case 'available':
-                    statusEl.textContent = `🎉 发现新版本 ${data.version || ''}`;
-                    statusEl.style.color = '#00d9a5';
+                case 'available': {
+                    const isBetaAvail = Boolean(data.isBeta || /-(beta|alpha|rc|dev)\b/i.test(String(data.version || '')));
+                    statusEl.textContent = isBetaAvail
+                        ? `🧪 测试版 v${data.version || ''}（备注：测试版本不稳定，不建议尝试）`
+                        : `🎉 最终版本 v${data.version || ''} 更新了，是否尝试？`;
+                    statusEl.style.color = isBetaAvail ? '#fbbf24' : '#00d9a5';
                     if (btn) {
                         btn.disabled = false;
-                        btn.textContent = '📥 下载更新';
+                        btn.textContent = isBetaAvail ? '🧪 仍要尝试下载' : '📥 立即尝试更新';
                         btn.onclick = _startAppUpdateDownload;
                     }
                     break;
+                }
                 case 'up-to-date':
                     statusEl.textContent = '✅ 已是最新版本';
                     statusEl.style.color = '#00d9a5';
@@ -29173,7 +29177,46 @@ const _appUpdateUiState = {
     latestVersion: '',
     isDownloading: false,
     isInstalling: false,
+    notifyStable: true,
+    notifyBeta: false,
 };
+
+function _readUpdateNotifyPrefsFromStorage() {
+    let notifyStable = _appUpdateUiState.notifyStable !== false;
+    let notifyBeta = Boolean(_appUpdateUiState.notifyBeta);
+    try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+            const sRaw = localStorage.getItem('vk_update_notify_stable_v1');
+            const bRaw = localStorage.getItem('vk_update_notify_beta_v1');
+            if (sRaw === '0' || sRaw === 'false') notifyStable = false;
+            else if (sRaw === '1' || sRaw === 'true') notifyStable = true;
+            if (bRaw === '1' || bRaw === 'true') notifyBeta = true;
+            else if (bRaw === '0' || bRaw === 'false') notifyBeta = false;
+        }
+    } catch (_) {}
+    return { notifyStable, notifyBeta };
+}
+
+function _writeUpdateNotifyPrefsToStorage(prefs = {}) {
+    if (typeof prefs.notifyStable === 'boolean') _appUpdateUiState.notifyStable = prefs.notifyStable;
+    if (typeof prefs.notifyBeta === 'boolean') _appUpdateUiState.notifyBeta = prefs.notifyBeta;
+    try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+            if (typeof prefs.notifyStable === 'boolean') {
+                localStorage.setItem('vk_update_notify_stable_v1', prefs.notifyStable ? '1' : '0');
+            }
+            if (typeof prefs.notifyBeta === 'boolean') {
+                localStorage.setItem('vk_update_notify_beta_v1', prefs.notifyBeta ? '1' : '0');
+            }
+        }
+    } catch (_) {}
+}
+
+function _isBetaUpdatePayload(data, versionOverride = '') {
+    if (data && typeof data.isBeta === 'boolean' && data.isBeta) return true;
+    const ver = String(versionOverride || data?.version || '');
+    return /-(beta|alpha|rc|dev)\b/i.test(ver);
+}
 
 function _dismissUpdateCornerToast(rememberVersion = true) {
     if (rememberVersion && _appUpdateUiState.latestVersion) {
@@ -29208,11 +29251,13 @@ function _showUpdateCornerToast(data) {
     const status = String(data.status);
     const version = data.version ? String(data.version) : _appUpdateUiState.latestVersion;
     if (data.version) _appUpdateUiState.latestVersion = String(data.version);
+    const isBeta = _isBetaUpdatePayload(data, version);
     const safeVersion = escapeHtml(version || '');
     const notesText = typeof data.releaseNotes === 'string' ? data.releaseNotes.trim() : '';
     const sizeText = Number(data.zipSize) > 0 ? ` · ${(Number(data.zipSize) / 1024 / 1024).toFixed(1)} MB` : '';
 
     el.dataset.status = status;
+    el.dataset.beta = isBeta ? '1' : '0';
 
     let badgeHtml = '';
     let titleHtml = '';
@@ -29220,16 +29265,31 @@ function _showUpdateCornerToast(data) {
     let actionsHtml = '';
 
     if (status === 'available') {
-        badgeHtml = `<span class="vk-update-toast-badge ${data.isBeta ? 'is-beta' : ''}">${data.isBeta ? '🧪 测试版' : '新版本'} v${safeVersion}</span>`;
-        titleHtml = `<span>🎉 发现更新</span>${badgeHtml}`;
-        bodyHtml = `<div class="vk-update-toast-body">新版本已就绪${escapeHtml(sizeText)}，可按需下载，不影响当前编辑。</div>`;
-        if (notesText) {
-            bodyHtml += `<div class="vk-update-toast-notes">${escapeHtml(notesText)}</div>`;
+        if (isBeta) {
+            badgeHtml = `<span class="vk-update-toast-badge is-beta">🧪 测试版 v${safeVersion}</span>`;
+            titleHtml = `<span>🧪 发现测试版更新，是否尝试？</span>${badgeHtml}`;
+            bodyHtml = `
+                <div class="vk-update-toast-beta-warn">⚠️ 备注：测试版本不稳定，不建议尝试（日常使用建议保持正式版）。</div>
+                <div class="vk-update-toast-body">测试版 v${safeVersion} 已发布${escapeHtml(sizeText)}，如无需提前尝鲜，可点击「暂不尝试」。</div>`;
+            if (notesText) {
+                bodyHtml += `<div class="vk-update-toast-notes">${escapeHtml(notesText)}</div>`;
+            }
+            bodyHtml += `<div class="vk-update-toast-hint">可在「设置 → 关于」随时关闭测试版提醒。</div>`;
+            actionsHtml = `
+                <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">暂不尝试</button>
+                <button type="button" class="vk-update-toast-btn" data-toast-action="download">仍要尝试</button>`;
+        } else {
+            badgeHtml = `<span class="vk-update-toast-badge">✅ 最终版 v${safeVersion}</span>`;
+            titleHtml = `<span>🎉 最终版本更新了，是否尝试？</span>${badgeHtml}`;
+            bodyHtml = `<div class="vk-update-toast-body">最终正式版 v${safeVersion} 已发布${escapeHtml(sizeText)}，运行稳定可靠，是否尝试升级？（不影响当前编辑）</div>`;
+            if (notesText) {
+                bodyHtml += `<div class="vk-update-toast-notes">${escapeHtml(notesText)}</div>`;
+            }
+            bodyHtml += `<div class="vk-update-toast-hint">若当前版本运行顺畅，也可稍后在「设置 → 关于」中随时升级。</div>`;
+            actionsHtml = `
+                <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">暂不尝试</button>
+                <button type="button" class="vk-update-toast-btn is-primary" data-toast-action="download">立即尝试更新</button>`;
         }
-        bodyHtml += `<div class="vk-update-toast-hint">若当前版本运行顺畅，也可稍后在设置中升级。</div>`;
-        actionsHtml = `
-            <button type="button" class="vk-update-toast-btn" data-toast-action="dismiss">稍后</button>
-            <button type="button" class="vk-update-toast-btn is-primary" data-toast-action="download">立即下载</button>`;
     } else if (status === 'downloading') {
         const pct = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0)));
         badgeHtml = `<span class="vk-update-toast-badge">${pct}%</span>`;
@@ -29292,8 +29352,17 @@ function _handleAppUpdateStatusEvent(data) {
     const status = data?.status;
     if (!status) return;
     if (status === 'available') {
-        if (!_appUpdateUiState.userInitiatedFlow && _appUpdateUiState.dismissedVersion && _appUpdateUiState.dismissedVersion === String(data.version || '')) {
-            return;
+        const isManual = Boolean(_appUpdateUiState.userInitiatedFlow || data.manual);
+        if (!isManual) {
+            if (data.notifySuppressed) return;
+            const prefs = _readUpdateNotifyPrefsFromStorage();
+            const isBeta = _isBetaUpdatePayload(data);
+            if (isBeta ? !prefs.notifyBeta : !prefs.notifyStable) {
+                return;
+            }
+            if (_appUpdateUiState.dismissedVersion && _appUpdateUiState.dismissedVersion === String(data.version || '')) {
+                return;
+            }
         }
         _showUpdateCornerToast(data);
         return;
@@ -29394,7 +29463,7 @@ async function checkAppUpdate() {
     }
 
     try {
-        const result = await window.electronAPI.checkForUpdates();
+        const result = await window.electronAPI.checkForUpdates({ manual: true });
         if (!result.success && statusEl) {
             statusEl.textContent = `❌ ${result.error || '检查失败'}`;
             statusEl.style.color = '#ff4757';
@@ -29409,22 +29478,95 @@ async function checkAppUpdate() {
     }
 }
 
+function _applyUpdatePrefControlsToDom(prefs = {}) {
+    const notifyStable = prefs.notifyStable !== false;
+    const notifyBeta = Boolean(prefs.notifyBeta);
+    const channel = notifyBeta ? 'beta' : 'stable';
+    const selectEl = document.getElementById('update-channel-select');
+    const hintEl = document.getElementById('update-channel-hint');
+    const stableChk = document.getElementById('update-notify-stable-checkbox');
+    const betaChk = document.getElementById('update-notify-beta-checkbox');
+    if (selectEl) selectEl.value = channel;
+    if (stableChk) stableChk.checked = notifyStable;
+    if (betaChk) betaChk.checked = notifyBeta;
+    if (hintEl) {
+        if (notifyBeta && notifyStable) {
+            hintEl.textContent = '已开启测试版提醒（备注：测试版本不稳定，不建议尝试）';
+        } else if (notifyBeta && !notifyStable) {
+            hintEl.textContent = '仅提醒测试版（注意：测试版本不稳定，不建议尝试）';
+        } else if (notifyStable) {
+            hintEl.textContent = '只接收正式版更新（测试版提醒默认关闭）';
+        } else {
+            hintEl.textContent = '已关闭全部自动更新弹窗（仍可手动点击检查更新）';
+        }
+    }
+}
+
+/**
+ * 切换更新提醒开关 (正式版默认开启，测试版默认关闭)
+ */
+async function toggleUpdateReminderPref(kind, checked) {
+    const cur = _readUpdateNotifyPrefsFromStorage();
+    const nextPrefs = kind === 'beta'
+        ? { notifyBeta: Boolean(checked), notifyStable: cur.notifyStable, channel: checked ? 'beta' : 'stable' }
+        : { notifyStable: Boolean(checked), notifyBeta: cur.notifyBeta };
+    _writeUpdateNotifyPrefsToStorage(nextPrefs);
+    _applyUpdatePrefControlsToDom(nextPrefs);
+
+    if (window.electronAPI?.setUpdatePrefs) {
+        try {
+            const res = await window.electronAPI.setUpdatePrefs(nextPrefs);
+            if (res && typeof res.notifyBeta === 'boolean') {
+                _writeUpdateNotifyPrefsToStorage(res);
+                _applyUpdatePrefControlsToDom(res);
+            }
+        } catch (e) {
+            const hintEl = document.getElementById('update-channel-hint');
+            if (hintEl) hintEl.textContent = '❌ 保存设置失败';
+            return;
+        }
+    } else if (kind === 'beta' && window.electronAPI?.setUpdateChannel) {
+        try {
+            await window.electronAPI.setUpdateChannel(checked ? 'beta' : 'stable');
+        } catch (_) {}
+    }
+
+    // 关闭对应测试版/正式版提醒时，自动收起未下载完的同类后台提醒卡片；开启时立即检查
+    const toastEl = document.getElementById('vk-update-toast');
+    if (kind === 'beta') {
+        if (checked) {
+            if (window.electronAPI?.checkForUpdates) checkAppUpdate();
+        } else if (toastEl && toastEl.dataset.status === 'available' && toastEl.dataset.beta === '1') {
+            _dismissUpdateCornerToast(false);
+        }
+    } else if (!checked && toastEl && toastEl.dataset.status === 'available' && toastEl.dataset.beta !== '1') {
+        _dismissUpdateCornerToast(false);
+    }
+}
+
 /**
  * 切换更新通道 (stable / beta)
  */
 async function switchUpdateChannel(channel) {
     const hintEl = document.getElementById('update-channel-hint');
-    if (!window.electronAPI?.setUpdateChannel) {
-        if (hintEl) hintEl.textContent = '⚠️ 仅打包版支持';
-        return;
-    }
+    const isBeta = channel === 'beta';
+    const cur = _readUpdateNotifyPrefsFromStorage();
+    const nextPrefs = { notifyBeta: isBeta, notifyStable: cur.notifyStable, channel: isBeta ? 'beta' : 'stable' };
+    _writeUpdateNotifyPrefsToStorage(nextPrefs);
+    _applyUpdatePrefControlsToDom(nextPrefs);
 
     try {
-        const result = await window.electronAPI.setUpdateChannel(channel);
-        if (hintEl) {
-            hintEl.textContent = channel === 'beta'
-                ? '将收到测试版 + 正式版更新'
-                : '只接收正式版更新';
+        if (window.electronAPI?.setUpdatePrefs) {
+            const res = await window.electronAPI.setUpdatePrefs(nextPrefs);
+            if (res) {
+                _writeUpdateNotifyPrefsToStorage(res);
+                _applyUpdatePrefControlsToDom(res);
+            }
+        } else if (window.electronAPI?.setUpdateChannel) {
+            await window.electronAPI.setUpdateChannel(isBeta ? 'beta' : 'stable');
+        } else {
+            if (hintEl) hintEl.textContent = '⚠️ 仅打包版支持后台检查更新';
+            return;
         }
         // 切换后立即检查更新
         checkAppUpdate();
@@ -29434,20 +29576,25 @@ async function switchUpdateChannel(channel) {
 }
 
 /**
- * 初始化更新通道 UI 状态
+ * 初始化更新通道及提醒开关 UI 状态
  */
 async function initUpdateChannelUI() {
-    if (!window.electronAPI?.getUpdateChannel) return;
+    const localPrefs = _readUpdateNotifyPrefsFromStorage();
+    _writeUpdateNotifyPrefsToStorage(localPrefs);
+    _applyUpdatePrefControlsToDom(localPrefs);
+
+    const fetcher = window.electronAPI?.getUpdatePrefs || window.electronAPI?.getUpdateChannel;
+    if (!fetcher) return;
     try {
-        const info = await window.electronAPI.getUpdateChannel();
-        const selectEl = document.getElementById('update-channel-select');
-        const hintEl = document.getElementById('update-channel-hint');
-        if (selectEl) selectEl.value = info.channel;
-        if (hintEl) {
-            hintEl.textContent = info.channel === 'beta'
-                ? '将收到测试版 + 正式版更新'
-                : '只接收正式版更新';
-        }
+        const info = await fetcher();
+        if (!info || typeof info !== 'object') return;
+        const resolved = {
+            notifyStable: typeof info.notifyStable === 'boolean' ? info.notifyStable : localPrefs.notifyStable,
+            notifyBeta: typeof info.notifyBeta === 'boolean' ? info.notifyBeta : (info.channel === 'beta'),
+        };
+        _writeUpdateNotifyPrefsToStorage(resolved);
+        _applyUpdatePrefControlsToDom(resolved);
+
         // 如果当前运行的就是测试版，在版本号旁显示标记
         if (info.isBeta) {
             const versionDisplay = document.getElementById('app-version-display');
@@ -32815,7 +32962,7 @@ if(document.getElementById('batchcut-segment-list')?.offsetParent){try{renderBat
 if(document.getElementById('autoedit-batch-task-list')?.offsetParent){try{renderAutoEditBatchTasks();}catch(error){console.warn('[GlobalUndo] Render renderAutoEditBatchTasks:',error.message);}}
 if(document.getElementById('organizer-rules-list')?.offsetParent){try{_renderOrganizerRulesList();}catch(error){console.warn('[GlobalUndo] Render _renderOrganizerRulesList:',error.message);}}
 if(organizerState.plan&&document.getElementById('organizer-groups')?.offsetParent){_renderOrganizerSummary();_renderOrganizerGroups();}}});
-window.VideoKitGlobalHistory.register('theme-settings',{contexts:['settings'],capture:()=>({theme:localStorage.getItem(THEME_KEY)||'dark',custom:localStorage.getItem(CUSTOM_THEME_KEY)}),restore:s=>{applyTheme(s.theme,s.custom?JSON.parse(s.custom):undefined);}});
+window.VideoKitGlobalHistory.register('theme-settings',{contexts:['settings'],capture:()=>({theme:localStorage.getItem(THEME_KEY)||'christmas-eve',custom:localStorage.getItem(CUSTOM_THEME_KEY)}),restore:s=>{applyTheme(s.theme,s.custom?JSON.parse(s.custom):undefined);}});
 // VideoKit export ETA: lightweight remaining-time display.
 // Lightweight UI-only remaining-time estimate; never changes export scheduling.
 (function installVideoKitExportEta() {

@@ -4890,13 +4890,13 @@
                   onclick="openAutoEditFromReels()" title="按文案自动裁切片段，拼接后送入批量 Reels">✂️ 文案拼接</button>
                 <button class="btn btn-secondary"
                   style="font-size:11px;padding:4px 8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-weight:600;border:none;"
-                  onclick="openTemplateLibrary()" title="视频模板库 — 保存/加载工程模板">📂 模板库</button>
+                  onclick="openTemplateLibrary()" title="工程管理库 — 多级文件夹分类、缩略图预览与多选应用标签">🗂️ 工程管理库</button>
                 <button class="btn btn-secondary"
                   style="font-size:11px;padding:4px 8px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;font-weight:600;border:none;"
                   onclick="typeof window.openCloudHubDialog === 'function' ? window.openCloudHubDialog() : alert('云端中控模块加载中...')" title="Cloudflare 远程 API Key 池同步 + Google Drive 每日工程(日期贴)一键下载加载">☁️ 云端中控 · 日期贴</button>
                 <button class="btn btn-secondary" id="reels-project-manager-btn"
                   style="font-size:11px;padding:4px 8px;background:rgba(139,92,246,0.22);color:#ddd6fe;font-weight:600;border:1px solid rgba(167,139,250,0.45);"
-                  onclick="typeof window.openBatchProjectManager === 'function' ? window.openBatchProjectManager() : alert('工程管理模块加载中...')" title="工程管理：选择哪些工程标签在前台打开，不用的留在后台保存，随时可切换打开">🗂️ 工程管理</button>
+                  onclick="typeof window.openBatchProjectManager === 'function' ? window.openBatchProjectManager() : alert('工程管理模块加载中...')" title="当前标签显隐管理：勾选哪些已载入标签在前台打开，不用的留在后台保存">📑 当前标签</button>
 
                 <button class="btn btn-secondary" onclick="loadAutoEditBatchReelsProject()">加载自动剪辑批量工程</button>
                 <!-- ═══ 更多工具 下拉菜单 ═══ -->
@@ -5079,6 +5079,7 @@
                     <option value="compact" selected>单行截断</option>
                   </select>
                 </div>
+                <div id="reels-active-folder-bar" class="reels-active-folder-bar" style="display:none;"></div>
                 <div id="reels-task-list"
                   style="flex:1; overflow-y:auto; padding:4px 6px; font-size:12px; border:1px dashed rgba(255,255,255,0.15); border-radius:4px; margin:6px; transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease;">
                   <p class="hint" style="margin:0;font-size:11px;">可直接拖入背景视频、配音、SRT 或任务文件夹</p>
@@ -8023,7 +8024,7 @@
                     <option value="light">亮色底</option>
                   </select>
                 </label>
-                <button class="btn btn-secondary" style="font-size: 11px; padding: 3px 10px;" onclick="applyTheme('starry-lantern')">↺ 恢复默认</button>
+                <button class="btn btn-secondary" style="font-size: 11px; padding: 3px 10px;" onclick="applyTheme('christmas-eve')">↺ 恢复默认</button>
               </div>
             </div>
           </div>
@@ -8220,7 +8221,21 @@
                   <option value="stable">✅ 正式版</option>
                   <option value="beta">🧪 测试版</option>
                 </select>
-                <span id="update-channel-hint" style="font-size: 11px; color: var(--text-muted);">只接收正式版更新</span>
+                <span id="update-channel-hint" style="font-size: 11px; color: var(--text-muted);">只接收正式版更新（测试版提醒默认关闭）</span>
+              </div>
+              <!-- 更新提醒设置 -->
+              <div style="margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-card); display: flex; flex-direction: column; gap: 7px;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">🔔 更新提醒设置</div>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-primary); cursor: pointer;">
+                  <input type="checkbox" id="update-notify-stable-checkbox" checked onchange="toggleUpdateReminderPref('stable', this.checked)" style="accent-color: #10b981;">
+                  <span>✅ 正式版更新提醒（默认开启）</span>
+                  <span style="font-size: 11px; color: var(--text-muted);">— 提示「最终版本更新了，是否尝试？」</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-primary); cursor: pointer;">
+                  <input type="checkbox" id="update-notify-beta-checkbox" onchange="toggleUpdateReminderPref('beta', this.checked)" style="accent-color: #f59e0b;">
+                  <span>🧪 测试版更新提醒（默认关闭）</span>
+                  <span style="font-size: 11px; color: var(--warning, #fbbf24);">— 开启后提示（备注：测试版本不稳定，不建议尝试）</span>
+                </label>
               </div>
               <!-- 历史版本下载 -->
               <div id="history-versions-section" style="margin-top: 15px; display: none;">

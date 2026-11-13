@@ -17,10 +17,10 @@ const ATMOSPHERIC_THEME_IDS = new Set([
     'christmas-eve',
 ]);
 const QUICK_THEME_OPTIONS = [
+    { id: 'christmas-eve', pill: '🎄 圣诞', title: '🎄 圣诞 · 圣诞暖夜', desc: '深松绿雪夜与暖金圣诞灯饰（默认）' },
     { id: 'autumn-night', pill: '🍁 秋景', title: '🍁 秋景 · 暮秋枫夜', desc: '11月深秋红枫与暖琥珀夜色' },
     { id: 'starry-lantern', pill: '🏮 夜景', title: '🏮 夜景 · 静夜花灯', desc: '深邃静夜星空与暖意中国花灯' },
     { id: 'snow-night', pill: '❄️ 雪景', title: '❄️ 雪景 · 静冬雪夜', desc: '深蓝冬夜冰晶飘雪，静谧护眼' },
-    { id: 'christmas-eve', pill: '🎄 圣诞', title: '🎄 圣诞 · 圣诞暖夜', desc: '深松绿雪夜与暖金圣诞灯饰' },
     { id: 'starry-ink', pill: '🌌 深空', title: '🌌 夜景 · 静谧深空', desc: '纯净星空深蓝，零干扰专注' },
     { id: 'dark', pill: '🌙 暗灰', title: '🌙 经典暗灰', desc: '沉稳深灰色调' },
     { id: 'light', pill: '☀️ 亮色', title: '☀️ 亮色 · 清新薄荷', desc: '白天清晰浅色工作台' },
@@ -34,7 +34,7 @@ function resolveCurrentThemeId(doc, win) {
         const saved = win.localStorage?.getItem('videokit-theme');
         if (saved) return saved;
     } catch (_) {}
-    return 'starry-lantern';
+    return 'christmas-eve';
 }
 
 export function initVideoKitStudio(opts = {}) {
@@ -199,9 +199,9 @@ export function initVideoKitStudio(opts = {}) {
         const order = ['lit', 'calm', 'off'];
         const nextIdx = (order.indexOf(currentMode) + 1) % order.length;
         const activeTheme = resolveCurrentThemeId(doc, win);
-        // If user turns ambient effects back on while on a non-atmospheric theme, switch to starry-lantern
+        // If user turns ambient effects back on while on a non-atmospheric theme, switch to christmas-eve
         if (order[nextIdx] !== 'off' && !ATMOSPHERIC_THEME_IDS.has(activeTheme) && typeof win.applyTheme === 'function') {
-            win.applyTheme('starry-lantern');
+            win.applyTheme('christmas-eve');
         }
         setLanternMode(order[nextIdx]);
     }
@@ -273,8 +273,8 @@ export function initVideoKitStudio(opts = {}) {
         const colors = themeMeta?.colors || win.THEME_PRESETS?.[themeId]?.colors;
         const computedBg = colors?.['--bg-titlebar'] || doc.documentElement?.style?.getPropertyValue('--bg-titlebar') || '';
         const computedText = colors?.['--text-primary'] || doc.documentElement?.style?.getPropertyValue('--text-primary') || '';
-        const color = /^#[0-9a-fA-F]{6}$/.test(computedBg.trim()) ? computedBg.trim() : (isLight ? '#e2ebe0' : '#050811');
-        const symbolColor = /^#[0-9a-fA-F]{6}$/.test(computedText.trim()) ? computedText.trim() : (isLight ? '#1b2e1b' : '#eef2fb');
+        const color = /^#[0-9a-fA-F]{6}$/.test(computedBg.trim()) ? computedBg.trim() : (isLight ? '#e2ebe0' : '#050b08');
+        const symbolColor = /^#[0-9a-fA-F]{6}$/.test(computedText.trim()) ? computedText.trim() : (isLight ? '#1b2e1b' : '#f6f3ea');
         try {
             Promise.resolve(win.electronAPI.setTitlebarTheme({ isLight, color, symbolColor })).catch(() => {});
         } catch (_) {}

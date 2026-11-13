@@ -1002,8 +1002,8 @@ function setupFFmpegPath() {
 const WINDOW_CHROME_HEIGHT = 38;
 let _currentTitlebarTheme = {
     isLight: false,
-    color: '#050811',
-    symbolColor: '#eef2fb',
+    color: '#050b08',
+    symbolColor: '#f6f3ea',
 };
 
 function sanitizeOverlayHex(raw, fallback) {
@@ -1076,7 +1076,7 @@ function createWindow() {
         height: 800,
         minWidth: 900,
         minHeight: 700,
-        backgroundColor: '#060913',
+        backgroundColor: '#060d0a',
         title: app.isPackaged ? 'VideoKit' : 'VideoKit — 源码测试版',
         icon: getResourcePath(process.platform === 'win32' ? 'assets/icon.ico' : (process.platform === 'darwin' ? 'assets/icon.icns' : 'assets/icon.png')),
         webPreferences: {

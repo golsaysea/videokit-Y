@@ -3159,6 +3159,24 @@ body.theme-light .rdp-cta-card {
     color: #94a3b8;
 }
 
+.vk-update-toast-beta-warn {
+    margin-top: 6px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.38);
+    color: #fde68a;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+body.theme-light .vk-update-toast-beta-warn {
+    background: rgba(245, 158, 11, 0.12);
+    border-color: rgba(217, 119, 6, 0.35);
+    color: #b45309;
+}
+
 .vk-update-toast-hint {
     margin-top: 5px;
     font-size: 11px;
@@ -3293,4 +3311,145 @@ body.theme-light .vk-update-toast-badge.is-ready {
     background: rgba(16, 185, 129, 0.12);
     color: #047857;
     border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* ========== 工程管理库 & 文件夹同步样式 ========== */
+.rbt-folder-scope-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 12px;
+    background: rgba(15, 23, 42, 0.85);
+    border-bottom: 1px solid rgba(139, 92, 246, 0.25);
+    font-size: 11px;
+    color: #cbd5e1;
+}
+
+.rbt-folder-scope-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.18);
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    color: #e0e7ff;
+    font-weight: 600;
+    max-width: 48vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rbt-folder-scope-btn {
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+    color: #e2e8f0;
+    white-space: nowrap;
+}
+
+.rbt-folder-scope-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.rbt-tab-thumb {
+    width: 14px;
+    height: 22px;
+    object-fit: cover;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: #090d16;
+}
+
+.reels-batch-group-thumb {
+    width: 20px;
+    height: 34px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: #090d16;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.reels-active-folder-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.25);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(139, 92, 246, 0.08));
+    font-size: 10.5px;
+    color: #e0e7ff;
+}
+
+.tpl-card-check {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    z-index: 4;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1.5px solid rgba(255, 255, 255, 0.55);
+    background: rgba(15, 23, 42, 0.72);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.78;
+    transition: all 0.15s ease;
+    padding: 0;
+}
+
+.tpl-card:hover .tpl-card-check,
+.tpl-card.tpl-selected .tpl-card-check {
+    opacity: 1;
+}
+
+.tpl-card.tpl-selected .tpl-card-check {
+    background: #6366f1;
+    border-color: #a5b4fc;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.5);
+}
+
+.tpl-breadcrumb-chip {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+    padding: 4px 9px;
+    color: #e2e8f0;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tpl-breadcrumb-chip:hover {
+    background: rgba(99, 102, 241, 0.22);
+    border-color: rgba(165, 180, 252, 0.55);
+}
+
+.tpl-breadcrumb-chip.is-current {
+    background: rgba(99, 102, 241, 0.24);
+    border-style: solid;
+    border-color: rgba(129, 140, 248, 0.5);
+    font-weight: 600;
+    color: #fff;
 }

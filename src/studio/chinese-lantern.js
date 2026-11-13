@@ -96,7 +96,7 @@ export function buildChineseLanternSvg(opts = {}) {
 </svg>`;
 }
 
-export function buildSeasonalCornerSvg(sceneTheme = 'starry-lantern', opts = {}) {
+export function buildSeasonalCornerSvg(sceneTheme = 'christmas-eve', opts = {}) {
     const uid = `vks${++_svgUidCounter}`;
     const w = Number(opts.width) || 54;
     const h = Number(opts.height) || 96;
@@ -185,7 +185,7 @@ const SCENE_STAGE_GREETINGS = {
 export function mountChineseLanternStage(doc = document) {
     if (!doc || !doc.body) return { setMode() {}, setSceneTheme() {}, destroy() {} };
 
-    let currentScene = 'starry-lantern';
+    let currentScene = 'christmas-eve';
 
     let stage = doc.getElementById('vk-lantern-stage');
     function renderStageOrnaments(sceneId) {
@@ -256,15 +256,18 @@ export function mountChineseLanternStage(doc = document) {
     function updateEmptyPreview(sceneId) {
         const placeholder = doc.getElementById('reels-preview-placeholder');
         if (!placeholder) return;
-        const meta = SCENE_STAGE_GREETINGS[sceneId] || SCENE_STAGE_GREETINGS['starry-lantern'];
+        const meta = SCENE_STAGE_GREETINGS[sceneId] || SCENE_STAGE_GREETINGS['christmas-eve'];
         const existingPoetic = placeholder.querySelector?.('.vk-preview-poetic-empty');
         if (!existingPoetic) {
             const poetic = doc.createElement('div');
             poetic.className = 'vk-preview-poetic-empty';
             poetic.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;user-select:none;';
+            const initOrnament = (sceneId === 'starry-lantern' || sceneId === 'starry-ink')
+                ? buildChineseLanternSvg({ width: 44, height: 84, variant: 'lotus', cordLength: 12 })
+                : buildSeasonalCornerSvg(sceneId, { width: 46, height: 86 });
             poetic.innerHTML = `
                 <div class="vk-preview-ornament" style="opacity:0.9;filter:drop-shadow(0 0 14px rgba(246,178,75,0.28));">
-                    ${buildChineseLanternSvg({ width: 44, height: 84, variant: 'lotus', cordLength: 12 })}
+                    ${initOrnament}
                 </div>
                 <div class="vk-preview-title" style="font-size:12.5px;font-weight:600;letter-spacing:0.4px;color:${meta.color};">${meta.title}</div>
                 <div class="vk-preview-sub" style="font-size:11px;color:rgba(203,213,225,0.68);">${meta.sub}</div>
@@ -296,7 +299,7 @@ export function mountChineseLanternStage(doc = document) {
             doc.body.setAttribute('data-lantern-mode', safeMode);
         },
         setSceneTheme(themeId) {
-            const next = SCENE_STAGE_GREETINGS[themeId] ? themeId : 'starry-lantern';
+            const next = SCENE_STAGE_GREETINGS[themeId] ? themeId : 'christmas-eve';
             if (next !== currentScene) {
                 currentScene = next;
                 renderStageOrnaments(currentScene);

@@ -659,6 +659,8 @@
         installUpdate: () => Promise.resolve(),
         getUpdateChannel: () => Promise.resolve('stable'),
         setUpdateChannel: () => Promise.resolve('stable'),
+        getUpdatePrefs: () => Promise.resolve({ channel: 'stable', notifyStable: true, notifyBeta: false }),
+        setUpdatePrefs: (prefs = {}) => Promise.resolve({ channel: prefs.notifyBeta ? 'beta' : 'stable', notifyStable: prefs.notifyStable !== false, notifyBeta: Boolean(prefs.notifyBeta) }),
         onUpdateStatus: () => () => {},
 
         // Fonts

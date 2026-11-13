@@ -571,11 +571,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     // 自动更新
-    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    checkForUpdates: (opts) => ipcRenderer.invoke('check-for-updates', opts),
     downloadUpdate: () => ipcRenderer.invoke('download-update'),
     installUpdate: () => ipcRenderer.invoke('install-update'),
     getUpdateChannel: () => ipcRenderer.invoke('get-update-channel'),
     setUpdateChannel: (channel) => ipcRenderer.invoke('set-update-channel', channel),
+    getUpdatePrefs: () => ipcRenderer.invoke('get-update-prefs'),
+    setUpdatePrefs: (prefs) => ipcRenderer.invoke('set-update-prefs', prefs),
     onUpdateStatus: (callback) => {
         const handler = (_, data) => callback(data);
         ipcRenderer.on('update-status', handler);

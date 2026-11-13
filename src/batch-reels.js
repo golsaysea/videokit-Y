@@ -10104,6 +10104,7 @@ function _renderTaskList(options = {}) {
     const prevScrollTop = container.scrollTop;
 
     window.reelsEnsureTaskBatchOwnership?.(_reelsState.tasks);
+    reelsUpdateActiveFolderBar();
     const tasks = _reelsState.tasks;
     const taskNameDisplay = _getReelsTaskNameDisplay();
     container.classList.toggle('reels-task-list-compact', taskNameDisplay === 'compact');
@@ -10188,9 +10189,7 @@ function _renderTaskList(options = {}) {
         const taskNameStyle = isCompactName
             ? 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;'
             : 'overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:break-word;min-width:0;flex:1;';
-        const escapeTaskText = (value) => String(value || '')
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const escapeTaskText = _escapeReelsTaskText;
 
         // 覆层内容预览
         let ovPreview = '';
@@ -10247,6 +10246,10 @@ function _renderTaskList(options = {}) {
             const groupIndeterminate = groupSelected > 0 && groupSelected < groupTasks.length;
             const incompleteInGroup = groupTasks.filter(_isReelsTaskIncomplete).length;
             const encodedGroupId = encodeURIComponent(batchGroupId);
+            const groupThumbUrl = !isLegacyTask ? _reelsGetBatchGroupThumb(groupTasks, batchGroupId) : '';
+            const groupThumbHtml = groupThumbUrl
+                ? `<img class="reels-batch-group-thumb" src="${escapeTaskText(groupThumbUrl)}" alt="" draggable="false" />`
+                : '';
             batchGroupHeader = `
                 <div class="reels-batch-group-header"
                     style="display:flex;align-items:center;gap:7px;padding:8px 7px;margin:7px 0 3px;
@@ -10260,6 +10263,7 @@ function _renderTaskList(options = {}) {
                         onclick="event.stopPropagation()"
                         style="accent-color:var(--accent-color,#7b8bef);margin:0;transform:scale(1.08);cursor:pointer;"
                         title="本组总开关：勾选则本组全部参与导出，取消则本组全部不导出">
+                    ${groupThumbHtml}
                     <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${groupName}">${isLegacyTask ? '🕘' : '📑'} ${groupName}</span>
                     ${subGroupBadge}
                     <span style="margin-left:auto;color:#94a3b8;font-weight:400;">${groupSelected}/${groupTasks.length}</span>
@@ -10348,6 +10352,58 @@ function _renderTaskList(options = {}) {
         if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 }
+
+function _escapeReelsTaskText(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+let _reelsLibraryThumbFetchPromise = null;
+function _reelsGetBatchGroupThumb(groupTasks, batchGroupId) {
+    const cache = window._reelsLibraryThumbCache || {};
+    const tabTplId = window.reelsGetBatchTabLibraryTemplateId?.(batchGroupId)
+        || (groupTasks || []).find(t => t && t._libraryTemplateId)?._libraryTemplateId
+        || '';
+    if (tabTplId && cache[tabTplId]) return cache[tabTplId];
+    if (tabTplId && !_reelsLibraryThumbFetchPromise && typeof window.reelsRefreshLibraryThumbCache === 'function') {
+        _reelsLibraryThumbFetchPromise = window.reelsRefreshLibraryThumbCache().finally(() => {
+            _reelsLibraryThumbFetchPromise = null;
+        });
+    }
+    for (const t of groupTasks || []) {
+        const bg = String(t?.bgPath || t?.videoPath || '').trim();
+        if (bg && /\.(png|jpe?g|webp|gif|bmp)$/i.test(bg)) {
+            if (t.bgSrcUrl) return t.bgSrcUrl;
+            if (window.electronAPI?.toFileUrl) return window.electronAPI.toFileUrl(bg);
+        }
+    }
+    return '';
+}
+
+function reelsUpdateActiveFolderBar() {
+    const bar = document.getElementById('reels-active-folder-bar');
+    if (!bar) return;
+    const status = typeof window.reelsGetWorkspaceLibraryStatus === 'function'
+        ? window.reelsGetWorkspaceLibraryStatus()
+        : null;
+    if (!status || !status.folderId) {
+        bar.style.display = 'none';
+        bar.innerHTML = '';
+        return;
+    }
+    const label = status.folderPath || '主工程库';
+    const scopeHint = `${status.openTabCount || 0} 个标签`;
+    bar.style.display = 'flex';
+    bar.innerHTML = `
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;" title="当前工作区仅显示该文件夹标签：${_escapeReelsTaskText(label)}">📂 <b>${_escapeReelsTaskText(label)}</b> · ${scopeHint}</span>
+        <button type="button" class="btn" style="padding:1px 6px;font-size:10px;background:rgba(99,102,241,0.28);color:#e0e7ff;border:1px solid rgba(165,180,252,0.4);border-radius:4px;cursor:pointer;flex-shrink:0;" onclick="openTemplateLibrary()" title="在工程管理库查看缩略图与多级文件夹">🗂️ 管理</button>
+    `;
+}
+window.reelsUpdateActiveFolderBar = reelsUpdateActiveFolderBar;
 
 function _areAllReelsTaskGroupsCollapsed() {
     const tasks = _reelsState.tasks || [];
@@ -16185,7 +16241,7 @@ function _cloneReelsHistoryTasks(tasks) {
         const out={};for(const [k,v]of Object.entries(value))if((!k.startsWith('_')||allowed.has(k))&&typeof v!=='function')out[k]=clone(v,seen);return out;
     }
     const clones=clone(tasks);
-    clones.forEach((task,i)=>{for(const key of ['_batchProjection','_batchTabId','_batchTabName','_batchTabGroup','_batchTabOrder','_batchTaskOrder'])if(tasks[i][key]!==undefined)task[key]=tasks[i][key];});
+    clones.forEach((task,i)=>{for(const key of ['_batchProjection','_batchTabId','_batchTabName','_batchTabGroup','_batchTabOrder','_batchTaskOrder','_libraryTemplateId'])if(tasks[i][key]!==undefined)task[key]=tasks[i][key];});
     return clones;
 }
 
