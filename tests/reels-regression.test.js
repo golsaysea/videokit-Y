@@ -7644,7 +7644,7 @@ test('Decor panel supports explicit apply-this-page (task) and apply-this-tab (t
     assert.strictEqual(tB1.overlays.find(o => o.type === 'decor')?.decor_style, 'cinema_35mm_grain', 'In task mode, tabB must remain untouched');
 });
 
-test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 19 paper/photo/plaid boards, and 60 emblems render cleanly', () => {
+test('150 new prayer & Christmas card scroll presets (sc-49..sc-198), 31 new boards, and 72 emblems render cleanly', () => {
     const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
         window: { addEventListener() {} },
     });
@@ -7659,8 +7659,8 @@ test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 1
 
     const { ReelsOverlay, ReelsBrushEngine, REELS_BUILTIN_SCROLL_STYLE_PRESETS, REELS_SCROLL_PRESET_ID_MAP, resolveBuiltinPreset } = sandbox.window;
 
-    assert.strictEqual(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 148, 'Expected 148 built-in scroll style presets');
-    assert.strictEqual(Object.keys(REELS_SCROLL_PRESET_ID_MAP).length, 296, 'Expected 296 scroll preset ID mappings (sc-01..148 & scroll-01..148)');
+    assert.strictEqual(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 198, 'Expected 198 built-in scroll style presets');
+    assert.strictEqual(Object.keys(REELS_SCROLL_PRESET_ID_MAP).length, 396, 'Expected 396 scroll preset ID mappings (sc-01..198 & scroll-01..198)');
 
     const newBoardIds = [
         'kraft_torn_note', 'kraft_stamped_letter', 'kraft_espresso_prayer',
@@ -7669,13 +7669,19 @@ test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 1
         'vintage_aged_manuscript', 'vintage_botanical_herbarium', 'vintage_hymnal_navy',
         'old_photo_sepia_mount', 'old_photo_polaroid_frame', 'old_photo_film_strip', 'old_photo_archive_matte',
     ];
-    for (const bid of newBoardIds) {
+    const newXmasBoardIds = [
+        'xmas_burgundy_gold_foil', 'xmas_royal_tartan_plaid', 'xmas_nativity_bethlehem',
+        'xmas_cathedral_stained_glass', 'xmas_kraft_winter_botanical', 'xmas_cotton_letterpress',
+        'xmas_winter_sage_wreath', 'xmas_candlelit_hearth', 'xmas_frosted_ice_silver',
+        'xmas_advent_violet_gold', 'xmas_evergreen_crimson_plaid', 'xmas_silent_night_hymnal',
+    ];
+    for (const bid of [...newBoardIds, ...newXmasBoardIds]) {
         assert.ok(ReelsBrushEngine.CARD_BACKGROUND_STYLES[bid], `CARD_BACKGROUND_STYLES must define ${bid}`);
     }
 
     const emblemMeta = ReelsOverlay.NA_PRAYER_EMBLEM_META;
     const emblemKeys = Object.keys(emblemMeta || {});
-    assert.strictEqual(emblemKeys.length, 60, 'Expected 60 North American & Catholic emblems in NA_PRAYER_EMBLEM_META');
+    assert.strictEqual(emblemKeys.length, 72, 'Expected 72 North American, Catholic & Christmas emblems in NA_PRAYER_EMBLEM_META');
 
     const drawCalls = { fillText: 0, translate: 0 };
     const mockCtx = {
@@ -7718,11 +7724,12 @@ test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 1
         createPattern() { return null; },
     };
 
-    // 1. Validate & render all 100 new scroll presets sc-49..sc-148 without any Canvas error
+    // 1. Validate & render all 150 new scroll presets sc-49..sc-198 without any Canvas error
     const seenNames = new Set();
     const seenBoards = new Set();
     const seenCategories = new Set();
-    for (let num = 49; num <= 148; num++) {
+    const seenXmasEmblems = new Set();
+    for (let num = 49; num <= 198; num++) {
         const scId = `sc-${num}`;
         const aliasId = `scroll-${num}`;
         const resolved = resolveBuiltinPreset(scId);
@@ -7734,10 +7741,23 @@ test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 1
         seenCategories.add(resolved.category);
         seenBoards.add(resolved.style.bg_style);
         assert.ok(ReelsBrushEngine.CARD_BACKGROUND_STYLES[resolved.style.bg_style], `${scId} bg_style ${resolved.style.bg_style} must exist`);
+        assert.strictEqual(resolved.style.bg_width, 0, `${scId} card width must auto-follow subtitle clip box (bg_width === 0)`);
+        assert.strictEqual(resolved.style.bg_height, 0, `${scId} card height must auto-follow subtitle clip box (bg_height === 0)`);
+        assert.strictEqual(resolved.style.bg_scroll_follow, true, `${scId} must enable bg_scroll_follow`);
+        assert.strictEqual(resolved.style.feather_mode, 'clip', `${scId} must use clip feathering so card and text fade/expand together`);
+        if (num >= 149) {
+            assert.strictEqual(resolved.style.bg_enabled, true, `${scId} Christmas card must enable background board`);
+            if (resolved.style.bg_bookmark_enabled && String(resolved.style.bg_bookmark_style).startsWith('na_xmas_')) {
+                seenXmasEmblems.add(resolved.style.bg_bookmark_style);
+            }
+            if (String(resolved.style.bg_top_mascot).startsWith('na_xmas_')) {
+                seenXmasEmblems.add(resolved.style.bg_top_mascot);
+            }
+        }
 
         const ov = ReelsOverlay.createScrollOverlay({
             ...resolved.style,
-            scroll_title: 'MORNING PRAYER',
+            scroll_title: num >= 149 ? 'CHRISTMAS BLESSING' : 'MORNING PRAYER',
             content: 'Heavenly Father, thank You for grace.\nGuide our steps in peace today.\nAmen.',
             x: 40,
             y: 440,
@@ -7754,13 +7774,18 @@ test('100 new North American & Catholic prayer scroll presets (sc-49..sc-148), 1
         ReelsOverlay.drawOverlay(mockCtx, ov, 3.2, 1080, 1920);
     }
 
-    assert.strictEqual(seenCategories.size, 6, 'Expected all 6 new scroll preset categories across sc-49..sc-148');
-    for (const bid of newBoardIds) {
-        assert.ok(seenBoards.has(bid), `At least one sc-49..sc-148 preset must showcase board ${bid}`);
+    assert.strictEqual(seenCategories.size, 10, 'Expected all 10 scroll preset categories across sc-49..sc-198');
+    for (const bid of [...newBoardIds, ...newXmasBoardIds]) {
+        assert.ok(seenBoards.has(bid), `At least one sc-49..sc-198 preset must showcase board ${bid}`);
     }
-    assert.ok(drawCalls.fillText > 100, 'Expected fillText calls when rendering all 100 presets');
+    const expectedXmasEmblems = emblemKeys.filter(k => k.startsWith('na_xmas_'));
+    assert.strictEqual(expectedXmasEmblems.length, 12, 'Expected 12 na_xmas_* emblems');
+    for (const eid of expectedXmasEmblems) {
+        assert.ok(seenXmasEmblems.has(eid), `At least one Christmas preset sc-149..sc-198 must feature emblem ${eid}`);
+    }
+    assert.ok(drawCalls.fillText > 150, 'Expected fillText calls when rendering all 150 presets');
 
-    // 2. Render all 60 NA emblems both as corner ribbon badge AND top crest mascot
+    // 2. Render all 72 NA & Christmas emblems both as corner ribbon badge AND top crest mascot
     for (const emblemId of emblemKeys) {
         const ovBadgeAndMascot = ReelsOverlay.createScrollOverlay({
             scroll_title: 'BLESSING',
@@ -8007,8 +8032,8 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     const modal = appendedById['rop-scroll-style-picker-popover'];
     assert.ok(modal && modal.classList.contains('rsl-backdrop'), 'Modal #rop-scroll-style-picker-popover must use rsl-backdrop class');
     assert.ok(modal.innerHTML.includes('rsl-dialog'), 'Modal must render centered .rsl-dialog');
-    assert.strictEqual(modal.querySelectorAll('.rsl-card').length, 148, 'All 148 scroll cards must render inside studio grid');
-    assert.ok(modal.querySelectorAll('.rsl-chip').length >= 11, 'Expected material/element filter chips');
+    assert.strictEqual(modal.querySelectorAll('.rsl-card').length, 198, 'All 198 scroll cards must render inside studio grid');
+    assert.ok(modal.querySelectorAll('.rsl-chip').length >= 12, 'Expected material/element filter chips including 圣诞贺卡');
     assert.ok(rafQueue.length > 0, 'Lazy canvas thumbnail & stage RAF loops must be scheduled');
 
     // Flush lazy thumbnail pump batch (renders first 4 cards cleanly)
@@ -8016,16 +8041,24 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     if (rafQueue.length > 0) rafQueue[0](1016);
     assert.ok(drawOverlayCalls.length > beforeThumbs, 'Lazy card pump should render card thumbnails onto canvases');
 
-    // 2. Material chip filter ('oldphoto') narrows visible cards cleanly
+    // 2. Material chip filter ('oldphoto' & 'christmas') narrows visible cards cleanly
     const oldPhotoChip = modal.querySelectorAll('.rsl-chip').find(c => c.dataset.flag === 'oldphoto');
     assert.ok(oldPhotoChip, 'Expected 老照片 filter chip');
     oldPhotoChip.dispatchEvent({ type: 'click' });
     const visibleAfterChip = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
-    assert.ok(visibleAfterChip.length > 0 && visibleAfterChip.length < 148, 'Selecting oldphoto chip should filter cards');
-    assert.ok(modal.querySelector('.rsl-count-readout').textContent.includes(`显示 ${visibleAfterChip.length} / 148`));
+    assert.ok(visibleAfterChip.length > 0 && visibleAfterChip.length < 198, 'Selecting oldphoto chip should filter cards');
+    assert.ok(modal.querySelector('.rsl-count-readout').textContent.includes(`显示 ${visibleAfterChip.length} / 198`));
+
+    // Verify Christmas chip shows all new sc-149..sc-198 cards
+    oldPhotoChip.dispatchEvent({ type: 'click' });
+    const xmasChip = modal.querySelectorAll('.rsl-chip').find(c => c.dataset.flag === 'christmas');
+    assert.ok(xmasChip, 'Expected 🎄 圣诞贺卡 filter chip');
+    xmasChip.dispatchEvent({ type: 'click' });
+    const xmasCards = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
+    assert.ok(xmasCards.length >= 50 && xmasCards.length < 198, `Expected >= 50 Christmas scroll cards, got ${xmasCards.length}`);
 
     // Clear chip & search for 白头鹰
-    oldPhotoChip.dispatchEvent({ type: 'click' });
+    xmasChip.dispatchEvent({ type: 'click' });
     const searchEl = modal.querySelector('#rop-scroll-picker-search');
     searchEl.value = '白头鹰';
     searchEl.dispatchEvent({ type: 'input' });
@@ -8160,6 +8193,280 @@ test('Batch table keeps bottom .rbt-footer visible below window chrome bar and .
     assert.strictEqual(fallback.panelMaxHeight, '610px');
     assert.strictEqual(fallback.tableMaxHeight, '232px');
 });
+
+test('Scroll card backgrounds auto-follow subtitle box, sync feathering/negative-offset expansion, and coalesce rapid color-picker drags', () => {
+    const overlaySandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: { addEventListener() {} },
+    });
+    overlaySandbox.ReelsAnimEngine = overlaySandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', overlaySandbox);
+    overlaySandbox.ReelsOverlay = overlaySandbox.window.ReelsOverlay;
+    overlaySandbox.ReelsBrushEngine = overlaySandbox.window.ReelsBrushEngine;
+    loadBrowserScript('src/reels-style-engine.js', overlaySandbox);
+    overlaySandbox.ReelsStyleEngine = overlaySandbox.window.ReelsStyleEngine;
+    loadBrowserScript('src/reels-canvas-renderer.js', overlaySandbox);
+    loadBrowserScript('src/reels-presets-init.js', overlaySandbox);
+
+    const ReelsOverlay = overlaySandbox.window.ReelsOverlay;
+    const ReelsBrushEngine = overlaySandbox.window.ReelsBrushEngine;
+    const resolveBuiltinPreset = overlaySandbox.window.resolveBuiltinPreset;
+    assert.ok(ReelsOverlay && ReelsBrushEngine, 'window.ReelsOverlay and ReelsBrushEngine must be exposed');
+    assert.strictEqual(typeof resolveBuiltinPreset, 'function', 'window.resolveBuiltinPreset must be exposed');
+
+    let sc164 = null;
+    for (let n = 49; n <= 198; n++) {
+        const candidate = resolveBuiltinPreset(`sc-${n}`);
+        if (candidate?.style?.bg_style === 'xmas_cathedral_stained_glass') {
+            sc164 = candidate;
+            break;
+        }
+    }
+    assert.ok(sc164 && sc164.style, 'xmas_cathedral_stained_glass preset must resolve');
+    assert.strictEqual(sc164.style.bg_style, 'xmas_cathedral_stained_glass');
+    assert.strictEqual(sc164.style.bg_width, 0);
+    assert.strictEqual(sc164.style.bg_height, 0);
+    assert.strictEqual(sc164.style.bg_scroll_follow, true);
+    assert.strictEqual(sc164.style.feather_mode, 'clip');
+
+    const canvasCalls = { drawImage: 0, fillRect: 0, gradStops: 0, compositeOps: [] };
+    const createMockCtx = () => ({
+        font: '',
+        globalAlpha: 1,
+        save() {},
+        restore() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        bezierCurveTo() {},
+        quadraticCurveTo() {},
+        arc() {},
+        arcTo() {},
+        ellipse() {},
+        rect() {},
+        roundRect() {},
+        clip() {},
+        setLineDash() {},
+        fill() { canvasCalls.fillRect++; },
+        stroke() {},
+        fillRect() { canvasCalls.fillRect++; },
+        strokeRect() {},
+        clearRect() {},
+        translate() {},
+        scale() {},
+        rotate() {},
+        setTransform() {},
+        drawImage() { canvasCalls.drawImage++; },
+        measureText: (t) => ({ width: String(t || '').length * 16 }),
+        fillText() {},
+        strokeText() {},
+        createPattern: () => ({}),
+        createLinearGradient: () => ({ addColorStop() { canvasCalls.gradStops++; } }),
+        createRadialGradient: () => ({ addColorStop() { canvasCalls.gradStops++; } }),
+        set globalCompositeOperation(v) { canvasCalls.compositeOps.push(v); this._gco = v; },
+        get globalCompositeOperation() { return this._gco || 'source-over'; },
+    });
+
+    // Enable real-like canvas node detection for offscreen feather & themed card composite paths
+    const prevDocCreate = overlaySandbox.document.createElement;
+    overlaySandbox.document.createElement = (tag) => {
+        if (String(tag).toLowerCase() === 'canvas') {
+            const cCtx = createMockCtx();
+            return {
+                nodeName: 'CANVAS',
+                tagName: 'CANVAS',
+                width: 1080,
+                height: 1920,
+                getContext: () => cCtx,
+            };
+        }
+        return prevDocCreate(tag);
+    };
+
+    const mainCtx = createMockCtx();
+
+    // (a) Changing ov.w / ov.h resizes _renderedW / _renderedH dynamically on sc-164
+    const smallOv = ReelsOverlay.createScrollOverlay({
+        ...sc164.style,
+        scroll_title: '',
+        content: 'Grace and peace to you in this quiet season.',
+        x: 180,
+        y: 500,
+        w: 520,
+        h: 420,
+        start: 0,
+        end: 10,
+    });
+    ReelsOverlay.drawOverlay(mainCtx, smallOv, 2.0, 1080, 1920);
+    const smallW = smallOv._renderedW;
+    const smallH = smallOv._renderedH;
+
+    const largeOv = ReelsOverlay.createScrollOverlay({
+        ...sc164.style,
+        scroll_title: '',
+        content: 'Grace and peace to you in this quiet season.',
+        x: 90,
+        y: 380,
+        w: 840,
+        h: 880,
+        start: 0,
+        end: 10,
+    });
+    ReelsOverlay.drawOverlay(mainCtx, largeOv, 2.0, 1080, 1920);
+    assert.ok(largeOv._renderedW > smallW + 200, `Expected wider clip box to widen rendered card (${largeOv._renderedW} vs ${smallW})`);
+    assert.ok(largeOv._renderedH > smallH + 350, `Expected taller clip box to heighten rendered card (${largeOv._renderedH} vs ${smallH})`);
+
+    // (b) Negative feather offsets expand auto-sized card outward, and drawThemedCardBackground + _drawScrollOverlay apply feather gradients cleanly
+    const expandedOv = ReelsOverlay.createScrollOverlay({
+        ...sc164.style,
+        scroll_title: '',
+        content: 'Peace be with you.',
+        x: 140,
+        y: 440,
+        w: 600,
+        h: 500,
+        feather_top: 80,
+        feather_bottom: 90,
+        feather_top_offset: -40,
+        feather_bottom_offset: -50,
+        feather_left_offset: -20,
+        feather_right_offset: -30,
+        start: 0,
+        end: 10,
+    });
+    ReelsOverlay.drawOverlay(mainCtx, expandedOv, 2.0, 1080, 1920);
+    assert.ok(expandedOv._renderedW >= 600 + 20 + 30, 'Negative left/right offsets should expand auto-sized card width');
+    assert.ok(expandedOv._renderedH >= 500 + 40 + 50, 'Negative top/bottom offsets should expand auto-sized card height');
+    assert.ok(canvasCalls.gradStops > 0 && canvasCalls.compositeOps.includes('destination-in'), 'Card feather composite should apply destination-in gradients');
+
+    const prevGradStops = canvasCalls.gradStops;
+    ReelsBrushEngine.drawThemedCardBackground(mainCtx, 100, 200, 720, 640, 24, {
+        style: 'xmas_cathedral_stained_glass',
+        seedKey: 'test-themed-feather',
+        opacity: 0.92,
+        edgeFeatherPx: 36,
+    });
+    assert.ok(canvasCalls.gradStops > prevGradStops, 'drawThemedCardBackground with edgeFeatherPx > 0 must draw feather gradients');
+
+    // (c) Continuous color-picker input events coalesce heavy scope sync / autosave / task-list rebuild while change commits immediately
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const timers = [];
+    let rafQueue = [];
+    let nextId = 1;
+    let autoSaveCount = 0;
+    let renderTaskListCount = 0;
+    let syncTabCount = 0;
+    let onOverlayChangeCount = 0;
+    let renderCount = 0;
+
+    const makeInput = (id, value) => {
+        const listeners = {};
+        return {
+            id,
+            value,
+            type: id.endsWith('hex') ? 'text' : 'color',
+            dataset: {},
+            style: { setProperty() {}, removeProperty() {} },
+            classList: { add() {}, remove() {}, contains: () => false },
+            parentNode: null,
+            children: [],
+            appendChild(child) { if (child && typeof child === 'object') child.parentNode = this; this.children.push(child); return child; },
+            insertBefore(newNode) { if (newNode && typeof newNode === 'object') newNode.parentNode = this; this.children.push(newNode); return newNode; },
+            addEventListener(evt, fn) { (listeners[evt] ||= []).push(fn); },
+            dispatch(evt) { (listeners[evt] || []).forEach(fn => fn({ type: evt, target: this })); },
+        };
+    };
+    const parentEl = makeInput('rop-parent', '');
+    const colorEl = makeInput('rop-scroll-color', '#ffffff');
+    parentEl.appendChild(colorEl);
+    const scopeEl = makeInput('rop-style-scope', 'folder');
+    const applyAllEl = { id: 'rop-scroll-apply-all', type: 'checkbox', checked: true, addEventListener() {} };
+
+    const panelSandbox = {
+        window: {
+            ReelsGradientPicker: null,
+            ReelsPreviewV2: { isOpen: () => false, requestRender() {}, render() {} },
+            ReelsOverlay: { measureScrollMotion: () => null },
+            _reelsState: {
+                tasks: [
+                    { id: 't1', overlays: [{ id: 'ov1', type: 'scroll', color: '#ffffff' }] },
+                    { id: 't2', overlays: [{ id: 'ov2', type: 'scroll', color: '#ffffff' }] },
+                ],
+                selectedIdx: 0,
+            },
+        },
+        document: {
+            head: { appendChild() {}, querySelector: () => null },
+            body: { appendChild() {} },
+            getElementById: (id) => (id === 'rop-style-scope' ? scopeEl : null),
+            createElement: (tag) => makeInput(tag || 'dyn', ''),
+        },
+        setTimeout: (fn, ms) => { const id = nextId++; timers.push({ id, fn, ms, cleared: false }); return id; },
+        clearTimeout: (id) => { const t = timers.find(x => x.id === id); if (t) t.cleared = true; },
+        requestAnimationFrame: (fn) => { const id = nextId++; rafQueue.push({ id, fn, cancelled: false }); return id; },
+        cancelAnimationFrame: (id) => { const r = rafQueue.find(x => x.id === id); if (r) r.cancelled = true; },
+        _syncCurrentOverlayEditorToSelectedTask: () => {},
+        _syncTasksToActiveTab: () => { syncTabCount++; },
+        _batchAutoSave: () => { autoSaveCount++; },
+        _renderTaskList: () => { renderTaskListCount++; },
+    };
+    panelSandbox.window.window = panelSandbox.window;
+    vm.createContext(panelSandbox);
+    vm.runInContext(`${panelSrc}\nwindow.ReelsOverlayPanel = ReelsOverlayPanel;`, panelSandbox);
+
+    const panel = Object.create(panelSandbox.window.ReelsOverlayPanel.prototype);
+    const elMap = {
+        '#rop-scroll-color': colorEl,
+        '#rop-style-scope': scopeEl,
+        '#rop-scroll-apply-all': applyAllEl,
+    };
+    panel.container = {
+        querySelector: (sel) => elMap[sel] || null,
+        querySelectorAll: () => [],
+    };
+    panel.videoCanvas = {
+        render: () => { renderCount++; },
+        onOverlayChange: () => { onOverlayChangeCount++; },
+    };
+    panel._selectedOv = panelSandbox.window._reelsState.tasks[0].overlays[0];
+    panel._val = (id, v) => { const el = elMap['#' + id]; if (el) el.value = v; };
+    panel._get = (id) => {
+        if (id === 'rop-scroll-color') return colorEl.value;
+        if (id === 'rop-scroll-apply-all') return true;
+        return '';
+    };
+    panel._updateAnimStartRef = () => {};
+    panel._updateScrollAccordionBadges = () => {};
+    panel._enhanceColorInput(colorEl);
+
+    for (const hex of ['#ff1111', '#ff2222', '#ff3333', '#ff4444', '#ff5555']) {
+        colorEl.value = hex;
+        colorEl.dispatch('input');
+    }
+    assert.strictEqual(onOverlayChangeCount, 0, 'Rapid color input events must not synchronously fire onOverlayChange');
+    assert.strictEqual(autoSaveCount, 0, 'Rapid color input events must not trigger synchronous autosave');
+    assert.strictEqual(syncTabCount, 0, 'Rapid color input events must not trigger synchronous tab sync');
+    assert.strictEqual(renderTaskListCount, 0, 'Color styling must not rebuild task list DOM');
+
+    // Coalesced rAF renders preview once without heavy sync
+    for (const r of rafQueue) {
+        if (!r.cancelled) r.fn();
+    }
+    rafQueue = [];
+    assert.strictEqual(renderCount, 1, 'Multiple color input events in a frame must coalesce into one canvas render');
+
+    // Final change event commits immediately
+    colorEl.value = '#12ab34';
+    colorEl.dispatch('change');
+    for (const r of rafQueue) {
+        if (!r.cancelled) r.fn();
+    }
+    assert.strictEqual(panelSandbox.window._reelsState.tasks[1].overlays[0].color.toLowerCase(), '#12ab34', 'Color change commit must propagate to scoped tasks');
+    assert.ok(onOverlayChangeCount >= 1, 'Color change event must notify videoCanvas.onOverlayChange');
+    assert.ok(autoSaveCount >= 1 && syncTabCount >= 1, 'Color change commit must persist tab & autosave');
+    assert.strictEqual(renderTaskListCount, 0, 'Color style change must not trigger full _renderTaskList DOM rebuild');
+});
+
 
 
 

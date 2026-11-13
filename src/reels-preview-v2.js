@@ -1353,7 +1353,20 @@
         if (state.bgmAudio.src && task && getBgmPath(task) && state.bgmAudio.paused) state.bgmAudio.play().catch(() => {});
     }
 
+    function requestRender() {
+        if (!state.isOpen) return;
+        if (state._renderRaf) return;
+        state._renderRaf = requestAnimationFrame(() => {
+            state._renderRaf = null;
+            if (state.isOpen) render();
+        });
+    }
+
     function render() {
+        if (state._renderRaf) {
+            cancelAnimationFrame(state._renderRaf);
+            state._renderRaf = null;
+        }
         if (!state.canvas) return;
         const task = getTask();
         const ctx = state.canvas.getContext('2d');
@@ -3237,6 +3250,7 @@
         open,
         close,
         render,
+        requestRender,
         reload: () => loadCurrentTask(true),
         recover: (reason = 'external-refresh') => scheduleMediaRecovery(reason, true, 0),
         isOpen: () => state.isOpen,

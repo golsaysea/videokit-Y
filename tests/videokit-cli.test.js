@@ -546,20 +546,20 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
         resolveBuiltinPreset,
     } = require('../src/reels-presets-init.js');
 
-    // 1. All 261 subtitle/scroll preset IDs + 15 overlay preset IDs + 296 scroll style IDs (sc-01..sc-148 & scroll-01..scroll-148) must resolve
+    // 1. All 261 subtitle/scroll preset IDs + 15 overlay preset IDs + 396 scroll style IDs (sc-01..sc-198 & scroll-01..scroll-198) must resolve
     const subIds = Object.keys(REELS_PRESET_ID_MAP);
     const ovIds = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
     const scIds = Object.keys(REELS_SCROLL_PRESET_ID_MAP);
     assert.equal(subIds.length, 261, 'Expected 261 subtitle/scroll preset IDs');
     assert.equal(ovIds.length, 15, 'Expected 15 overlay preset IDs');
-    assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 148, 'Expected 148 builtin scroll style presets');
-    assert.equal(scIds.length, 296, 'Expected 296 scroll style ID mappings (sc-01..sc-148 and scroll-01..scroll-148)');
+    assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 198, 'Expected 198 builtin scroll style presets');
+    assert.equal(scIds.length, 396, 'Expected 396 scroll style ID mappings (sc-01..sc-198 and scroll-01..scroll-198)');
     for (const id of [...subIds, ...ovIds, ...scIds]) {
         const resolved = resolveBuiltinPreset(id);
         assert.ok(resolved, `Preset ID ${id} must resolve`);
     }
 
-    // 2. Font resolution for Windows/macOS and all 148 scroll preset fonts
+    // 2. Font resolution for Windows/macOS and all 198 scroll preset fonts
     const scrollFonts = Array.from(new Set(
         Object.values(REELS_BUILTIN_SCROLL_STYLE_PRESETS)
             .map(p => p && p.font_family)
@@ -573,7 +573,7 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
     // 3. Validate preset IDs and Canvas-exclusive engine routing + real Electron WYSIWYG render
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-cli-a20-'));
     try {
-        for (const presetId of ['se-01', 'se-12', 'sub-03', 'sub-25', 'sub-27', 'sub-35', 'sub-36', 'sub-39', 'sub-40', 'sub-53', 'sub-55', 'sub-68', 'sub-70', 'sub-228', 'scroll-blessed-grace', 'scroll-lyrics-pink', 'ov-01', 'ov-15', 'sc-01', 'sc-13', 'sc-25', 'sc-26', 'sc-30', 'sc-34', 'sc-35', 'sc-38', 'sc-39', 'sc-40', 'sc-41', 'sc-49', 'sc-65', 'sc-81', 'sc-97', 'sc-115', 'sc-133', 'sc-148', 'scroll-15', 'scroll-49', 'scroll-148']) {
+        for (const presetId of ['se-01', 'se-12', 'sub-03', 'sub-25', 'sub-27', 'sub-35', 'sub-36', 'sub-39', 'sub-40', 'sub-53', 'sub-55', 'sub-68', 'sub-70', 'sub-228', 'scroll-blessed-grace', 'scroll-lyrics-pink', 'ov-01', 'ov-15', 'sc-01', 'sc-13', 'sc-25', 'sc-26', 'sc-30', 'sc-34', 'sc-35', 'sc-38', 'sc-39', 'sc-40', 'sc-41', 'sc-49', 'sc-65', 'sc-81', 'sc-97', 'sc-115', 'sc-133', 'sc-148', 'sc-149', 'sc-162', 'sc-175', 'sc-187', 'sc-198', 'scroll-15', 'scroll-49', 'scroll-148', 'scroll-149', 'scroll-198']) {
             const p = path.join(tmpDir, `task-${presetId}.json`);
             fs.writeFileSync(p, JSON.stringify({
                 id: `check-${presetId}`,

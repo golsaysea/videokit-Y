@@ -1207,13 +1207,41 @@ function _initReelsModule() {
                     reelsUpdatePreview();
                     if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
                 },
-                onOverlayChange() {
-                    _syncCurrentOverlayEditorToSelectedTask();
+                onOverlayChange(ov, options = {}) {
+                    if (options && options.skipTimelineSync) {
+                        const task = _getSelectedTask();
+                        const mgr = _reelsState.overlayProxy && _reelsState.overlayProxy.overlayMgr;
+                        if (task && mgr) {
+                            if (_reelsState._coverEditMode && task.cover) {
+                                task.cover.overlays = [...(mgr.overlays || [])];
+                            } else {
+                                task.overlays = [...(mgr.overlays || [])];
+                            }
+                        }
+                        if (typeof clearTimeout === 'function' && typeof setTimeout === 'function') {
+                            clearTimeout(this._timelineSyncTimer);
+                            this._timelineSyncTimer = setTimeout(() => {
+                                this._timelineSyncTimer = null;
+                                const activeTask = _getSelectedTask();
+                                if (activeTask && typeof _updateTimelineForTask === 'function') {
+                                    _updateTimelineForTask(activeTask);
+                                }
+                            }, 240);
+                        }
+                    } else {
+                        if (typeof clearTimeout === 'function' && this._timelineSyncTimer) {
+                            clearTimeout(this._timelineSyncTimer);
+                            this._timelineSyncTimer = null;
+                        }
+                        _syncCurrentOverlayEditorToSelectedTask();
+                    }
                     reelsUpdatePreview();
-                    if (window.ReelsPreviewV2?.isOpen?.() && typeof window.ReelsPreviewV2?.requestRender === 'function') {
-                        window.ReelsPreviewV2.requestRender();
-                    } else if (typeof window.ReelsPreviewV2?.render === 'function') {
-                        window.ReelsPreviewV2.render();
+                    if (window.ReelsPreviewV2?.isOpen?.()) {
+                        if (typeof window.ReelsPreviewV2.requestRender === 'function') {
+                            window.ReelsPreviewV2.requestRender();
+                        } else if (typeof window.ReelsPreviewV2.render === 'function') {
+                            window.ReelsPreviewV2.render();
+                        }
                     }
                 },
                 // 回调占位
@@ -4114,7 +4142,14 @@ function _reelsUpdatePreviewInternal() {
     // 独立预览打开时由 ReelsPreviewV2 自己驱动画布。旧预览即使已隐藏，过去
     // 仍会继续运行并操作 ReelsOverlay 共用的视频缓存：V2 seek 到当前时间，
     // 旧预览又按自己的 0 秒 seek 回去，插入视频因此永远拿不到稳定帧。
-    if (window.ReelsPreviewV2?.isOpen?.()) { window.ReelsPreviewV2.render(); return; }
+    if (window.ReelsPreviewV2?.isOpen?.()) {
+        if (typeof window.ReelsPreviewV2.requestRender === 'function') {
+            window.ReelsPreviewV2.requestRender();
+        } else if (typeof window.ReelsPreviewV2.render === 'function') {
+            window.ReelsPreviewV2.render();
+        }
+        return;
+    }
     const renderer = _reelsState.renderer;
     if (!renderer) return;
 
@@ -5652,6 +5687,22 @@ function _syncSubtitleGradientSwatch(colorEl, btn) {
     }
 }
 
+let _subtitleGradientHistoryTimer = null;
+function _scheduleSubtitleGradientCommit(persistFn) {
+    if (typeof persistFn === 'function') persistFn();
+    if (typeof setTimeout === 'function' && typeof clearTimeout === 'function') {
+        if (_subtitleGradientHistoryTimer) clearTimeout(_subtitleGradientHistoryTimer);
+        _subtitleGradientHistoryTimer = setTimeout(() => {
+            _subtitleGradientHistoryTimer = null;
+            if (typeof window.reelsSaveHistory === 'function') {
+                window.reelsSaveHistory();
+            }
+        }, 260);
+    } else if (typeof window.reelsSaveHistory === 'function') {
+        window.reelsSaveHistory();
+    }
+}
+
 function _initSubtitleGradientPickers() {
     let highlightControlsBound=false;
     for (const id of ['reels-highlight-enabled','reels-karaoke-hl']) {
@@ -5721,20 +5772,17 @@ function _initSubtitleGradientPickers() {
 
                         _syncSubtitleGradientSwatch(colorTextEl, btnText);
 
-                        // 1. 立即持久化字幕样式到当前任务/全局
-                        if (typeof _persistSubtitleStyleByScope === 'function') {
-                            _persistSubtitleStyleByScope(_readStyleFromUI());
-                        }
+                        // 1. 立即持久化字幕样式到当前任务/全局，节流记录历史快照以免拖色盘卡顿
+                        _scheduleSubtitleGradientCommit(() => {
+                            if (typeof _persistSubtitleStyleByScope === 'function') {
+                                _persistSubtitleStyleByScope(_readStyleFromUI());
+                            }
+                        });
 
                         // 2. 触发 input 事件通知样式修改并解除预设锁定
                         colorTextEl.dispatchEvent(new Event('input', { bubbles: true }));
 
-                        // 3. 记录历史操作
-                        if (typeof window.reelsSaveHistory === 'function') {
-                            window.reelsSaveHistory();
-                        }
-
-                        // 4. 实时刷新预览
+                        // 3. 实时刷新预览 (rAF 合并)
                         if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
                     } finally {
                         colorTextEl._settingFromGradient = false;
@@ -5794,20 +5842,17 @@ function _initSubtitleGradientPickers() {
 
                         _syncSubtitleGradientSwatch(colorHighEl, btnHigh);
 
-                        // 1. 立即持久化字幕样式到当前任务/全局
-                        if (typeof _persistSubtitleStyleByScope === 'function') {
-                            _persistSubtitleStyleByScope(_readStyleFromUI());
-                        }
+                        // 1. 立即持久化字幕样式到当前任务/全局，节流记录历史快照以免拖色盘卡顿
+                        _scheduleSubtitleGradientCommit(() => {
+                            if (typeof _persistSubtitleStyleByScope === 'function') {
+                                _persistSubtitleStyleByScope(_readStyleFromUI());
+                            }
+                        });
 
                         // 2. 触发 input 事件通知样式修改并解除预设锁定
                         colorHighEl.dispatchEvent(new Event('input', { bubbles: true }));
 
-                        // 3. 记录历史操作
-                        if (typeof window.reelsSaveHistory === 'function') {
-                            window.reelsSaveHistory();
-                        }
-
-                        // 4. 实时刷新预览
+                        // 3. 实时刷新预览 (rAF 合并)
                         if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
                     } finally {
                         colorHighEl._settingFromGradient = false;
