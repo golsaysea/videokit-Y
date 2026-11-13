@@ -178,9 +178,10 @@ class ReelsOverlayPanel {
                     <div class="rop-scope-row" style="display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border-color);flex-wrap:wrap;">
                         <label for="rop-style-scope" style="font-size:12px;font-weight:600;color:var(--text-primary);white-space:nowrap;margin:0;">样式作用:</label>
                         <select id="rop-style-scope" class="rop-select" style="flex:1;min-width:120px;font-size:11px;" title="选择覆层组预设加载与样式修改的作用范围（默认作用于当前任务队列）">
-                            <option value="folder" selected>当前队列</option>
-                            <option value="all">所有队列</option>
-                            <option value="task">仅当前任务</option>
+                            <option value="task">📄 仅本页 (当前任务)</option>
+                            <option value="tab">📑 本标签页 (当前标签)</option>
+                            <option value="folder" selected>📂 当前队列 / 分组</option>
+                            <option value="all">🌐 全部标签页 (所有队列)</option>
                         </select>
                     </div>
                     <div class="rop-group-title">覆层组预设</div>
@@ -755,8 +756,10 @@ class ReelsOverlayPanel {
                 <div id="rop-decor-props" class="rop-group" style="display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
                         <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (34款黑色模板/粒子/电影颗粒/圣诞/退伍军人节)</div>
-                        <div style="display:flex;align-items:center;gap:6px;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-open-dedicated-decor-tab" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:1px solid #a78bfa;border-radius:5px;cursor:pointer;">✨ 切换到【点缀与颗粒】独立大面板</button>
+                            <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-apply-page-btn" style="padding:2px 7px;font-size:10.5px;border-radius:5px;cursor:pointer;" title="仅应用本页（只改当前这一条任务）">📄 本页</button>
+                            <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-apply-tab-btn" style="padding:2px 7px;font-size:10.5px;border-radius:5px;cursor:pointer;" title="将当前装饰图层应用到本标签页全部任务">📑 本标签页</button>
                             <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;color:var(--text-primary);margin:0;">
                                 <input type="checkbox" id="rop-decor-apply-all" checked>
                                 <span title="按顶部【样式作用】范围同步样式">同步到作用范围</span>
@@ -3644,16 +3647,50 @@ class ReelsOverlayPanel {
         const decorApplyAllEl = this.container.querySelector('#rop-decor-apply-all');
         if (decorApplyAllEl) {
             decorApplyAllEl.addEventListener('change', () => {
+                const decorPanel = typeof window !== 'undefined' ? window._reelsState?.decorPanel : null;
                 if (decorApplyAllEl.checked) {
                     const styleScopeEl = this.container.querySelector('#rop-style-scope');
                     if (styleScopeEl && styleScopeEl.value === 'task') styleScopeEl.value = 'folder';
+                    if (decorPanel) {
+                        const rdpChk = decorPanel.container?.querySelector('#rdp-apply-all');
+                        const rdpScope = decorPanel.container?.querySelector('#rdp-style-scope');
+                        if (rdpChk) rdpChk.checked = true;
+                        if (rdpScope && rdpScope.value === 'task') rdpScope.value = 'folder';
+                    }
                     if (this._selectedOv && this._selectedOv.type === 'decor') {
                         this._syncToOverlay();
                         this._syncOverlayStyleToScopeTasks(this._selectedOv);
                     }
+                } else if (decorPanel) {
+                    const rdpChk = decorPanel.container?.querySelector('#rdp-apply-all');
+                    if (rdpChk) rdpChk.checked = false;
                 }
+                decorPanel?._updateScopeQuickUI?.();
             });
         }
+        const applyInlineDecorScope = (mode) => {
+            const decorPanel = typeof window !== 'undefined' ? window._reelsState?.decorPanel : null;
+            if (decorPanel && typeof decorPanel.applyDecorScopeMode === 'function') {
+                decorPanel.applyDecorScopeMode(mode, { toast: true });
+                return;
+            }
+            const styleScopeEl = this.container.querySelector('#rop-style-scope');
+            const shouldSync = mode !== 'task';
+            if (decorApplyAllEl) decorApplyAllEl.checked = shouldSync;
+            if (styleScopeEl) styleScopeEl.value = mode;
+            if (shouldSync && this._selectedOv && this._selectedOv.type === 'decor') {
+                this._syncToOverlay();
+                this._syncOverlayStyleToScopeTasks(this._selectedOv);
+            }
+        };
+        this.container.querySelector('#rop-decor-apply-page-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyInlineDecorScope('task');
+        });
+        this.container.querySelector('#rop-decor-apply-tab-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyInlineDecorScope('tab');
+        });
         this.container.querySelectorAll('.rop-scroll-tw-style-preset').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 e.preventDefault();
@@ -7801,9 +7838,14 @@ class ReelsOverlayPanel {
         }
         let scopedTasks = this._getStyleApplyScopeTasks();
         if (ov.type === 'decor' && (!Array.isArray(scopedTasks) || scopedTasks.length <= 1)) {
-            const allTasks = Array.isArray(window._reelsState?.tasks) ? window._reelsState.tasks.filter(Boolean) : [];
-            if (allTasks.length > 1 && this._getOverlayStyleScope() !== 'task') {
-                scopedTasks = allTasks;
+            const scope = this._getOverlayStyleScope();
+            const state = typeof window !== 'undefined' ? window._reelsState : null;
+            const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
+            const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
+            if (allTasks.length > 1 && scope !== 'task') {
+                scopedTasks = (scope === 'tab' || selectedTask?._batchTabId)
+                    ? this._collectTabScopeTasks(selectedTask, allTasks)
+                    : allTasks;
             }
         }
         if (!Array.isArray(scopedTasks) || scopedTasks.length <= 1) return;
@@ -8002,8 +8044,8 @@ class ReelsOverlayPanel {
         }
     }
 
-    // 根据【样式作用】下拉选择（当前队列 / 所有队列 / 仅当前任务）返回目标任务列表
-    _getStyleApplyScopeTasks(scopeOverride = null) {
+    // 根据【样式作用】下拉选择（仅本页 / 本标签页 / 当前队列 / 全部标签页）返回目标任务列表
+    _getStyleApplyScopeTasks(scopeOverride = null, options = {}) {
         if (this.videoCanvas?.scopedTask) return [this.videoCanvas.scopedTask];
         let scope = scopeOverride || this._getOverlayStyleScope();
         if (!scopeOverride && scope === 'task' && this._selectedOv) {
@@ -8020,6 +8062,9 @@ class ReelsOverlayPanel {
         const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
         if (scope === 'task') {
             return selectedTask ? [selectedTask] : [];
+        }
+        if (scope === 'tab') {
+            return this._collectTabScopeTasks(selectedTask, allTasks, options);
         }
         if (scope === 'all') {
             const combined = new Set(allTasks);
@@ -8049,15 +8094,44 @@ class ReelsOverlayPanel {
             scoped = unpartitioned.length > 0 ? unpartitioned : allTasks;
         }
         // 兼容“一文件夹一视频”批量队列：当当前 _folderQueueId 只有 1 条视频而列表有多条任务时，
-        // 自动扩展到同批次标签页或全部主列表任务，避免“当前队列”只对单条视频生效。
+        // 若同属一个标签页则只扩展到该标签页；未分标签时扩展到主列表队列。
         if (scoped.length <= 1 && allTasks.length > 1) {
             if (selectedTask?._batchTabId) {
                 const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
-                if (sameTab.length > 1) return sameTab;
+                if (sameTab.length >= 1) return sameTab;
+            }
+            if (allTasks.some(t => t && t._batchTabId)) {
+                const untagged = allTasks.filter(t => t && !t._batchTabId);
+                if (untagged.length > 0) return untagged;
             }
             return allTasks;
         }
         return scoped;
+    }
+
+    _collectTabScopeTasks(selectedTask, allTasks, options = {}) {
+        const tasks = Array.isArray(allTasks) ? allTasks.filter(Boolean) : [];
+        const includeHiddenBatchTasks = options?.includeHiddenBatchTasks === true;
+        const activeTabId = selectedTask?._batchTabId
+            || (typeof _batchTableState !== 'undefined' ? _batchTableState?.activeTabId : '')
+            || '';
+        if (activeTabId) {
+            const sameTabMain = tasks.filter(t => t && t._batchTabId === activeTabId);
+            const combined = new Set(sameTabMain);
+            if (includeHiddenBatchTasks && typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const activeIds = new Set(tasks.map(t => t?.id).filter(Boolean));
+                const tabObj = _batchTableState.tabs.find(tab => tab && tab.id === activeTabId);
+                for (const t of (tabObj?.tasks || [])) {
+                    if (t && (!t.id || !activeIds.has(t.id))) combined.add(t);
+                }
+            }
+            if (combined.size > 0) return Array.from(combined);
+        }
+        if (tasks.some(t => t && t._batchTabId)) {
+            const untagged = tasks.filter(t => t && !t._batchTabId);
+            if (untagged.length > 0) return untagged;
+        }
+        return tasks;
     }
 
     _getCustomScrollStylePresets() {
@@ -10241,7 +10315,7 @@ class ReelsOverlayPanel {
         }
         if (updatedCount > 1 && typeof showToast === 'function') {
             const scope = this._getOverlayStyleScope();
-            const scopeLabel = scope === 'all' ? '所有队列' : '当前队列';
+            const scopeLabel = scope === 'all' ? '全部标签页' : (scope === 'tab' ? '本标签页' : '当前队列');
             const presetLabel = name ? `预设「${name}」` : '当前覆层样式';
             showToast(`✅ 已将${presetLabel}应用到${scopeLabel} (${updatedCount} 个任务)`, 'success');
         }
@@ -12333,15 +12407,22 @@ class ReelsDecorPanel {
                         <div style="display:flex;align-items:center;gap:4px;">
                             <span style="font-size:10.5px;color:var(--text-secondary);white-space:nowrap;">范围:</span>
                             <select id="rdp-style-scope" class="rop-select" style="width:auto;padding:2px 5px;font-size:10.5px;">
-                                <option value="folder">当前队列</option>
-                                <option value="all">所有队列</option>
-                                <option value="task">仅当前任务</option>
+                                <option value="task">📄 仅本页 (当前任务)</option>
+                                <option value="tab">📑 本标签页 (当前标签)</option>
+                                <option value="folder" selected>📂 当前队列 / 分组</option>
+                                <option value="all">🌐 全部标签页</option>
                             </select>
                             <label style="display:flex;align-items:center;gap:3px;font-size:10.5px;cursor:pointer;margin:0;white-space:nowrap;">
                                 <input type="checkbox" id="rdp-apply-all" checked>
                                 <span>同步</span>
                             </label>
                         </div>
+                    </div>
+
+                    <div class="rdp-scope-quick-bar" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                        <button type="button" id="rdp-apply-page-btn" class="rop-btn rdp-scope-btn" style="flex:1;min-width:0;padding:3px 6px;font-size:10.5px;border-radius:6px;cursor:pointer;white-space:nowrap;" title="仅将当前点缀与电话设置应用到本页（当前选中这一条任务），不影响同标签页其他任务">📄 仅应用本页</button>
+                        <button type="button" id="rdp-apply-tab-btn" class="rop-btn rdp-scope-btn" style="flex:1;min-width:0;padding:3px 6px;font-size:10.5px;border-radius:6px;cursor:pointer;white-space:nowrap;" title="立即将当前点缀与电话设置应用到本标签页的全部任务">📑 应用本标签页</button>
+                        <span id="rdp-scope-badge" style="font-size:10px;padding:2px 6px;border-radius:999px;background:rgba(16,185,129,0.16);color:#6ee7b7;border:1px solid rgba(52,211,153,0.35);white-space:nowrap;">📂 队列同步</span>
                     </div>
 
                     <div style="display:flex;gap:4px;flex-wrap:nowrap;">
@@ -12889,34 +12970,50 @@ class ReelsDecorPanel {
             });
         }
 
-        // 样式作用范围与同步开关
+        // 样式作用范围与同步开关（支持：仅应用本页 / 应用本标签页 / 当前队列 / 全部标签页）
         const scopeSel = this.container.querySelector('#rdp-style-scope');
+        const applyAllChk = this.container.querySelector('#rdp-apply-all');
         if (scopeSel) {
             scopeSel.addEventListener('change', () => {
-                const mainScope = document.getElementById('rop-style-scope');
-                if (mainScope && mainScope.value !== scopeSel.value) {
-                    mainScope.value = scopeSel.value;
-                    mainScope.dispatchEvent(new Event('change'));
-                }
+                const scope = scopeSel.value || 'folder';
+                const shouldSync = scope !== 'task';
+                if (applyAllChk) applyAllChk.checked = shouldSync;
+                const ropDecorChk = document.getElementById('rop-decor-apply-all');
+                if (ropDecorChk) ropDecorChk.checked = shouldSync;
                 this._syncDecorStackToScopeTasks();
+                this._updateScopeQuickUI();
                 const ov = this._getSelectedDecor();
                 if (typeof this.videoCanvas?.onOverlayChange === 'function') {
                     this.videoCanvas.onOverlayChange(ov);
                 }
             });
         }
-        const applyAllChk = this.container.querySelector('#rdp-apply-all');
         if (applyAllChk) {
             applyAllChk.addEventListener('change', () => {
+                if (applyAllChk.checked && scopeSel && scopeSel.value === 'task') {
+                    scopeSel.value = 'tab';
+                }
+                const ropDecorChk = document.getElementById('rop-decor-apply-all');
+                if (ropDecorChk) ropDecorChk.checked = Boolean(applyAllChk.checked);
                 if (applyAllChk.checked) {
                     this._syncDecorStackToScopeTasks();
-                    const ov = this._getSelectedDecor();
-                    if (typeof this.videoCanvas?.onOverlayChange === 'function') {
-                        this.videoCanvas.onOverlayChange(ov);
-                    }
+                }
+                this._updateScopeQuickUI();
+                const ov = this._getSelectedDecor();
+                if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                    this.videoCanvas.onOverlayChange(ov);
                 }
             });
         }
+        this.container.querySelector('#rdp-apply-page-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.applyDecorScopeMode('task', { toast: true });
+        });
+        this.container.querySelector('#rdp-apply-tab-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.applyDecorScopeMode('tab', { toast: true });
+        });
+        this._updateScopeQuickUI();
 
         // 添加叠加图层按钮
         const addBtn = this.container.querySelector('#rdp-add-layer-btn');
@@ -13717,14 +13814,30 @@ class ReelsDecorPanel {
         }
     }
 
-    _getDecorScopeTasks() {
+    _getEffectiveDecorScope() {
+        const applyAll = this.container?.querySelector('#rdp-apply-all')?.checked !== false;
+        const scope = this.container?.querySelector('#rdp-style-scope')?.value || 'folder';
+        if (!applyAll || scope === 'task') return 'task';
+        return scope;
+    }
+
+    _getDecorScopeTasks(scopeOverride = null) {
         const state = typeof window !== 'undefined' ? window._reelsState : null;
         const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
         const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
-        const applyAll = this.container?.querySelector('#rdp-apply-all')?.checked !== false;
-        const scope = this.container?.querySelector('#rdp-style-scope')?.value || 'folder';
-        if (!applyAll || scope === 'task') {
+        const scope = scopeOverride || this._getEffectiveDecorScope();
+        if (scope === 'task') {
             return selectedTask ? [selectedTask] : [];
+        }
+        if (scope === 'tab') {
+            if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._collectTabScopeTasks === 'function') {
+                return this.linkedOverlayPanel._collectTabScopeTasks(selectedTask, allTasks, { includeHiddenBatchTasks: true });
+            }
+            if (selectedTask?._batchTabId) {
+                const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
+                return sameTab.length > 0 ? sameTab : allTasks;
+            }
+            return allTasks;
         }
         if (scope === 'all') {
             if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
@@ -13733,31 +13846,101 @@ class ReelsDecorPanel {
             return allTasks;
         }
         // scope === 'folder' (当前队列)
-        let scoped = [];
         if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
-            scoped = this.linkedOverlayPanel._getStyleApplyScopeTasks('folder') || [];
+            return this.linkedOverlayPanel._getStyleApplyScopeTasks('folder') || [];
         }
-        // 兼容“一文件夹一视频”批量队列：当当前 _folderQueueId 只有 1 条视频而列表有多条任务时，
-        // 勾选了“同步”应自动扩展到同批次标签页或全部主列表任务，避免只对单条视频生效。
-        if (scoped.length <= 1 && allTasks.length > 1) {
-            if (selectedTask?._batchTabId) {
-                const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
-                if (sameTab.length > 1) return sameTab;
+        if (selectedTask?._folderQueueId) {
+            const sameFolder = allTasks.filter(t => t && t._folderQueueId === selectedTask._folderQueueId);
+            if (sameFolder.length > 1 || allTasks.length <= 1) return sameFolder;
+        }
+        if (selectedTask?._batchTabId) {
+            const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
+            if (sameTab.length >= 1) return sameTab;
+        }
+        return allTasks;
+    }
+
+    _updateScopeQuickUI() {
+        if (!this.container) return;
+        const effectiveScope = this._getEffectiveDecorScope();
+        const count = this._getDecorScopeTasks(effectiveScope).length;
+        const pageBtn = this.container.querySelector('#rdp-apply-page-btn');
+        const tabBtn = this.container.querySelector('#rdp-apply-tab-btn');
+        const badgeEl = this.container.querySelector('#rdp-scope-badge');
+
+        if (pageBtn) pageBtn.classList.toggle('is-active', effectiveScope === 'task');
+        if (tabBtn) tabBtn.classList.toggle('is-active', effectiveScope === 'tab');
+
+        if (badgeEl) {
+            const badgeMap = {
+                task: `📄 仅本页 (${count || 1}个)`,
+                tab: `📑 本标签页 (${count}个)`,
+                folder: `📂 当前队列 (${count}个)`,
+                all: `🌐 全部标签 (${count}个)`,
+            };
+            badgeEl.textContent = badgeMap[effectiveScope] || `📂 当前队列 (${count}个)`;
+            if (effectiveScope === 'task') {
+                badgeEl.style.background = 'rgba(245, 158, 11, 0.18)';
+                badgeEl.style.color = '#fde68a';
+                badgeEl.style.borderColor = 'rgba(251, 191, 36, 0.45)';
+            } else {
+                badgeEl.style.background = 'rgba(16, 185, 129, 0.16)';
+                badgeEl.style.color = '#6ee7b7';
+                badgeEl.style.borderColor = 'rgba(52, 211, 153, 0.35)';
             }
-            return allTasks;
         }
-        return scoped.length > 0 ? scoped : allTasks;
+    }
+
+    applyDecorScopeMode(targetScope, options = {}) {
+        const cleanScope = ['task', 'tab', 'folder', 'all'].includes(targetScope) ? targetScope : 'folder';
+        const scopeSel = this.container?.querySelector('#rdp-style-scope');
+        const applyAllChk = this.container?.querySelector('#rdp-apply-all');
+        const shouldSync = cleanScope !== 'task';
+
+        if (scopeSel) scopeSel.value = cleanScope;
+        if (applyAllChk) applyAllChk.checked = shouldSync;
+
+        const ropDecorChk = document.getElementById('rop-decor-apply-all');
+        if (ropDecorChk) ropDecorChk.checked = shouldSync;
+
+        if (shouldSync) {
+            this._syncDecorStackToScopeTasks();
+        } else if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+            try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+        }
+
+        this._updateScopeQuickUI();
+        const ov = this._getSelectedDecor();
+        if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+            this.videoCanvas.onOverlayChange(ov);
+        }
+        if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._syncFromOverlay === 'function' && this.linkedOverlayPanel._selectedOv?.type === 'decor') {
+            this.linkedOverlayPanel._syncFromOverlay(this.linkedOverlayPanel._selectedOv);
+        }
+
+        if (options?.toast && typeof showToast === 'function') {
+            const targets = this._getDecorScopeTasks(cleanScope);
+            if (cleanScope === 'task') {
+                showToast('📄 已设为【仅应用本页】：后续装饰修改仅作用于当前任务', 'info');
+            } else if (cleanScope === 'tab') {
+                showToast(`📑 已将当前装饰应用到本标签页（共 ${targets.length} 个任务）`, 'success');
+            } else if (cleanScope === 'all') {
+                showToast(`🌐 已将当前装饰应用到全部标签页（共 ${targets.length} 个任务）`, 'success');
+            } else {
+                showToast(`📂 已将当前装饰同步到当前队列（共 ${targets.length} 个任务）`, 'success');
+            }
+        }
+        return true;
     }
 
     _syncDecorStackToScopeTasks() {
         if (this._isSyncingDecorStack) return;
-        const applyAll = this.container?.querySelector('#rdp-apply-all')?.checked !== false;
-        const scope = this.container?.querySelector('#rdp-style-scope')?.value || 'folder';
-        if (!applyAll || scope === 'task') return;
+        const scope = this._getEffectiveDecorScope();
+        if (scope === 'task') return;
 
         const state = typeof window !== 'undefined' ? window._reelsState : null;
         const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || null;
-        const scopedTasks = this._getDecorScopeTasks();
+        const scopedTasks = this._getDecorScopeTasks(scope);
         if (!Array.isArray(scopedTasks) || scopedTasks.length === 0) return;
 
         this._isSyncingDecorStack = true;
@@ -13815,22 +13998,32 @@ class ReelsDecorPanel {
             });
 
             if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const activeTabId = selectedTask?._batchTabId
+                    || _batchTableState.activeTabId
+                    || '';
                 for (const tab of _batchTableState.tabs) {
+                    const syncEntireTab = scope === 'all' || (scope === 'tab' && activeTabId && tab?.id === activeTabId);
+                    let tabTouched = false;
                     for (const t of (tab?.tasks || [])) {
                         if (!t) continue;
-                        if (scope === 'all' || (t.id && updatedIds.has(t.id))) {
-                            if (selectedTask && t.id && t.id === selectedTask.id) {
+                        if (syncEntireTab || (t.id && updatedIds.has(t.id))) {
+                            if (selectedTask && ((t === selectedTask) || (t.id && t.id === selectedTask.id))) {
                                 t.overlays = JSON.parse(JSON.stringify(selectedTask.overlays || [], (key, val) => key === '_allOverlays' ? undefined : val));
                             } else {
                                 applyToTaskObj(t);
                             }
+                            tabTouched = true;
                         }
                     }
+                    if (tabTouched && tab) tab._dirty = true;
                 }
             }
 
             if (typeof _syncTasksToActiveTab === 'function') {
                 try { _syncTasksToActiveTab(); } catch (_) {}
+            }
+            if (typeof _batchAutoSave === 'function') {
+                try { _batchAutoSave({ skipSync: true }); } catch (_) {}
             }
             if (typeof _renderTaskList === 'function') {
                 try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
@@ -13955,6 +14148,7 @@ class ReelsDecorPanel {
             this._updateDecorAccordionBadges(null);
         }
         this._syncPhoneCtaUI(this._getPhoneCta());
+        this._updateScopeQuickUI();
     }
 }
 

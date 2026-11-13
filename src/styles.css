@@ -2940,6 +2940,27 @@ input[type="color"].vk-has-gradient::-webkit-color-swatch {
     gap: 6px;
 }
 
+.rdp-scope-btn {
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-secondary, #cbd5e1);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    font-weight: 600;
+    transition: all 0.15s ease;
+}
+
+.rdp-scope-btn:hover {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: rgba(129, 140, 248, 0.45);
+    color: #e0e7ff;
+}
+
+.rdp-scope-btn.is-active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(5, 150, 105, 0.34));
+    border-color: #34d399;
+    color: #ecfdf5;
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.35);
+}
+
 .rdp-accordion {
     margin: 0;
 }
@@ -3026,6 +3047,18 @@ body.theme-light .rdp-card-section {
 
 body.theme-light .rdp-layer-card {
     background: var(--bg-card, #ffffff);
+}
+
+body.theme-light .rdp-scope-btn {
+    background: rgba(15, 23, 42, 0.05);
+    color: #334155;
+    border-color: #cbd5e1;
+}
+
+body.theme-light .rdp-scope-btn.is-active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.2));
+    border-color: #10b981;
+    color: #065f46;
 }
 
 body.theme-light .rdp-cta-card {

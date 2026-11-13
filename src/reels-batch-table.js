@@ -362,7 +362,8 @@ function _syncGroupedProjectionToTabs(activeTasks, forceAllTabs = false) {
     const selectedTaskTabId = window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?._batchTabId || '';
     const subStyleScope = document.getElementById('reels-style-scope')?.value || '';
     const ovStyleScope = document.getElementById('rop-style-scope')?.value || '';
-    const syncAllBecauseGlobalScope = forceAllTabs || subStyleScope === 'all' || ovStyleScope === 'all';
+    const rdpStyleScope = document.getElementById('rdp-style-scope')?.value || '';
+    const syncAllBecauseGlobalScope = forceAllTabs || subStyleScope === 'all' || ovStyleScope === 'all' || rdpStyleScope === 'all';
     // A task may have just arrived from another workflow while the external
     // queue is a merged projection.  Include every group present in that queue,
     // not only the groups that were part of the older projection snapshot.

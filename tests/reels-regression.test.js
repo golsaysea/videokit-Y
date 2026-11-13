@@ -7460,6 +7460,190 @@ test('Christmas default theme and update reminder prefs (stable ON by default, b
     assert.ok(toast.classList.contains('is-visible'), 'Manual update check must still show toast even if background reminder is muted');
 });
 
+test('Decor panel supports explicit apply-this-page (task) and apply-this-tab (tab) options without leaking across tabs', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const cssSrc = fs.readFileSync(path.join(ROOT, 'src/styles.css'), 'utf8');
+
+    // 1. UI controls exist in both ReelsDecorPanel and inline ReelsOverlayPanel decor props
+    for (const id of [
+        'rdp-apply-page-btn',
+        'rdp-apply-tab-btn',
+        'rdp-scope-badge',
+        'rop-decor-apply-page-btn',
+        'rop-decor-apply-tab-btn',
+    ]) {
+        assert.ok(panelSrc.includes(`id="${id}"`), `Missing decor scope control #${id}`);
+    }
+    assert.match(panelSrc, /<select id="rdp-style-scope"[\s\S]*?<option value="task">[\s\S]*?<option value="tab">/);
+    assert.match(panelSrc, /<select id="rop-style-scope"[\s\S]*?<option value="task">[\s\S]*?<option value="tab">/);
+    assert.ok(cssSrc.includes('.rdp-scope-btn.is-active'), 'styles.css must style active decor scope buttons');
+    assert.ok(!panelSrc.includes("mainScope.dispatchEvent(new Event('change'))"), 'Changing decor scope must not dispatch #rop-style-scope change to overwrite non-decor overlays');
+
+    // 2. Behavioral verification via VM sandbox
+    const makeDomEl = (initial = {}) => ({
+        value: initial.value ?? '',
+        checked: initial.checked ?? false,
+        textContent: '',
+        style: {},
+        _classes: new Set(),
+        classList: {
+            toggle(name, force) {
+                const on = force === undefined ? !this._set.has(name) : Boolean(force);
+                if (on) this._set.add(name); else this._set.delete(name);
+            },
+            contains(name) { return this._set.has(name); },
+            _set: new Set(),
+        },
+        listeners: {},
+        addEventListener(ev, fn) { this.listeners[ev] = fn; },
+    });
+
+    const rdpScopeEl = makeDomEl({ value: 'folder' });
+    const rdpApplyAllEl = makeDomEl({ checked: true });
+    const rdpPageBtn = makeDomEl();
+    const rdpTabBtn = makeDomEl();
+    const rdpBadge = makeDomEl();
+    const ropScopeEl = makeDomEl({ value: 'folder' });
+    const ropDecorApplyAllEl = makeDomEl({ checked: true });
+
+    const rdpMap = {
+        '#rdp-style-scope': rdpScopeEl,
+        '#rdp-apply-all': rdpApplyAllEl,
+        '#rdp-apply-page-btn': rdpPageBtn,
+        '#rdp-apply-tab-btn': rdpTabBtn,
+        '#rdp-scope-badge': rdpBadge,
+    };
+    const ropMap = {
+        '#rop-style-scope': ropScopeEl,
+        '#rop-decor-apply-all': ropDecorApplyAllEl,
+    };
+
+    const tA1 = {
+        id: 'tA1',
+        _batchTabId: 'tabA',
+        _folderQueueId: 'q1',
+        overlays: [
+            { id: 'card_A1', type: 'textcard', body_text: 'Keep A1 card' },
+            { id: 'dec_A1', type: 'decor', decor_style: 'xmas_holly_pine_garland', opacity: 255 },
+        ],
+    };
+    const tA2 = {
+        id: 'tA2',
+        _batchTabId: 'tabA',
+        _folderQueueId: 'q2',
+        overlays: [
+            { id: 'card_A2', type: 'textcard', body_text: 'Keep A2 card' },
+        ],
+    };
+    const tA3Hidden = {
+        id: 'tA3',
+        _batchTabId: 'tabA',
+        _folderQueueId: 'q2',
+        overlays: [
+            { id: 'card_A3', type: 'textcard', body_text: 'Keep hidden A3 card' },
+        ],
+    };
+    const tB1 = {
+        id: 'tB1',
+        _batchTabId: 'tabB',
+        _folderQueueId: 'qB',
+        overlays: [
+            { id: 'card_B1', type: 'textcard', body_text: 'Keep B1 card' },
+            { id: 'dec_B1', type: 'decor', decor_style: 'cinema_35mm_grain', opacity: 255 },
+        ],
+    };
+    const tC1Singleton = {
+        id: 'tC1',
+        _batchTabId: 'tabC',
+        _folderQueueId: 'qC',
+        overlays: [],
+    };
+
+    const toasts = [];
+    const sandbox = {
+        console,
+        document: {
+            head: { appendChild: () => {} },
+            getElementById: (id) => ({
+                'rop-style-scope': ropScopeEl,
+                'rop-decor-apply-all': ropDecorApplyAllEl,
+                'rdp-style-scope': rdpScopeEl,
+                'rdp-apply-all': rdpApplyAllEl,
+            }[id] || null),
+            createElement: () => makeDomEl(),
+        },
+        _batchTableState: {
+            activeTabId: 'tabA',
+            tabs: [
+                { id: 'tabA', name: 'Tab A', tasks: [tA1, tA2, tA3Hidden], _dirty: false },
+                { id: 'tabB', name: 'Tab B', tasks: [tB1], _dirty: false },
+                { id: 'tabC', name: 'Tab C', tasks: [tC1Singleton], _dirty: false },
+            ],
+        },
+        _reelsState: {
+            tasks: [tA1, tA2, tB1],
+            selectedIdx: 0,
+        },
+        _syncTasksToActiveTab: () => {},
+        _batchAutoSave: () => {},
+        _renderTaskList: () => {},
+        showToast: (msg, type) => toasts.push({ msg, type }),
+        localStorage: { getItem: () => null, setItem: () => {} },
+        requestAnimationFrame: (cb) => { cb(); return 1; },
+        cancelAnimationFrame: () => {},
+    };
+    sandbox.window = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(`${panelSrc}\nwindow.ReelsOverlayPanel = ReelsOverlayPanel;\nwindow.ReelsDecorPanel = ReelsDecorPanel;`, sandbox);
+
+    const ovPanel = Object.create(sandbox.ReelsOverlayPanel.prototype);
+    ovPanel.container = { querySelector: (sel) => ropMap[sel] || null };
+    ovPanel.videoCanvas = { overlayMgr: { overlays: tA1.overlays } };
+
+    const decorPanel = Object.create(sandbox.ReelsDecorPanel.prototype);
+    decorPanel.container = { querySelector: (sel) => rdpMap[sel] || null, querySelectorAll: () => [] };
+    decorPanel.linkedOverlayPanel = ovPanel;
+    decorPanel.videoCanvas = {
+        overlayMgr: { overlays: tA1.overlays },
+        onOverlayChange: () => {},
+    };
+
+    // Case A: Singleton batch tab under 'folder' must NOT leak to other tabs
+    sandbox._reelsState.tasks = [tC1Singleton, tB1];
+    sandbox._reelsState.selectedIdx = 0;
+    const singletonFolderTasks = ovPanel._getStyleApplyScopeTasks('folder');
+    assert.deepStrictEqual(singletonFolderTasks.map(t => t.id), ['tC1'], 'Singleton folder queue inside a batch tab must stay inside its own tab');
+
+    // Case B: Apply to this tab ('tab') copies decor across all subgroups & hidden tasks of tabA, leaves tabB untouched
+    sandbox._reelsState.tasks = [tA1, tA2, tB1];
+    sandbox._reelsState.selectedIdx = 0;
+    decorPanel.applyDecorScopeMode('tab', { toast: true });
+
+    assert.strictEqual(rdpScopeEl.value, 'tab');
+    assert.strictEqual(rdpApplyAllEl.checked, true);
+    assert.ok(rdpTabBtn.classList.contains('is-active'), 'Apply-this-tab button must highlight in tab mode');
+    assert.ok(!rdpPageBtn.classList.contains('is-active'));
+    assert.strictEqual(tA2.overlays.find(o => o.type === 'decor')?.decor_style, 'xmas_holly_pine_garland', 'tA2 in another subgroup of same tab must receive decor');
+    assert.strictEqual(tA3Hidden.overlays.find(o => o.type === 'decor')?.decor_style, 'xmas_holly_pine_garland', 'Hidden task tA3 in same tab must receive decor');
+    assert.strictEqual(tA2.overlays.find(o => o.type === 'textcard')?.body_text, 'Keep A2 card', 'Existing textcard overlay in tA2 must stay intact');
+    assert.strictEqual(tB1.overlays.find(o => o.type === 'decor')?.decor_style, 'cinema_35mm_grain', 'Other tab tB1 decor must remain untouched');
+    assert.strictEqual(sandbox._batchTableState.tabs[0]._dirty, true, 'Synced tabA must be marked dirty');
+    assert.ok(toasts.some(t => t.msg.includes('应用到本标签页')));
+
+    // Case C: Switch to Apply-This-Page Only ('task') -> later edits on tA1 stay isolated to tA1
+    decorPanel.applyDecorScopeMode('task', { toast: true });
+    assert.strictEqual(rdpScopeEl.value, 'task');
+    assert.strictEqual(rdpApplyAllEl.checked, false);
+    assert.strictEqual(ropDecorApplyAllEl.checked, false);
+    assert.ok(rdpPageBtn.classList.contains('is-active'), 'Apply-this-page button must highlight in task mode');
+    assert.ok(!rdpTabBtn.classList.contains('is-active'));
+
+    tA1.overlays.find(o => o.type === 'decor').decor_style = 'glowing_starfield';
+    decorPanel._syncDecorStackToScopeTasks();
+    assert.strictEqual(tA2.overlays.find(o => o.type === 'decor')?.decor_style, 'xmas_holly_pine_garland', 'In task (apply-this-page) mode, sibling tA2 in same tab must NOT be overwritten');
+    assert.strictEqual(tB1.overlays.find(o => o.type === 'decor')?.decor_style, 'cinema_35mm_grain', 'In task mode, tabB must remain untouched');
+});
+
 
 
 
