@@ -1136,6 +1136,8 @@ function createScrollOverlay(opts = {}) {
             : (opts.scroll_tw_hide_unread === false ? 100 : 0), // 0~100 (%)
         scroll_tw_active_highlight: opts.scroll_tw_active_highlight !== false,
         scroll_tw_active_color: opts.scroll_tw_active_color || '#FFD700',
+        scroll_tw_keep_read_color: Boolean(opts.scroll_tw_keep_read_color),
+        scroll_tw_active_char_sweep: Boolean(opts.scroll_tw_active_char_sweep),
         scroll_tw_active_scale_enabled: opts.scroll_tw_active_scale_enabled !== undefined
             ? Boolean(opts.scroll_tw_active_scale_enabled)
             : (Number(opts.scroll_tw_active_scale ?? 100) !== 100),
@@ -8328,8 +8330,13 @@ function _buildScrollTypewriterLines(ov, lines, textDirection, twContext) {
     const lineTimeRanges = lines.map((_, li) => {
         const lToks = (lineTokensList[li] || []).filter(t => !/^\s+$/.test(t.text));
         if (!lToks.length) return null;
-        const lStart = lToks[0].start;
-        const lEnd = Math.max(lStart + 0.05, lToks[lToks.length - 1].end);
+        let lStart = lToks[0].start;
+        let lEnd = lToks[lToks.length - 1].end;
+        for (const t of lToks) {
+            if (t.start < lStart) lStart = t.start;
+            if (t.end > lEnd) lEnd = t.end;
+        }
+        lEnd = Math.max(lStart + 0.05, lEnd);
         return { start: lStart, end: lEnd };
     });
     lineTokensList._wordGroups = wordGroups;
@@ -8516,17 +8523,15 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 } else if (currentTime >= lineRanges[lastValidIdx].end) {
                     activeLineIdx = lastValidIdx;
                 } else {
+                    let candidate = firstValidIdx;
                     for (let li = firstValidIdx; li <= lastValidIdx; li++) {
                         const lr = lineRanges[li];
                         if (!lr) continue;
-                        if (currentTime >= lr.start && currentTime <= lr.end) {
-                            activeLineIdx = li;
-                            break;
-                        }
                         if (currentTime >= lr.start) {
-                            activeLineIdx = li;
+                            candidate = li;
                         }
                     }
+                    activeLineIdx = candidate;
                 }
             }
         }
@@ -8577,12 +8582,12 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 if (li === activeLineIdx) {
                     state = 'active';
                     opacity = 1.0;
-                    if (activeHighlight && !/^\s+$/.test(tok.text)) color = activeColor;
-                    if (!/^\s+$/.test(tok.text)) scale = activeScale;
+                    if (activeHighlight) color = activeColor;
+                    scale = activeScale;
                 } else if (li < activeLineIdx) {
                     state = 'read';
                     opacity = 1.0;
-                    if (keepReadColor && activeHighlight && !/^\s+$/.test(tok.text)) color = activeColor;
+                    if (keepReadColor && activeHighlight) color = activeColor;
                 } else {
                     state = 'unread';
                     opacity = unrevealedOpacity;
@@ -8627,7 +8632,17 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 }
             }
 
-            const shouldAdvanceCursor = (currentTime >= tok.start && !/^\s+$/.test(tok.text))
+            const isFocusZoneLineMode = revealType === 'line' && lineTrackMode === 'focus_zone' && activeLineIdx >= 0;
+            const allowLinePreviewCursorInit = revealType === 'line'
+                && li === activeLineIdx
+                && !hasWritingStarted
+                && !/^\s+$/.test(tok.text)
+                && (!hideUnread || !ov._exporting || isFocusZoneLineMode);
+            const tokenActiveByTime = isFocusZoneLineMode
+                ? (li === activeLineIdx && currentTime >= tok.start && !/^\s+$/.test(tok.text))
+                : (currentTime >= tok.start && !/^\s+$/.test(tok.text));
+            const shouldAdvanceCursor = tokenActiveByTime
+                || allowLinePreviewCursorInit
                 || (!hasWritingStarted && activeWord && tok === activeWord.tokens[0] && (!hideUnread || !ov._exporting));
             if (shouldAdvanceCursor) {
                 const prefixW = _measureScrollSubstrWidth(ctx, line, 0, tok.charStart, bLetterSpacing);
@@ -8643,7 +8658,9 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             }
 
             const prevRun = runs[runs.length - 1];
-            const sameScaleGroup = scale === 1.0 || (tok.wordId != null && prevRun && prevRun.wordId === tok.wordId);
+            const sameScaleGroup = revealType === 'line'
+                || scale === 1.0
+                || (tok.wordId != null && prevRun && prevRun.wordId === tok.wordId);
             if (prevRun && prevRun.state === state && prevRun.opacity === opacity && prevRun.color === color && prevRun.scale === scale && sameScaleGroup) {
                 prevRun.charEnd = tok.charEnd;
                 prevRun.text = line.slice(prevRun.charStart, prevRun.charEnd);

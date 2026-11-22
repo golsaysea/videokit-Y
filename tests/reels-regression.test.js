@@ -11803,3 +11803,172 @@ test('Cardinal reddish-brown feather, 7 new aesthetic feather/cardinal icons, an
     assert.match(htmlSrc, /id="reels-typewriter-reveal-type"[\s\S]*?<option value="sentence">/);
     assert.match(panelSrc, /cardinal_feather/);
 });
+
+test('Scroll line-by-line highlight mode: panel event bindings, speech_or_progress default & cursor/underline sync', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const fieldsStart = panelSrc.indexOf('const fields = [');
+    const fieldsEnd = panelSrc.indexOf('for (const fid of fields)', fieldsStart);
+    assert.ok(fieldsStart > 0 && fieldsEnd > fieldsStart, 'fields array must exist in _bindEvents');
+    const fieldsBlock = panelSrc.slice(fieldsStart, fieldsEnd);
+    for (const id of [
+        'rop-scroll-tw-line-track-mode',
+        'rop-scroll-tw-underline-enabled',
+        'rop-scroll-tw-underline-color',
+        'rop-scroll-tw-underline-style',
+        'rop-scroll-tw-underline-width-mode',
+        'rop-scroll-tw-underline-width-ratio',
+        'rop-scroll-tw-underline-thickness',
+        'rop-scroll-tw-underline-offset-y',
+        'rop-scroll-tw-underline-opacity',
+        'rop-scroll-focus-flow-enabled',
+        'rop-scroll-focus-start-pct',
+        'rop-scroll-focus-end-pct',
+        'rop-scroll-bg-edge-feather',
+        'rop-scroll-bg-bookmark-enabled',
+        'rop-scroll-bg-top-mascot',
+    ]) {
+        assert.ok(fieldsBlock.includes(`'${id}'`), `#${id} must be bound in _bindEvents fields`);
+    }
+    assert.match(panelSrc, /_val\('rop-scroll-tw-line-track-mode',\s*ov\.scroll_tw_line_track_mode\s*\|\|\s*'speech_or_progress'\)/);
+    assert.match(panelSrc, /ov\.scroll_tw_line_track_mode\s*=\s*this\._get\('rop-scroll-tw-line-track-mode'\)\s*\|\|\s*'speech_or_progress'/);
+
+    const tipCalls = [];
+    const fillTexts = [];
+    const underlineStrokes = [];
+    let movePt = null;
+    const makeCtx = () => ({
+        canvas: { width: 1080, height: 1920 },
+        font: '700 44px Arial',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        lineCap: 'butt',
+        lineJoin: 'miter',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        save() {},
+        restore() {},
+        beginPath() {},
+        closePath() {},
+        moveTo(x, y) { movePt = { x, y }; },
+        lineTo(x, y) { if (movePt) this._lastSeg = { x0: movePt.x, y0: movePt.y, x1: x, y1: y }; },
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        rect() {},
+        clip() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        setLineDash() {},
+        fill() {},
+        stroke() {
+            if (String(this.strokeStyle).toUpperCase() === '#E2B95B' && this._lastSeg) {
+                underlineStrokes.push({ ...this._lastSeg });
+            }
+        },
+        fillRect() {},
+        strokeRect() {},
+        clearRect() {},
+        drawImage() {},
+        fillText(text, x, y) {
+            fillTexts.push({ text: String(text), x, y, fillStyle: String(this.fillStyle) });
+        },
+        strokeText() {},
+        measureText: (txt) => ({
+            width: String(txt || '').length * 20,
+            actualBoundingBoxAscent: 32,
+            actualBoundingBoxDescent: 8,
+        }),
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+    });
+
+    const sandbox = loadBrowserScript('src/reels-overlay.js', {
+        window: { addEventListener() {} },
+        drawSpeechWritingTip(_ctx, kind, x, y) {
+            tipCalls.push({ kind, x, y });
+        },
+    });
+    const ReelsOverlay = sandbox.window.ReelsOverlay;
+
+    const lines = [
+        'Today you will receive a',
+        'gift from God if you',
+        'read this to the end.',
+        'God forgives me, God',
+        'protects me, God hears',
+        'me, God is with me.',
+    ];
+    // Include an overlapping end timestamp on line 0 to verify line tracking never stalls on line 0
+    const segments = [
+        { start: 0.0, end: 6.2, text: lines[0] },
+        { start: 2.0, end: 3.5, text: lines[1] },
+        { start: 3.5, end: 5.0, text: lines[2] },
+        { start: 5.0, end: 7.0, text: lines[3] },
+        { start: 7.0, end: 8.8, text: lines[4] },
+        { start: 8.8, end: 10.5, text: lines[5] },
+    ];
+
+    const ovSpeech = ReelsOverlay.createScrollOverlay({
+        content: lines.join('\n'),
+        scroll_uppercase: false,
+        fontsize: 44,
+        line_spacing: 20,
+        scroll_static: true,
+        scroll_typewriter_enabled: true,
+        scroll_tw_reveal_type: 'line',
+        scroll_tw_line_track_mode: 'speech_or_progress',
+        scroll_tw_hide_unread: false,
+        scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_active_highlight: true,
+        scroll_tw_active_color: '#FFD700',
+        scroll_tw_keep_read_color: true,
+        scroll_tw_active_scale_enabled: true,
+        scroll_tw_active_scale: 125,
+        scroll_tw_underline_enabled: true,
+        scroll_tw_underline_color: '#E2B95B',
+        scroll_tw_cursor_enabled: true,
+        scroll_tw_cursor_kind: 'quill',
+        feather_top: 0,
+        feather_bottom: 0,
+        start: 0,
+        end: 12,
+    });
+    ovSpeech._taskSegments = segments;
+
+    ReelsOverlay.drawOverlay(makeCtx(), ovSpeech, 5.4, 1080, 1920);
+    const activeLineDraw = fillTexts.find(f => f.text.includes('God forgives me, God'));
+    assert.ok(activeLineDraw, 'Active line 4 should render as a single merged run');
+    assert.equal(activeLineDraw.fillStyle.toUpperCase(), '#FFD700', 'Active line 4 must be highlighted #FFD700');
+    const line1Draw = fillTexts.find(f => f.text.includes('Today you will receive a'));
+    const line2Draw = fillTexts.find(f => f.text.includes('gift from God if you'));
+    const line5Draw = fillTexts.find(f => f.text.includes('protects me, God hears'));
+    assert.equal(line1Draw.fillStyle.toUpperCase(), '#FFD700', 'Read line 1 keeps highlight color');
+    assert.equal(line2Draw.fillStyle.toUpperCase(), '#FFD700', 'Read line 2 keeps highlight color');
+    assert.equal(line5Draw.fillStyle.toUpperCase(), '#FFFFFF', 'Unread line 5 stays base color');
+    assert.equal(underlineStrokes.length, 1, 'Exactly one following underline should be drawn');
+    assert.ok(underlineStrokes[0].y0 > activeLineDraw.y && underlineStrokes[0].y0 < activeLineDraw.y + 40, 'Underline must sit beneath active line 4, not line 1');
+    assert.equal(tipCalls.length, 1, 'Feather cursor should be drawn');
+    assert.ok(Math.abs(tipCalls[0].y - activeLineDraw.y) < 30, 'Feather cursor must stay on active line 4');
+
+    // Focus-zone mode with cursor enabled must keep cursor anchored on the focus-zone active line
+    fillTexts.length = 0;
+    underlineStrokes.length = 0;
+    tipCalls.length = 0;
+    const ovFocus = ReelsOverlay.createScrollOverlay({
+        ...ovSpeech,
+        id: 'scroll_focus_line_cursor_test',
+        scroll_tw_line_track_mode: 'focus_zone',
+        scroll_tw_active_scale_enabled: false,
+        scroll_focus_start_pct: 5,
+        scroll_focus_end_pct: 5,
+    });
+    ovFocus._taskSegments = segments;
+    ReelsOverlay.drawOverlay(makeCtx(), ovFocus, 5.4, 1080, 1920);
+    const focusLine1Draw = fillTexts.find(f => f.text.includes('Today you will receive a'));
+    assert.equal(focusLine1Draw.fillStyle.toUpperCase(), '#FFD700', 'Focus zone targets top line 1');
+    assert.equal(tipCalls.length, 1, 'Cursor should still render in focus-zone mode');
+    assert.ok(Math.abs(tipCalls[0].y - focusLine1Draw.y) < 30, 'Cursor must stay on focus-zone highlighted line 1 instead of drifting to line 4');
+});

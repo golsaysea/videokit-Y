@@ -1541,10 +1541,10 @@ class ReelsOverlayPanel {
                                     </div>
 
                                     <div style="grid-column: span 2; font-size:11px; color:#FFE28A; margin-top:6px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">📏 逐行跟读下划线 & 焦点阅读区 (爆款同款)</div>
-                                    <label title="选择整行高亮与下划线跟随的推进方式：焦点区=哪一行滚到卡片黄金阅读区就点亮哪一行；语音/时间=按配音或时间进度逐行点亮">跟读定位</label>
+                                    <label title="选择整行高亮与下划线跟随的推进方式：语音/时间=按配音或时间进度逐行点亮；焦点区=哪一行滚到卡片黄金阅读区就点亮哪一行">跟读定位</label>
                                     <select id="rop-scroll-tw-line-track-mode" class="rop-select">
-                                        <option value="focus_zone">🎯 随卡片焦点阅读区逐行点亮 (爆款同款)</option>
                                         <option value="speech_or_progress">🎙️ 随语音/时间进度逐行点亮</option>
+                                        <option value="focus_zone">🎯 随卡片焦点阅读区逐行点亮 (爆款同款)</option>
                                     </select>
                                     <label title="开启后在当前高亮行下方绘制一条跟随移动的金色下划线">跟随下划线</label>
                                     <div style="display:flex;align-items:center;gap:6px;">
@@ -3172,6 +3172,7 @@ class ReelsOverlayPanel {
             'rop-scroll-auto-stop-lead',
             'rop-scroll-static',
             'rop-scroll-auto-fit', 'rop-scroll-min-fontsize',
+            'rop-scroll-focus-flow-enabled', 'rop-scroll-focus-start-pct', 'rop-scroll-focus-end-pct',
             'rop-scroll-feather-mode',
             'rop-scroll-feather-top', 'rop-scroll-feather-bottom', 'rop-scroll-feather-top-offset', 'rop-scroll-feather-bottom-offset',
             'rop-scroll-feather-left', 'rop-scroll-feather-right', 'rop-scroll-feather-left-offset', 'rop-scroll-feather-right-offset',
@@ -3180,14 +3181,23 @@ class ReelsOverlayPanel {
             'rop-scroll-bg-offset-x', 'rop-scroll-bg-offset-y',
             'rop-scroll-bg-radius', 'rop-scroll-bg-pad-top', 'rop-scroll-bg-pad-bottom',
             'rop-scroll-bg-pad-left', 'rop-scroll-bg-pad-right', 'rop-scroll-bg-fullscreen',
+            'rop-scroll-bg-edge-feather',
+            'rop-scroll-bg-bookmark-enabled', 'rop-scroll-bg-bookmark-color', 'rop-scroll-bg-bookmark-style',
+            'rop-scroll-bg-bookmark-pos', 'rop-scroll-bg-bookmark-width', 'rop-scroll-bg-bookmark-height', 'rop-scroll-bg-bookmark-inset',
+            'rop-scroll-bg-top-mascot', 'rop-scroll-bg-top-mascot-scale', 'rop-scroll-bg-top-mascot-offset-x',
+            'rop-scroll-bg-top-mascot-offset-y', 'rop-scroll-bg-top-mascot-speed',
             'rop-scroll-bg-border-enabled', 'rop-scroll-bg-border-sides', 'rop-scroll-bg-border-color', 'rop-scroll-bg-border-width',
             'rop-scroll-bg-border-style', 'rop-scroll-bg-border-opacity',
             'rop-scroll-bg-blur-enabled', 'rop-scroll-bg-blur-amount',
             // 滚动字幕出字效果
             'rop-scroll-tw-enabled', 'rop-scroll-tw-start', 'rop-scroll-tw-end', 'rop-scroll-tw-speech-sync', 'rop-scroll-tw-reveal-type',
+            'rop-scroll-tw-line-track-mode',
             'rop-scroll-tw-hide-unread', 'rop-scroll-tw-unrevealed-opacity',
             'rop-scroll-tw-active-highlight', 'rop-scroll-tw-active-color', 'rop-scroll-tw-keep-read-color',
             'rop-scroll-tw-active-scale-enabled', 'rop-scroll-tw-active-scale',
+            'rop-scroll-tw-underline-enabled', 'rop-scroll-tw-underline-color', 'rop-scroll-tw-underline-style',
+            'rop-scroll-tw-underline-width-mode', 'rop-scroll-tw-underline-width-ratio', 'rop-scroll-tw-underline-thickness',
+            'rop-scroll-tw-underline-offset-y', 'rop-scroll-tw-underline-opacity',
             'rop-scroll-tw-cursor-enabled', 'rop-scroll-tw-cursor-kind', 'rop-scroll-tw-cursor-image',
             'rop-scroll-tw-cursor-anchor-x', 'rop-scroll-tw-cursor-anchor-y',
             'rop-scroll-tw-cursor-scale', 'rop-scroll-tw-cursor-offset-x', 'rop-scroll-tw-cursor-offset-y',
@@ -5557,7 +5567,7 @@ class ReelsOverlayPanel {
                 'scroll_title_bg_opacity', 'scroll_title_bg_radius', 'scroll_title_bg_pad_h', 'scroll_title_bg_pad_top', 'scroll_title_bg_pad_bottom',
                 'scroll_uppercase', 'scroll_letter_spacing', 'scroll_title_uppercase', 'scroll_title_letter_spacing',
                 'scroll_typewriter_enabled', 'scroll_tw_start', 'scroll_tw_end', 'scroll_tw_hide_unread', 'scroll_tw_active_scale_enabled', 'scroll_tw_unrevealed_opacity', 'scroll_tw_speech_sync', 'scroll_tw_reveal_type',
-                'scroll_tw_line_track_mode', 'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_active_scale',
+                'scroll_tw_line_track_mode', 'scroll_tw_active_highlight', 'scroll_tw_active_color', 'scroll_tw_keep_read_color', 'scroll_tw_active_scale',
                 'scroll_tw_underline_enabled', 'scroll_tw_underline_color', 'scroll_tw_underline_thickness',
                 'scroll_tw_underline_style', 'scroll_tw_underline_width_mode', 'scroll_tw_underline_width_ratio',
                 'scroll_tw_underline_offset_y', 'scroll_tw_underline_opacity',
@@ -7278,7 +7288,7 @@ class ReelsOverlayPanel {
             this._val('rop-scroll-tw-end', ov.scroll_tw_end ?? '');
             this._val('rop-scroll-tw-speech-sync', ov.scroll_tw_speech_sync !== false);
             this._val('rop-scroll-tw-reveal-type', ov.scroll_tw_reveal_type || 'char');
-            this._val('rop-scroll-tw-line-track-mode', ov.scroll_tw_line_track_mode || 'focus_zone');
+            this._val('rop-scroll-tw-line-track-mode', ov.scroll_tw_line_track_mode || 'speech_or_progress');
             const scrollUnreadOp = ov.scroll_tw_unrevealed_opacity ?? 0;
             const scrollHideUnread = ov.scroll_tw_hide_unread !== undefined
                 ? Boolean(ov.scroll_tw_hide_unread)
@@ -7981,7 +7991,7 @@ class ReelsOverlayPanel {
                 : 100;
             ov.scroll_tw_speech_sync = !!this._get('rop-scroll-tw-speech-sync');
             ov.scroll_tw_reveal_type = this._get('rop-scroll-tw-reveal-type') || 'char';
-            ov.scroll_tw_line_track_mode = this._get('rop-scroll-tw-line-track-mode') || 'focus_zone';
+            ov.scroll_tw_line_track_mode = this._get('rop-scroll-tw-line-track-mode') || 'speech_or_progress';
             ov.scroll_tw_active_highlight = !!this._get('rop-scroll-tw-active-highlight');
             ov.scroll_tw_active_color = this._get('rop-scroll-tw-active-color') || '#FFD700';
             ov.scroll_tw_keep_read_color = !!this._get('rop-scroll-tw-keep-read-color');
