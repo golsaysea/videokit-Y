@@ -2466,6 +2466,8 @@ class ReelsOverlayPanel {
                             <option value="pulse">💓 持续呼吸放大</option>
                             <option value="ring">📳 间歇来电轻晃</option>
                             <option value="float">☁️ 持续上下轻浮</option>
+                            <option value="sway_bell">🔔 铃铛摆动</option>
+                            <option value="twinkle">✨ 星光闪烁</option>
                         </select>
                     </div>
                 </div>
@@ -3228,7 +3230,18 @@ class ReelsOverlayPanel {
                     this._selectedOv.scroll_auto_stop = false;
                     this._val('rop-scroll-auto-stop', false);
                 }
-                if ((fid === 'rop-scroll-end-time' || fid === 'rop-end') && this._selectedOv?.type === 'scroll') this._selectedOv.scroll_end_auto = false;
+                if ((fid === 'rop-scroll-end-time' || fid === 'rop-end') && (this._selectedOv?.type === 'scroll' || this._selectedOv?.type === 'sticker')) {
+                    this._selectedOv.scroll_end_auto = false;
+                }
+                if (fid === 'rop-anim-loop' && this._selectedOv) {
+                    if (this._selectedOv.type === 'sticker') {
+                        this._val('rop-sticker-loop-anim', el.value || 'sway_bell');
+                    }
+                    if (el.value && el.value !== 'none' && typeof performance !== 'undefined') {
+                        this._selectedOv._ctaAnimPreviewStart = performance.now();
+                        this._selectedOv._loopPreviewImmediate = true;
+                    }
+                }
                 const structuralChange = fid === 'rop-name' || fid === 'rop-disabled';
                 const commit = _isDiscreteOverlayControl(el) ? true : (e?.type !== 'input');
                 this._syncToOverlay({ commit, structuralChange });
@@ -5078,6 +5091,7 @@ class ReelsOverlayPanel {
         if (this.videoCanvas) this.videoCanvas.addOverlay(ov);
         this._refreshList();
         this.selectOverlay(ov);
+        this._syncStickerStackToScopeTasks({ source: options.scopeSource || 'overlay', structuralChange: true, immediate: true });
         if (typeof this.videoCanvas?.onOverlayChange === 'function') this.videoCanvas.onOverlayChange(ov);
         if (typeof this.videoCanvas?.render === 'function') this.videoCanvas.render();
         return ov;
@@ -5133,9 +5147,12 @@ class ReelsOverlayPanel {
         const commitSticker = (ov, refreshList = false) => {
             if (!ov) return;
             if (refreshList) this._refreshList();
+            this._syncStickerStackToScopeTasks({ source: 'overlay', structuralChange: refreshList, immediate: true });
             if (typeof this.videoCanvas?.render === 'function') this.videoCanvas.render();
             if (typeof this.videoCanvas?.onOverlayChange === 'function') this.videoCanvas.onOverlayChange(ov);
             if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') window.reelsSyncChristmasIconAdjustUI(ov);
+            if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
+            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
         };
 
         panel.querySelectorAll('.rop-sticker-cat-tab').forEach((btn) => {
@@ -5176,6 +5193,14 @@ class ReelsOverlayPanel {
             const ov = this._selectedOv;
             if (!ov || ov.type !== 'sticker') return;
             ov.cta_loop_anim = e.target.value || 'sway_bell';
+            this._val('rop-anim-loop', ov.cta_loop_anim);
+            if (ov.cta_loop_anim !== 'none' && typeof performance !== 'undefined') {
+                ov._ctaAnimPreviewStart = performance.now();
+                ov._loopPreviewImmediate = true;
+            } else {
+                delete ov._ctaAnimPreviewStart;
+                delete ov._loopPreviewImmediate;
+            }
             commitSticker(ov);
         });
 
@@ -6002,6 +6027,7 @@ class ReelsOverlayPanel {
         if (!this._selectedOv) return;
         const targetOv = this._selectedOv;
         const wasDecor = targetOv.type === 'decor';
+        const wasSticker = targetOv.type === 'sticker';
         this._removePhoneCtaFromScopeTasks(targetOv);
         if (this.videoCanvas) this.videoCanvas.removeOverlay(targetOv.id);
         this._selectedOv = null;
@@ -6010,6 +6036,10 @@ class ReelsOverlayPanel {
         if (wasDecor && window._reelsState?.decorPanel) {
             window._reelsState.decorPanel._syncDecorStackToScopeTasks?.();
             window._reelsState.decorPanel.refresh?.();
+        }
+        if (wasSticker) {
+            this._syncStickerStackToScopeTasks({ source: 'overlay', structuralChange: true, immediate: true });
+            if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') window.reelsSyncChristmasIconAdjustUI();
         }
     }
 
@@ -6221,6 +6251,7 @@ class ReelsOverlayPanel {
                 const id = btn.dataset.id;
                 const ov = (this.videoCanvas?.overlayMgr?.overlays || []).find(o => o.id === id);
                 const wasDecor = ov?.type === 'decor';
+                const wasSticker = ov?.type === 'sticker';
                 const label = ov ? (ov.name || ov.title_text || ov.content || '').slice(0, 20) || ov.type : id;
                 if (!confirm(`确定删除覆层「${label}」吗？`)) return;
                 if (ov) this._removePhoneCtaFromScopeTasks(ov);
@@ -6237,6 +6268,10 @@ class ReelsOverlayPanel {
                 if (wasDecor && window._reelsState?.decorPanel) {
                     window._reelsState.decorPanel._syncDecorStackToScopeTasks?.();
                     window._reelsState.decorPanel.refresh?.();
+                }
+                if (wasSticker) {
+                    this._syncStickerStackToScopeTasks({ source: 'overlay', structuralChange: true, immediate: true });
+                    if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') window.reelsSyncChristmasIconAdjustUI();
                 }
             });
         });
@@ -7493,7 +7528,10 @@ class ReelsOverlayPanel {
         ov.start = _ropRound(this._get('rop-start'));
         // Never turn an automatic displayed duration into a new manual end when editing styling.
         const panelEnd = _ropRound(this._get('rop-end'));
-        if (ov.type === 'scroll' && ov.scroll_end_auto !== false) {
+        const isAutoFullOv = typeof window !== 'undefined' && window.ReelsOverlay?.isFullDurationAutoOverlay
+            ? window.ReelsOverlay.isFullDurationAutoOverlay(ov)
+            : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false);
+        if (isAutoFullOv) {
             ov.end = 9999;
         } else if (ov.end >= 9999) {
             // 检查用户是否手动修改了结束时间
@@ -7504,8 +7542,8 @@ class ReelsOverlayPanel {
             const videoDur = (v2Duration && isFinite(v2Duration))
                 ? _ropRound(v2Duration)
                 : ((mediaEl && mediaEl.duration && isFinite(mediaEl.duration)) ? _ropRound(mediaEl.duration) : 9999);
-            if (panelEnd === videoDur || panelEnd >= 9999) {
-                // 用户没改，保持 9999（全程）
+            if (!Number.isFinite(panelEnd) || panelEnd <= 0 || panelEnd === videoDur || panelEnd >= 9999) {
+                // 用户没改或面板为空/0，保持 9999（全程）
             } else {
                 ov.end = panelEnd;  // 用户手动改了
             }
@@ -8473,9 +8511,131 @@ class ReelsOverlayPanel {
         const sameTypeInTask = task.overlays.filter(matchesSubKind);
         if (typeOrderIdx >= 0) {
             if (sameTypeInTask[typeOrderIdx]) return sameTypeInTask[typeOrderIdx];
-            if (sourceOv.type === 'decor' || isPhoneCta) return null;
+            if (sourceOv.type === 'decor' || sourceOv.type === 'sticker' || isPhoneCta) return null;
         }
         return sameTypeInTask[0] || null;
+    }
+
+    _syncStickerStackToScopeTasks(options = {}) {
+        if (this._isSyncingStickerStack || this.videoCanvas?.scopedTask) return;
+        const state = typeof window !== 'undefined' ? window._reelsState : null;
+        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || null;
+        const structuralChange = options?.structuralChange !== false;
+        let scope = options?.scopeOverride || null;
+        if (!scope) {
+            if (options?.source === 'subtitle') {
+                const subScopeEl = typeof document !== 'undefined' ? document.getElementById('reels-style-scope') : null;
+                scope = subScopeEl ? (subScopeEl.value || 'folder') : 'folder';
+            } else {
+                scope = this._getOverlayStyleScope();
+            }
+        }
+
+        this._isSyncingStickerStack = true;
+        try {
+            if (structuralChange && typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+                try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+            } else if (selectedTask && this.videoCanvas?.overlayMgr) {
+                if (state?._coverEditMode && selectedTask.cover) {
+                    selectedTask.cover.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
+                } else {
+                    selectedTask.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
+                }
+            }
+
+            if (scope === 'task') {
+                if (typeof _syncTasksToActiveTab === 'function') {
+                    try { _syncTasksToActiveTab(); } catch (_) {}
+                }
+                if (typeof _batchAutoSave === 'function') {
+                    try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+                }
+                return;
+            }
+
+            const scopedTasks = this._getStyleApplyScopeTasks(scope, { includeHiddenBatchTasks: true });
+            const liveOverlays = this.videoCanvas?.overlayMgr?.overlays
+                || (state?._coverEditMode ? selectedTask?.cover?.overlays : selectedTask?.overlays)
+                || [];
+            const sourceStickers = liveOverlays
+                .filter(o => o && o.type === 'sticker')
+                .map(s => {
+                    const copy = JSON.parse(JSON.stringify(s, (key, val) => key === '_allOverlays' ? undefined : val));
+                    delete copy._img;
+                    delete copy._imgLoaded;
+                    delete copy._selected;
+                    delete copy._ctaAnimPreviewStart;
+                    delete copy._loopPreviewImmediate;
+                    delete copy._previewPlaying;
+                    delete copy._exporting;
+                    delete copy._staticPreview;
+                    return copy;
+                });
+
+            const applyStickersToTask = (task) => {
+                if (!task || task === selectedTask) return;
+                const existing = Array.isArray(task.overlays) ? task.overlays : [];
+                const existingStickers = existing.filter(o => o && o.type === 'sticker');
+                const otherOverlays = existing.filter(o => o && o.type !== 'sticker');
+                const nextStickers = sourceStickers.map((srcOv, idx) => {
+                    const clone = JSON.parse(JSON.stringify(srcOv));
+                    const prevId = existingStickers[idx]?.id;
+                    clone.id = (prevId && prevId !== srcOv.id)
+                        ? prevId
+                        : ('ov_stk_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
+                    return clone;
+                });
+                task.overlays = [...otherOverlays, ...nextStickers];
+            };
+
+            const updatedIds = new Set();
+            if (Array.isArray(scopedTasks)) {
+                scopedTasks.forEach(task => {
+                    if (!task) return;
+                    if (task.id) updatedIds.add(task.id);
+                    applyStickersToTask(task);
+                });
+            }
+
+            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+                const activeTabId = selectedTask?._batchTabId
+                    || _batchTableState.activeTabId
+                    || '';
+                for (const tab of _batchTableState.tabs) {
+                    const syncEntireTab = scope === 'all' || (scope === 'tab' && activeTabId && tab?.id === activeTabId);
+                    let tabTouched = false;
+                    for (const t of (tab?.tasks || [])) {
+                        if (!t) continue;
+                        if (syncEntireTab || (t.id && updatedIds.has(t.id))) {
+                            if (selectedTask && ((t === selectedTask) || (t.id && t.id === selectedTask.id))) {
+                                t.overlays = JSON.parse(JSON.stringify(selectedTask.overlays || [], (key, val) => key === '_allOverlays' ? undefined : val));
+                            } else {
+                                applyStickersToTask(t);
+                            }
+                            tabTouched = true;
+                        }
+                    }
+                    if (tabTouched && tab) {
+                        tab._dirty = true;
+                        if (!tab._fromSealedTemplate && (tab.libraryTemplateId || tab._isLiveProject || (tab.tasks && tab.tasks.length))) {
+                            tab._libraryDirty = true;
+                        }
+                    }
+                }
+            }
+
+            if (typeof _syncTasksToActiveTab === 'function') {
+                try { _syncTasksToActiveTab(); } catch (_) {}
+            }
+            if (typeof _batchAutoSave === 'function') {
+                try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+            }
+            if (structuralChange && typeof _renderTaskList === 'function') {
+                try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
+            }
+        } finally {
+            this._isSyncingStickerStack = false;
+        }
     }
 
     _syncOverlayStyleToScopeTasks(ov, options = {}) {
@@ -8497,6 +8657,14 @@ class ReelsOverlayPanel {
 
     _applyGenericOverlayStyleToAllTasks(ov) {
         if (!ov || this._isApplyingGenericOverlay) return;
+        if (ov.type === 'sticker') {
+            this._syncStickerStackToScopeTasks({
+                source: 'overlay',
+                structuralChange: Boolean(this._activeScopeSyncOptions?.structuralChange),
+                immediate: Boolean(this._activeScopeSyncOptions?.immediate),
+            });
+            return;
+        }
         if (ov.type === 'decor' && typeof window !== 'undefined' && window._reelsState?.decorPanel?._syncDecorStackToScopeTasks) {
             window._reelsState.decorPanel._syncDecorStackToScopeTasks();
             return;
@@ -13730,6 +13898,7 @@ class ReelsDecorPanel {
             newyear_countdown: { id: 'newyear_countdown', name: '🎆 新年祝福金环开场', tag: 'DAYS TO New Year' },
             ready_321: { id: 'ready_321', name: '⏱️ 3·2·1 紧迫读秒开场', tag: '逐秒 3 → 2 → 1 吸睛停顿' },
             morning_prayer_gold: { id: 'morning_prayer_gold', name: '✝️ 圣光晨祷金环开场', tag: "TODAY'S PRAYER Amen" },
+            fb_yellow_stack_hook: { id: 'fb_yellow_stack_hook', name: '⚡ 爆款白黄斜体开场 (FB同款)', tag: '白色逐词堆叠 + 亮黄焦点冲击' },
         };
         const introPresetButtonsHtml = Object.entries(introPresets).map(([id, cfg]) => `
             <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}">
@@ -13803,12 +13972,12 @@ class ReelsDecorPanel {
                     <div id="rdp-layer-list" style="display:flex;flex-direction:column;gap:4px;"></div>
                 </div>
 
-                <!-- ═══ 独立专区: 🎬 节日倒计时光环开场 (cp-01同款，直加于本机素材) ═══ -->
+                <!-- ═══ 独立专区: 🎬 视频开场效果 (光环倒计时 / FB爆款白黄斜体开场，直加于本机素材) ═══ -->
                 <div id="rdp-intro-card" class="rdp-intro-card">
                     <div class="rdp-cta-header">
                         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;min-width:0;flex:1;">
                             <input type="checkbox" id="rdp-intro-enable" style="width:15px;height:15px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
-                            <span style="font-weight:800;font-size:12.5px;color:#fde68a;white-space:nowrap;">🎬 倒计时光环开场</span>
+                            <span style="font-weight:800;font-size:12.5px;color:#fde68a;white-space:nowrap;">🎬 视频开场效果</span>
                             <span id="rdp-intro-status-badge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">未添加 (勾选或点模板启用)</span>
                         </label>
                         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
@@ -13847,6 +14016,37 @@ class ReelsDecorPanel {
                                 </label>
                             </div>
 
+                            <!-- 1.5) FB 爆款白黄斜体逐词开场参数 (kinetic_stack 专属) -->
+                            <div id="rdp-intro-kinetic-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
+                                <div class="rop-row">
+                                    <label>开场词源</label>
+                                    <select id="rdp-intro-hook-source" class="rop-select" style="flex:1;min-width:0;">
+                                        <option value="auto">自动同步正文前句 (0s开场时不重复正文字幕)</option>
+                                        <option value="custom">自定义独立开场钩子台词</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--text-secondary);">
+                                        <span>开场钩子词（每行 1~3 个词效果最佳，留空或无语音时使用下方示例）：</span>
+                                    </div>
+                                    <textarea id="rdp-intro-hook-text" class="rop-input" rows="3" style="width:100%;min-height:56px;resize:vertical;line-height:1.35;font-size:11.5px;" placeholder="每行1~3个词，例如：&#10;Wait don't skip!&#10;You need to&#10;hear this right now!"></textarea>
+                                </div>
+                                <div class="rop-row" style="gap:6px;flex-wrap:wrap;">
+                                    <label>字体</label>
+                                    <select id="rdp-intro-kinetic-font" class="rop-select" style="flex:1;min-width:90px;">${introFontOptionsHtml}</select>
+                                    <span style="font-size:10.5px;color:var(--text-secondary);">上白</span>
+                                    <input type="color" id="rdp-intro-kinetic-white" class="rop-color" value="#FFFFFF" title="上方铺垫词纯白色">
+                                    <span style="font-size:10.5px;color:var(--text-secondary);">焦黄</span>
+                                    <input type="color" id="rdp-intro-kinetic-yellow" class="rop-color" value="#FFE600" title="当前焦点词高亮黄色">
+                                </div>
+                                <div class="rop-row rop-num-row">
+                                    <label>字体大小</label>
+                                    <input type="range" id="rdp-intro-kinetic-fontsize" class="rop-range" min="64" max="180" step="2" value="112">
+                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-kinetic-fontsize" min="64" max="180" step="2" value="112">
+                                </div>
+                            </div>
+
+                            <div id="rdp-intro-ring-section" style="display:flex;flex-direction:column;gap:7px;">
                             <!-- 2) 倒计时文案与模式 -->
                             <div class="rdp-card-section">
                                 <div class="rop-row">
@@ -13929,6 +14129,9 @@ class ReelsDecorPanel {
                                     <input type="range" id="rdp-intro-snow-density" class="rop-range" min="0" max="80" step="2" value="32">
                                     <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-snow-density" min="0" max="80" step="2" value="32">
                                 </div>
+                            </div>
+                            </div>
+                            <div class="rdp-card-section">
                                 <div class="rop-row rop-num-row">
                                     <label>聚光暗角</label>
                                     <input type="range" id="rdp-intro-scrim" class="rop-range" min="0" max="70" step="2" value="16">
@@ -14739,9 +14942,11 @@ class ReelsDecorPanel {
         });
 
         // 其余表单项统一绑定到 _syncToIntroOverlay
-        const introStructuralIds = new Set(['rdp-intro-delay-body']);
+        const introStructuralIds = new Set(['rdp-intro-delay-body', 'rdp-intro-hook-source']);
         const introFieldIds = [
             'rdp-intro-delay-body',
+            'rdp-intro-hook-source', 'rdp-intro-hook-text',
+            'rdp-intro-kinetic-font', 'rdp-intro-kinetic-white', 'rdp-intro-kinetic-yellow',
             'rdp-intro-top-text', 'rdp-intro-top-color',
             'rdp-intro-center-mode', 'rdp-intro-center-text', 'rdp-intro-center-color',
             'rdp-intro-target-date', 'rdp-intro-day-offset',
@@ -15337,9 +15542,10 @@ class ReelsDecorPanel {
         if (!this.container) return;
         const dur = Math.max(0.4, Number(target?.end ?? 3.0) || 3.0);
         const delayBody = target?.intro_delay_body !== false;
+        const styleTag = target?.intro_layout === 'kinetic_stack' ? '⚡白黄斜体' : '🎬光环开场';
         const label = target
-            ? `${dur.toFixed(1)}s · ${delayBody ? '延后朗读与字幕' : '0s同步叠加'}`
-            : '3.0s · 自动延后朗读';
+            ? `${styleTag} · ${dur.toFixed(1)}s · ${delayBody ? '延后朗读' : '0s开场'}`
+            : '3.0s · 光环/白黄开场';
         _setAccBadge(this.container, 'rdp-acc-intro-badge', label, Boolean(isEnabled));
     }
 
@@ -15350,6 +15556,7 @@ class ReelsDecorPanel {
         try {
             const exists = Boolean(target);
             const isEnabled = Boolean(target && !target.disabled);
+            const isKinetic = (target?.intro_layout || 'ring') === 'kinetic_stack';
             this._setVal('rdp-intro-enable', isEnabled);
             if (!this._hasSyncedIntroOnce && isEnabled) {
                 this._hasSyncedIntroOnce = true;
@@ -15380,6 +15587,11 @@ class ReelsDecorPanel {
                 }
             }
 
+            const kineticSec = this.container.querySelector('#rdp-intro-kinetic-section');
+            const ringSec = this.container.querySelector('#rdp-intro-ring-section');
+            if (kineticSec) kineticSec.style.display = isKinetic ? 'flex' : 'none';
+            if (ringSec) ringSec.style.display = isKinetic ? 'none' : 'flex';
+
             const activePreset = target?.intro_style || '';
             this.container.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
                 btn.classList.toggle('is-active', Boolean(isEnabled && btn.dataset.introPreset === activePreset));
@@ -15408,6 +15620,13 @@ class ReelsDecorPanel {
             });
 
             setIntroVal('rdp-intro-delay-body', target.intro_delay_body !== false);
+            setIntroVal('rdp-intro-hook-source', target.intro_hook_source || 'auto');
+            setIntroVal('rdp-intro-hook-text', target.intro_hook_text ?? "Wait don't skip!\nYou need to\nhear this right now!");
+            setIntroVal('rdp-intro-kinetic-font', target.intro_center_font_family || 'Montserrat');
+            setIntroVal('rdp-intro-kinetic-white', target.intro_top_color || '#FFFFFF');
+            setIntroVal('rdp-intro-kinetic-yellow', target.intro_center_color || '#FFE600');
+            setIntroVal('rdp-intro-kinetic-fontsize', Math.round(Number(target.intro_center_fontsize ?? 112)));
+
             setIntroVal('rdp-intro-top-text', target.intro_top_text ?? 'DAYS BEFORE');
             setIntroVal('rdp-intro-top-color', target.intro_top_color || '#FFFFFF');
 
@@ -15442,9 +15661,9 @@ class ReelsDecorPanel {
             setIntroVal('rdp-intro-spark-enabled', target.intro_ring_spark_enabled !== false);
             setIntroVal('rdp-intro-snow-enabled', Boolean(target.intro_snow_enabled));
             setIntroVal('rdp-intro-snow-density', Math.round(Number(target.intro_snow_density ?? 32)));
-            setIntroVal('rdp-intro-scrim', Math.round(Number(target.intro_backdrop_scrim ?? 16)));
+            setIntroVal('rdp-intro-scrim', Math.round(Number(target.intro_backdrop_scrim ?? (isKinetic ? 0 : 16))));
             setIntroVal('rdp-intro-scale', Math.round(Number(target.intro_scale ?? 100)));
-            setIntroVal('rdp-intro-offset-y', Math.round(Number(target.intro_offset_y ?? -20)));
+            setIntroVal('rdp-intro-offset-y', Math.round(Number(target.intro_offset_y ?? (isKinetic ? 0 : -20))));
             setIntroVal('rdp-intro-offset-x', Math.round(Number(target.intro_offset_x ?? 0)));
         } finally {
             this._syncingIntro = false;
@@ -15462,36 +15681,47 @@ class ReelsDecorPanel {
         ov.end = dur;
         ov.intro_delay_body = Boolean(this._getVal('rdp-intro-delay-body'));
 
-        ov.intro_top_text = String(this._getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
-        ov.intro_top_color = this._getVal('rdp-intro-top-color') || '#FFFFFF';
-        ov.intro_center_mode = this._getVal('rdp-intro-center-mode') || 'fixed';
-        ov.intro_center_text = String(this._getVal('rdp-intro-center-text') ?? ov.intro_center_text ?? '37');
-        ov.intro_center_color = this._getVal('rdp-intro-center-color') || '#FACC15';
-        ov.intro_target_date = String(this._getVal('rdp-intro-target-date') ?? '12-25').trim() || '12-25';
-        ov.intro_day_offset = Number(this._getVal('rdp-intro-day-offset') ?? 0) || 0;
-        ov.intro_bottom_text = String(this._getVal('rdp-intro-bottom-text') ?? ov.intro_bottom_text ?? 'Christmas');
-        ov.intro_bottom_color = this._getVal('rdp-intro-bottom-color') || '#FFFFFF';
-        ov.intro_bottom_underline_enabled = Boolean(this._getVal('rdp-intro-underline-enabled'));
-        ov.intro_bottom_underline_color = this._getVal('rdp-intro-underline-color') || '#FACC15';
+        const isKinetic = (ov.intro_layout || 'ring') === 'kinetic_stack';
+        if (isKinetic) {
+            ov.intro_hook_source = this._getVal('rdp-intro-hook-source') || 'auto';
+            ov.intro_hook_text = String(this._getVal('rdp-intro-hook-text') ?? ov.intro_hook_text ?? '');
+            ov.intro_center_font_family = this._getVal('rdp-intro-kinetic-font') || 'Montserrat';
+            ov.intro_top_color = this._getVal('rdp-intro-kinetic-white') || '#FFFFFF';
+            ov.intro_center_color = this._getVal('rdp-intro-kinetic-yellow') || '#FFE600';
+            ov.intro_center_fontsize = Math.max(36, Number(this._getVal('rdp-intro-kinetic-fontsize') ?? ov.intro_center_fontsize ?? 112));
+        } else {
+            ov.intro_top_text = String(this._getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
+            ov.intro_top_color = this._getVal('rdp-intro-top-color') || '#FFFFFF';
+            ov.intro_center_mode = this._getVal('rdp-intro-center-mode') || 'fixed';
+            ov.intro_center_text = String(this._getVal('rdp-intro-center-text') ?? ov.intro_center_text ?? '37');
+            ov.intro_center_color = this._getVal('rdp-intro-center-color') || '#FACC15';
+            ov.intro_target_date = String(this._getVal('rdp-intro-target-date') ?? '12-25').trim() || '12-25';
+            ov.intro_day_offset = Number(this._getVal('rdp-intro-day-offset') ?? 0) || 0;
+            ov.intro_bottom_text = String(this._getVal('rdp-intro-bottom-text') ?? ov.intro_bottom_text ?? 'Christmas');
+            ov.intro_bottom_color = this._getVal('rdp-intro-bottom-color') || '#FFFFFF';
+            ov.intro_bottom_underline_enabled = Boolean(this._getVal('rdp-intro-underline-enabled'));
+            ov.intro_bottom_underline_color = this._getVal('rdp-intro-underline-color') || '#FACC15';
 
-        const themeId = this._getVal('rdp-intro-ring-theme') || ov.intro_ring_theme || 'xmas_rainbow';
-        ov.intro_ring_theme = themeId;
-        const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
-        if (theme && (!Array.isArray(ov.intro_ring_colors) || ov.intro_ring_colors.length === 0)) {
-            ov.intro_ring_colors = [...theme.colors];
+            const themeId = this._getVal('rdp-intro-ring-theme') || ov.intro_ring_theme || 'xmas_rainbow';
+            ov.intro_ring_theme = themeId;
+            const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
+            if (theme && (!Array.isArray(ov.intro_ring_colors) || ov.intro_ring_colors.length === 0)) {
+                ov.intro_ring_colors = [...theme.colors];
+            }
+
+            ov.intro_top_font_family = this._getVal('rdp-intro-top-font') || 'Montserrat';
+            ov.intro_center_font_family = this._getVal('rdp-intro-center-font') || 'Anton';
+            ov.intro_bottom_font_family = this._getVal('rdp-intro-bottom-font') || 'Pacifico';
+            ov.intro_ring_radius = Math.max(120, Number(this._getVal('rdp-intro-ring-radius') ?? 268));
+            ov.intro_ring_thickness = Math.max(2, Number(this._getVal('rdp-intro-ring-thickness') ?? 12));
+            ov.intro_ring_spark_enabled = Boolean(this._getVal('rdp-intro-spark-enabled'));
+            ov.intro_snow_enabled = Boolean(this._getVal('rdp-intro-snow-enabled'));
+            ov.intro_snow_density = Math.max(0, Number(this._getVal('rdp-intro-snow-density') ?? 32));
         }
 
-        ov.intro_top_font_family = this._getVal('rdp-intro-top-font') || 'Montserrat';
-        ov.intro_center_font_family = this._getVal('rdp-intro-center-font') || 'Anton';
-        ov.intro_bottom_font_family = this._getVal('rdp-intro-bottom-font') || 'Pacifico';
-        ov.intro_ring_radius = Math.max(120, Number(this._getVal('rdp-intro-ring-radius') ?? 268));
-        ov.intro_ring_thickness = Math.max(2, Number(this._getVal('rdp-intro-ring-thickness') ?? 12));
-        ov.intro_ring_spark_enabled = Boolean(this._getVal('rdp-intro-spark-enabled'));
-        ov.intro_snow_enabled = Boolean(this._getVal('rdp-intro-snow-enabled'));
-        ov.intro_snow_density = Math.max(0, Number(this._getVal('rdp-intro-snow-density') ?? 32));
-        ov.intro_backdrop_scrim = Math.max(0, Number(this._getVal('rdp-intro-scrim') ?? 16));
+        ov.intro_backdrop_scrim = Math.max(0, Number(this._getVal('rdp-intro-scrim') ?? (isKinetic ? 0 : 16)));
         ov.intro_scale = Math.max(40, Number(this._getVal('rdp-intro-scale') ?? 100));
-        ov.intro_offset_y = Number(this._getVal('rdp-intro-offset-y') ?? -20) || 0;
+        ov.intro_offset_y = Number(this._getVal('rdp-intro-offset-y') ?? (isKinetic ? 0 : -20)) || 0;
         ov.intro_offset_x = Number(this._getVal('rdp-intro-offset-x') ?? 0) || 0;
 
         this._syncIntroUI(ov);

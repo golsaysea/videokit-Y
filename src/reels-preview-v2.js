@@ -1784,7 +1784,8 @@
             // This is an editing guide, not subtitle content. Keep it visible
             // through subtitle gaps (and cover/hook phases) whenever enabled.
             drawSubtitleRange(ctx, style, w, h);
-            if (!show || phase.inCover || phase.inHook || phase.inIntroLead) return;
+            const introSuppressesBody = Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(getLiveOverlays(task), phase.mainTime));
+            if (!show || phase.inCover || phase.inHook || phase.inIntroLead || introSuppressesBody) return;
             const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
                 typeof state.renderer.renderKineticGlowBackdrop === 'function';
             if (hasKineticBackdrop) {
@@ -1899,8 +1900,11 @@
             const end = numberOr(ov.end, 9999);
             const evalTime = resolveOverlayEvalTime(ov);
             // 与 WYSIWYG 输出一致：普通覆层只在时间范围内显示；
-            // 滚动覆层到达结束时间后保留最终位置。
-            if (evalTime < start || (ov.type !== 'scroll' && evalTime > end)) continue;
+            // 滚动 / 自动全程贴纸覆层到达预设默认 end 后保持显示。
+            const isAutoFull = window.ReelsOverlay?.isFullDurationAutoOverlay
+                ? window.ReelsOverlay.isFullDurationAutoOverlay(ov)
+                : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length));
+            if (evalTime < start || (!isAutoFull && ov.type !== 'scroll' && evalTime > end)) continue;
                 if (typeof ctx?.save === 'function') ctx.save();
                 try {
                     // Preview must never inherit a stale/concurrent export marker,
@@ -1912,6 +1916,10 @@
                     }) || ov;
                     const previewOv = { ...effective, _allOverlays: allEnabled, _taskSegments: task.segments, _exporting: false, _previewPlaying: Boolean(state.isPlaying) };
                     window.ReelsOverlay.drawOverlay(ctx, previewOv, evalTime, w, h);
+                    if (!previewOv._ctaAnimPreviewStart && ov._ctaAnimPreviewStart) {
+                        delete ov._ctaAnimPreviewStart;
+                        delete ov._loopPreviewImmediate;
+                    }
                     // Keep computed bounds available to hit-testing/property UI.
                     for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX']) {
                         if (previewOv[key] != null) ov[key] = previewOv[key];
@@ -1921,6 +1929,9 @@
                 } finally {
                     if (typeof ctx?.restore === 'function') ctx.restore();
                 }
+        }
+        if (!state.isPlaying && drawable.some(item => item && item._ctaAnimPreviewStart)) {
+            requestRender();
         }
         if (!phase.inCover && !phase.inHook && passMode !== 'middle') drawOverlaySelection(ctx, drawable, time, w, h);
     }

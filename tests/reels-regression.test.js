@@ -10884,7 +10884,7 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
     const RO = ovSandbox.window.ReelsOverlay;
     assert.ok(RO, 'ReelsOverlay must be exposed');
     assert.equal(Object.keys(RO.INTRO_RING_THEMES).length, 5, '5 intro ring color themes should exist');
-    assert.equal(Object.keys(RO.INTRO_COUNTDOWN_PRESETS).length, 6, '6 intro countdown presets should exist');
+    assert.equal(Object.keys(RO.INTRO_COUNTDOWN_PRESETS).length, 7, '7 intro countdown/opening presets should exist');
 
     // Date calculation matches cp-01 sample: Nov 18 -> Dec 25 = 37 days; supports dots, slashes & Chinese month/day formats
     assert.equal(RO.computeIntroDaysRemaining('12-25', 0, new Date(2026, 10, 18)), 37);
@@ -10952,11 +10952,15 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
             measureText: (txt) => ({ width: String(txt || '').length * 14 }),
         };
 
-        // Paused at 0s snapshot should still render preview arc
+        // Paused at 0s snapshot should still render preview visuals
         const pausedOv = { ...presetOv, _previewPlaying: false };
         RO.drawOverlay(mockCtx, pausedOv, 0.0, 1080, 1920);
         assert.equal(saves, restores, `drawOverlay at t=0 paused for ${presetId} must balance save/restore`);
-        assert.ok(arcCalls.length >= 2, `Paused snapshot for ${presetId} must draw base ring and sweep arc`);
+        if (presetOv.intro_layout === 'kinetic_stack') {
+            assert.ok(drawnTexts.length >= 2, `Paused snapshot for ${presetId} must draw kinetic stacked intro words`);
+        } else {
+            assert.ok(arcCalls.length >= 2, `Paused snapshot for ${presetId} must draw base ring and sweep arc`);
+        }
 
         // Mid-animation frame
         drawnTexts.length = 0;
@@ -10967,12 +10971,15 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
         } else if (presetId === 'xmas_cp01') {
             assert.ok(drawnTexts.includes('37'), 'xmas_cp01 fixed center should render "37"');
             assert.ok(drawnTexts.includes('Christmas'), 'xmas_cp01 bottom script should render "Christmas"');
+        } else if (presetId === 'fb_yellow_stack_hook') {
+            assert.ok(drawnTexts.length >= 1, 'fb_yellow_stack_hook should draw opening stack words at t=1.4s');
         }
 
         // Past end duration renders nothing
-        const beforePast = arcCalls.length;
+        const beforePast = presetOv.intro_layout === 'kinetic_stack' ? drawnTexts.length : arcCalls.length;
         RO.drawOverlay(mockCtx, presetOv, presetOv.end + 0.5, 1080, 1920);
-        assert.equal(arcCalls.length, beforePast, `Intro ${presetId} should not render after its end duration`);
+        const afterPast = presetOv.intro_layout === 'kinetic_stack' ? drawnTexts.length : arcCalls.length;
+        assert.equal(afterPast, beforePast, `Intro ${presetId} should not render after its end duration`);
     }
 
     // 2. ReelsFontManager.collectFonts picks up intro_top / intro_center / intro_bottom font families
@@ -12074,4 +12081,277 @@ test('Facebook Reel 4817870781833385 preset sub-251: Poppins stacked white/orang
     const tightThe = drawn.find(d => d.kind === 'fill' && d.text === 'the');
     const tightDeepest = drawn.find(d => d.kind === 'fill' && d.text === 'deepest');
     assert.ok(wideGap > (tightDeepest.x - tightThe.x), 'Configured word_spacing: 14 must widen inter-word spacing in mixed layout');
+});
+
+test('Sticker overlays persist across full duration, animate sway_bell/twinkle, survive static export & multi-page sync, and batch-reels defines isMediaPlaying', () => {
+    const ovSandbox = loadBrowserScript('src/reels-overlay.js', {
+        performance,
+        window: {
+            performance,
+            ReelsAnimEngine: {
+                computeAnimProgress: (t, s, e, inDur) => [inDur > 0 ? Math.max(0, Math.min(1, (t - s) / inDur)) : 1, 1],
+                computePopScale: (p) => p,
+                EASING_MAP: { elastic: (p) => p, bounce: (p) => p },
+                computeSlideOffset: () => [0, 0],
+            },
+        },
+    });
+    const RO = ovSandbox.window.ReelsOverlay;
+
+    const sticker = RO.createStickerOverlay({ sticker_kind: 'jingle_bell', cta_loop_anim: 'sway_bell', anim_in_type: 'elastic_pop' });
+    assert.equal(sticker.scroll_end_auto, true, 'Stickers default to full-duration auto mode');
+    assert.equal(RO.isFullDurationAutoOverlay(sticker), true);
+
+    const trackCalls = [];
+    const makeTrackCtx = () => {
+        const ctx = {
+            globalAlpha: 1,
+            font: '',
+            fillStyle: '#fff',
+            strokeStyle: '#000',
+            shadowColor: 'transparent',
+            shadowBlur: 0,
+            shadowOffsetX: 0,
+            shadowOffsetY: 0,
+            lineWidth: 1,
+            save() { trackCalls.push({ op: 'save', alpha: ctx.globalAlpha }); },
+            restore() { trackCalls.push({ op: 'restore' }); },
+            translate() {},
+            rotate(rad) { trackCalls.push({ op: 'rotate', rad }); },
+            scale(sx, sy) { trackCalls.push({ op: 'scale', sx, sy }); },
+            beginPath() {},
+            closePath() {},
+            moveTo() {},
+            lineTo() {},
+            quadraticCurveTo() {},
+            bezierCurveTo() {},
+            arc() {},
+            ellipse() {},
+            rect() {},
+            roundRect() {},
+            fill() { trackCalls.push({ op: 'fill', alpha: ctx.globalAlpha, fillStyle: ctx.fillStyle }); },
+            stroke() {},
+            fillRect() {},
+            strokeRect() {},
+            fillText() {},
+            strokeText() {},
+            createLinearGradient() { return { addColorStop() {} }; },
+            createRadialGradient() { return { addColorStop() {} }; },
+            measureText: (t) => ({ width: String(t || '').length * 10 }),
+        };
+        return ctx;
+    };
+
+    // 1) Full-duration persistence even if end was transiently set below currentTime (e.g. 5s vs 25s)
+    const shrunkEndAuto = { ...sticker, end: 5, _previewPlaying: true };
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), shrunkEndAuto, 25.0, 1080, 1920);
+    assert.ok(trackCalls.some(c => c.op === 'fill'), 'Auto-full sticker must keep rendering past transient end (t=25s)');
+
+    // Explicit manual cutoff stops rendering past end
+    const manualCutoff = { ...sticker, scroll_end_auto: false, end: 5, _previewPlaying: true };
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), manualCutoff, 6.5, 1080, 1920);
+    assert.equal(trackCalls.some(c => c.op === 'fill'), false, 'Manual end cutoff (scroll_end_auto=false) stops at t=6.5s');
+
+    // 2) Static PNG export (_staticPreview: true at t=0 with elastic_pop) renders full visibility (never zero-scaled)
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), { ...sticker, _exporting: true, _staticPreview: true }, 0, 1080, 1920);
+    assert.ok(trackCalls.some(c => c.op === 'fill'), '_staticPreview must draw sticker fills at t=0');
+    assert.ok(!trackCalls.some(c => c.op === 'scale' && Math.abs(c.sx) < 0.1), '_staticPreview must not zero-scale elastic_pop at t=0');
+
+    // 3) sway_bell rotates continuously during playback and during immediate dropdown preview, stays still when paused
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), { ...sticker, _previewPlaying: false }, 1.2, 1080, 1920);
+    const pausedRotates = trackCalls.filter(c => c.op === 'rotate').map(c => c.rad);
+
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), { ...sticker, _previewPlaying: true }, 1.2, 1080, 1920);
+    const playingRotates = trackCalls.filter(c => c.op === 'rotate').map(c => c.rad);
+    assert.ok(playingRotates.length === pausedRotates.length + 1, 'Playing sticker adds outer sway_bell rotation transform');
+    assert.ok(Math.abs(playingRotates[0]) > 0.01, `Playing outer sway_bell rotation (${playingRotates[0]}) must be non-zero`);
+
+    trackCalls.length = 0;
+    const now = performance.now();
+    RO.drawOverlay(makeTrackCtx(), {
+        ...sticker,
+        _previewPlaying: false,
+        _ctaAnimPreviewStart: now - 150,
+        _loopPreviewImmediate: true,
+    }, 0, 1080, 1920);
+    const previewRotates = trackCalls.filter(c => c.op === 'rotate').map(c => c.rad);
+    assert.ok(previewRotates.length === pausedRotates.length + 1, 'Immediate loop preview rotates immediately on change even at t=0 paused');
+    assert.ok(Math.abs(previewRotates[0]) > 0.01, `Immediate loop preview sway angle (${previewRotates[0]}) must be non-zero`);
+
+    // twinkle emits sparkle stars during playback
+    trackCalls.length = 0;
+    RO.drawOverlay(makeTrackCtx(), { ...sticker, cta_loop_anim: 'twinkle', _previewPlaying: true }, 1.2, 1080, 1920);
+    assert.ok(trackCalls.some(c => c.op === 'scale' && Math.abs(c.sx - 1) > 0.001), 'twinkle scales smoothly during playback');
+
+    // 4) Source contract checks on src/batch-reels.js for isMediaPlaying & sticker sync
+    const batchSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const declIdx = batchSrc.indexOf('const isMediaPlaying = _isPreviewActuallyPlaying(');
+    const firstUseIdx = batchSrc.indexOf('!isMediaPlaying');
+    assert.ok(declIdx > 0 && declIdx < firstUseIdx, 'const isMediaPlaying must be declared before its first read in _reelsUpdatePreviewInternal');
+    assert.ok(batchSrc.includes('window._syncOverlayStackToScopeTasks = function'), 'batch-reels.js must define window._syncOverlayStackToScopeTasks');
+    assert.ok(batchSrc.includes('_previewPlaying: Boolean(isMediaPlaying)'), 'All rendered overlays must receive _previewPlaying');
+    assert.ok(batchSrc.includes('window.reelsSyncChristmasIconAdjustUI()'), 'reelsSelectTask must refresh Christmas icon adjust UI');
+
+    // 5) Multi-task / multi-page scope sync + #rop-anim-loop preservation in ReelsOverlayPanel
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    assert.ok(panelSrc.includes('<option value="sway_bell">'), '#rop-anim-loop must include sway_bell');
+    assert.ok(panelSrc.includes('<option value="twinkle">'), '#rop-anim-loop must include twinkle');
+
+    const task1 = { id: 't_1', _batchTabId: 'tab_a', overlays: [{ id: 'card_1', type: 'textcard', title_text: 'T1' }] };
+    const task2 = { id: 't_2', _batchTabId: 'tab_a', overlays: [{ id: 'card_2', type: 'textcard', title_text: 'T2' }] };
+    const tabs = [{ id: 'tab_a', tasks: [task1, task2] }];
+    let syncTabCalls = 0;
+    let saveCalls = 0;
+    const panelSandbox = loadBrowserScript('src/reels-overlay-panel.js', {
+        window: {
+            ReelsOverlay: RO,
+            _reelsState: { tasks: [task1, task2], selectedIdx: 1 },
+        },
+        document: {
+            ...ovSandbox.document,
+            getElementById: (id) => (id === 'reels-style-scope' ? { value: 'folder' } : (id === 'rop-style-scope' ? { value: 'folder' } : null)),
+            querySelectorAll: () => [],
+        },
+    });
+    panelSandbox._batchTableState = { activeTabId: 'tab_a', tabs };
+    panelSandbox._syncTasksToActiveTab = () => { syncTabCalls++; };
+    panelSandbox._batchAutoSave = () => { saveCalls++; };
+    panelSandbox._syncCurrentOverlayEditorToSelectedTask = () => {
+        task2.overlays = [...mgrOverlays];
+    };
+
+    const mgrOverlays = [...task2.overlays];
+    const fakePanel = Object.create(panelSandbox.window.ReelsOverlayPanel.prototype);
+    fakePanel.container = { querySelector: (sel) => (sel === '#rop-style-scope' ? { value: 'folder' } : null) };
+    fakePanel.videoCanvas = {
+        overlayMgr: { overlays: mgrOverlays },
+        addOverlay(ov) { mgrOverlays.push(ov); },
+        removeOverlay(id) {
+            const idx = mgrOverlays.findIndex(o => o && o.id === id);
+            if (idx >= 0) mgrOverlays.splice(idx, 1);
+        },
+    };
+    const addedSticker = { ...RO.createStickerOverlay({ sticker_kind: 'jingle_bell', cta_loop_anim: 'sway_bell' }), id: 'ov_Bell_T2' };
+    mgrOverlays.push(addedSticker);
+    fakePanel._syncStickerStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
+    assert.ok(task1.overlays.some(o => o.type === 'sticker' && o.sticker_kind === 'jingle_bell' && o.cta_loop_anim === 'sway_bell'), 'Sticker added on task 2 must sync to task 1');
+    assert.ok(task1.overlays.some(o => o.id === 'card_1'), 'Syncing stickers to task 1 must preserve task 1 textcards');
+    assert.ok(syncTabCalls > 0 && saveCalls > 0, 'Sticker sync must persist to active tab and batch store');
+
+    // Deleting from task 2 propagates removal across scope while keeping task 1 non-sticker layers
+    fakePanel.videoCanvas.removeOverlay(addedSticker.id);
+    fakePanel._syncStickerStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
+    assert.equal(task1.overlays.some(o => o.type === 'sticker'), false, 'Deleting sticker on task 2 removes synced sticker from task 1');
+    assert.ok(task1.overlays.some(o => o.id === 'card_1'), 'Task 1 non-sticker layers survive sticker deletion sync');
+
+    // _createTaskFromTemplate retains sticker/decor/intro overlays
+    const btSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    assert.ok(btSrc.includes("ov.type === 'sticker'"), '_createTaskFromTemplate must preserve sticker overlays');
+});
+
+test('Facebook Reel 1705707007643836 standalone opening effect (fb_yellow_stack_hook): progressive white+yellow italic stack, body sub coordination & DecorPanel UI', () => {
+    const ovSandbox = loadBrowserScript('src/reels-overlay.js');
+    const RO = ovSandbox.window.ReelsOverlay;
+
+    const hookOv = RO.createIntroCountdownOverlay({ intro_style: 'fb_yellow_stack_hook' });
+    assert.equal(hookOv.intro_layout, 'kinetic_stack');
+    assert.equal(hookOv.intro_delay_body, false);
+    assert.equal(hookOv.end, 4.0);
+    assert.equal(hookOv.intro_top_color, '#FFFFFF');
+    assert.equal(hookOv.intro_center_color, '#FFE600');
+    assert.equal(hookOv.intro_backdrop_scrim, 0);
+
+    // 0s simultaneous intro does not delay voice audio, but suppresses colliding body T-subtitles during [0, 4.0]
+    assert.equal(RO.getIntroDelaySec([hookOv]), 0);
+    assert.equal(RO.isIntroSuppressingBodySubtitles([hookOv], 1.2), true);
+    assert.equal(RO.isIntroSuppressingBodySubtitles([hookOv], 4.5), false);
+    // Optional delayed-body mode shifts voice & does not suppress shifted body subtitles
+    assert.equal(RO.getIntroDelaySec([{ ...hookOv, intro_delay_body: true }]), 4.0);
+    assert.equal(RO.isIntroSuppressingBodySubtitles([{ ...hookOv, intro_delay_body: true }], 1.2), false);
+
+    const drawCalls = [];
+    const makeCtx = () => ({
+        globalAlpha: 1,
+        font: '',
+        fillStyle: '#fff',
+        strokeStyle: '#000',
+        lineWidth: 1,
+        lineJoin: 'miter',
+        miterLimit: 10,
+        textAlign: 'center',
+        textBaseline: 'middle',
+        shadowColor: 'transparent',
+        shadowBlur: 0,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        save() {},
+        restore() {},
+        translate() {},
+        scale() {},
+        beginPath() {},
+        arc() {},
+        fillRect() {},
+        strokeText(t) { drawCalls.push({ kind: 'stroke', text: String(t), style: String(this.strokeStyle), lineWidth: this.lineWidth, font: this.font }); },
+        fillText(t, x, y) { drawCalls.push({ kind: 'fill', text: String(t), x, y, style: String(this.fillStyle), font: this.font }); },
+        measureText: (t) => ({ width: String(t || '').length * 36 }),
+    });
+
+    const segs = [{
+        start: 0,
+        end: 3.8,
+        text: "Those who don't skip, but you stop!",
+        words: [
+            { word: 'Those', start: 0.0, end: 0.4 },
+            { word: 'who', start: 0.4, end: 0.8 },
+            { word: "don't", start: 0.8, end: 1.3 },
+            { word: 'skip,', start: 1.3, end: 1.9 },
+            { word: 'but', start: 2.0, end: 2.3 },
+            { word: 'you', start: 2.3, end: 2.7 },
+            { word: 'stop!', start: 2.8, end: 3.6 },
+        ],
+    }];
+
+    // Mid beat 1 at t=1.0s ("don't" active): "Those" (white, smaller) + "who" (white) + "don't" (yellow, largest)
+    drawCalls.length = 0;
+    RO.drawOverlay(makeCtx(), { ...hookOv, _previewPlaying: true, _taskSegments: segs }, 1.0, 1080, 1920);
+    const fills = drawCalls.filter(c => c.kind === 'fill');
+    assert.deepEqual(fills.map(f => f.text), ['Those', 'who', "don't"]);
+    assert.equal(fills[0].style.toUpperCase(), '#FFFFFF');
+    assert.equal(fills[1].style.toUpperCase(), '#FFFFFF');
+    assert.equal(fills[2].style.toUpperCase(), '#FFE600');
+    const px = (f) => parseFloat(String(f.font).match(/([\d.]+)px/)?.[1] || '0');
+    assert.ok(px(fills[2]) > px(fills[1]) && px(fills[1]) > px(fills[0]), 'Bottom active yellow focus word must be largest');
+    assert.ok(fills[0].font.startsWith('italic 900'), 'Kinetic stack must render in 900 italic font weight');
+    assert.ok(drawCalls.some(c => c.kind === 'stroke' && c.text === "don't" && c.style.toUpperCase() === '#000000'), 'Focus word must have black outline');
+
+    // DecorPanel UI exposes fb_yellow_stack_hook & toggles kinetic/ring sections
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    assert.ok(panelSrc.includes('rdp-intro-kinetic-section'), 'DecorPanel must include rdp-intro-kinetic-section');
+    assert.ok(panelSrc.includes('rdp-intro-hook-source') && panelSrc.includes('rdp-intro-hook-text'), 'DecorPanel must include hook source and custom text inputs');
+    const secStyles = {};
+    const makeFakeSection = (id) => ({ style: { display: '' } });
+    secStyles['#rdp-intro-kinetic-section'] = makeFakeSection('#rdp-intro-kinetic-section');
+    secStyles['#rdp-intro-ring-section'] = makeFakeSection('#rdp-intro-ring-section');
+    const panelSandbox = loadBrowserScript('src/reels-overlay-panel.js', { window: { ReelsOverlay: RO } });
+    const decorProto = panelSandbox.window.ReelsDecorPanel.prototype;
+    const fakeDecor = Object.create(decorProto);
+    fakeDecor.container = {
+        querySelector: (sel) => secStyles[sel] || null,
+        querySelectorAll: () => [],
+    };
+    fakeDecor._setVal = () => {};
+    fakeDecor._updateIntroBadges = () => {};
+    fakeDecor._syncIntroUI(hookOv);
+    assert.equal(secStyles['#rdp-intro-kinetic-section'].style.display, 'flex');
+    assert.equal(secStyles['#rdp-intro-ring-section'].style.display, 'none');
+
+    const ringOv = RO.createIntroCountdownOverlay({ intro_style: 'xmas_cp01' });
+    fakeDecor._syncIntroUI(ringOv);
+    assert.equal(secStyles['#rdp-intro-kinetic-section'].style.display, 'none');
+    assert.equal(secStyles['#rdp-intro-ring-section'].style.display, 'flex');
 });

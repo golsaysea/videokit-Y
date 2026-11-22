@@ -1429,6 +1429,34 @@ const INTRO_COUNTDOWN_PRESETS = {
         intro_snow_density: 16,
         intro_backdrop_scrim: 20,
     },
+    fb_yellow_stack_hook: {
+        id: 'fb_yellow_stack_hook',
+        name: '⚡ 爆款白黄斜体开场 (FB同款)',
+        tag: '白色逐词堆叠 + 亮黄焦点冲击',
+        intro_layout: 'kinetic_stack',
+        duration: 4.0,
+        intro_delay_body: false,
+        intro_hook_source: 'auto',
+        intro_hook_text: "Wait don't skip!\nYou need to\nhear this right now!",
+        intro_top_text: '',
+        intro_center_mode: 'fixed',
+        intro_center_text: '',
+        intro_target_date: '12-25',
+        intro_day_offset: 0,
+        intro_bottom_text: '',
+        intro_top_font_family: 'Montserrat',
+        intro_center_font_family: 'Montserrat',
+        intro_bottom_font_family: 'Montserrat',
+        intro_center_fontsize: 112,
+        intro_top_color: '#FFFFFF',
+        intro_center_color: '#FFE600',
+        intro_center_stroke_color: '#000000',
+        intro_ring_theme: 'xmas_rainbow',
+        intro_snow_enabled: false,
+        intro_snow_density: 0,
+        intro_backdrop_scrim: 0,
+        intro_offset_y: 0,
+    },
 };
 
 function computeIntroDaysRemaining(targetDateStr = '12-25', offsetDays = 0, nowDate = null) {
@@ -1458,12 +1486,13 @@ function computeIntroDaysRemaining(targetDateStr = '12-25', offsetDays = 0, nowD
 function createIntroCountdownOverlay(opts = {}) {
     const presetId = opts.intro_style || 'xmas_cp01';
     const preset = INTRO_COUNTDOWN_PRESETS[presetId] || INTRO_COUNTDOWN_PRESETS.xmas_cp01;
+    const layout = opts.intro_layout || preset.intro_layout || 'ring';
     const ringThemeId = opts.intro_ring_theme || preset.intro_ring_theme || 'xmas_rainbow';
     const ringTheme = INTRO_RING_THEMES[ringThemeId] || INTRO_RING_THEMES.xmas_rainbow;
     const dur = Math.max(0.4, Number(opts.end ?? preset.duration ?? 3.0) || 3.0);
     return {
         id: opts.id || _overlayId(),
-        name: opts.name || '🎬 节日倒计时光环开场',
+        name: opts.name || (layout === 'kinetic_stack' ? '⚡ 爆款白黄斜体开场' : '🎬 节日倒计时光环开场'),
         type: 'intro_countdown',
         is_intro_countdown: true,
         disabled: opts.disabled ?? false,
@@ -1476,20 +1505,23 @@ function createIntroCountdownOverlay(opts = {}) {
         start: Math.max(0, Number(opts.start ?? 0) || 0),
         end: dur,
         intro_style: preset.id,
+        intro_layout: layout,
         intro_delay_body: opts.intro_delay_body !== undefined ? Boolean(opts.intro_delay_body) : Boolean(preset.intro_delay_body ?? true),
+        intro_hook_source: opts.intro_hook_source || preset.intro_hook_source || 'auto',
+        intro_hook_text: opts.intro_hook_text ?? preset.intro_hook_text ?? '',
         intro_top_text: opts.intro_top_text ?? preset.intro_top_text ?? 'DAYS BEFORE',
         intro_top_font_family: opts.intro_top_font_family || preset.intro_top_font_family || 'Montserrat',
         intro_top_fontsize: opts.intro_top_fontsize ?? 44,
         intro_top_letter_spacing: opts.intro_top_letter_spacing ?? 12,
-        intro_top_color: opts.intro_top_color || '#FFFFFF',
+        intro_top_color: opts.intro_top_color || preset.intro_top_color || '#FFFFFF',
         intro_center_mode: opts.intro_center_mode || preset.intro_center_mode || 'fixed',
         intro_center_text: opts.intro_center_text ?? preset.intro_center_text ?? '37',
         intro_target_date: opts.intro_target_date ?? preset.intro_target_date ?? '12-25',
         intro_day_offset: Number(opts.intro_day_offset ?? preset.intro_day_offset ?? 0) || 0,
         intro_center_font_family: opts.intro_center_font_family || preset.intro_center_font_family || 'Anton',
-        intro_center_fontsize: opts.intro_center_fontsize ?? 256,
-        intro_center_color: opts.intro_center_color || ringTheme.centerColor || '#FACC15',
-        intro_center_stroke_color: opts.intro_center_stroke_color || '#0A0A0C',
+        intro_center_fontsize: opts.intro_center_fontsize ?? preset.intro_center_fontsize ?? 256,
+        intro_center_color: opts.intro_center_color || preset.intro_center_color || ringTheme.centerColor || '#FACC15',
+        intro_center_stroke_color: opts.intro_center_stroke_color || preset.intro_center_stroke_color || '#0A0A0C',
         intro_center_stroke_width: opts.intro_center_stroke_width ?? 14,
         intro_bottom_text: opts.intro_bottom_text ?? preset.intro_bottom_text ?? 'Christmas',
         intro_bottom_font_family: opts.intro_bottom_font_family || preset.intro_bottom_font_family || 'Pacifico',
@@ -1510,7 +1542,7 @@ function createIntroCountdownOverlay(opts = {}) {
         intro_backdrop_scrim: opts.intro_backdrop_scrim ?? preset.intro_backdrop_scrim ?? 16,
         intro_scale: opts.intro_scale ?? 100,
         intro_offset_x: opts.intro_offset_x ?? 0,
-        intro_offset_y: opts.intro_offset_y ?? -20,
+        intro_offset_y: opts.intro_offset_y ?? preset.intro_offset_y ?? -20,
         intro_fade_in: opts.intro_fade_in ?? 0.30,
         intro_fade_out: opts.intro_fade_out ?? 0.20,
         anim_in_type: 'none',
@@ -1523,25 +1555,43 @@ function applyIntroCountdownPreset(ov, presetId) {
     if (!ov || !presetId) return ov;
     const preset = INTRO_COUNTDOWN_PRESETS[presetId];
     if (!preset) return ov;
+    const prevLayout = ov.intro_layout || 'ring';
+    const nextLayout = preset.intro_layout || 'ring';
     const theme = INTRO_RING_THEMES[preset.intro_ring_theme] || INTRO_RING_THEMES.xmas_rainbow;
     ov.intro_style = preset.id;
-    ov.intro_top_text = preset.intro_top_text;
-    ov.intro_center_mode = preset.intro_center_mode;
-    ov.intro_center_text = preset.intro_center_text;
-    ov.intro_target_date = preset.intro_target_date;
+    ov.intro_layout = nextLayout;
+    ov.name = nextLayout === 'kinetic_stack' ? '⚡ 爆款白黄斜体开场' : '🎬 节日倒计时光环开场';
+    ov.intro_top_text = preset.intro_top_text ?? '';
+    ov.intro_center_mode = preset.intro_center_mode || 'fixed';
+    ov.intro_center_text = preset.intro_center_text ?? '';
+    ov.intro_target_date = preset.intro_target_date || '12-25';
     ov.intro_day_offset = preset.intro_day_offset || 0;
-    ov.intro_bottom_text = preset.intro_bottom_text;
-    ov.intro_top_font_family = preset.intro_top_font_family;
-    ov.intro_center_font_family = preset.intro_center_font_family;
-    ov.intro_bottom_font_family = preset.intro_bottom_font_family;
+    ov.intro_bottom_text = preset.intro_bottom_text ?? '';
+    ov.intro_top_font_family = preset.intro_top_font_family || 'Montserrat';
+    ov.intro_center_font_family = preset.intro_center_font_family || 'Anton';
+    ov.intro_bottom_font_family = preset.intro_bottom_font_family || 'Pacifico';
+    ov.intro_top_color = preset.intro_top_color || '#FFFFFF';
     ov.intro_ring_theme = preset.intro_ring_theme;
     ov.intro_ring_colors = [...theme.colors];
-    ov.intro_center_color = theme.centerColor;
+    ov.intro_center_color = preset.intro_center_color || theme.centerColor;
+    ov.intro_center_stroke_color = preset.intro_center_stroke_color || '#0A0A0C';
+    if (preset.intro_center_fontsize != null) {
+        ov.intro_center_fontsize = preset.intro_center_fontsize;
+    } else if (prevLayout !== nextLayout) {
+        ov.intro_center_fontsize = nextLayout === 'kinetic_stack' ? 112 : 256;
+    }
     ov.intro_bottom_underline_color = theme.underlineColor;
     ov.intro_ring_spark_color = theme.sparkColor;
     ov.intro_snow_enabled = Boolean(preset.intro_snow_enabled);
     ov.intro_snow_density = preset.intro_snow_density ?? 32;
     ov.intro_backdrop_scrim = preset.intro_backdrop_scrim ?? 16;
+    ov.intro_hook_source = preset.intro_hook_source || ov.intro_hook_source || 'auto';
+    if (preset.intro_hook_text !== undefined) ov.intro_hook_text = preset.intro_hook_text;
+    if (preset.intro_offset_y !== undefined) {
+        ov.intro_offset_y = preset.intro_offset_y;
+    } else if (prevLayout !== nextLayout) {
+        ov.intro_offset_y = nextLayout === 'kinetic_stack' ? 0 : -20;
+    }
     ov.start = 0;
     ov.end = Number(preset.duration) || 3.0;
     ov.intro_delay_body = preset.intro_delay_body !== false;
@@ -1566,6 +1616,26 @@ function getIntroDelaySec(overlays, options = {}) {
     if (!intro || intro.intro_delay_body === false) return 0;
     const endSec = Number(intro.end);
     return Number.isFinite(endSec) && endSec > 0 ? endSec : 0;
+}
+
+function isFullDurationAutoOverlay(ov) {
+    return Boolean(
+        ov &&
+        (ov.type === 'scroll' || ov.type === 'sticker') &&
+        ov.scroll_end_auto !== false &&
+        !(Array.isArray(ov.display_ranges) && ov.display_ranges.length > 0)
+    );
+}
+
+function isIntroSuppressingBodySubtitles(overlays, currentTime) {
+    const intro = getActiveIntroCountdownOverlay(overlays);
+    if (!intro || intro.disabled) return false;
+    if (intro.intro_delay_body !== false) return false;
+    if ((intro.intro_layout || 'ring') !== 'kinetic_stack') return false;
+    const t = Number(currentTime) || 0;
+    const start = Math.max(0, Number(intro.start) || 0);
+    const end = Math.max(start + 0.1, Number(intro.end) || 0);
+    return t >= start - 1e-4 && t <= end + 1e-4;
 }
 
 /**
@@ -2250,13 +2320,18 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     const end = parseFloat(ov.end || 0);
 
     // 支持覆层面板点击“▶ 预览出场动画”时，即使当前时间轴停在 0s 也能实时预览入场与持续动态
-    const isAnimPreviewing = Boolean(!ov._exporting && ov._ctaAnimPreviewStart && typeof performance !== 'undefined');
+    const perfObj = (typeof performance !== 'undefined' ? performance : (typeof window !== 'undefined' ? window.performance : null));
+    const isAnimPreviewing = Boolean(!ov._exporting && ov._ctaAnimPreviewStart && perfObj);
     if (isAnimPreviewing) {
-        const elapsed = (performance.now() - ov._ctaAnimPreviewStart) / 1000;
-        if (elapsed >= 0 && elapsed <= 2.4) {
-            currentTime = start + Math.max(0.06, elapsed);
+        const elapsed = (perfObj.now() - ov._ctaAnimPreviewStart) / 1000;
+        if (elapsed >= 0 && elapsed <= 2.8) {
+            const inOffset = ov._loopPreviewImmediate
+                ? (ov.anim_in_type && ov.anim_in_type !== 'none' ? Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3)) : 0)
+                : 0;
+            currentTime = start + inOffset + Math.max(0.06, elapsed);
         } else {
             delete ov._ctaAnimPreviewStart;
+            delete ov._loopPreviewImmediate;
         }
     }
 
@@ -2267,11 +2342,13 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
         typeof document !== 'undefined' &&
         document.getElementById('inspector-tab-decor')?.style?.display !== 'none'
     );
+    const isPlayingNow = Boolean(ov._previewPlaying || (typeof window !== 'undefined' && window._reelsState?.playing));
     const isSelectedInPausedEditor = Boolean(
         !ov._exporting &&
+        !ov._staticPreview &&
         !isAnimPreviewing &&
-        (ov._selected || isDecorTabOpenForPhoneCta || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id)) &&
-        !(typeof window !== 'undefined' && window._reelsState?.playing)
+        !isPlayingNow &&
+        (ov._selected || isDecorTabOpenForPhoneCta || (typeof window !== 'undefined' && window._reelsState?.overlaySelectedId && window._reelsState.overlaySelectedId === ov.id))
     );
     const inDurForEdit = (ov.anim_in_type && ov.anim_in_type !== 'none')
         ? Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3))
@@ -2285,14 +2362,15 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
 
     // 时间范围检查 (允许边界值)
     // end >= 9999 = 全程，永不超时
-    // scroll 覆层: 动画完成后保持在最终位置
+    // scroll / sticker 自动全程覆层: 永不因预设默认 end 截断
     // _previewAtEnd: 跳过时间检查，强制渲染终点位置
     const isPreviewingEnd = ov._previewAtEnd && ov.anim_dest_enabled;
+    const isAutoFull = isFullDurationAutoOverlay(ov);
     if (!isPreviewingEnd && currentTime < start) {
         if (ov._insertClip) console.log('[InsertDraw] SKIPPED: currentTime', currentTime, '< start', start);
         return;
     }
-    if (!isPreviewingEnd && end < 9999 && ov.type !== 'scroll' && currentTime > end + 0.001) {
+    if (!isPreviewingEnd && !ov._staticPreview && end < 9999 && !isAutoFull && ov.type !== 'scroll' && currentTime > end + 0.001) {
         if (ov._insertClip) { console.log('[InsertDraw] SKIPPED: currentTime', currentTime, '> end', end); return; }
         // 对于 video/image 覆层，如果 end 恰好等于视频时长（被 9999 覆盖的遗留问题），也视为全程
         if ((ov.type === 'video' || ov.type === 'image') && end > 0) {
@@ -2471,10 +2549,11 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
 
         // 转场动画
         let transOp = 1, transScale = 1, transDx = 0, transDy = 0;
-        if (window.ReelsAnimEngine) {
+        const animEng = _getAnimEngine();
+        if (!ov._staticPreview && animEng && typeof animEng.computeTransitionParams === 'function') {
             const preset = ov.transition_preset || 'none';
             const dur = parseFloat(ov.transition_duration || 0.35);
-            const result = ReelsAnimEngine.computeTransitionParams(currentTime, start, end, preset, dur);
+            const result = animEng.computeTransitionParams(currentTime, start, end, preset, dur);
             // result is an array: [opacityFactor, scale, dx, dy]
             transOp = result[0];
             transScale = result[1];
@@ -2522,6 +2601,11 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     }
 }
 
+function _getAnimEngine() {
+    return (typeof window !== 'undefined' && window.ReelsAnimEngine)
+        || (typeof ReelsAnimEngine !== 'undefined' ? ReelsAnimEngine : null);
+}
+
 /**
  * 统一处理覆层入场/出场动画及出现后的持续动态（如来电震动、呼吸放大、Q弹弹出、上下滑入等）。
  */
@@ -2533,8 +2617,9 @@ function _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, cente
     const inDur = inType !== 'none' ? Math.max(0.05, parseFloat(ov.anim_in_duration || 0.3)) : 0;
     const outDur = outType !== 'none' ? Math.max(0.05, parseFloat(ov.anim_out_duration || 0.3)) : 0;
 
-    if (window.ReelsAnimEngine && (inType !== 'none' || outType !== 'none')) {
-        const [inProgress, outProgress] = ReelsAnimEngine.computeAnimProgress(
+    const animEng = _getAnimEngine();
+    if (!ov._staticPreview && animEng && (inType !== 'none' || outType !== 'none')) {
+        const [inProgress, outProgress] = animEng.computeAnimProgress(
             currentTime, start, end, inDur, outDur
         );
 
@@ -2548,22 +2633,22 @@ function _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, cente
 
         if (inProgress < 1) {
             if (inType === 'pop') {
-                const sc = ReelsAnimEngine.computePopScale(inProgress);
+                const sc = animEng.computePopScale(inProgress);
                 scaleX *= sc; scaleY *= sc;
             } else if (inType === 'elastic_pop') {
-                const sc = ReelsAnimEngine.EASING_MAP?.elastic
-                    ? Math.max(0.05, ReelsAnimEngine.EASING_MAP.elastic(inProgress))
-                    : ReelsAnimEngine.computePopScale(inProgress);
+                const sc = animEng.EASING_MAP?.elastic
+                    ? Math.max(0.05, animEng.EASING_MAP.elastic(inProgress))
+                    : animEng.computePopScale(inProgress);
                 scaleX *= sc; scaleY *= sc;
             } else if (inType === 'ring_shake') {
-                const sc = ReelsAnimEngine.computePopScale(Math.min(1, inProgress * 1.45));
+                const sc = animEng.computePopScale(Math.min(1, inProgress * 1.45));
                 scaleX *= sc; scaleY *= sc;
                 const env = Math.pow(1 - inProgress, 1.15);
                 rotRad += Math.sin(inProgress * Math.PI * 9) * env * (7.5 * Math.PI / 180);
                 extraDx += Math.sin(inProgress * Math.PI * 11) * env * 14;
             } else if (inType === 'zoom_bounce') {
-                const b = ReelsAnimEngine.EASING_MAP?.bounce
-                    ? ReelsAnimEngine.EASING_MAP.bounce(inProgress)
+                const b = animEng.EASING_MAP?.bounce
+                    ? animEng.EASING_MAP.bounce(inProgress)
                     : inProgress;
                 const sc = 1 + 0.65 * (1 - b);
                 scaleX *= sc; scaleY *= sc;
@@ -2572,18 +2657,18 @@ function _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, cente
 
         if (outProgress < 1) {
             if (outType === 'pop' || outType === 'elastic_pop' || outType === 'ring_shake' || outType === 'zoom_bounce') {
-                const sc = ReelsAnimEngine.computePopScale(outProgress);
+                const sc = animEng.computePopScale(outProgress);
                 scaleX *= sc; scaleY *= sc;
             }
         }
 
         const slideTypes = ['slide_up', 'slide_down', 'slide_left', 'slide_right'];
         if (slideTypes.includes(inType) && inProgress < 1) {
-            const [dx, dy] = ReelsAnimEngine.computeSlideOffset(inProgress, inType, slideDist, false);
+            const [dx, dy] = animEng.computeSlideOffset(inProgress, inType, slideDist, false);
             extraDx += dx; extraDy += dy;
         }
         if (slideTypes.includes(outType) && outProgress < 1) {
-            const [dx, dy] = ReelsAnimEngine.computeSlideOffset(outProgress, outType, slideDist, true);
+            const [dx, dy] = animEng.computeSlideOffset(outProgress, outType, slideDist, true);
             extraDx += dx; extraDy += dy;
         }
 
@@ -2602,10 +2687,11 @@ function _applyOverlayInOutAnim(ctx, ov, currentTime, start, end, centerX, cente
     const elapsedAfterIn = currentTime - (start + inDur);
     const isPlayingOrPreview = Boolean(
         ov._exporting ||
+        ov._previewPlaying ||
         ov._ctaAnimPreviewStart ||
         (typeof window !== 'undefined' && window._reelsState?.playing)
     );
-    if (loopType && loopType !== 'none' && elapsedAfterIn > 0 && isPlayingOrPreview) {
+    if (loopType && loopType !== 'none' && elapsedAfterIn > 0 && isPlayingOrPreview && !ov._staticPreview) {
         if (loopType === 'pulse') {
             const pulse = 1 + 0.042 * Math.sin(elapsedAfterIn * Math.PI * 2.2);
             ctx.translate(centerX, centerY);
@@ -15819,6 +15905,13 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
         ctx.restore();
     }
 
+    if ((ov.intro_layout || 'ring') === 'kinetic_stack') {
+        return _drawIntroKineticStackOverlay(
+            ctx, ov, currentTime, start, end, dur, rawElapsed,
+            isSnapshotPausedAtZero, baseOpacity, unitScale, canvasW || 1080, canvasH || 1920
+        );
+    }
+
     // 2. 开场飘雪与星芒气氛粒子
     if (ov.intro_snow_enabled !== false) {
         const snowTime = isSnapshotPausedAtZero ? 1.4 : rawElapsed;
@@ -16014,6 +16107,223 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
     ov._renderedH = Math.max(120, boxBottom - boxTop);
 }
 
+function _distributeTimedIntroTokens(rawTokens, start, end) {
+    if (!rawTokens.length) return [];
+    const span = Math.max(0.2, end - start);
+    const weights = rawTokens.map(tok => {
+        const cleanLen = tok.word.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '').length;
+        const punctPause = /[,.;:!?，。；：！？]["'”’)]*$/u.test(tok.word) ? 1.8 : 0;
+        return Math.max(2.0, cleanLen * 0.75 + 1.2 + punctPause);
+    });
+    const totalWeight = weights.reduce((acc, w) => acc + w, 0) || rawTokens.length;
+    let cursor = start;
+    return rawTokens.map((tok, idx) => {
+        const wDur = (weights[idx] / totalWeight) * span;
+        const item = {
+            word: tok.word,
+            start: cursor,
+            end: cursor + wDur,
+            lineBreakAfter: Boolean(tok.lineBreakAfter),
+        };
+        cursor += wDur;
+        return item;
+    });
+}
+
+function _extractKineticIntroBeats(ov, start, end) {
+    const preferScript = (ov.intro_hook_source || 'auto') !== 'custom' && ov.intro_delay_body === false;
+    let tokens = [];
+    if (preferScript && Array.isArray(ov._taskSegments) && ov._taskSegments.length > 0) {
+        for (const seg of ov._taskSegments) {
+            if (!seg) continue;
+            const sStart = Number(seg.start) || 0;
+            const sEnd = Math.max(sStart + 0.08, Number(seg.end) || (sStart + 1.5));
+            if (sEnd <= start + 0.01) continue;
+            if (sStart >= end - 0.02) break;
+            if (Array.isArray(seg.words) && seg.words.length > 0) {
+                for (const w of seg.words) {
+                    const txt = String(w?.word || '').trim();
+                    if (!txt) continue;
+                    const ws = Number(w.start);
+                    const we = Math.max(ws + 0.04, Number(w.end) || (ws + 0.18));
+                    if (Number.isFinite(ws) && ws < end - 0.02 && we > start) {
+                        tokens.push({ word: txt, start: Math.max(start, ws), end: Math.min(end, we), lineBreakAfter: false });
+                    }
+                }
+            } else if (typeof seg.text === 'string' && seg.text.trim()) {
+                const rawWords = seg.text.trim().split(/\s+/).filter(Boolean).map(w => ({ word: w, lineBreakAfter: false }));
+                const segTimed = _distributeTimedIntroTokens(rawWords, Math.max(start, sStart), Math.min(end, sEnd));
+                for (const wt of segTimed) {
+                    if (wt.start < end - 0.02) tokens.push(wt);
+                }
+            }
+        }
+    }
+
+    if (tokens.length === 0) {
+        const fallbackText = String(ov.intro_hook_text || "Wait don't skip!\nYou need to\nhear this right now!").trim();
+        const lines = fallbackText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const rawTokens = [];
+        for (let li = 0; li < lines.length; li++) {
+            const words = lines[li].split(/\s+/).filter(Boolean);
+            for (let wi = 0; wi < words.length; wi++) {
+                rawTokens.push({
+                    word: words[wi],
+                    lineBreakAfter: lines.length > 1 && wi === words.length - 1,
+                });
+            }
+        }
+        tokens = _distributeTimedIntroTokens(rawTokens, start, end);
+    }
+
+    if (tokens.length === 0) return [];
+    const beats = [];
+    let currBeat = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const tok = tokens[i];
+        currBeat.push(tok);
+        const next = tokens[i + 1];
+        const gap = next ? (next.start - tok.end) : 0;
+        const strongEnd = /[!?！？]["'”’)]*$/u.test(tok.word);
+        const softClause = currBeat.length >= 2 && /[.,;:，。；：]["'”’)]*$/u.test(tok.word);
+        if (!next || currBeat.length >= 3 || strongEnd || softClause || tok.lineBreakAfter || gap > 0.32) {
+            beats.push(currBeat);
+            currBeat = [];
+        }
+    }
+    if (currBeat.length > 0) beats.push(currBeat);
+    return beats;
+}
+
+/**
+ * 渲染 FB 爆款白黄斜体逐词堆叠开场效果 (intro_layout === 'kinetic_stack')
+ */
+function _drawIntroKineticStackOverlay(ctx, ov, currentTime, start, end, dur, rawElapsed, isSnapshotPausedAtZero, baseOpacity, unitScale, canvasW, canvasH) {
+    const beats = _extractKineticIntroBeats(ov, start, end);
+    if (!beats.length) return;
+
+    const effectiveT = start + rawElapsed;
+    let beatIdx = 0;
+    let activeIdx = 0;
+
+    if (isSnapshotPausedAtZero) {
+        beatIdx = Math.max(0, beats.findIndex(b => b.length >= 2));
+        if (beatIdx < 0) beatIdx = 0;
+        activeIdx = Math.min(beats[beatIdx].length - 1, 2);
+    } else {
+        for (let bi = 0; bi < beats.length; bi++) {
+            if (effectiveT >= beats[bi][0].start - 1e-4) {
+                beatIdx = bi;
+            }
+        }
+        const beat = beats[beatIdx];
+        for (let wi = 0; wi < beat.length; wi++) {
+            if (effectiveT >= beat[wi].start - 1e-4) {
+                activeIdx = wi;
+            }
+        }
+    }
+
+    const activeBeat = beats[beatIdx];
+    const visibleWords = activeBeat.slice(0, activeIdx + 1);
+    if (!visibleWords.length) return;
+
+    const cx = canvasW * 0.5 + (Number(ov.intro_offset_x) || 0) * (canvasW / 1080);
+    const cy = canvasH * 0.66 + (Number(ov.intro_offset_y ?? 0) || 0) * (canvasH / 1920);
+    const baseFs = Math.max(36, (Number(ov.intro_center_fontsize) || 112) * unitScale);
+    const fontFamily = ov.intro_center_font_family || 'Montserrat';
+    const whiteColor = ov.intro_top_color || '#FFFFFF';
+    const yellowColor = ov.intro_center_color || '#FFE600';
+    const strokeColor = ov.intro_center_stroke_color || '#000000';
+    const maxLineW = canvasW * 0.86;
+
+    const count = visibleWords.length;
+    const scaleProfile = count === 1
+        ? [1.26]
+        : (count === 2 ? [0.84, 1.24] : [0.72, 0.96, 1.26]);
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+
+    const measured = [];
+    for (let i = 0; i < count; i++) {
+        const wText = visibleWords[i].word;
+        let fs = baseFs * scaleProfile[i];
+        ctx.font = `italic 900 ${fs.toFixed(1)}px "${fontFamily}", "Impact", "Arial Black", sans-serif`;
+        const wWidth = ctx.measureText?.(wText)?.width || fs * wText.length * 0.58;
+        if (wWidth > maxLineW && wWidth > 0) {
+            fs = Math.max(24, fs * (maxLineW / wWidth));
+        }
+        const lineH = fs * 0.98;
+        measured.push({
+            wObj: visibleWords[i],
+            text: wText,
+            fs,
+            lineH,
+            width: Math.min(maxLineW, wWidth),
+            isFocus: i === count - 1,
+        });
+    }
+
+    const gap = baseFs * 0.07;
+    const totalH = measured.reduce((acc, m) => acc + m.lineH, 0) + gap * Math.max(0, count - 1);
+    let yCursor = cy - totalH / 2;
+    let maxDrawnW = 120;
+
+    for (let i = 0; i < measured.length; i++) {
+        const item = measured[i];
+        const lineCy = yCursor + item.lineH / 2;
+        yCursor += item.lineH + gap;
+        maxDrawnW = Math.max(maxDrawnW, item.width);
+
+        let popScale = 1.0;
+        let popDy = 0;
+        let lineAlpha = baseOpacity;
+        if (item.isFocus && !isSnapshotPausedAtZero) {
+            const wElapsed = Math.max(0, effectiveT - item.wObj.start);
+            const popDur = 0.085;
+            if (wElapsed < popDur) {
+                const p = Math.max(0, Math.min(1, wElapsed / popDur));
+                popScale = 0.84 + 0.16 * (1 - Math.pow(1 - p, 3)) + 0.06 * Math.sin(p * Math.PI);
+                popDy = (1 - p) * 14 * unitScale;
+                lineAlpha *= Math.min(1, 0.55 + p * 0.45);
+            }
+        }
+
+        ctx.save();
+        ctx.globalAlpha = lineAlpha;
+        ctx.font = `italic 900 ${item.fs.toFixed(1)}px "${fontFamily}", "Impact", "Arial Black", sans-serif`;
+        ctx.translate(cx, lineCy + popDy);
+        if (Math.abs(popScale - 1) > 0.002) {
+            ctx.scale(popScale, popScale);
+        }
+        const strokeW = Math.max(4, item.fs * 0.19);
+        ctx.lineWidth = strokeW;
+        ctx.strokeStyle = strokeColor;
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
+        ctx.shadowBlur = 14 * unitScale;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 5 * unitScale;
+        ctx.strokeText(item.text, 0, 0);
+
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.fillStyle = item.isFocus ? yellowColor : whiteColor;
+        ctx.fillText(item.text, 0, 0);
+        ctx.restore();
+    }
+
+    ctx.restore();
+    ov._renderedX = cx - maxDrawnW * 0.55;
+    ov._renderedY = cy - totalH * 0.55;
+    ov._renderedW = Math.max(180, maxDrawnW * 1.1);
+    ov._renderedH = Math.max(120, totalH * 1.1);
+}
+
 function _withAlpha(hexColor, alpha) {
     const safe = (typeof hexColor === 'string' && hexColor.startsWith('#') && hexColor.length >= 7) ? hexColor : '#05070B';
     const r = parseInt(safe.slice(1, 3), 16) || 0;
@@ -16087,6 +16397,8 @@ const ReelsOverlay = {
     computeIntroDaysRemaining,
     getActiveIntroCountdownOverlay,
     getIntroDelaySec,
+    isFullDurationAutoOverlay,
+    isIntroSuppressingBodySubtitles,
     INTRO_RING_THEMES,
     INTRO_COUNTDOWN_PRESETS,
     measureScrollMotion,

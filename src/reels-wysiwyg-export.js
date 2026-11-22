@@ -1325,7 +1325,7 @@ async function reelsWysiwygExport(params) {
                     }
                     activeSeg = best;
                 }
-                if (activeSeg) {
+                if (activeSeg && !window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(taskOverlays, t)) {
                     renderer.renderSubtitle(style, activeSeg, bodyTime, designW, designH, false, hasKineticBackdrop);
                 }
             };
@@ -1337,8 +1337,11 @@ async function reelsWysiwygExport(params) {
                     const ovStart = parseFloat(ov.start || 0);
                     const ovEnd = parseFloat(ov.end || 9999);
                     const ovT = (introDelaySec > 0 && _isBodyOvTimeSynced(ov)) ? bodyTime : t;
-                    // scroll 覆层不受 end 限制（动画完成后保持最终位置）
-                    if (ovT >= ovStart && (ov.type === 'scroll' || ovT <= ovEnd)) {
+                    const isAutoFull = window.ReelsOverlay?.isFullDurationAutoOverlay
+                        ? window.ReelsOverlay.isFullDurationAutoOverlay(ov)
+                        : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length));
+                    // scroll / sticker 自动全程覆层不受默认 end 限制
+                    if (ovT >= ovStart && (ov.type === 'scroll' || isAutoFull || ovT <= ovEnd)) {
                         // 导出时不画辅助线和选中框
                         const origSelected = ov._selected;
                         try {

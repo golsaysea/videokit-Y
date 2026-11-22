@@ -414,18 +414,23 @@ ipcRenderer.on('render-chunk', async (event, config) => {
                     if (ov.disabled) continue;
                     const ovStart = parseFloat(ov.start || 0);
                     const ovEnd = parseFloat(ov.end || 9999);
-                    if (t >= ovStart && (ov.type === 'scroll' || t <= ovEnd)) {
+                    const isAutoFull = window.ReelsOverlay?.isFullDurationAutoOverlay
+                        ? window.ReelsOverlay.isFullDurationAutoOverlay(ov)
+                        : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length));
+                    if (t >= ovStart && (ov.type === 'scroll' || isAutoFull || t <= ovEnd)) {
                         ov._selected = false;
                         ov._exporting = true;
                         ov._exportDuration = duration;
+                        ov._taskSegments = segments;
                         window.ReelsOverlay.drawOverlay(ctx, ov, t, targetWidth, targetHeight);
                         ov._exporting = false;
+                        delete ov._taskSegments;
                     }
                 }
             }
 
             // ── 字幕 ──
-            if (renderer && segments && segments.length > 0) {
+            if (renderer && segments && segments.length > 0 && !window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(overlays, t)) {
                 const activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
                 if (activeSeg) {
                     renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);

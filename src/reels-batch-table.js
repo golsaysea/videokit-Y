@@ -4788,8 +4788,9 @@ function _createTaskFromTemplate(state, taskName) {
         if (newTask.overlays) {
             newTask.overlays = newTask.overlays.filter(ov => {
                 if (!ov) return false;
-                // Keep fixed stickers/logos, phone CTA masks, and media overlays (images, videos)
+                // Keep fixed stickers/logos, decor/intro layers, phone CTA masks, and media overlays (images, videos)
                 if (ov.fixed_text || ov.is_phone_cta || ov.name === '📞 邀约电话') return true;
+                if (ov.type === 'sticker' || ov.type === 'decor' || ov.type === 'intro_countdown' || ov.is_intro_countdown) return true;
                 if (ov.type === 'image' || ov.type === 'video' || ov.type === 'pip') return true;
                 return false; // Remove template-cloned empty textcard/scroll
             });

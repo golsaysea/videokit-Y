@@ -545,13 +545,18 @@
                 const index = nonInsertOverlays.length - 1 - revIdx;
                 const start = Math.max(0, finite(ov.start, 0));
                 let end = finite(ov.end, 5);
-                if (end >= 9999 || (ov.type === 'scroll' && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length))) {
+                const isAutoFull = typeof root.ReelsOverlay?.isFullDurationAutoOverlay === 'function'
+                    ? root.ReelsOverlay.isFullDurationAutoOverlay(ov)
+                    : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length));
+                if (end >= 9999 || isAutoFull) {
                     end = totalDuration;
                 }
                 let label = ov.name;
                 if (!label) {
                     if (ov.type === 'intro_countdown' || ov.is_intro_countdown) {
-                        label = `🎬 开场: ${(ov.intro_bottom_text || ov.intro_top_text || 'Countdown').slice(0, 12)}`;
+                        label = ov.intro_layout === 'kinetic_stack'
+                            ? '⚡ 爆款白黄斜体开场'
+                            : `🎬 开场: ${(ov.intro_bottom_text || ov.intro_top_text || 'Countdown').slice(0, 12)}`;
                     } else if (ov.type === 'textcard') {
                         const txt = ov.title_text || ov.body_text || '';
                         label = txt ? `卡片: ${txt.slice(0, 10)}` : '文字卡片';
@@ -564,6 +569,8 @@
                     } else if (ov.type === 'decor') {
                         const stName = root.ReelsOverlay?.DECOR_OVERLAY_STYLES?.[ov.decor_style]?.name || '点缀图层';
                         label = `点缀: ${stName.replace(/^[^\s]+\s*/, '').slice(0, 12)}`;
+                    } else if (ov.type === 'sticker') {
+                        label = '✨ 画面小图标';
                     } else if (ov.type === 'video') {
                         label = '覆层视频';
                     } else {
@@ -660,7 +667,7 @@
                     ov.start = newStart;
                     ov.end = newEnd;
                 }
-                if (ov.type === 'scroll') {
+                if (ov.type === 'scroll' || ov.type === 'sticker') {
                     ov.scroll_end_auto = false;
                 }
                 if (isCurrentTask && typeof window !== 'undefined' && window._reelsState?.overlayProxy?.overlayMgr) {

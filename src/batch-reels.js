@@ -4254,6 +4254,10 @@ window.reelsAddChristmasStickerIcon = function(kind = 'jingle_bell', options = {
     if (task && mgr) {
         task.overlays = [...mgr.overlays];
     }
+    if (ov.cta_loop_anim && ov.cta_loop_anim !== 'none' && typeof performance !== 'undefined') {
+        ov._ctaAnimPreviewStart = performance.now();
+        ov._loopPreviewImmediate = true;
+    }
 
     const panel = _reelsState?.overlayPanel;
     if (panel) {
@@ -4261,7 +4265,7 @@ window.reelsAddChristmasStickerIcon = function(kind = 'jingle_bell', options = {
         else if (typeof panel._refreshList === 'function') panel._refreshList();
     }
     if (typeof window._syncOverlayStackToScopeTasks === 'function') {
-        window._syncOverlayStackToScopeTasks();
+        window._syncOverlayStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
     } else if (panel && typeof panel._syncAllOverlaysToScopeTasks === 'function') {
         panel._syncAllOverlaysToScopeTasks();
     }
@@ -4270,6 +4274,28 @@ window.reelsAddChristmasStickerIcon = function(kind = 'jingle_bell', options = {
     if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
     if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') window.reelsSyncChristmasIconAdjustUI(ov);
     return ov;
+};
+
+window._syncOverlayStackToScopeTasks = function(options = {}) {
+    const panel = _reelsState?.overlayPanel;
+    if (panel && typeof panel._syncStickerStackToScopeTasks === 'function') {
+        panel._syncStickerStackToScopeTasks({
+            source: options.source || 'subtitle',
+            structuralChange: options.structuralChange !== false,
+            immediate: options.immediate !== false,
+            scopeOverride: options.scopeOverride || null,
+        });
+        return;
+    }
+    if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+        try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+    }
+    if (typeof _syncTasksToActiveTab === 'function') {
+        try { _syncTasksToActiveTab(); } catch (_) {}
+    }
+    if (typeof _batchAutoSave === 'function') {
+        try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+    }
 };
 
 window.reelsApplyChristmasComboPreset = function(comboId) {
@@ -4480,10 +4506,13 @@ window.reelsInitChristmasIconPickers = function() {
         const task = typeof _getSelectedTask === 'function' ? _getSelectedTask() : null;
         if (task && vc?.overlayMgr) task.overlays = [...vc.overlayMgr.overlays];
         if (panel && typeof panel._syncFromOverlay === 'function') panel._syncFromOverlay(ov);
+        if (typeof window._syncOverlayStackToScopeTasks === 'function') {
+            window._syncOverlayStackToScopeTasks({ source: 'subtitle', structuralChange: false, immediate: true });
+        }
         if (vc && typeof vc.render === 'function') vc.render();
-        if (vc && typeof vc.onOverlayChange === 'function') vc.onOverlayChange(ov);
-        else {
-            if (typeof window._syncOverlayStackToScopeTasks === 'function') window._syncOverlayStackToScopeTasks();
+        if (vc && typeof vc.onOverlayChange === 'function') {
+            vc.onOverlayChange(ov, { skipTimelineSync: true });
+        } else {
             if (typeof _saveCurrentTaskToStore === 'function') _saveCurrentTaskToStore();
             if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
         }
@@ -4578,7 +4607,16 @@ window.reelsInitChristmasIconPickers = function() {
         document.getElementById('reels-xmas-ctl-anim')?.addEventListener('change', (e) => {
             const val = e.target.value || 'sway_bell';
             syncAdjustAndCommit(
-                (ov) => { ov.cta_loop_anim = val; },
+                (ov) => {
+                    ov.cta_loop_anim = val;
+                    if (val !== 'none' && typeof performance !== 'undefined') {
+                        ov._ctaAnimPreviewStart = performance.now();
+                        ov._loopPreviewImmediate = true;
+                    } else {
+                        delete ov._ctaAnimPreviewStart;
+                        delete ov._loopPreviewImmediate;
+                    }
+                },
                 () => {}
             );
         });
@@ -4627,7 +4665,9 @@ window.reelsInitChristmasIconPickers = function() {
                 if (panel._selectedOv === ov && typeof panel.deselectOverlay === 'function') panel.deselectOverlay();
                 if (typeof panel._refreshList === 'function') panel._refreshList();
             }
-            if (typeof window._syncOverlayStackToScopeTasks === 'function') window._syncOverlayStackToScopeTasks();
+            if (typeof window._syncOverlayStackToScopeTasks === 'function') {
+                window._syncOverlayStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
+            }
             if (typeof _saveCurrentTaskToStore === 'function') _saveCurrentTaskToStore();
             if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
             if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
@@ -5019,6 +5059,7 @@ function _reelsUpdatePreviewInternal() {
     const showDecor = _isReelsDecorToggleEnabled();
     const rangeToggle = document.getElementById('reels-show-subtitle-range');
     const showSubtitleRange = !rangeToggle || rangeToggle.checked;
+    const isMediaPlaying = _isPreviewActuallyPlaying(_getPreviewMasterElement(), hookVideo, _reelsState._bgmAudioEl);
 
     let cycleTime = _getPreviewCurrentTime();
     // Subtract hook and cover duration so content time starts at 0 after hook ends
@@ -5186,15 +5227,26 @@ function _reelsUpdatePreviewInternal() {
                 const baseRenderOv = window.ReelsScrollTiming?.renderingOverlay(ov, _selectedTask, {
                     bodyDuration, mediaDurations: _reelsState._mediaDurations,
                 }) || ov;
-                const renderOv = (baseRenderOv.type === 'intro_countdown' || baseRenderOv.is_intro_countdown)
-                    ? { ...baseRenderOv, _previewPlaying: Boolean(isMediaPlaying || _reelsState.mockPlaying) }
-                    : baseRenderOv;
+                const isIntroOv = baseRenderOv.type === 'intro_countdown' || baseRenderOv.is_intro_countdown;
+                const renderOv = {
+                    ...baseRenderOv,
+                    _previewPlaying: Boolean(isMediaPlaying),
+                    ...(isIntroOv ? { _taskSegments: _selectedTask ? _selectedTask.segments : null } : {}),
+                };
                 if (ov.type === 'scroll' && Number.isFinite(Number(renderOv.end))) {
                     ov._scrollResolvedEndTime = Number(renderOv.end);
                 }
                 if (_reelsState._scrollPreviewEnd && ov.type === 'scroll') ovTime = Number(renderOv.end) || ovTime;
                 ReelsOverlay.drawOverlay(ctx, renderOv, ovTime, w, h);
                 const srcOv = ovMgr?.overlays?.find?.(item => item && item.id === ov.id) || null;
+                if (!renderOv._ctaAnimPreviewStart && ov._ctaAnimPreviewStart) {
+                    delete ov._ctaAnimPreviewStart;
+                    delete ov._loopPreviewImmediate;
+                    if (srcOv) {
+                        delete srcOv._ctaAnimPreviewStart;
+                        delete srcOv._loopPreviewImmediate;
+                    }
+                }
                 for (const key of ['_renderedX', '_renderedY', '_renderedW', '_renderedH', '_scrollBodyFirstLineY', '_scrollBodyCurX', '_scrollBodyLineHeight', '_scrollResolvedEndY', '_scrollBodyLastBottomY', '_scrollResolvedEndTime']) {
                     if (renderOv[key] !== undefined) {
                         ov[key] = renderOv[key];
@@ -5231,7 +5283,10 @@ function _reelsUpdatePreviewInternal() {
         _drawSubtitlePreviewRange(ctx, style, w, h);
     }
 
-    if (activeSegment && showSubtitle) {
+    const _introSuppressesBodySub = (!inCoverEditMode && !_inHookPhase && !_inCoverPhase)
+        ? Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(_selectedTask?.overlays, cycleTime))
+        : false;
+    if (activeSegment && showSubtitle && !_introSuppressesBodySub) {
         const segsForCtx = (typeof _selectedTask !== 'undefined' && _selectedTask && _selectedTask.segments)
             ? _selectedTask.segments
             : [activeSegment];
@@ -11611,6 +11666,9 @@ function reelsSelectTask(idx, options = {}) {
         if (_reelsState.decorPanel && typeof _reelsState.decorPanel.refresh === 'function') {
             _reelsState.decorPanel.refresh();
         }
+        if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
+            window.reelsSyncChristmasIconAdjustUI();
+        }
     }
 
     const video = document.getElementById('reels-preview-video');
@@ -14548,7 +14606,9 @@ async function _exportSaveCoverPng(task, outputDirTrimmed, baseName) {
             for (const ov of task.cover.overlays) {
                 if (ov.disabled) continue;
                 ov._exporting = true;
+                ov._staticPreview = true;
                 ReelsOverlay.drawOverlay(ctx, ov, 0, tw, th);
+                delete ov._staticPreview;
                 ov._exporting = false;
             }
         }
@@ -16468,7 +16528,9 @@ async function _reelsStartExportImpl(options = {}) {
                                             if (source === 'scroll_title' && ov.type !== 'scroll') continue;
                                             if (source === 'scroll_body' && ov.type !== 'scroll') continue;
                                             ov._exporting = true;
+                                            ov._staticPreview = true;
                                             window.ReelsOverlay.drawOverlay(offCtx, ov, 0, tw, th);
+                                            delete ov._staticPreview;
                                             delete ov._exporting;
                                         }
                                     } finally {
@@ -16532,7 +16594,9 @@ async function _reelsStartExportImpl(options = {}) {
                             for (const ov of taskOverlays) {
                                 if (ov.disabled) continue;
                                 ov._exporting = true;
+                                ov._staticPreview = true;
                                 window.ReelsOverlay.drawOverlay(offCtx, ov, 0, tw, th);
+                                delete ov._staticPreview;
                                 delete ov._exporting;
                             }
                         }

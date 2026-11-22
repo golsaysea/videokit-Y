@@ -660,7 +660,10 @@ async function reelsLayeredExport(params) {
                     ov._allOverlays = taskOverlays;
                     const ovStart = parseFloat(ov.start || 0);
                     const ovEnd = parseFloat(ov.end || 9999);
-                    if (t >= ovStart && (ov.type === 'scroll' || t <= ovEnd)) {
+                    const isAutoFull = window.ReelsOverlay?.isFullDurationAutoOverlay
+                        ? window.ReelsOverlay.isFullDurationAutoOverlay(ov)
+                        : Boolean((ov.type === 'scroll' || ov.type === 'sticker') && ov.scroll_end_auto !== false && !(Array.isArray(ov.display_ranges) && ov.display_ranges.length));
+                    if (t >= ovStart && (ov.type === 'scroll' || isAutoFull || t <= ovEnd)) {
                         const origSelected = ov._selected;
                         ov._selected = false;
                         ov._exporting = true;
@@ -702,7 +705,8 @@ async function reelsLayeredExport(params) {
                 subtitleRenderer.renderKineticGlowBackdrop(style, targetWidth, targetHeight);
             }
 
-            if (showSubtitle && segments && segments.length > 0) {
+            const introSuppressesBody = Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(taskOverlays, t));
+            if (showSubtitle && !introSuppressesBody && segments && segments.length > 0) {
                 let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
                 // Scrolling/typewriter mode: find nearest segment during gaps
                 if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke') && segments.length > 0) {
