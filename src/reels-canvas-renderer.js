@@ -7733,6 +7733,9 @@ class ReelsCanvasRenderer {
         const isZigzag4 = rowSpecs.some(r => r.interleavedZigzag);
         const wordGapRatio = 0.16;
         const rowGapRatio = isZigzag4 ? 0.05 : 0.08;
+        const extraWordGap = Number.isFinite(Number(s.word_spacing))
+            ? Math.max(-base * 0.08, Number(s.word_spacing))
+            : 0;
 
         // First pass: measure each row's natural width and height
         const measuredRows = rowSpecs.map(rowSpec => {
@@ -7741,7 +7744,7 @@ class ReelsCanvasRenderer {
                 ctx.font = font(sizes[i], rowSpec.emphasisFlags?.[i]);
                 return ctx.measureText(tok.text).width;
             });
-            const gap = base * wordGapRatio;
+            const gap = Math.max(2, base * wordGapRatio + extraWordGap);
             const naturalWidth = widths.reduce((a, b) => a + b, 0) + Math.max(0, widths.length - 1) * gap;
             return {
                 ...rowSpec,

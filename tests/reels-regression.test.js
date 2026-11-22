@@ -11972,3 +11972,106 @@ test('Scroll line-by-line highlight mode: panel event bindings, speech_or_progre
     assert.equal(tipCalls.length, 1, 'Cursor should still render in focus-zone mode');
     assert.ok(Math.abs(tipCalls[0].y - focusLine1Draw.y) < 30, 'Cursor must stay on focus-zone highlighted line 1 instead of drifting to line 4');
 });
+
+test('Facebook Reel 4817870781833385 preset sub-251: Poppins stacked white/orange black-stroke mixed layout & word_spacing', () => {
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: { addEventListener() {} },
+        localStorage: { getItem() { return null; }, setItem() {} },
+    });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-style-engine.js', sandbox);
+    sandbox.ReelsStyleEngine = sandbox.window.ReelsStyleEngine;
+    loadBrowserScript('src/reels-canvas-renderer.js', sandbox);
+    loadBrowserScript('src/reels-presets-init.js', sandbox);
+
+    const resolved = sandbox.window.resolveBuiltinPreset('sub-251');
+    assert.ok(resolved && resolved.kind === 'subtitle' && resolved.preset, 'sub-251 must resolve');
+    assert.equal(resolved.name, '🧡 祈祷橙白黑边_动态首尾大字 (Daily Prayers同款)');
+    assert.equal(resolved.preset.font_family, 'Poppins');
+    assert.equal(resolved.preset.mixed_layout, 'stack');
+    assert.equal(resolved.preset.color_text, '#FFFFFF');
+    assert.equal(resolved.preset.color_high, '#FF6A00');
+    assert.equal(resolved.preset.color_outline, '#000000');
+    assert.equal(resolved.preset.border_width, 8);
+    assert.equal(resolved.preset.word_spacing, 14);
+    assert.equal(resolved.preset.shadow_blur, 0);
+
+    const { categorized } = sandbox.window.ReelsStyleEngine.getPresetsByCategory();
+    const mixedCat = categorized.find(c => c.category === '🔤 动态混排');
+    assert.ok(mixedCat && mixedCat.names.includes(resolved.name), 'sub-251 must appear under 🔤 动态混排');
+    const occurrences = categorized.filter(c => c.names.includes(resolved.name)).length;
+    assert.equal(occurrences, 1, 'sub-251 must belong to exactly one category');
+
+    const drawn = [];
+    const makeCtx = () => ({
+        canvas: { width: 1080, height: 1920 },
+        font: '800 76px "Poppins"',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        lineJoin: 'miter',
+        miterLimit: 10,
+        globalAlpha: 1,
+        textAlign: 'left',
+        textBaseline: 'top',
+        shadowColor: '',
+        shadowBlur: 0,
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        save() {},
+        restore() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        quadraticCurveTo() {},
+        fill() {},
+        stroke() {},
+        fillText(t, x, y) { drawn.push({ kind: 'fill', text: String(t), x, y, style: String(this.fillStyle), font: this.font }); },
+        strokeText(t, x, y) { drawn.push({ kind: 'stroke', text: String(t), x, y, style: String(this.strokeStyle), lineWidth: this.lineWidth, font: this.font }); },
+        measureText: (txt) => ({ width: String(txt || '').length * 24, actualBoundingBoxAscent: 40, actualBoundingBoxDescent: 10 }),
+        createLinearGradient: () => ({ addColorStop() {} }),
+    });
+
+    const renderer = new sandbox.window.ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: makeCtx });
+    renderer.ctx = makeCtx();
+    const seg = {
+        start: 0,
+        end: 3.5,
+        text: 'and the deepest valleys, there were times',
+        words: [
+            { word: 'and', start: 0.0, end: 0.4 },
+            { word: 'the', start: 0.4, end: 0.7 },
+            { word: 'deepest', start: 0.7, end: 1.2 },
+            { word: 'valleys,', start: 1.2, end: 1.8 },
+            { word: 'there', start: 1.8, end: 2.3 },
+            { word: 'were', start: 2.3, end: 2.8 },
+            { word: 'times', start: 2.8, end: 3.5 },
+        ],
+    };
+    const mergedStyle = sandbox.window.ReelsStyleEngine.mergeStyle(resolved.preset);
+    renderer.renderSubtitle(mergedStyle, seg, 3.1, 1080, 1920);
+    const fillTimes = drawn.find(d => d.kind === 'fill' && d.text === 'times');
+    const fillAnd = drawn.find(d => d.kind === 'fill' && d.text === 'and');
+    const fillThe = drawn.find(d => d.kind === 'fill' && d.text === 'the');
+    const fillDeepest = drawn.find(d => d.kind === 'fill' && d.text === 'deepest');
+    const strokeTimes = drawn.find(d => d.kind === 'stroke' && d.text === 'times');
+    assert.ok(fillTimes && fillAnd && fillThe && fillDeepest && strokeTimes, 'Expected stacked words to render');
+    assert.equal(fillTimes.style.toUpperCase(), '#FF6A00', 'Currently active word must highlight orange #FF6A00');
+    assert.equal(fillAnd.style.toUpperCase(), '#FFFFFF', 'Read word must remain pure white #FFFFFF');
+    assert.equal(strokeTimes.style.toUpperCase(), '#000000', 'Word outline must be pure black #000000');
+    assert.equal(strokeTimes.lineWidth, 16, 'Border width 8 renders 16px stroke');
+    const sz = (f) => parseFloat(String(f).match(/([\d.]+)px/)?.[1] || '0');
+    assert.ok(sz(fillTimes.font) > sz(fillDeepest.font), 'Stack edge emphasis word must be larger than middle row word');
+
+    // Verify word_spacing widens horizontal gap between same-row words in mixed layout
+    const wideGap = fillDeepest.x - fillThe.x;
+    drawn.length = 0;
+    renderer.renderSubtitle({ ...mergedStyle, word_spacing: 0 }, seg, 3.1, 1080, 1920);
+    const tightThe = drawn.find(d => d.kind === 'fill' && d.text === 'the');
+    const tightDeepest = drawn.find(d => d.kind === 'fill' && d.text === 'deepest');
+    assert.ok(wideGap > (tightDeepest.x - tightThe.x), 'Configured word_spacing: 14 must widen inter-word spacing in mixed layout');
+});

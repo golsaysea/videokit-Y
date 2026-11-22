@@ -6334,6 +6334,22 @@ const REELS_VIRAL_100_CODES = {};
             subtitle_cursor_enabled: true, fullpage_typewriter_cursor_kind: 'xmas_reindeer_rudolph',
             fullpage_typewriter_cursor_scale: 0.95, fullpage_typewriter_cursor_angle: 0,
         })],
+        ['sub-251', '🧡 祈祷橙白黑边_动态首尾大字 (Daily Prayers同款)', mk({
+            font_family: 'Poppins', font_weight: 800, fontsize: 76, bold: true, italic: false,
+            uppercase: false, text_transform: 'none', mixed_layout: 'stack',
+            letter_spacing: 0, word_spacing: 14, line_spacing: 12, text_align: 'center',
+            color_text: '#FFFFFF', color_high: '#FF6A00',
+            text_gradient_enabled: false, high_gradient_enabled: false,
+            highlight_enabled: true, karaoke_highlight: true, highlight_scale_enabled: false,
+            highlight_include_punctuation: true,
+            use_stroke: true, color_outline: '#000000', opacity_outline: 255, border_width: 8,
+            shadow_blur: 0, shadow_offset_x: 0, shadow_offset_y: 0, color_shadow: '#000000', opacity_shadow: 0, shadow: false,
+            use_box: false, dynamic_box: false, use_underline: false,
+            pos_x: 0.5, pos_y: 0.48, wrap_width_percent: 82, wrap_lines: 4,
+            max_words_per_segment: 8,
+            anim_in_type: 'fade', anim_in_duration: 0.14, anim_in_easing: 'ease_out',
+            anim_out_type: 'fade', anim_out_duration: 0.12,
+        })],
     ];
     for (const [code, name, styleObj] of entries) {
         REELS_BUILTIN_PRESETS[name] = styleObj;
