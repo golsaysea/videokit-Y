@@ -10884,7 +10884,8 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
     const RO = ovSandbox.window.ReelsOverlay;
     assert.ok(RO, 'ReelsOverlay must be exposed');
     assert.equal(Object.keys(RO.INTRO_RING_THEMES).length, 5, '5 intro ring color themes should exist');
-    assert.equal(Object.keys(RO.INTRO_COUNTDOWN_PRESETS).length, 7, '7 intro countdown/opening presets should exist');
+    assert.equal(Object.keys(RO.INTRO_CURTAIN_THEMES).length, 4, '4 intro curtain velvet themes should exist');
+    assert.equal(Object.keys(RO.INTRO_COUNTDOWN_PRESETS).length, 8, '8 intro countdown/opening presets should exist');
 
     // Date calculation matches cp-01 sample: Nov 18 -> Dec 25 = 37 days; supports dots, slashes & Chinese month/day formats
     assert.equal(RO.computeIntroDaysRemaining('12-25', 0, new Date(2026, 10, 18)), 37);
@@ -10911,6 +10912,7 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
         let restores = 0;
         const drawnTexts = [];
         const arcCalls = [];
+        const rectCalls = [];
         const mockGrad = { addColorStop() {} };
         const mockCtx = {
             globalAlpha: 1,
@@ -10937,9 +10939,10 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
             arc(cx, cy, r, a0, a1) { arcCalls.push({ cx, cy, r, a0, a1 }); },
             rect() {},
             roundRect() {},
+            clip() {},
             fill() {},
             stroke() {},
-            fillRect() {},
+            fillRect(rx, ry, rw, rh) { rectCalls.push({ x: rx, y: ry, w: rw, h: rh }); },
             strokeRect() {},
             fillText(txt) { drawnTexts.push(String(txt)); },
             strokeText() {},
@@ -10958,6 +10961,8 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
         assert.equal(saves, restores, `drawOverlay at t=0 paused for ${presetId} must balance save/restore`);
         if (presetOv.intro_layout === 'kinetic_stack') {
             assert.ok(drawnTexts.length >= 2, `Paused snapshot for ${presetId} must draw kinetic stacked intro words`);
+        } else if (presetOv.intro_layout === 'curtain_reveal') {
+            assert.ok(rectCalls.length >= 2, `Paused snapshot for ${presetId} must draw left & right velvet curtain panels`);
         } else {
             assert.ok(arcCalls.length >= 2, `Paused snapshot for ${presetId} must draw base ring and sweep arc`);
         }
@@ -10973,12 +10978,18 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
             assert.ok(drawnTexts.includes('Christmas'), 'xmas_cp01 bottom script should render "Christmas"');
         } else if (presetId === 'fb_yellow_stack_hook') {
             assert.ok(drawnTexts.length >= 1, 'fb_yellow_stack_hook should draw opening stack words at t=1.4s');
+        } else if (presetId === 'curtain_red_reveal') {
+            assert.ok(rectCalls.length >= 4, 'curtain_red_reveal should draw opening velvet panels at t=1.4s');
         }
 
         // Past end duration renders nothing
-        const beforePast = presetOv.intro_layout === 'kinetic_stack' ? drawnTexts.length : arcCalls.length;
+        const beforePast = presetOv.intro_layout === 'kinetic_stack'
+            ? drawnTexts.length
+            : (presetOv.intro_layout === 'curtain_reveal' ? rectCalls.length : arcCalls.length);
         RO.drawOverlay(mockCtx, presetOv, presetOv.end + 0.5, 1080, 1920);
-        const afterPast = presetOv.intro_layout === 'kinetic_stack' ? drawnTexts.length : arcCalls.length;
+        const afterPast = presetOv.intro_layout === 'kinetic_stack'
+            ? drawnTexts.length
+            : (presetOv.intro_layout === 'curtain_reveal' ? rectCalls.length : arcCalls.length);
         assert.equal(afterPast, beforePast, `Intro ${presetId} should not render after its end duration`);
     }
 
@@ -12354,4 +12365,107 @@ test('Facebook Reel 1705707007643836 standalone opening effect (fb_yellow_stack_
     fakeDecor._syncIntroUI(ringOv);
     assert.equal(secStyles['#rdp-intro-kinetic-section'].style.display, 'none');
     assert.equal(secStyles['#rdp-intro-ring-section'].style.display, 'flex');
+});
+
+test('Facebook Reel 29521209597533436 crimson velvet curtain reveal intro (curtain_red_reveal): part_center physics, sweep_up, valance & DecorPanel UI', () => {
+    const ovSandbox = loadBrowserScript('src/reels-overlay.js');
+    const RO = ovSandbox.window.ReelsOverlay;
+
+    const curtainOv = RO.createIntroCountdownOverlay({ intro_style: 'curtain_red_reveal' });
+    assert.equal(curtainOv.intro_layout, 'curtain_reveal');
+    assert.equal(curtainOv.intro_curtain_theme, 'crimson_velvet');
+    assert.equal(curtainOv.intro_curtain_style, 'part_center');
+    assert.equal(curtainOv.intro_curtain_valance, false);
+    assert.equal(curtainOv.intro_delay_body, true);
+    assert.equal(curtainOv.end, 2.2);
+
+    const drawOps = [];
+    const makeCtx = () => {
+        const ctx = {
+            globalAlpha: 1,
+            font: '',
+            fillStyle: '',
+            strokeStyle: '',
+            lineWidth: 1,
+            lineJoin: 'miter',
+            textAlign: 'left',
+            textBaseline: 'alphabetic',
+            shadowColor: 'transparent',
+            shadowBlur: 0,
+            save() {},
+            restore() {},
+            translate() {},
+            scale() {},
+            beginPath() { drawOps.push({ op: 'beginPath' }); },
+            closePath() {},
+            moveTo() {},
+            lineTo() {},
+            quadraticCurveTo() {},
+            clip() {},
+            fill() { drawOps.push({ op: 'fill', alpha: ctx.globalAlpha }); },
+            stroke() { drawOps.push({ op: 'stroke', strokeStyle: ctx.strokeStyle }); },
+            fillRect(x, y, w, h) { drawOps.push({ op: 'fillRect', x, y, w, h, alpha: ctx.globalAlpha }); },
+            fillText(t) { drawOps.push({ op: 'fillText', text: String(t), alpha: ctx.globalAlpha }); },
+            strokeText() {},
+            createLinearGradient(x0, y0, x1, y1) {
+                const stops = [];
+                drawOps.push({ op: 'grad', x0, y0, x1, y1, stops });
+                return { addColorStop(off, col) { stops.push([off, col]); } };
+            },
+            measureText: (t) => ({ width: String(t || '').length * 20 }),
+        };
+        return ctx;
+    };
+
+    // 1) Playback t=0.05s starts fully closed at solid opaque alpha (~1.0), spanning left [0..542] & right [538..1080]
+    drawOps.length = 0;
+    RO.drawOverlay(makeCtx(), { ...curtainOv, _previewPlaying: true }, 0.05, 1080, 1920);
+    const closedRects = drawOps.filter(o => o.op === 'fillRect' && o.w > 400 && o.h === 1920);
+    assert.ok(closedRects.length >= 2, 'Closed curtain renders left and right half panels');
+    assert.ok(closedRects.every(r => r.alpha >= 0.99), 'Curtain must start 100% opaque without semi-transparent fade-in');
+
+    // 2) Mid-open t=1.2s parts curtains symmetrically toward edges & leaves center stage clear
+    drawOps.length = 0;
+    RO.drawOverlay(makeCtx(), { ...curtainOv, _previewPlaying: true }, 1.2, 1080, 1920);
+    const midPanelGrads = drawOps.filter(o => o.op === 'grad' && o.stops.some(s => s[1] === '#C9181D'));
+    assert.equal(midPanelGrads.length, 2, 'Two crimson velvet pleat gradients (left + right) render while parting');
+    const leftGradWidth = midPanelGrads[0].x1;
+    assert.ok(leftGradWidth > 40 && leftGradWidth < 460, `Left panel recedes as curtain parts (got x1=${leftGradWidth})`);
+
+    // 3) sweep_up mode with gold valance & optional opening title
+    drawOps.length = 0;
+    RO.drawOverlay(makeCtx(), {
+        ...curtainOv,
+        _previewPlaying: true,
+        intro_curtain_style: 'sweep_up',
+        intro_curtain_valance: true,
+        intro_center_text: 'TONIGHT',
+    }, 1.0, 1080, 1920);
+    const sweepFullWidthRects = drawOps.filter(o => o.op === 'fillRect' && o.w === 1080 && o.h > 100 && o.h < 1900);
+    assert.ok(sweepFullWidthRects.length >= 1, 'sweep_up draws rising full-width velvet curtain');
+    assert.ok(drawOps.some(o => o.op === 'stroke' && o.strokeStyle === '#FACC15'), 'valance draws gold trim');
+    assert.ok(drawOps.some(o => o.op === 'fillText' && o.text === 'TONIGHT'), 'optional curtain headline renders before disappearing');
+
+    // 4) Past end renders nothing
+    drawOps.length = 0;
+    RO.drawOverlay(makeCtx(), { ...curtainOv, _previewPlaying: true }, 2.3, 1080, 1920);
+    assert.equal(drawOps.length, 0, 'After intro.end curtain stops drawing completely');
+
+    // 5) DecorPanel UI shows curtain section and hides ring/kinetic/shared sections
+    const panelSandbox = loadBrowserScript('src/reels-overlay-panel.js', { window: { ReelsOverlay: RO } });
+    const fakeDecor = Object.create(panelSandbox.window.ReelsDecorPanel.prototype);
+    const secStyles = {
+        '#rdp-intro-kinetic-section': { style: { display: '' } },
+        '#rdp-intro-curtain-section': { style: { display: '' } },
+        '#rdp-intro-ring-section': { style: { display: '' } },
+        '#rdp-intro-shared-layout-section': { style: { display: '' } },
+    };
+    fakeDecor.container = { querySelector: (sel) => secStyles[sel] || null, querySelectorAll: () => [] };
+    fakeDecor._setVal = () => {};
+    fakeDecor._updateIntroBadges = () => {};
+    fakeDecor._syncIntroUI(curtainOv);
+    assert.equal(secStyles['#rdp-intro-curtain-section'].style.display, 'flex');
+    assert.equal(secStyles['#rdp-intro-kinetic-section'].style.display, 'none');
+    assert.equal(secStyles['#rdp-intro-ring-section'].style.display, 'none');
+    assert.equal(secStyles['#rdp-intro-shared-layout-section'].style.display, 'none');
 });

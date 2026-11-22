@@ -13899,6 +13899,7 @@ class ReelsDecorPanel {
             ready_321: { id: 'ready_321', name: '⏱️ 3·2·1 紧迫读秒开场', tag: '逐秒 3 → 2 → 1 吸睛停顿' },
             morning_prayer_gold: { id: 'morning_prayer_gold', name: '✝️ 圣光晨祷金环开场', tag: "TODAY'S PRAYER Amen" },
             fb_yellow_stack_hook: { id: 'fb_yellow_stack_hook', name: '⚡ 爆款白黄斜体开场 (FB同款)', tag: '白色逐词堆叠 + 亮黄焦点冲击' },
+            curtain_red_reveal: { id: 'curtain_red_reveal', name: '🎭 红色幕布拉开开场 (FB同款)', tag: '剧场红丝绒幕布对开 / 上升揭幕' },
         };
         const introPresetButtonsHtml = Object.entries(introPresets).map(([id, cfg]) => `
             <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}">
@@ -13906,6 +13907,16 @@ class ReelsDecorPanel {
                 <span class="rdp-intro-preset-tag">${cfg.tag || ''}</span>
             </button>
         `).join('');
+
+        const curtainThemes = window.ReelsOverlay?.INTRO_CURTAIN_THEMES || {
+            crimson_velvet: { name: '❤️ 经典深红天鹅绒（FB同款）' },
+            burgundy_opera: { name: '🍷 暗酒红歌剧院丝绒' },
+            emerald_xmas: { name: '🎄 圣诞祖母绿丝绒' },
+            midnight_star: { name: '🌌 圣夜星蓝丝绒' },
+        };
+        const introCurtainThemeOptionsHtml = Object.entries(curtainThemes).map(([id, t]) =>
+            `<option value="${id}">${t.name}</option>`
+        ).join('');
 
         const introThemes = window.ReelsOverlay?.INTRO_RING_THEMES || {
             xmas_rainbow: { name: '🎄 圣诞四色炫彩 (黄→橙→红→绿)' },
@@ -14046,6 +14057,31 @@ class ReelsDecorPanel {
                                 </div>
                             </div>
 
+                            <!-- 1.8) 红色幕布拉开开场参数 (curtain_reveal 专属) -->
+                            <div id="rdp-intro-curtain-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
+                                <div class="rop-row">
+                                    <label>拉开方式</label>
+                                    <select id="rdp-intro-curtain-style" class="rop-select" style="flex:1;min-width:0;">
+                                        <option value="part_center">🎭 左右对开拉开（FB 剧场同款）</option>
+                                        <option value="sweep_up">🎪 底部向上升起揭幕</option>
+                                    </select>
+                                </div>
+                                <div class="rop-row">
+                                    <label>幕布质感</label>
+                                    <select id="rdp-intro-curtain-theme" class="rop-select" style="flex:1;min-width:0;">
+                                        ${introCurtainThemeOptionsHtml}
+                                    </select>
+                                </div>
+                                <div class="rop-row">
+                                    <label>幕布标题</label>
+                                    <input type="text" id="rdp-intro-curtain-text" class="rop-input" value="" placeholder="留空=纯红丝绒幕布；可填标题在开幕前淡出" style="flex:1;min-width:0;">
+                                </div>
+                                <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin:0;">
+                                    <input type="checkbox" id="rdp-intro-curtain-valance" style="accent-color:#f59e0b;">
+                                    <span>✨ 添加顶部金色流苏舞台幔帘</span>
+                                </label>
+                            </div>
+
                             <div id="rdp-intro-ring-section" style="display:flex;flex-direction:column;gap:7px;">
                             <!-- 2) 倒计时文案与模式 -->
                             <div class="rdp-card-section">
@@ -14131,7 +14167,7 @@ class ReelsDecorPanel {
                                 </div>
                             </div>
                             </div>
-                            <div class="rdp-card-section">
+                            <div id="rdp-intro-shared-layout-section" class="rdp-card-section">
                                 <div class="rop-row rop-num-row">
                                     <label>聚光暗角</label>
                                     <input type="range" id="rdp-intro-scrim" class="rop-range" min="0" max="70" step="2" value="16">
@@ -14947,6 +14983,7 @@ class ReelsDecorPanel {
             'rdp-intro-delay-body',
             'rdp-intro-hook-source', 'rdp-intro-hook-text',
             'rdp-intro-kinetic-font', 'rdp-intro-kinetic-white', 'rdp-intro-kinetic-yellow',
+            'rdp-intro-curtain-style', 'rdp-intro-curtain-theme', 'rdp-intro-curtain-text', 'rdp-intro-curtain-valance',
             'rdp-intro-top-text', 'rdp-intro-top-color',
             'rdp-intro-center-mode', 'rdp-intro-center-text', 'rdp-intro-center-color',
             'rdp-intro-target-date', 'rdp-intro-day-offset',
@@ -15542,10 +15579,12 @@ class ReelsDecorPanel {
         if (!this.container) return;
         const dur = Math.max(0.4, Number(target?.end ?? 3.0) || 3.0);
         const delayBody = target?.intro_delay_body !== false;
-        const styleTag = target?.intro_layout === 'kinetic_stack' ? '⚡白黄斜体' : '🎬光环开场';
+        const styleTag = target?.intro_layout === 'kinetic_stack'
+            ? '⚡白黄斜体'
+            : (target?.intro_layout === 'curtain_reveal' ? '🎭红幕拉开' : '🎬光环开场');
         const label = target
             ? `${styleTag} · ${dur.toFixed(1)}s · ${delayBody ? '延后朗读' : '0s开场'}`
-            : '3.0s · 光环/白黄开场';
+            : '3.0s · 光环/白黄/红幕开场';
         _setAccBadge(this.container, 'rdp-acc-intro-badge', label, Boolean(isEnabled));
     }
 
@@ -15556,7 +15595,9 @@ class ReelsDecorPanel {
         try {
             const exists = Boolean(target);
             const isEnabled = Boolean(target && !target.disabled);
-            const isKinetic = (target?.intro_layout || 'ring') === 'kinetic_stack';
+            const layout = target?.intro_layout || 'ring';
+            const isKinetic = layout === 'kinetic_stack';
+            const isCurtain = layout === 'curtain_reveal';
             this._setVal('rdp-intro-enable', isEnabled);
             if (!this._hasSyncedIntroOnce && isEnabled) {
                 this._hasSyncedIntroOnce = true;
@@ -15588,9 +15629,13 @@ class ReelsDecorPanel {
             }
 
             const kineticSec = this.container.querySelector('#rdp-intro-kinetic-section');
+            const curtainSec = this.container.querySelector('#rdp-intro-curtain-section');
             const ringSec = this.container.querySelector('#rdp-intro-ring-section');
+            const sharedSec = this.container.querySelector('#rdp-intro-shared-layout-section');
             if (kineticSec) kineticSec.style.display = isKinetic ? 'flex' : 'none';
-            if (ringSec) ringSec.style.display = isKinetic ? 'none' : 'flex';
+            if (curtainSec) curtainSec.style.display = isCurtain ? 'flex' : 'none';
+            if (ringSec) ringSec.style.display = (!isKinetic && !isCurtain) ? 'flex' : 'none';
+            if (sharedSec) sharedSec.style.display = isCurtain ? 'none' : '';
 
             const activePreset = target?.intro_style || '';
             this.container.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
@@ -15626,6 +15671,11 @@ class ReelsDecorPanel {
             setIntroVal('rdp-intro-kinetic-white', target.intro_top_color || '#FFFFFF');
             setIntroVal('rdp-intro-kinetic-yellow', target.intro_center_color || '#FFE600');
             setIntroVal('rdp-intro-kinetic-fontsize', Math.round(Number(target.intro_center_fontsize ?? 112)));
+
+            setIntroVal('rdp-intro-curtain-style', target.intro_curtain_style || 'part_center');
+            setIntroVal('rdp-intro-curtain-theme', target.intro_curtain_theme || 'crimson_velvet');
+            setIntroVal('rdp-intro-curtain-text', isCurtain ? (target.intro_center_text ?? '') : '');
+            setIntroVal('rdp-intro-curtain-valance', Boolean(target.intro_curtain_valance));
 
             setIntroVal('rdp-intro-top-text', target.intro_top_text ?? 'DAYS BEFORE');
             setIntroVal('rdp-intro-top-color', target.intro_top_color || '#FFFFFF');
@@ -15681,7 +15731,9 @@ class ReelsDecorPanel {
         ov.end = dur;
         ov.intro_delay_body = Boolean(this._getVal('rdp-intro-delay-body'));
 
-        const isKinetic = (ov.intro_layout || 'ring') === 'kinetic_stack';
+        const layout = ov.intro_layout || 'ring';
+        const isKinetic = layout === 'kinetic_stack';
+        const isCurtain = layout === 'curtain_reveal';
         if (isKinetic) {
             ov.intro_hook_source = this._getVal('rdp-intro-hook-source') || 'auto';
             ov.intro_hook_text = String(this._getVal('rdp-intro-hook-text') ?? ov.intro_hook_text ?? '');
@@ -15689,6 +15741,11 @@ class ReelsDecorPanel {
             ov.intro_top_color = this._getVal('rdp-intro-kinetic-white') || '#FFFFFF';
             ov.intro_center_color = this._getVal('rdp-intro-kinetic-yellow') || '#FFE600';
             ov.intro_center_fontsize = Math.max(36, Number(this._getVal('rdp-intro-kinetic-fontsize') ?? ov.intro_center_fontsize ?? 112));
+        } else if (isCurtain) {
+            ov.intro_curtain_style = this._getVal('rdp-intro-curtain-style') || 'part_center';
+            ov.intro_curtain_theme = this._getVal('rdp-intro-curtain-theme') || 'crimson_velvet';
+            ov.intro_center_text = String(this._getVal('rdp-intro-curtain-text') ?? '');
+            ov.intro_curtain_valance = Boolean(this._getVal('rdp-intro-curtain-valance'));
         } else {
             ov.intro_top_text = String(this._getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
             ov.intro_top_color = this._getVal('rdp-intro-top-color') || '#FFFFFF';
@@ -15719,10 +15776,17 @@ class ReelsDecorPanel {
             ov.intro_snow_density = Math.max(0, Number(this._getVal('rdp-intro-snow-density') ?? 32));
         }
 
-        ov.intro_backdrop_scrim = Math.max(0, Number(this._getVal('rdp-intro-scrim') ?? (isKinetic ? 0 : 16)));
-        ov.intro_scale = Math.max(40, Number(this._getVal('rdp-intro-scale') ?? 100));
-        ov.intro_offset_y = Number(this._getVal('rdp-intro-offset-y') ?? (isKinetic ? 0 : -20)) || 0;
-        ov.intro_offset_x = Number(this._getVal('rdp-intro-offset-x') ?? 0) || 0;
+        if (isCurtain) {
+            ov.intro_backdrop_scrim = 0;
+            ov.intro_scale = 100;
+            ov.intro_offset_y = 0;
+            ov.intro_offset_x = 0;
+        } else {
+            ov.intro_backdrop_scrim = Math.max(0, Number(this._getVal('rdp-intro-scrim') ?? (isKinetic ? 0 : 16)));
+            ov.intro_scale = Math.max(40, Number(this._getVal('rdp-intro-scale') ?? 100));
+            ov.intro_offset_y = Number(this._getVal('rdp-intro-offset-y') ?? (isKinetic ? 0 : -20)) || 0;
+            ov.intro_offset_x = Number(this._getVal('rdp-intro-offset-x') ?? 0) || 0;
+        }
 
         this._syncIntroUI(ov);
         const structural = Boolean(options?.structuralChange);

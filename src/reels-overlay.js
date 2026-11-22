@@ -1457,6 +1457,67 @@ const INTRO_COUNTDOWN_PRESETS = {
         intro_backdrop_scrim: 0,
         intro_offset_y: 0,
     },
+    curtain_red_reveal: {
+        id: 'curtain_red_reveal',
+        name: '🎭 红色幕布拉开开场 (FB同款)',
+        tag: '剧场红丝绒幕布对开 / 上升揭幕',
+        intro_layout: 'curtain_reveal',
+        duration: 2.2,
+        intro_delay_body: true,
+        intro_curtain_theme: 'crimson_velvet',
+        intro_curtain_style: 'part_center',
+        intro_curtain_valance: false,
+        intro_top_text: '',
+        intro_center_mode: 'fixed',
+        intro_center_text: '',
+        intro_target_date: '12-25',
+        intro_day_offset: 0,
+        intro_bottom_text: '',
+        intro_top_font_family: 'Montserrat',
+        intro_center_font_family: 'Montserrat',
+        intro_bottom_font_family: 'Montserrat',
+        intro_center_color: '#FDE68A',
+        intro_ring_theme: 'xmas_rainbow',
+        intro_snow_enabled: false,
+        intro_snow_density: 0,
+        intro_backdrop_scrim: 0,
+        intro_offset_y: 0,
+    },
+};
+
+const INTRO_CURTAIN_THEMES = {
+    crimson_velvet: {
+        id: 'crimson_velvet',
+        name: '❤️ 经典深红天鹅绒（FB同款）',
+        highlight: '#C9181D',
+        mid: '#86080B',
+        shadow: '#270203',
+        trimColor: '#FACC15',
+    },
+    burgundy_opera: {
+        id: 'burgundy_opera',
+        name: '🍷 暗酒红歌剧院丝绒',
+        highlight: '#9F1239',
+        mid: '#5B071F',
+        shadow: '#1A0209',
+        trimColor: '#FDE047',
+    },
+    emerald_xmas: {
+        id: 'emerald_xmas',
+        name: '🎄 圣诞祖母绿丝绒',
+        highlight: '#15803D',
+        mid: '#0B4622',
+        shadow: '#031C0D',
+        trimColor: '#FACC15',
+    },
+    midnight_star: {
+        id: 'midnight_star',
+        name: '🌌 圣夜星蓝丝绒',
+        highlight: '#1D4ED8',
+        mid: '#0F2557',
+        shadow: '#050B1F',
+        trimColor: '#FDE68A',
+    },
 };
 
 function computeIntroDaysRemaining(targetDateStr = '12-25', offsetDays = 0, nowDate = null) {
@@ -1492,7 +1553,9 @@ function createIntroCountdownOverlay(opts = {}) {
     const dur = Math.max(0.4, Number(opts.end ?? preset.duration ?? 3.0) || 3.0);
     return {
         id: opts.id || _overlayId(),
-        name: opts.name || (layout === 'kinetic_stack' ? '⚡ 爆款白黄斜体开场' : '🎬 节日倒计时光环开场'),
+        name: opts.name || (layout === 'kinetic_stack'
+            ? '⚡ 爆款白黄斜体开场'
+            : (layout === 'curtain_reveal' ? '🎭 红色幕布拉开开场' : '🎬 节日倒计时光环开场')),
         type: 'intro_countdown',
         is_intro_countdown: true,
         disabled: opts.disabled ?? false,
@@ -1509,6 +1572,9 @@ function createIntroCountdownOverlay(opts = {}) {
         intro_delay_body: opts.intro_delay_body !== undefined ? Boolean(opts.intro_delay_body) : Boolean(preset.intro_delay_body ?? true),
         intro_hook_source: opts.intro_hook_source || preset.intro_hook_source || 'auto',
         intro_hook_text: opts.intro_hook_text ?? preset.intro_hook_text ?? '',
+        intro_curtain_theme: opts.intro_curtain_theme || preset.intro_curtain_theme || 'crimson_velvet',
+        intro_curtain_style: opts.intro_curtain_style || preset.intro_curtain_style || 'part_center',
+        intro_curtain_valance: opts.intro_curtain_valance !== undefined ? Boolean(opts.intro_curtain_valance) : Boolean(preset.intro_curtain_valance ?? false),
         intro_top_text: opts.intro_top_text ?? preset.intro_top_text ?? 'DAYS BEFORE',
         intro_top_font_family: opts.intro_top_font_family || preset.intro_top_font_family || 'Montserrat',
         intro_top_fontsize: opts.intro_top_fontsize ?? 44,
@@ -1560,7 +1626,14 @@ function applyIntroCountdownPreset(ov, presetId) {
     const theme = INTRO_RING_THEMES[preset.intro_ring_theme] || INTRO_RING_THEMES.xmas_rainbow;
     ov.intro_style = preset.id;
     ov.intro_layout = nextLayout;
-    ov.name = nextLayout === 'kinetic_stack' ? '⚡ 爆款白黄斜体开场' : '🎬 节日倒计时光环开场';
+    ov.name = nextLayout === 'kinetic_stack'
+        ? '⚡ 爆款白黄斜体开场'
+        : (nextLayout === 'curtain_reveal' ? '🎭 红色幕布拉开开场' : '🎬 节日倒计时光环开场');
+    ov.intro_curtain_theme = preset.intro_curtain_theme || ov.intro_curtain_theme || 'crimson_velvet';
+    ov.intro_curtain_style = preset.intro_curtain_style || ov.intro_curtain_style || 'part_center';
+    if (preset.intro_curtain_valance !== undefined) {
+        ov.intro_curtain_valance = Boolean(preset.intro_curtain_valance);
+    }
     ov.intro_top_text = preset.intro_top_text ?? '';
     ov.intro_center_mode = preset.intro_center_mode || 'fixed';
     ov.intro_center_text = preset.intro_center_text ?? '';
@@ -15868,9 +15941,14 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
     const dur = Math.max(0.1, end - start);
     const rawElapsed = Math.max(0, (Number(currentTime) || 0) - start);
 
+    const layoutMode = ov.intro_layout || 'ring';
     const isSnapshotPausedAtZero = !ov._exporting && !ov._previewPlaying && rawElapsed <= 0.001;
-    const fadeInDur = Math.max(0, Math.min(dur * 0.45, parseFloat(ov.intro_fade_in ?? 0.30) || 0));
-    const fadeOutDur = Math.max(0, Math.min(dur * 0.45, parseFloat(ov.intro_fade_out ?? 0.20) || 0));
+    const fadeInDur = layoutMode === 'curtain_reveal'
+        ? 0
+        : Math.max(0, Math.min(dur * 0.45, parseFloat(ov.intro_fade_in ?? 0.30) || 0));
+    const fadeOutDur = layoutMode === 'curtain_reveal'
+        ? 0
+        : Math.max(0, Math.min(dur * 0.45, parseFloat(ov.intro_fade_out ?? 0.20) || 0));
 
     let envAlpha = 1;
     if (!isSnapshotPausedAtZero) {
@@ -15884,6 +15962,12 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
     }
     const baseOpacity = Math.max(0, Math.min(1, envAlpha * (ctx.globalAlpha || 1)));
     if (baseOpacity <= 0.002) return;
+
+    if (layoutMode === 'curtain_reveal') {
+        return _drawIntroCurtainRevealOverlay(
+            ctx, ov, dur, rawElapsed, isSnapshotPausedAtZero, baseOpacity, canvasW || 1080, canvasH || 1920
+        );
+    }
 
     const unitScale = (Math.min(canvasW || 1080, canvasH || 1920) / 1080) * ((Number(ov.intro_scale) || 100) / 100);
     const cx = (canvasW || 1080) * 0.5 + (Number(ov.intro_offset_x) || 0) * ((canvasW || 1080) / 1080);
@@ -16324,6 +16408,211 @@ function _drawIntroKineticStackOverlay(ctx, ov, currentTime, start, end, dur, ra
     ov._renderedH = Math.max(120, totalH * 1.1);
 }
 
+function _buildCurtainPleatsGradient(ctx, x0, x1, foldCount, theme) {
+    if (typeof ctx.createLinearGradient !== 'function' || Math.abs(x1 - x0) < 2) {
+        return theme.mid;
+    }
+    const grad = ctx.createLinearGradient(x0, 0, x1, 0);
+    const n = Math.max(2, foldCount | 0);
+    for (let i = 0; i < n; i++) {
+        const segStart = i / n;
+        const segSpan = 1 / n;
+        const brightShift = i % 2 === 0;
+        const addStop = (offset, color) => {
+            grad.addColorStop(Math.max(0, Math.min(1, segStart + segSpan * offset)), color);
+        };
+        addStop(0.00, theme.shadow);
+        addStop(0.24, theme.mid);
+        addStop(0.48, brightShift ? theme.highlight : theme.mid);
+        addStop(0.55, theme.highlight);
+        addStop(0.78, theme.mid);
+        addStop(1.00, theme.shadow);
+    }
+    return grad;
+}
+
+/**
+ * 渲染剧场红丝绒幕布拉开开场效果 (intro_layout === 'curtain_reveal')
+ */
+function _drawIntroCurtainRevealOverlay(ctx, ov, dur, rawElapsed, isSnapshotPausedAtZero, baseOpacity, canvasW, canvasH) {
+    if (!isSnapshotPausedAtZero && rawElapsed >= dur) return;
+    const theme = INTRO_CURTAIN_THEMES[ov.intro_curtain_theme] || INTRO_CURTAIN_THEMES.crimson_velvet;
+    const curtainStyle = ov.intro_curtain_style || 'part_center';
+
+    let p = 0;
+    if (isSnapshotPausedAtZero) {
+        p = 0.22;
+    } else {
+        const closedHold = Math.min(0.22, dur * 0.12);
+        const tRatio = Math.max(0, Math.min(1, (rawElapsed - closedHold) / Math.max(0.08, dur - closedHold)));
+        p = tRatio < 0.5
+            ? 4 * tRatio * tRatio * tRatio
+            : 1 - Math.pow(-2 * tRatio + 2, 3) / 2;
+        if (tRatio >= 0.999) return;
+    }
+
+    const drawVerticalLightingVignette = (vx, vy, vw, vh) => {
+        if (typeof ctx.createLinearGradient !== 'function' || vw <= 1 || vh <= 1) return;
+        const vGrad = ctx.createLinearGradient(0, vy, 0, vy + vh);
+        vGrad.addColorStop(0.00, 'rgba(0, 0, 0, 0.44)');
+        vGrad.addColorStop(0.20, 'rgba(0, 0, 0, 0.08)');
+        vGrad.addColorStop(0.48, 'rgba(255, 225, 210, 0.07)');
+        vGrad.addColorStop(0.82, 'rgba(0, 0, 0, 0.14)');
+        vGrad.addColorStop(1.00, 'rgba(0, 0, 0, 0.54)');
+        ctx.fillStyle = vGrad;
+        ctx.fillRect(vx, vy, vw, vh);
+    };
+
+    ctx.save();
+    ctx.globalAlpha = baseOpacity;
+
+    if (curtainStyle === 'sweep_up') {
+        const hemY = canvasH * (1 - p);
+        if (hemY > 2) {
+            if (p > 0.02 && typeof ctx.createLinearGradient === 'function') {
+                const castH = Math.max(24, 58 * (1 - p));
+                const castGrad = ctx.createLinearGradient(0, hemY, 0, hemY + castH);
+                castGrad.addColorStop(0, `rgba(0, 0, 0, ${(0.55 * (1 - p)).toFixed(3)})`);
+                castGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = castGrad;
+                ctx.fillRect(0, hemY, canvasW, castH);
+            }
+            ctx.save();
+            ctx.fillStyle = _buildCurtainPleatsGradient(ctx, 0, canvasW, 16, theme);
+            ctx.fillRect(0, 0, canvasW, hemY);
+            drawVerticalLightingVignette(0, 0, canvasW, hemY);
+
+            ctx.fillStyle = theme.trimColor || '#FACC15';
+            ctx.fillRect(0, Math.max(0, hemY - 12), canvasW, 12);
+            ctx.restore();
+        }
+    } else {
+        const halfW = canvasW * 0.5;
+        const topInset = (halfW + 2) * (1 - p);
+        const lag = Math.sin(p * Math.PI) * 0.075;
+        const botInset = Math.max(0, (halfW + 2) * (1 - Math.max(0, p - lag)));
+        const maxInset = Math.max(topInset, botInset);
+        const curveBulge = Math.sin(p * Math.PI) * canvasW * 0.032;
+
+        const drawSidePanel = (isRight) => {
+            if (maxInset <= 1.5) return;
+            const shadowDepth = Math.max(16, 62 * (1 - p));
+            if (p > 0.01 && typeof ctx.createLinearGradient === 'function') {
+                const edgeMidX = (topInset + botInset) * 0.5;
+                const sStart = isRight ? (canvasW - edgeMidX) : edgeMidX;
+                const sEnd = isRight ? (sStart - shadowDepth) : (sStart + shadowDepth);
+                const shGrad = ctx.createLinearGradient(sStart, 0, sEnd, 0);
+                shGrad.addColorStop(0, `rgba(0, 0, 0, ${(0.58 * (1 - p * 0.7)).toFixed(3)})`);
+                shGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = shGrad;
+                ctx.fillRect(Math.min(sStart, sEnd), 0, Math.abs(sEnd - sStart), canvasH);
+            }
+
+            ctx.save();
+            ctx.beginPath();
+            if (!isRight) {
+                ctx.moveTo(0, 0);
+                ctx.lineTo(topInset, 0);
+                ctx.quadraticCurveTo(
+                    Math.max(0, (topInset + botInset) * 0.5 + curveBulge),
+                    canvasH * 0.54,
+                    botInset,
+                    canvasH
+                );
+                ctx.lineTo(0, canvasH);
+            } else {
+                const rTopX = canvasW - topInset;
+                const rBotX = canvasW - botInset;
+                ctx.moveTo(canvasW, 0);
+                ctx.lineTo(rTopX, 0);
+                ctx.quadraticCurveTo(
+                    Math.min(canvasW, (rTopX + rBotX) * 0.5 - curveBulge),
+                    canvasH * 0.54,
+                    rBotX,
+                    canvasH
+                );
+                ctx.lineTo(canvasW, canvasH);
+            }
+            ctx.closePath();
+            if (typeof ctx.clip === 'function') ctx.clip();
+
+            const outerOffset = p * halfW * 0.22;
+            const gX0 = isRight ? (canvasW + outerOffset) : -outerOffset;
+            const gX1 = isRight ? (canvasW - maxInset) : maxInset;
+            ctx.fillStyle = _buildCurtainPleatsGradient(ctx, gX0, gX1, 8, theme);
+            const rectX = isRight ? Math.max(0, canvasW - maxInset - 4) : 0;
+            ctx.fillRect(rectX, 0, maxInset + 6, canvasH);
+            drawVerticalLightingVignette(rectX, 0, maxInset + 6, canvasH);
+            ctx.restore();
+        };
+
+        drawSidePanel(false);
+        drawSidePanel(true);
+
+        // 闭合状态保留中缝立体阴影，增强丝绒分幅感（对齐剧场幕布实拍帧）
+        if (p < 0.03 && typeof ctx.createLinearGradient === 'function') {
+            const seamGrad = ctx.createLinearGradient(halfW - 14, 0, halfW + 14, 0);
+            seamGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+            seamGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.72)');
+            seamGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = seamGrad;
+            ctx.fillRect(halfW - 14, 0, 28, canvasH);
+        }
+    }
+
+    // 可选顶部舞台金色流苏幔帘（默认关闭，开启即添舞台仪式感）
+    if (ov.intro_curtain_valance) {
+        const valH = Math.round(canvasH * 0.085);
+        const swagCount = 5;
+        const swagW = canvasW / swagCount;
+        ctx.save();
+        ctx.fillStyle = theme.mid;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(canvasW, 0);
+        for (let i = swagCount - 1; i >= 0; i--) {
+            const xEnd = i * swagW;
+            const xStart = (i + 1) * swagW;
+            const xMid = (xStart + xEnd) * 0.5;
+            ctx.quadraticCurveTo(xMid, valH * 1.45, xEnd, valH * 0.68);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = Math.max(3, canvasW * 0.004);
+        ctx.strokeStyle = theme.trimColor || '#FACC15';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 可选居中开幕字（留空则纯红丝绒幕布，有内容时在开幕前渐隐）
+    const titleText = String(ov.intro_center_text ?? '').trim();
+    const textAlpha = Math.max(0, 1 - p * 2.2) * baseOpacity;
+    if (titleText && textAlpha > 0.02) {
+        const fs = Math.max(42, Math.round(canvasW * 0.072));
+        ctx.save();
+        ctx.globalAlpha = textAlpha;
+        ctx.font = `900 ${fs}px "${ov.intro_center_font_family || 'Montserrat'}", Impact, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(4, fs * 0.14);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+        ctx.shadowBlur = 16;
+        ctx.strokeText(titleText, canvasW * 0.5, canvasH * 0.5);
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = ov.intro_center_color || theme.trimColor || '#FDE68A';
+        ctx.fillText(titleText, canvasW * 0.5, canvasH * 0.5);
+        ctx.restore();
+    }
+
+    ctx.restore();
+    ov._renderedX = 0;
+    ov._renderedY = 0;
+    ov._renderedW = canvasW;
+    ov._renderedH = canvasH;
+}
+
 function _withAlpha(hexColor, alpha) {
     const safe = (typeof hexColor === 'string' && hexColor.startsWith('#') && hexColor.length >= 7) ? hexColor : '#05070B';
     const r = parseInt(safe.slice(1, 3), 16) || 0;
@@ -16400,6 +16689,7 @@ const ReelsOverlay = {
     isFullDurationAutoOverlay,
     isIntroSuppressingBodySubtitles,
     INTRO_RING_THEMES,
+    INTRO_CURTAIN_THEMES,
     INTRO_COUNTDOWN_PRESETS,
     measureScrollMotion,
     drawOverlay,
