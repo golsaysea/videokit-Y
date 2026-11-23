@@ -8104,6 +8104,74 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         return { tmp, tc };
     };
 
+    const _renderScrollBodyLayer = (effClipY, effClipH, bodyStartY, blockContentH, baseOv) => {
+        if (effClipH <= 0) return;
+        const _twSegments = Array.isArray(ov._taskSegments)
+            ? ov._taskSegments
+            : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
+        const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: bodyStartY, segments: _twSegments };
+        const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
+        const fWin = _resolveFeatherWindow(clipX, effClipY, clipW, effClipH, curY, blockContentH);
+        const _drewBodyBlockBg = _drawScrollBodyBlockBgOutsideClip(
+            ctx, ov, lines, curX, bodyStartY, textW, lineHeight,
+            effClipY, effClipH, featherTopOff, featherBotOff, _bgScrollOffsetY,
+            { hasFeather, fWin, featherTop, featherBottom, featherLeft, featherRight, featherTopOff, featherBotOff, featherLeftOff, featherRightOff }
+        );
+        const ovForBlock = _drewBodyBlockBg ? Object.assign({}, baseOv, { _skipBodyBlockBg: true }) : baseOv;
+        const _clipBlockBg = (clipBaseX, clipBaseY, clipBaseW, clipBaseH, paintFn) => {
+            if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
+                if (!_drewBodyBlockBg.clippedEmpty) {
+                    ctx.save();
+                    const cx = Math.min(clipBaseX, _drewBodyBlockBg.x);
+                    const cw = Math.max(clipBaseX + clipBaseW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
+                    const cy = _drewBodyBlockBg.padTop < 0 ? Math.min(clipBaseY, _drewBodyBlockBg.y) : _drewBodyBlockBg.y;
+                    const cBot = _drewBodyBlockBg.padBot < 0
+                        ? Math.max(clipBaseY + clipBaseH, _drewBodyBlockBg.y + _drewBodyBlockBg.h)
+                        : (_drewBodyBlockBg.y + _drewBodyBlockBg.h);
+                    _roundRect(ctx, cx, cy, cw, Math.max(1, cBot - cy), _drewBodyBlockBg.r);
+                    ctx.clip();
+                    paintFn();
+                    ctx.restore();
+                }
+            } else {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
+                ctx.clip();
+                paintFn();
+                ctx.restore();
+            }
+        };
+
+        if (hasFeather) {
+            const { drawX, drawY, cW, cH, inLOff, inROff, inTOff, inBOff, gradX0, gradX1, gradY0, gradY1, spanX, spanY } = fWin;
+            const { tmp, tc } = _acquireFeatherCanvas(cW, cH);
+            tc.font = fontStr;
+            const offX = curX - drawX;
+            const offY = curY - drawY;
+            _drawScrollTextBlock(tc, ovForBlock, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
+
+            tc.globalCompositeOperation = 'destination-in';
+            const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
+            _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
+            tc.fillStyle = grad;
+            tc.fillRect(0, 0, cW, cH);
+
+            if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
+                const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
+                _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
+                tc.fillStyle = gradX;
+                tc.fillRect(0, 0, cW, cH);
+            }
+
+            _clipBlockBg(drawX, drawY, cW, cH, () => ctx.drawImage(tmp, drawX, drawY));
+        } else {
+            _clipBlockBg(clipX, effClipY, clipW, effClipH, () => {
+                _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
+            });
+        }
+    };
+
     // ── 固定标题模式 ──
         let titleText = (ov.scroll_title || '').trim();
         if (ov.scroll_title_uppercase !== false) titleText = titleText.toUpperCase();
@@ -8328,10 +8396,6 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             }
 
         // ── 2. 正文在标题下方的剩余空间内滚动 ──
-        const _twSegments = Array.isArray(ov._taskSegments)
-            ? ov._taskSegments
-            : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
-        const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: curY, segments: _twSegments };
         const _titleDeductedH = titleIndependent ? 0 : Math.min(Math.max(0, clipH - 80), titleBlockH + tGap);
         const bodyClipY = ov.bg_body_only
             ? bodyClipTopBase
@@ -8339,138 +8403,24 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         const bodyClipH = ov.bg_body_only
             ? Math.max(40, bodyClipBotBase - bodyClipTopBase)
             : Math.max(40, clipH - _titleDeductedH);
-        if (bodyClipH > 0) {
-            const _drewBodyBlockBg = _drawScrollBodyBlockBgOutsideClip(
-                ctx, ov, lines, curX, curY, textW, lineHeight,
-                bodyClipY, bodyClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
-            );
-            const ovProxy = Object.assign({}, ov, { _skipTitle: true, _skipBodyBlockBg: Boolean(_drewBodyBlockBg) });
-            const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
-            const bodyOnlyContentH = Math.max(lineHeight, bodyBottomOffset - movingTitleH);
-            const fWin = _resolveFeatherWindow(clipX, bodyClipY, clipW, bodyClipH, curY, bodyOnlyContentH);
-            if (hasFeather) {
-                const { drawX, drawY, cW, cH, inLOff, inROff, inTOff, inBOff, gradX0, gradX1, gradY0, gradY1, spanX, spanY } = fWin;
-                const { tmp, tc } = _acquireFeatherCanvas(cW, cH);
-                tc.font = fontStr;
-                const offX = curX - drawX;
-                const offY = curY - drawY;
-                _drawScrollTextBlock(tc, ovProxy, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
-
-                // 渐变遮罩：固定标题只作用于正文裁切区，标题本身不参与羽化。
-                tc.globalCompositeOperation = 'destination-in';
-                const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
-                _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
-                tc.fillStyle = grad;
-                tc.fillRect(0, 0, cW, cH);
-                
-                if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
-                    const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
-                    _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
-                    tc.fillStyle = gradX;
-                    tc.fillRect(0, 0, cW, cH);
-                }
-                
-                if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
-                    if (!_drewBodyBlockBg.clippedEmpty) {
-                        ctx.save();
-                        const cx = Math.min(drawX, _drewBodyBlockBg.x);
-                        const cw = Math.max(drawX + cW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
-                        _roundRect(ctx, cx, _drewBodyBlockBg.y, cw, _drewBodyBlockBg.h, _drewBodyBlockBg.r);
-                        ctx.clip();
-                        ctx.drawImage(tmp, drawX, drawY);
-                        ctx.restore();
-                    }
-                } else {
-                    ctx.drawImage(tmp, drawX, drawY);
-                }
-            } else {
-                ctx.save();
-                if (_drewBodyBlockBg && typeof _drewBodyBlockBg === 'object') {
-                    if (!_drewBodyBlockBg.clippedEmpty) {
-                        const cx = Math.min(clipX, _drewBodyBlockBg.x);
-                        const cw = Math.max(clipX + clipW, _drewBodyBlockBg.x + _drewBodyBlockBg.w) - cx;
-                        _roundRect(ctx, cx, _drewBodyBlockBg.y, cw, _drewBodyBlockBg.h, _drewBodyBlockBg.r);
-                        ctx.clip();
-                        _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
-                    }
-                } else {
-                    ctx.beginPath();
-                    ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
-                    ctx.clip();
-                    _drawScrollTextBlock(ctx, ovProxy, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
-                }
-                ctx.restore();
-            }
-        }
+        _renderScrollBodyLayer(
+            bodyClipY,
+            bodyClipH,
+            curY,
+            Math.max(lineHeight, bodyBottomOffset - movingTitleH),
+            Object.assign({}, ov, { _skipTitle: true })
+        );
     } else {
         // ── 标题跟随滚动或无标题 ──
         const effClipY = ov.bg_body_only ? bodyClipTopBase : clipY;
         const effClipH = ov.bg_body_only ? Math.max(40, bodyClipBotBase - bodyClipTopBase) : clipH;
-        const _drewBodyBlockBg2 = _drawScrollBodyBlockBgOutsideClip(
-            ctx, ov, lines, curX, ov._scrollBodyFirstLineY ?? curY, textW, lineHeight,
-            effClipY, effClipH, featherTopOff, featherBotOff, _bgScrollOffsetY
+        _renderScrollBodyLayer(
+            effClipY,
+            effClipH,
+            ov._scrollBodyFirstLineY ?? curY,
+            Math.max(lineHeight, bodyBottomOffset),
+            ov
         );
-        const ovForBlock = _drewBodyBlockBg2 ? Object.assign({}, ov, { _skipBodyBlockBg: true }) : ov;
-        const _twSegments = Array.isArray(ov._taskSegments)
-            ? ov._taskSegments
-            : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
-        const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: ov._scrollBodyFirstLineY ?? curY, segments: _twSegments };
-        const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
-        const fullContentH = Math.max(lineHeight, bodyBottomOffset);
-        const fWin = _resolveFeatherWindow(clipX, effClipY, clipW, effClipH, curY, fullContentH);
-        if (hasFeather) {
-            const { drawX, drawY, cW, cH, inLOff, inROff, inTOff, inBOff, gradX0, gradX1, gradY0, gradY1, spanX, spanY } = fWin;
-            const { tmp, tc } = _acquireFeatherCanvas(cW, cH);
-            tc.font = fontStr;
-
-            const offX = curX - drawX;
-            const offY = curY - drawY;
-            _drawScrollTextBlock(tc, ovForBlock, lines, offX, offY, textW, lineHeight, fontSize, align, _twContext);
-
-            tc.globalCompositeOperation = 'destination-in';
-            const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
-            _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
-            tc.fillStyle = grad;
-            tc.fillRect(0, 0, cW, cH);
-            
-            if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
-                const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
-                _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
-                tc.fillStyle = gradX;
-                tc.fillRect(0, 0, cW, cH);
-            }
-
-            if (_drewBodyBlockBg2 && typeof _drewBodyBlockBg2 === 'object') {
-                if (!_drewBodyBlockBg2.clippedEmpty) {
-                    ctx.save();
-                    const cx = Math.min(drawX, _drewBodyBlockBg2.x);
-                    const cw = Math.max(drawX + cW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
-                    _roundRect(ctx, cx, _drewBodyBlockBg2.y, cw, _drewBodyBlockBg2.h, _drewBodyBlockBg2.r);
-                    ctx.clip();
-                    ctx.drawImage(tmp, drawX, drawY);
-                    ctx.restore();
-                }
-            } else {
-                ctx.drawImage(tmp, drawX, drawY);
-            }
-        } else {
-            ctx.save();
-            if (_drewBodyBlockBg2 && typeof _drewBodyBlockBg2 === 'object') {
-                if (!_drewBodyBlockBg2.clippedEmpty) {
-                    const cx = Math.min(clipX, _drewBodyBlockBg2.x);
-                    const cw = Math.max(clipX + clipW, _drewBodyBlockBg2.x + _drewBodyBlockBg2.w) - cx;
-                    _roundRect(ctx, cx, _drewBodyBlockBg2.y, cw, _drewBodyBlockBg2.h, _drewBodyBlockBg2.r);
-                    ctx.clip();
-                    _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
-                }
-            } else {
-                ctx.beginPath();
-                ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
-                ctx.clip();
-                _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
-            }
-            ctx.restore();
-        }
     }
 
     // ── 预览辅助线 ──
@@ -9500,8 +9450,8 @@ function _drawScrollTitleBackground(ctx, ov, titleLines, titleDrawX, titleDrawY,
             ctx,
             titleDrawX - tbgPadH,
             titleDrawY - tbgPadTop,
-            tTextW + tbgPadH * 2,
-            titleBlockH + tbgPadTop + tbgPadBot,
+            Math.max(4, tTextW + tbgPadH * 2),
+            Math.max(4, titleBlockH + tbgPadTop + tbgPadBot),
             tbgRad,
             {
                 style: tbgStyle,
@@ -9561,7 +9511,7 @@ function _drawScrollTitleBackground(ctx, ov, titleLines, titleDrawX, titleDrawY,
             ty += tLineH;
         }
     } else {
-        _roundRect(ctx, titleDrawX - tbgPadH, titleDrawY - tbgPadTop, tTextW + tbgPadH * 2, titleBlockH + tbgPadTop + tbgPadBot, tbgRad);
+        _roundRect(ctx, titleDrawX - tbgPadH, titleDrawY - tbgPadTop, Math.max(4, tTextW + tbgPadH * 2), Math.max(4, titleBlockH + tbgPadTop + tbgPadBot), tbgRad);
         ctx.fill();
     }
     ctx.restore();
@@ -9765,14 +9715,18 @@ function _compositeCardLayerCanvas(ctx, x, y, w, h, featherCfg, cacheKey, paintF
         wc.save();
         wc.globalCompositeOperation = 'destination-in';
         if (fTop > 0 || fBot > 0 || inT > 0 || inB > 0) {
-            const gradY = wc.createLinearGradient(0, innerOffY, 0, innerOffY + h);
-            _applyScrollFeatherGradientStops(gradY, h, inT, fTop, fBot, inB);
+            const gY0 = Number.isFinite(featherCfg?.gradYOff) ? innerOffY + featherCfg.gradYOff : innerOffY;
+            const gSpanY = Math.max(1, Number.isFinite(featherCfg?.gradSpanY) ? featherCfg.gradSpanY : h);
+            const gradY = wc.createLinearGradient(0, gY0, 0, gY0 + gSpanY);
+            _applyScrollFeatherGradientStops(gradY, gSpanY, inT, fTop, fBot, inB);
             wc.fillStyle = gradY;
             wc.fillRect(0, 0, cw, ch);
         }
         if (fLeft > 0 || fRight > 0 || inL > 0 || inR > 0) {
-            const gradX = wc.createLinearGradient(innerOffX, 0, innerOffX + w, 0);
-            _applyScrollFeatherGradientStops(gradX, w, inL, fLeft, fRight, inR);
+            const gX0 = Number.isFinite(featherCfg?.gradXOff) ? innerOffX + featherCfg.gradXOff : innerOffX;
+            const gSpanX = Math.max(1, Number.isFinite(featherCfg?.gradSpanX) ? featherCfg.gradSpanX : w);
+            const gradX = wc.createLinearGradient(gX0, 0, gX0 + gSpanX, 0);
+            _applyScrollFeatherGradientStops(gradX, gSpanX, inL, fLeft, fRight, inR);
             wc.fillStyle = gradX;
             wc.fillRect(0, 0, cw, ch);
         }
@@ -9799,7 +9753,7 @@ function _compositeCardLayerCanvas(ctx, x, y, w, h, featherCfg, cacheKey, paintF
  */
 function _drawScrollBodyBlockBgOutsideClip(
     ctx, ov, lines, curX, bodyStartY, textW, lineHeight,
-    activeClipY, activeClipH, featherTopOff, featherBotOff, bgScrollOffsetY
+    activeClipY, activeClipH, featherTopOff, featherBotOff, bgScrollOffsetY, featherState = null
 ) {
     if (!ov.scroll_body_bg_enabled || !Array.isArray(lines) || lines.length === 0) return false;
     const bbgStyle = ov.scroll_body_bg_style || 'solid';
@@ -9820,13 +9774,15 @@ function _drawScrollBodyBlockBgOutsideClip(
     const bbgPadBot = parseFloat(ov.scroll_body_bg_pad_bottom ?? 10);
     const bbgRad = Math.max(0, parseFloat(ov.scroll_body_bg_radius ?? 12));
     const bodyBlockH = lines.length * lineHeight;
-    const rawBlockW = textW + bbgPadH * 2;
-    const rawBlockH = bodyBlockH + bbgPadTop + bbgPadBot;
+    const rawBlockW = Math.max(4, textW + bbgPadH * 2);
+    const rawBlockH = Math.max(4, bodyBlockH + bbgPadTop + bbgPadBot);
     const effBlockW = (isCardBoardStyle && Number(ov.bg_width) > 0) ? Math.max(60, Number(ov.bg_width)) : rawBlockW;
     const effBlockH = rawBlockH;
     const effBlockX = (curX - bbgPadH) + (rawBlockW - effBlockW) / 2;
     const effBlockY = bodyStartY - bbgPadTop;
 
+    const expTop = Math.max(0, -(Number(featherTopOff) || 0));
+    const expBot = Math.max(0, -(Number(featherBotOff) || 0));
     const axisY = _computeScrollFeatherAxis(
         activeClipH,
         featherTopOff,
@@ -9834,45 +9790,103 @@ function _drawScrollBodyBlockBgOutsideClip(
         ov.feather_bottom,
         featherBotOff
     );
-    const topZeroPx = axisY.sOff;
-    const botZeroPx = axisY.eOff;
-    const winTop = activeClipY + topZeroPx;
-    const winBot = activeClipY + activeClipH - botZeroPx;
+    const winTop = activeClipY + axisY.sOff - expTop;
+    const winBot = activeClipY + activeClipH - axisY.eOff + expBot;
     const minVisY = winTop - bbgPadTop;
     const maxVisBot = winBot + bbgPadBot;
     const visBlockY = Math.max(minVisY, effBlockY);
     const visBlockBot = Math.min(maxVisBot, effBlockY + effBlockH);
     const visBlockH = visBlockBot - visBlockY;
 
-    if (visBlockH <= 2 || effBlockW <= 2) return { drawn: true, clippedEmpty: true };
+    if (visBlockH <= 2 || effBlockW <= 2) return { drawn: true, clippedEmpty: true, padTop: bbgPadTop, padBot: bbgPadBot };
 
-    if (isCardBoardStyle) {
-        ReelsBrushEngine.drawThemedCardBackground(
-            ctx,
-            effBlockX,
-            visBlockY,
-            effBlockW,
-            visBlockH,
-            bbgRad,
-            {
-                style: bbgStyle,
-                color: ov.scroll_body_bg_color || '#F3EFE6',
-                opacity: bbgAlpha,
-                scrollOffsetY: bgScrollOffsetY || 0,
+    const paintBlock = (targetCtx, bx, by, bw, bh) => {
+        if (isCardBoardStyle) {
+            ReelsBrushEngine.drawThemedCardBackground(
+                targetCtx,
+                bx,
+                by,
+                bw,
+                bh,
+                bbgRad,
+                {
+                    style: bbgStyle,
+                    color: ov.scroll_body_bg_color || '#F3EFE6',
+                    opacity: bbgAlpha,
+                    scrollOffsetY: bgScrollOffsetY || 0,
+                }
+            );
+        } else {
+            targetCtx.save();
+            targetCtx.globalAlpha = bbgAlpha * targetCtx.globalAlpha;
+            const rawBgColor = ov.scroll_body_bg_color || '#000000';
+            targetCtx.fillStyle = (typeof _resolveOverlayTextFill === 'function')
+                ? _resolveOverlayTextFill(targetCtx, rawBgColor, bx, by, bh, bw, ov.scroll_body_bg_gradient_direction || 'horizontal')
+                : rawBgColor;
+            _roundRect(targetCtx, bx, by, bw, bh, bbgRad);
+            targetCtx.fill();
+            targetCtx.restore();
+        }
+    };
+
+    const fWin = featherState && featherState.fWin;
+    const hasFeather = Boolean(featherState && featherState.hasFeather && fWin && ov.scroll_body_bg_feather_sync !== false);
+    if (hasFeather) {
+        const fTop = Math.max(0, Number(featherState.featherTop) || 0);
+        const fBot = Math.max(0, Number(featherState.featherBottom) || 0);
+        const fLeft = Math.max(0, Number(featherState.featherLeft) || 0);
+        const fRight = Math.max(0, Number(featherState.featherRight) || 0);
+        const wGradY0 = fWin.drawY + fWin.gradY0;
+        const wGradY1 = fWin.drawY + fWin.gradY1;
+        const wGradX0 = fWin.drawX + fWin.gradX0;
+        const wGradX1 = fWin.drawX + fWin.gradX1;
+        // Extend/smooth fade anchor when block edges fall inside or slightly outside the feather ramp
+        // so entering/exiting edges never show a sharp step at partial alpha.
+        let topAnchor = wGradY0;
+        let effTopF = fTop;
+        if (fWin.inTOff === 0 && fTop > 0 && visBlockY < wGradY0 + fTop) {
+            topAnchor = visBlockY;
+            if (visBlockY < wGradY0) {
+                effTopF = fTop + (wGradY0 - visBlockY);
+            } else {
+                const softFloor = Math.min(fTop, Math.max(24, bbgPadTop > 0 ? bbgPadTop : fTop * 0.45));
+                effTopF = Math.max(softFloor, (wGradY0 + fTop) - visBlockY);
             }
-        );
+        }
+        let botAnchor = wGradY1;
+        let effBotF = fBot;
+        if (fWin.inBOff === 0 && fBot > 0 && visBlockBot > wGradY1 - fBot) {
+            botAnchor = visBlockBot;
+            if (visBlockBot > wGradY1) {
+                effBotF = fBot + (visBlockBot - wGradY1);
+            } else {
+                const softFloorB = Math.min(fBot, Math.max(24, bbgPadBot > 0 ? bbgPadBot : fBot * 0.45));
+                effBotF = Math.max(softFloorB, visBlockBot - (wGradY1 - fBot));
+            }
+        }
+        const leftAnchor = (fWin.inLOff === 0 && fLeft > 0 && effBlockX < wGradX0) ? effBlockX : wGradX0;
+        const rightAnchor = (fWin.inROff === 0 && fRight > 0 && (effBlockX + effBlockW) > wGradX1) ? (effBlockX + effBlockW) : wGradX1;
+        const blockFeatherCfg = {
+            top: effTopF,
+            bottom: effBotF,
+            left: fLeft + Math.max(0, wGradX0 - leftAnchor),
+            right: fRight + Math.max(0, rightAnchor - wGradX1),
+            inT: fWin.inTOff,
+            inB: fWin.inBOff,
+            inL: fWin.inLOff,
+            inR: fWin.inROff,
+            gradYOff: topAnchor - visBlockY,
+            gradSpanY: Math.max(1, botAnchor - topAnchor),
+            gradXOff: leftAnchor - effBlockX,
+            gradSpanX: Math.max(1, rightAnchor - leftAnchor),
+        };
+        _compositeCardLayerCanvas(ctx, effBlockX, visBlockY, effBlockW, visBlockH, blockFeatherCfg, null, (wc, lx, ly, lw, lh) => {
+            paintBlock(wc, lx, ly, lw, lh);
+        });
     } else {
-        ctx.save();
-        ctx.globalAlpha = bbgAlpha * ctx.globalAlpha;
-        const rawBgColor = ov.scroll_body_bg_color || '#000000';
-        ctx.fillStyle = (typeof _resolveOverlayTextFill === 'function')
-            ? _resolveOverlayTextFill(ctx, rawBgColor, effBlockX, visBlockY, visBlockH, effBlockW, ov.scroll_body_bg_gradient_direction || 'horizontal')
-            : rawBgColor;
-        _roundRect(ctx, effBlockX, visBlockY, effBlockW, visBlockH, bbgRad);
-        ctx.fill();
-        ctx.restore();
+        paintBlock(ctx, effBlockX, visBlockY, effBlockW, visBlockH);
     }
-    return { drawn: true, x: effBlockX, y: visBlockY, w: effBlockW, h: visBlockH, r: bbgRad };
+    return { drawn: true, x: effBlockX, y: visBlockY, w: effBlockW, h: visBlockH, r: bbgRad, padTop: bbgPadTop, padBot: bbgPadBot };
 }
 
 /**
@@ -10013,8 +10027,8 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
         const bbgPadBot = parseFloat(ov.scroll_body_bg_pad_bottom ?? (isBackingStyle ? 10 : 0));
         const bbgRad = parseFloat(ov.scroll_body_bg_radius ?? 12);
         const bodyBlockH = lines.length * lineHeight;
-        const rawBlockW = textW + bbgPadH * 2;
-        const rawBlockH = bodyBlockH + bbgPadTop + bbgPadBot;
+        const rawBlockW = Math.max(4, textW + bbgPadH * 2);
+        const rawBlockH = Math.max(4, bodyBlockH + bbgPadTop + bbgPadBot);
         const effBlockW = (Number(ov.bg_width) > 0) ? Math.max(60, Number(ov.bg_width)) : rawBlockW;
         const effBlockH = (Number(ov.bg_height) > 0) ? Math.max(60, Number(ov.bg_height)) : rawBlockH;
         const effBlockX = (textX - bbgPadH) + (rawBlockW - effBlockW) / 2 + (parseFloat(ov.bg_offset_x) || 0);

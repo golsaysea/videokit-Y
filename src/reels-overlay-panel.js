@@ -1149,10 +1149,10 @@ class ReelsOverlayPanel {
                                 </select>
                                 <label>背景颜色</label><input type="color" id="rop-scroll-title-bg-color" class="rop-color" value="#000000">
                                 <label>背景透明%</label><input type="number" id="rop-scroll-title-bg-opacity" class="rop-input" min="0" max="100" value="60">
-                                <label>背景圆角</label><input type="number" id="rop-scroll-title-bg-radius" class="rop-input" min="0" max="100" value="12">
-                                <label title="调节标题底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-title-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
-                                <label title="调节标题底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-title-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
-                                <label title="调节标题底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-title-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
+                                <label>背景圆角</label><input type="number" id="rop-scroll-title-bg-radius" class="rop-input" min="0" max="500" value="12">
+                                <label title="调节标题底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-title-bg-pad-h" class="rop-input" min="-300" max="1500" value="0">
+                                <label title="调节标题底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-title-bg-pad-top" class="rop-input" min="-300" max="1500" value="0">
+                                <label title="调节标题底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-title-bg-pad-bottom" class="rop-input" min="-300" max="1500" value="0">
                             </div>
 
                             <div style="font-size:11px; color:var(--accent); margin-top:8px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题装饰线</div>
@@ -1292,10 +1292,10 @@ class ReelsOverlayPanel {
                                 </select>
                                 <label>背景颜色</label><input type="color" id="rop-scroll-body-bg-color" class="rop-color" value="#000000">
                                 <label>背景透明%</label><input type="number" id="rop-scroll-body-bg-opacity" class="rop-input" min="0" max="100" value="60">
-                                <label>背景圆角</label><input type="number" id="rop-scroll-body-bg-radius" class="rop-input" min="0" max="100" value="12">
-                                <label title="调节正文底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-body-bg-pad-h" class="rop-input" min="-20" max="200" value="0">
-                                <label title="调节正文底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-body-bg-pad-top" class="rop-input" min="-20" max="200" value="0">
-                                <label title="调节正文底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-body-bg-pad-bottom" class="rop-input" min="-20" max="200" value="0">
+                                <label>背景圆角</label><input type="number" id="rop-scroll-body-bg-radius" class="rop-input" min="0" max="500" value="12">
+                                <label title="调节正文底衬左右两端的伸出长度（支持负数收窄）">左右长度(内距X)</label><input type="number" id="rop-scroll-body-bg-pad-h" class="rop-input" min="-300" max="1500" value="0">
+                                <label title="调节正文底衬上方的包裹宽度（支持负数变窄）">上侧宽度(内距上)</label><input type="number" id="rop-scroll-body-bg-pad-top" class="rop-input" min="-300" max="1500" value="0">
+                                <label title="调节正文底衬下方的包裹宽度（支持负数变窄）">下侧宽度(内距下)</label><input type="number" id="rop-scroll-body-bg-pad-bottom" class="rop-input" min="-300" max="1500" value="0">
                             </div>
                         </div>
                     </details>
@@ -1421,13 +1421,13 @@ class ReelsOverlayPanel {
                                     <div class="rop-quick-dim-box" style="margin-bottom:0;">
                                         <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带左右两端的伸出长度（支持负数收窄）">左右长度</span>
                                         <div style="display:flex;align-items:center;gap:3px;">
-                                            <input type="range" id="rop-scroll-body-bg-pad-h-quick" class="rop-range" min="-20" max="120" step="1" value="24" style="flex:1;min-width:45px;">
-                                            <input type="number" id="rop-scroll-body-bg-pad-h-quick-num" class="rop-input" min="-20" max="200" step="1" value="24" style="width:46px;padding:1px 3px;font-size:11px;">
+                                            <input type="range" id="rop-scroll-body-bg-pad-h-quick" class="rop-range" min="-100" max="600" step="1" value="24" style="flex:1;min-width:45px;">
+                                            <input type="number" id="rop-scroll-body-bg-pad-h-quick-num" class="rop-input" min="-300" max="1500" step="1" value="24" style="width:46px;padding:1px 3px;font-size:11px;">
                                         </div>
                                         <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带上下包裹的厚薄宽度（支持负数变窄）">上下宽度</span>
                                         <div style="display:flex;align-items:center;gap:3px;">
-                                            <input type="range" id="rop-scroll-body-bg-pad-v-quick" class="rop-range" min="-15" max="80" step="1" value="11" style="flex:1;min-width:45px;">
-                                            <input type="number" id="rop-scroll-body-bg-pad-v-quick-num" class="rop-input" min="-20" max="200" step="1" value="11" style="width:46px;padding:1px 3px;font-size:11px;">
+                                            <input type="range" id="rop-scroll-body-bg-pad-v-quick" class="rop-range" min="-100" max="600" step="1" value="11" style="flex:1;min-width:45px;">
+                                            <input type="number" id="rop-scroll-body-bg-pad-v-quick-num" class="rop-input" min="-300" max="1500" step="1" value="11" style="width:46px;padding:1px 3px;font-size:11px;">
                                         </div>
                                         <span style="color:#93c5fd;white-space:nowrap;" title="调节每行剪报条/圣诞带底衬的不透明度（0%=完全透明，100%=完全不透明）">底衬透明</span>
                                         <div style="grid-column:span 3;display:flex;align-items:center;gap:4px;">
@@ -1966,11 +1966,11 @@ class ReelsOverlayPanel {
                                 <div class="rop-slider-combo"><input type="range" id="rop-scroll-bg-height" class="rop-range" min="120" max="1920" step="10" value="500"><input type="number" class="rop-num-readout" data-link="rop-scroll-bg-height" min="0" max="1920" step="10" value="500"></div>
                                 <label title="微调背景画板与边框的左右位置">水平偏移X</label><input type="number" id="rop-scroll-bg-offset-x" class="rop-input" min="-1000" max="1000" step="5" value="0">
                                 <label title="微调背景画板与边框的上下位置">垂直偏移Y</label><input type="number" id="rop-scroll-bg-offset-y" class="rop-input" min="-1000" max="1000" step="5" value="0">
-                                <label>圆角</label><input type="number" id="rop-scroll-bg-radius" class="rop-input" min="0" max="200" value="12">
-                                <label title="支持正数外扩或负数内缩">上边距</label><input type="number" id="rop-scroll-bg-pad-top" class="rop-input" min="-400" max="500" value="55">
-                                <label title="支持正数外扩或负数内缩">下边距</label><input type="number" id="rop-scroll-bg-pad-bottom" class="rop-input" min="-400" max="500" value="55">
-                                <label title="支持正数外扩或负数内缩">左边距</label><input type="number" id="rop-scroll-bg-pad-left" class="rop-input" min="-400" max="500" value="16">
-                                <label title="支持正数外扩或负数内缩">右边距</label><input type="number" id="rop-scroll-bg-pad-right" class="rop-input" min="-400" max="500" value="16">
+                                <label>圆角</label><input type="number" id="rop-scroll-bg-radius" class="rop-input" min="0" max="500" value="12">
+                                <label title="支持正数外扩或负数内缩">上边距</label><input type="number" id="rop-scroll-bg-pad-top" class="rop-input" min="-600" max="1500" value="55">
+                                <label title="支持正数外扩或负数内缩">下边距</label><input type="number" id="rop-scroll-bg-pad-bottom" class="rop-input" min="-600" max="1500" value="55">
+                                <label title="支持正数外扩或负数内缩">左边距</label><input type="number" id="rop-scroll-bg-pad-left" class="rop-input" min="-600" max="1500" value="16">
+                                <label title="支持正数外扩或负数内缩">右边距</label><input type="number" id="rop-scroll-bg-pad-right" class="rop-input" min="-600" max="1500" value="16">
                                 <label>全屏蒙版</label>
                                 <div style="display:flex;align-items:center;gap:6px;">
                                     <input type="checkbox" id="rop-scroll-bg-fullscreen">
@@ -2198,11 +2198,11 @@ class ReelsOverlayPanel {
                         <label>背景圆角</label>
                         <div class="rop-slider-combo"><input type="range" id="rop-title-bg-radius" class="rop-range rop-defaultable" data-default="12" min="0" max="100" value="12"><input type="number" class="rop-num-readout" data-link="rop-title-bg-radius" min="0" max="100" value="12"><button class="rop-reset-btn" data-target="rop-title-bg-radius" title="恢复默认">↺</button></div>
                         <label>背景水平内边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-h" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-h" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-h" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-h" title="恢复默认(自动)">↺</button></div>
                         <label>背景上边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-top" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-top" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-top" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-top" title="恢复默认(自动)">↺</button></div>
                         <label>背景下边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-bottom" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-title-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-title-bg-pad-bottom" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-title-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
                     </div>
                     
                     <div style="font-size:11px; color:var(--accent); margin-top:8px; margin-bottom:2px; border-bottom: 1px solid var(--border-color); padding-bottom: 4px;">标题装饰线</div>
@@ -2353,11 +2353,11 @@ class ReelsOverlayPanel {
                         <label>背景圆角</label>
                         <div class="rop-slider-combo"><input type="range" id="rop-body-bg-radius" class="rop-range rop-defaultable" data-default="12" min="0" max="100" value="12"><input type="number" class="rop-num-readout" data-link="rop-body-bg-radius" min="0" max="100" value="12"><button class="rop-reset-btn" data-target="rop-body-bg-radius" title="恢复默认">↺</button></div>
                         <label>背景水平内边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-h" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-h" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-h" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-h" title="恢复默认(自动)">↺</button></div>
                         <label>背景上边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-top" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-top" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-top" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-top" title="恢复默认(自动)">↺</button></div>
                         <label>背景下边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-bottom" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-body-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-body-bg-pad-bottom" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-body-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
                     </div>
                     <div class="rop-group-title" style="margin-top:8px;">结尾</div>
                     <div style="display:flex;gap:6px;align-items:flex-start;">
@@ -2421,11 +2421,11 @@ class ReelsOverlayPanel {
                         <label>背景圆角</label>
                         <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-radius" class="rop-range rop-defaultable" data-default="12" min="0" max="100" value="12"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-radius" min="0" max="100" value="12"><button class="rop-reset-btn" data-target="rop-footer-bg-radius" title="恢复默认">↺</button></div>
                         <label>背景水平内边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-h" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-h" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-h" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-h" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-h" title="恢复默认(自动)">↺</button></div>
                         <label>背景上边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-top" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-top" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-top" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-top" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-top" title="恢复默认(自动)">↺</button></div>
                         <label>背景下边距</label>
-                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="0" max="100" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-bottom" min="0" max="200" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
+                        <div class="rop-slider-combo"><input type="range" id="rop-footer-bg-pad-bottom" class="rop-range rop-defaultable" data-default="0" min="-100" max="400" value="0"><input type="number" class="rop-num-readout" data-link="rop-footer-bg-pad-bottom" min="-200" max="1500" value="0"><button class="rop-reset-btn" data-target="rop-footer-bg-pad-bottom" title="恢复默认(自动)">↺</button></div>
                     </div>
                 </div>
 

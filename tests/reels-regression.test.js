@@ -12916,3 +12916,99 @@ test('Preview V2 and V1 implement post-intro voice sync fixes and Ctrl+F fullscr
     assert.ok(batchSrc.includes('reelsTogglePreviewFullscreen') && batchSrc.includes('_introMainTriggered'), 'V1 preview must implement fullscreen and atomic intro->main audio handoff');
 });
 
+test('Scroll body solid block background syncs 4-way feathering with text and expands padding limits cleanly', () => {
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    for (const id of [
+        'rop-scroll-body-bg-pad-h', 'rop-scroll-body-bg-pad-top', 'rop-scroll-body-bg-pad-bottom',
+        'rop-scroll-title-bg-pad-h', 'rop-scroll-title-bg-pad-top', 'rop-scroll-title-bg-pad-bottom',
+    ]) {
+        const match = panelSrc.match(new RegExp(`id="${id}"[^>]*min="(-?\\d+)"[^>]*max="(\\d+)"`));
+        assert.ok(match, `${id} must expose min/max attributes`);
+        assert.ok(Number(match[1]) <= -200, `${id} min should support <= -200 (got ${match[1]})`);
+        assert.ok(Number(match[2]) >= 1000, `${id} max should support >= 1000 (got ${match[2]})`);
+    }
+
+    const sandbox = loadBrowserScript('src/reels-anim-engine.js', { window: { addEventListener() {} } });
+    sandbox.ReelsAnimEngine = sandbox.window.ReelsAnimEngine;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    const ReelsOverlay = sandbox.window.ReelsOverlay;
+
+    const makeStatsCtx = (ops, grads) => ({
+        font: '',
+        globalAlpha: 1,
+        save() {}, restore() {}, beginPath() {}, closePath() {},
+        moveTo() {}, lineTo() {}, bezierCurveTo() {}, quadraticCurveTo() {}, arc() {}, arcTo() {}, ellipse() {},
+        translate() {}, scale() {}, rotate() {},
+        rect() {}, roundRect() {}, clip() {}, fill() {}, stroke() {}, setLineDash() {},
+        fillRect() {}, strokeRect() {}, clearRect() {}, setTransform() {},
+        drawImage() {},
+        measureText: (t) => ({ width: String(t || '').length * 16 }),
+        fillText() {}, strokeText() {},
+        createLinearGradient: (x0, y0, x1, y1) => {
+            const stops = [];
+            grads.push({ x0, y0, x1, y1, stops });
+            return { addColorStop(o, c) { stops.push([o, c]); } };
+        },
+        createRadialGradient: () => ({ addColorStop() {} }),
+        set globalCompositeOperation(v) { ops.push(v); this._gco = v; },
+        get globalCompositeOperation() { return this._gco || 'source-over'; },
+    });
+
+    const offscreenOps = [];
+    const offscreenGrads = [];
+    const mainOps = [];
+    const mainGrads = [];
+    sandbox.document.createElement = (tag) => {
+        if (String(tag).toLowerCase() === 'canvas') {
+            const c = makeStatsCtx(offscreenOps, offscreenGrads);
+            return { nodeName: 'CANVAS', tagName: 'CANVAS', width: 1080, height: 1920, getContext: () => c };
+        }
+        return {};
+    };
+
+    // With scroll_body_bg_enabled ('solid' + 'block') and top/bottom/left/right feathering,
+    // BOTH the offscreen body block background AND the text canvas must receive destination-in feather gradients.
+    const ov = ReelsOverlay.createScrollOverlay({
+        content: 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10',
+        x: 120, y: 400, w: 840, h: 420,
+        fontsize: 64, line_spacing: 12,
+        scroll_body_bg_enabled: true,
+        scroll_body_bg_style: 'solid',
+        scroll_body_bg_mode: 'block',
+        scroll_body_bg_color: '#000000',
+        scroll_body_bg_opacity: 60,
+        scroll_body_bg_pad_h: 280,
+        scroll_body_bg_pad_top: 320,
+        scroll_body_bg_pad_bottom: 320,
+        feather_mode: 'clip',
+        feather_top: 120,
+        feather_bottom: 120,
+        feather_left: 60,
+        feather_right: 60,
+        start: 0, end: 10,
+    });
+    const mainCtx = makeStatsCtx(mainOps, mainGrads);
+    ReelsOverlay.drawOverlay(mainCtx, ov, 2.0, 1080, 1920);
+
+    // Expect >=2 destination-in feather passes (one for solid block bg canvas, one for text canvas)
+    const destInCount = offscreenOps.filter(op => op === 'destination-in').length;
+    assert.ok(destInCount >= 2, `Expected both solid block bg and text to apply destination-in feather passes (got ${destInCount})`);
+    assert.ok(offscreenGrads.length >= 4, `Expected vertical & horizontal feather gradients for both layers (got ${offscreenGrads.length})`);
+
+    // Negative padding must not throw or clip negative dimensions
+    const negOv = ReelsOverlay.createScrollOverlay({
+        content: 'Line 1\nLine 2\nLine 3',
+        x: 120, y: 400, w: 840, h: 420,
+        scroll_body_bg_enabled: true,
+        scroll_body_bg_style: 'solid',
+        scroll_body_bg_mode: 'block',
+        scroll_body_bg_pad_h: -120,
+        scroll_body_bg_pad_top: -80,
+        scroll_body_bg_pad_bottom: -80,
+        feather_top: 80,
+        feather_bottom: 80,
+        start: 0, end: 10,
+    });
+    assert.doesNotThrow(() => ReelsOverlay.drawOverlay(mainCtx, negOv, 2.0, 1080, 1920));
+});
+

@@ -275,7 +275,7 @@ function buildCanvaPresetCatalog() {
         }));
 
     return {
-        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.15-beta',
+        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.16-beta',
         subtitles,
         scrolls,
         overlays,
