@@ -40,7 +40,7 @@ try {
 const ffmpegService = require('../electron/services/ffmpeg');
 const canvaBridge = require('../electron/services/canva-bridge');
 const { routeAPI, routeUpload } = require('../electron/apiRouter');
-const { renderReelsTask, getPackageVersion } = require('./videokit-cli.cjs');
+const { renderReelsTask, getPackageVersion, buildIntroPresetCatalog } = require('./videokit-cli.cjs');
 
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
@@ -698,6 +698,9 @@ async function handleWebBridgeRpc(method, params = {}) {
                 scroll_text: p.scroll_text !== undefined ? String(p.scroll_text) : undefined,
                 show_subtitle: p.showSubtitle !== undefined ? Boolean(p.showSubtitle) : undefined,
                 subtitle: p.style || {},
+                ...(p.intro !== undefined ? { intro: p.intro } : {}),
+                ...(p.intro_preset !== undefined ? { intro_preset: p.intro_preset } : {}),
+                ...(p.intro_style !== undefined ? { intro_style: p.intro_style } : {}),
                 overlays: Array.isArray(p.overlays) ? p.overlays : [],
                 output: outPath,
             };
@@ -898,6 +901,7 @@ function createWebServer(options = {}) {
                 subtitle_presets: presetsMod.REELS_PRESET_ID_MAP || {},
                 scroll_presets: Object.fromEntries(Object.entries(presetsMod.REELS_SCROLL_PRESET_ID_MAP || {}).filter(([k]) => k.startsWith('sc-'))),
                 overlay_presets: presetsMod.REELS_OVERLAY_PRESET_ID_MAP || {},
+                ...buildIntroPresetCatalog(),
             });
             return;
         }

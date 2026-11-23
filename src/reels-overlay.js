@@ -1835,6 +1835,231 @@ function applyIntroCountdownPreset(ov, presetId) {
     return ov;
 }
 
+function listIntroPresets(options = {}) {
+    const includeHidden = Boolean(options && options.includeHidden);
+    const items = [];
+    for (const [key, preset] of Object.entries(INTRO_COUNTDOWN_PRESETS)) {
+        if (!preset || typeof preset !== 'object') continue;
+        if (!includeHidden && preset.hiddenFromIntroPicker) continue;
+        const id = preset.id || key;
+        const layout = preset.intro_layout || 'ring';
+        const category = preset.intro_category || (layout === 'ring' ? 'ring' : 'curtain');
+        items.push({
+            id,
+            name: preset.name || id,
+            tag: preset.tag || '',
+            category,
+            layout,
+            curtain_theme: preset.intro_curtain_theme || '',
+            curtain_style: preset.intro_curtain_style || '',
+            ring_theme: preset.intro_ring_theme || '',
+            duration: Number(preset.duration) || 3.0,
+            delay_body: preset.intro_delay_body !== false,
+        });
+    }
+    return items;
+}
+
+function buildIntroPresetCatalog(options = {}) {
+    const list = listIntroPresets(options);
+    const introPresets = {};
+    for (const item of list) {
+        introPresets[item.id] = item;
+    }
+    return {
+        intro_presets: introPresets,
+        intro_themes: INTRO_CURTAIN_THEMES,
+        intro_ring_themes: INTRO_RING_THEMES,
+        intro_count: list.length,
+    };
+}
+
+function _findIntroPresetEntry(rawKey) {
+    const clean = String(rawKey || '').trim();
+    if (!clean) return null;
+    if (INTRO_COUNTDOWN_PRESETS[clean]) return INTRO_COUNTDOWN_PRESETS[clean];
+    const lower = clean.toLowerCase();
+    for (const [k, p] of Object.entries(INTRO_COUNTDOWN_PRESETS)) {
+        if (!p) continue;
+        if (k.toLowerCase() === lower || String(p.id || '').toLowerCase() === lower) {
+            return p;
+        }
+        if (p.name && String(p.name).trim() === clean) {
+            return p;
+        }
+    }
+    return null;
+}
+
+/**
+ * Resolve a declarative intro spec (string preset ID, options object, or partial overlay)
+ * into a complete normalized `intro_countdown` overlay.
+ * Returns `null` when explicitly disabled (`false`, `'none'`, `'off'`, `{ enabled: false }`).
+ * Throws an Error with `code = 'PRESET_NOT_FOUND'` if an unknown preset identifier is given.
+ */
+function resolveIntroOverlayConfig(spec, overrides = {}) {
+    if (spec === undefined || spec === null || spec === false) return null;
+    if (typeof spec === 'string') {
+        const trimmed = spec.trim();
+        if (!trimmed || ['none', 'off', 'false', 'null'].includes(trimmed.toLowerCase())) {
+            return null;
+        }
+        const matched = _findIntroPresetEntry(trimmed);
+        if (!matched) {
+            const err = new Error(`Builtin intro preset '${trimmed}' not found`);
+            err.code = 'PRESET_NOT_FOUND';
+            throw err;
+        }
+        return resolveIntroOverlayConfig({ preset: matched.id }, overrides);
+    }
+    if (typeof spec !== 'object') {
+        const err = new Error(`Invalid intro specification type: ${typeof spec}`);
+        err.code = 'INVALID_SCHEMA';
+        throw err;
+    }
+    if (spec.enabled === false) return null;
+
+    const mergedSpec = { ...spec, ...(overrides && typeof overrides === 'object' ? overrides : {}) };
+    if (mergedSpec.enabled === false) return null;
+
+    const explicitPresetKey = mergedSpec.preset
+        || mergedSpec.intro_preset
+        || mergedSpec.introPreset
+        || mergedSpec.intro_style
+        || mergedSpec.preset_id
+        || '';
+
+    let matchedPreset = null;
+    const styleAsPreset = (!explicitPresetKey && mergedSpec.style) ? _findIntroPresetEntry(mergedSpec.style) : null;
+    if (explicitPresetKey) {
+        if (['none', 'off', 'false', 'null'].includes(String(explicitPresetKey).trim().toLowerCase())) {
+            return null;
+        }
+        matchedPreset = _findIntroPresetEntry(explicitPresetKey);
+        if (!matchedPreset) {
+            const err = new Error(`Builtin intro preset '${explicitPresetKey}' not found`);
+            err.code = 'PRESET_NOT_FOUND';
+            throw err;
+        }
+    } else if (styleAsPreset) {
+        matchedPreset = styleAsPreset;
+    } else if (mergedSpec.id && !String(mergedSpec.id).startsWith('ov_') && _findIntroPresetEntry(mergedSpec.id)) {
+        matchedPreset = _findIntroPresetEntry(mergedSpec.id);
+    }
+
+    const baseOverlay = createIntroCountdownOverlay({
+        intro_style: matchedPreset ? matchedPreset.id : (mergedSpec.intro_style || 'xmas_cp01'),
+        ...(mergedSpec.id && String(mergedSpec.id).startsWith('ov_') ? { id: mergedSpec.id } : {}),
+    });
+
+    const assignIfDefined = (targetKey, ...candidateKeys) => {
+        for (const k of candidateKeys) {
+            if (mergedSpec[k] !== undefined && mergedSpec[k] !== null) {
+                baseOverlay[targetKey] = mergedSpec[k];
+                return true;
+            }
+        }
+        return false;
+    };
+
+    const assignBoolIfDefined = (targetKey, ...candidateKeys) => {
+        for (const k of candidateKeys) {
+            if (mergedSpec[k] !== undefined && mergedSpec[k] !== null) {
+                baseOverlay[targetKey] = Boolean(mergedSpec[k]);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    assignBoolIfDefined('disabled', 'disabled');
+    assignIfDefined('name', 'name');
+    assignIfDefined('intro_category', 'intro_category', 'category');
+    assignIfDefined('intro_layout', 'intro_layout', 'layout');
+    assignIfDefined('intro_curtain_theme', 'intro_curtain_theme', 'curtain_theme', 'theme', 'reveal_theme');
+    assignIfDefined('intro_curtain_style', 'intro_curtain_style', 'curtain_style', 'reveal_style', ...(styleAsPreset ? [] : ['style']));
+    assignBoolIfDefined('intro_curtain_valance', 'intro_curtain_valance', 'curtain_valance', 'valance');
+    assignBoolIfDefined('intro_delay_body', 'intro_delay_body', 'delay_body', 'delayBody');
+    assignIfDefined('intro_hook_source', 'intro_hook_source', 'hook_source');
+    assignIfDefined('intro_hook_text', 'intro_hook_text', 'hook_text');
+    assignIfDefined('intro_color1', 'intro_color1', 'color1');
+    assignIfDefined('intro_color2', 'intro_color2', 'color2');
+    assignIfDefined('intro_top_text', 'intro_top_text', 'top_text');
+    assignIfDefined('intro_top_font_family', 'intro_top_font_family', 'top_font_family');
+    assignIfDefined('intro_top_color', 'intro_top_color', 'top_color');
+    assignIfDefined('intro_center_mode', 'intro_center_mode', 'center_mode');
+    assignIfDefined('intro_center_text', 'intro_center_text', 'center_text');
+    assignIfDefined('intro_target_date', 'intro_target_date', 'target_date');
+    assignIfDefined('intro_center_font_family', 'intro_center_font_family', 'center_font_family');
+    assignIfDefined('intro_center_color', 'intro_center_color', 'center_color');
+    assignIfDefined('intro_center_stroke_color', 'intro_center_stroke_color', 'center_stroke_color');
+    assignIfDefined('intro_bottom_text', 'intro_bottom_text', 'bottom_text');
+    assignIfDefined('intro_bottom_font_family', 'intro_bottom_font_family', 'bottom_font_family');
+    assignIfDefined('intro_bottom_color', 'intro_bottom_color', 'bottom_color');
+    assignIfDefined('intro_bottom_underline_color', 'intro_bottom_underline_color', 'bottom_underline_color');
+    assignBoolIfDefined('intro_bottom_underline_enabled', 'intro_bottom_underline_enabled', 'bottom_underline_enabled');
+    assignIfDefined('intro_ring_theme', 'intro_ring_theme', 'ring_theme');
+    assignBoolIfDefined('intro_snow_enabled', 'intro_snow_enabled', 'snow_enabled', 'snow');
+    assignIfDefined('intro_ring_track_color', 'intro_ring_track_color', 'ring_track_color');
+    assignIfDefined('intro_ring_spark_color', 'intro_ring_spark_color', 'ring_spark_color');
+    assignBoolIfDefined('intro_ring_spark_enabled', 'intro_ring_spark_enabled', 'ring_spark_enabled');
+
+    const numMappings = [
+        ['start', ['start'], 0, null],
+        ['end', ['end', 'duration'], 0.4, null],
+        ['intro_slat_count', ['intro_slat_count', 'slat_count'], 2, 48],
+        ['intro_day_offset', ['intro_day_offset', 'day_offset'], null, null],
+        ['intro_top_fontsize', ['intro_top_fontsize', 'top_fontsize'], 12, 240],
+        ['intro_top_letter_spacing', ['intro_top_letter_spacing', 'top_letter_spacing'], 0, 80],
+        ['intro_center_fontsize', ['intro_center_fontsize', 'center_fontsize'], 20, 600],
+        ['intro_center_stroke_width', ['intro_center_stroke_width', 'center_stroke_width'], 0, 60],
+        ['intro_bottom_fontsize', ['intro_bottom_fontsize', 'bottom_fontsize'], 12, 320],
+        ['intro_ring_radius', ['intro_ring_radius', 'ring_radius'], 40, 600],
+        ['intro_ring_thickness', ['intro_ring_thickness', 'ring_thickness'], 2, 80],
+        ['intro_ring_track_opacity', ['intro_ring_track_opacity', 'ring_track_opacity'], 0, 100],
+        ['intro_snow_density', ['intro_snow_density', 'snow_density'], 0, 120],
+        ['intro_backdrop_scrim', ['intro_backdrop_scrim', 'backdrop_scrim', 'scrim'], 0, 100],
+        ['intro_scale', ['intro_scale', 'scale'], 10, 300],
+        ['intro_offset_x', ['intro_offset_x', 'offset_x'], -1080, 1080],
+        ['intro_offset_y', ['intro_offset_y', 'offset_y'], -1920, 1920],
+        ['intro_fade_in', ['intro_fade_in', 'fade_in'], 0, 5],
+        ['intro_fade_out', ['intro_fade_out', 'fade_out'], 0, 5],
+        ['opacity', ['opacity'], 0, 255],
+        ['rotation', ['rotation'], -360, 360],
+        ['z_index', ['z_index'], -999, 999],
+    ];
+    for (const [targetKey, cands, minV, maxV] of numMappings) {
+        for (const k of cands) {
+            if (mergedSpec[k] !== undefined && mergedSpec[k] !== null && mergedSpec[k] !== '') {
+                let v = Number(mergedSpec[k]);
+                if (Number.isFinite(v)) {
+                    if (minV !== null) v = Math.max(minV, v);
+                    if (maxV !== null) v = Math.min(maxV, v);
+                    baseOverlay[targetKey] = v;
+                }
+                break;
+            }
+        }
+    }
+
+    if (mergedSpec.intro_ring_theme || mergedSpec.ring_theme) {
+        const rt = INTRO_RING_THEMES[baseOverlay.intro_ring_theme];
+        if (rt && !Array.isArray(mergedSpec.intro_ring_colors)) {
+            baseOverlay.intro_ring_colors = [...rt.colors];
+        }
+    }
+    if (Array.isArray(mergedSpec.intro_ring_colors)) {
+        baseOverlay.intro_ring_colors = [...mergedSpec.intro_ring_colors];
+    }
+    if ((mergedSpec.intro_curtain_theme || mergedSpec.curtain_theme || mergedSpec.theme)
+        && !mergedSpec.intro_center_color && !mergedSpec.center_color) {
+        const ct = INTRO_CURTAIN_THEMES[baseOverlay.intro_curtain_theme];
+        if (ct && ct.trimColor) baseOverlay.intro_center_color = ct.trimColor;
+    }
+
+    return baseOverlay;
+}
+
 function getActiveIntroCountdownOverlay(overlays, options = {}) {
     if (!Array.isArray(overlays) || overlays.length === 0) return null;
     if (options.showIntro === false) return null;
@@ -18629,6 +18854,9 @@ const ReelsOverlay = {
     DECOR_OVERLAY_STYLES,
     createIntroCountdownOverlay,
     applyIntroCountdownPreset,
+    listIntroPresets,
+    buildIntroPresetCatalog,
+    resolveIntroOverlayConfig,
     createStickerOverlay,
     computeIntroDaysRemaining,
     getActiveIntroCountdownOverlay,

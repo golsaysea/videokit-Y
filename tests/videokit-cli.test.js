@@ -961,3 +961,213 @@ test('A25: Canva bridge SSRF protection, preset catalog, async job queue, tokeni
     assert.match(appTsx, /cardinal_feather/);
     assert.ok(fs.existsSync(path.join(repoRoot, 'docs', 'CANVA_APP_SETUP.md')));
 });
+
+test('A26: Cloud CLI & HTTP servers recognize all 88 openers, auto-route to wysiwyg, and validate shorthands', async () => {
+    const http = require('node:http');
+    const { buildCanvaPresetCatalog, CanvaJobManager } = require('../electron/services/canva-bridge');
+    const { createWebServer } = require('../bin/videokit-web-server.cjs');
+
+    // 1. videokit-cli presets exposes all 88 visible intro_presets & 25 intro_themes
+    const presetsRes = runCliProcess(['presets']);
+    assert.equal(presetsRes.status, 0, `presets failed: ${presetsRes.stderr}`);
+    const presetsJson = JSON.parse(presetsRes.stdout.trim());
+    assert.equal(presetsJson.intro_count, 88);
+    assert.equal(Object.keys(presetsJson.intro_presets).length, 88);
+    for (const id of [
+        'curtain_red_reveal', 'doors_rustic_barn_cedar', 'black_slit_fb',
+        'eagle_ink_slash', 'flag_usa_wave', 'cardinal_snow_pine',
+        'paper_parchment_turn', 'watercolor_morandi_sage',
+    ]) {
+        assert.ok(presetsJson.intro_presets[id], `intro_presets missing ${id}`);
+    }
+    assert.equal(presetsJson.intro_presets.fb_yellow_stack_hook, undefined, 'hidden intro must not be listed');
+    assert.ok(Object.keys(presetsJson.intro_themes).length >= 25);
+
+    // 2. Task shorthand resolution, engine routing, CLI --intro override & error handling
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-intro-cloud-'));
+    let webServer = null;
+    let mockMediaServer = null;
+    try {
+        const fallbackBg = path.join(demoDir, 'heaven-0001.png');
+        assert.ok(fs.existsSync(fallbackBg), 'demo heaven-0001.png must exist');
+
+        // String intro + plain subtitle forces wysiwyg and adds introDelaySec
+        const t1Path = path.join(tmpDir, 't-string-intro.json');
+        fs.writeFileSync(t1Path, JSON.stringify({
+            id: 'cloud-intro-1',
+            bgPath: fallbackBg,
+            segments: [{ start: 0, end: 2.0, text: 'Amen.' }],
+            intro: 'cardinal_snow_pine',
+            output: path.join(tmpDir, 'out1.mp4'),
+        }), 'utf-8');
+        const plan1 = validateTaskFile(t1Path);
+        assert.equal(plan1.engine, 'wysiwyg');
+        assert.match(plan1.engineReason, /overlay_type=intro_countdown/);
+        assert.equal(plan1.introPreset, 'cardinal_snow_pine');
+        assert.equal(plan1.introLayout, 'cardinal_reveal');
+        assert.equal(plan1.introDelaySec, 2.4);
+        assert.equal(plan1.targetDuration, 4.4);
+
+        // validate subcommand prints intro_preset & intro_layout
+        const valCli = runCliProcess(['validate', '--task', t1Path]);
+        assert.equal(valCli.status, 0, valCli.stderr);
+        const valJson = JSON.parse(valCli.stdout.trim());
+        assert.equal(valJson.engine, 'wysiwyg');
+        assert.equal(valJson.intro_preset, 'cardinal_snow_pine');
+        assert.equal(valJson.intro_layout, 'cardinal_reveal');
+        assert.equal(valJson.intro_delay_sec, 2.4);
+
+        // Object override + 0s zero delay
+        const t2Path = path.join(tmpDir, 't-obj-intro.json');
+        fs.writeFileSync(t2Path, JSON.stringify({
+            id: 'cloud-intro-2',
+            bgPath: fallbackBg,
+            segments: [{ start: 0, end: 2.0, text: 'Peace.' }],
+            intro: {
+                preset: 'flag_usa_wave',
+                duration: 2.8,
+                delay_body: false,
+                theme: 'morandi_sage',
+            },
+            output: path.join(tmpDir, 'out2.mp4'),
+        }), 'utf-8');
+        const plan2 = validateTaskFile(t2Path);
+        assert.equal(plan2.engine, 'wysiwyg');
+        assert.equal(plan2.introPreset, 'flag_usa_wave');
+        assert.equal(plan2.introLayout, 'flag_reveal');
+        assert.equal(plan2.introDelaySec, 0);
+        assert.equal(plan2.overlays[0].end, 2.8);
+        assert.equal(plan2.overlays[0].intro_curtain_theme, 'morandi_sage');
+
+        // Overlay shorthand [{ type: 'intro_countdown', preset: 'paper_parchment_turn' }]
+        const t3Path = path.join(tmpDir, 't-ov-shorthand.json');
+        fs.writeFileSync(t3Path, JSON.stringify({
+            id: 'cloud-intro-3',
+            bgPath: fallbackBg,
+            duration: 5.0,
+            overlays: [{ type: 'intro_countdown', preset: 'paper_parchment_turn', duration: 2.0 }],
+            output: path.join(tmpDir, 'out3.mp4'),
+        }), 'utf-8');
+        const plan3 = validateTaskFile(t3Path);
+        assert.equal(plan3.engine, 'wysiwyg');
+        assert.equal(plan3.introPreset, 'paper_parchment_turn');
+        assert.equal(plan3.introLayout, 'paper_reveal');
+        assert.equal(plan3.overlays[0].intro_curtain_style, 'parchment_page_turn');
+        assert.equal(plan3.introDelaySec, 2.0);
+
+        // CLI --intro override and --intro none strip
+        const planOverride = validateTaskFile(t1Path, { intro: 'watercolor_morandi_sage' });
+        assert.equal(planOverride.introPreset, 'watercolor_morandi_sage');
+        assert.equal(planOverride.introLayout, 'paper_reveal');
+        const planStripped = validateTaskFile(t1Path, { intro: 'none' });
+        assert.equal(planStripped.introPreset, null);
+        assert.equal(planStripped.overlays.length, 0);
+        assert.equal(planStripped.engine, 'ass');
+
+        // Reject --engine ass on intro task & unknown preset ID
+        assert.throws(() => validateTaskFile(t1Path, { engine: 'ass' }), /ENGINE_UNSUPPORTED|Canvas-exclusive/);
+        const badRes = runCliProcess(['validate', '--task', t1Path, '--intro', 'nonexistent_opener_xyz']);
+        assert.equal(badRes.status, 2);
+        const badErr = JSON.parse(badRes.stderr.trim().split(/\r?\n/).pop());
+        assert.equal(badErr.code, 'PRESET_NOT_FOUND');
+
+        // 3. HTTP /api/presets + /api/canva/presets + /api/canva/render intro forwarding
+        const canvaCatalog = buildCanvaPresetCatalog();
+        assert.equal(canvaCatalog.intros.length, 88);
+        assert.ok(Object.keys(canvaCatalog.introThemes).length >= 25);
+
+        const recorded = [];
+        mockMediaServer = http.createServer((_req, res) => {
+            res.writeHead(200, { 'Content-Type': 'video/mp4' });
+            res.end(Buffer.from('FAKE_CANVA_MP4_DATA'));
+        });
+        await new Promise(resolve => mockMediaServer.listen(0, '127.0.0.1', resolve));
+        const mediaPort = mockMediaServer.address().port;
+
+        const jobMgr = new CanvaJobManager({
+            workRoot: path.join(tmpDir, 'canva-jobs'),
+            allowInsecureTestHttp: true,
+            allowLocalhostMedia: true,
+            ffmpeg: {
+                getDuration: async () => 5.0,
+                runCommand: async (_cmd, args) => {
+                    fs.writeFileSync(args[args.length - 1], Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+                },
+            },
+            renderReelsTask: async (taskFile, cliArgs) => {
+                const taskJson = JSON.parse(fs.readFileSync(taskFile, 'utf-8'));
+                recorded.push(taskJson);
+                fs.writeFileSync(cliArgs.output, Buffer.from('MP4'));
+                return { output: cliArgs.output, engine: 'wysiwyg', duration: 7.4 };
+            },
+        });
+        webServer = createWebServer({ token: 'intro-test-tok', canvaJobManager: jobMgr });
+        await new Promise(resolve => webServer.listen(0, '127.0.0.1', resolve));
+        const base = `http://127.0.0.1:${webServer.address().port}`;
+
+        const webPresetsRes = await fetch(`${base}/api/presets`, {
+            headers: { Authorization: 'Bearer intro-test-tok' },
+        });
+        assert.equal(webPresetsRes.status, 200);
+        const webPresetsJson = await webPresetsRes.json();
+        assert.equal(webPresetsJson.intro_count, 88);
+        assert.ok(webPresetsJson.intro_presets.cardinal_snow_pine);
+
+        const canvaBadRes = await fetch(`${base}/api/canva/render`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer intro-test-tok', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mediaUrl: `http://127.0.0.1:${mediaPort}/bg.mp4`,
+                intro: 'missing_opener_id',
+            }),
+        });
+        assert.equal(canvaBadRes.status, 400);
+
+        const canvaOkRes = await fetch(`${base}/api/canva/render`, {
+            method: 'POST',
+            headers: { Authorization: 'Bearer intro-test-tok', 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mediaUrl: `http://127.0.0.1:${mediaPort}/bg.mp4`,
+                preset: 'sub-245',
+                intro: 'cardinal_snow_pine',
+                introDuration: 2.6,
+                text: 'Daily Grace',
+            }),
+        });
+        assert.equal(canvaOkRes.status, 202);
+        const canvaJob = await canvaOkRes.json();
+        await jobMgr.jobs.get(canvaJob.jobId)._promise;
+        assert.equal(recorded.length, 1);
+        assert.equal(recorded[0].engine, 'wysiwyg');
+        assert.equal(recorded[0].intro.intro_style, 'cardinal_snow_pine');
+        assert.equal(recorded[0].intro.end, 2.6);
+
+        // 4. Real Electron headless WYSIWYG render with cardinal opener sprite asset (no ass-fallback)
+        const realOut = path.join(tmpDir, 'real-intro-cardinal.mp4');
+        const realTaskPath = path.join(tmpDir, 'real-intro-task.json');
+        fs.writeFileSync(realTaskPath, JSON.stringify({
+            id: 'real-intro-01',
+            bgPath: fallbackBg,
+            segments: [{ start: 0, end: 1.2, text: 'God bless you!' }],
+            intro: { preset: 'cardinal_snow_pine', duration: 1.5, delay_body: true },
+            width: 720,
+            height: 1280,
+            fps: 24,
+            quality: 'low',
+            output: realOut,
+        }), 'utf-8');
+        const realRes = runCliProcess(['reels', '--task', realTaskPath, '--output', realOut]);
+        assert.equal(realRes.status, 0, `Real Electron intro render failed: ${realRes.stderr}`);
+        assert.ok(fs.existsSync(realOut) && fs.statSync(realOut).size > 2000, 'Rendered intro MP4 must exist and be non-empty');
+        const lastJson = JSON.parse(realRes.stdout.trim().split(/\r?\n/).pop());
+        assert.equal(lastJson.status, 'ok');
+        assert.equal(lastJson.engine, 'wysiwyg');
+        assert.equal(lastJson.intro_preset, 'cardinal_snow_pine');
+        assert.equal(lastJson.intro_layout, 'cardinal_reveal');
+        assert.ok(lastJson.duration >= 2.3 && lastJson.duration <= 3.1, `Expected ~2.7s duration, got ${lastJson.duration}`);
+    } finally {
+        if (webServer) await new Promise(r => webServer.close(r));
+        if (mockMediaServer) await new Promise(r => mockMediaServer.close(r));
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
+});

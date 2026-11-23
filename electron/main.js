@@ -23,6 +23,25 @@ const { assertTrustedRenderer, isTrustedRendererUrl } = require('./services/trus
 function handleTrusted(channel, listener) {
     return ipcMain.handle(channel, (event, ...args) => { assertTrustedRenderer(event); return listener(event, ...args); });
 }
+
+function getWysiwygWorkerScriptPaths() {
+    const scriptBase = app.isPackaged
+        ? path.join(__dirname, '..', 'dist')
+        : path.join(__dirname, '..', 'src');
+    return [
+        'reels-text-direction.js',
+        'reels-anim-engine.js',
+        'reels-rich-text.js',
+        'reels-scroll-timing.js',
+        'reels-intro-assets.js',
+        'reels-overlay.js',
+        'reels-canvas-renderer.js',
+        'fonts-metadata.js',
+        'reels-font-manager.js',
+        'reels-frame-pipeline.js',
+        'reels-wysiwyg-export.js',
+    ].map(name => path.join(scriptBase, name));
+}
 const DEV_SERVER_PORT = Number(process.env.VITE_PORT) || 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
@@ -695,21 +714,7 @@ if (process.argv.includes('--headless-wysiwyg-worker')) {
             });
 
             const htmlPath = path.join(__dirname, 'isolated-wysiwyg-renderer.html');
-            const scriptBase = app.isPackaged
-                ? path.join(__dirname, '..', 'dist')
-                : path.join(__dirname, '..', 'src');
-            const scriptPaths = [
-                'reels-text-direction.js',
-                'reels-anim-engine.js',
-                'reels-rich-text.js',
-                'reels-scroll-timing.js',
-                'reels-overlay.js',
-                'reels-canvas-renderer.js',
-                'fonts-metadata.js',
-                'reels-font-manager.js',
-                'reels-frame-pipeline.js',
-                'reels-wysiwyg-export.js',
-            ].map(name => path.join(scriptBase, name));
+            const scriptPaths = getWysiwygWorkerScriptPaths();
 
             await new Promise((resolve, reject) => {
                 const win = new BrowserWindow({
@@ -2344,6 +2349,7 @@ app.whenReady().then(async () => {
             });
             if (controller.signal.aborted) throw new Error('__CANCELLED__');
         const htmlPath = path.join(__dirname, 'isolated-wysiwyg-renderer.html');
+        // Keep scriptPaths inline here so export-startup-recovery.test.js can slice & vm-eval this handler standalone.
         const scriptBase = app.isPackaged
             ? path.join(__dirname, '..', 'dist')
             : path.join(__dirname, '..', 'src');
@@ -2352,6 +2358,7 @@ app.whenReady().then(async () => {
             'reels-anim-engine.js',
             'reels-rich-text.js',
             'reels-scroll-timing.js',
+            'reels-intro-assets.js',
             'reels-overlay.js',
             'reels-canvas-renderer.js',
             'fonts-metadata.js',

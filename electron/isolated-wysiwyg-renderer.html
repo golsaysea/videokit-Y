@@ -171,6 +171,9 @@ ipcRenderer.on('isolated-wysiwyg-run', async (_event, payload = {}) => {
             await fm.ensureFontsLoaded(fontsToLoad);
         }
 
+        if (window.ReelsOverlay && typeof window.ReelsOverlay.primeIntroAssets === 'function') {
+            await window.ReelsOverlay.primeIntroAssets();
+        }
         const result = await window.reelsWysiwygExport(params);
         cleanupIsolatedRuntime();
         ipcRenderer.send('isolated-wysiwyg-result', { requestId, success: true, result });

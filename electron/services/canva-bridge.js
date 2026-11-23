@@ -8,6 +8,7 @@ const { URL } = require('url');
 
 const presetsMod = require('../../src/reels-presets-init');
 const rendererMod = require('../../src/reels-canvas-renderer');
+const overlayMod = require('../../src/reels-overlay');
 const ffmpegService = require('./ffmpeg');
 const edgeTts = require('./edgeTts');
 const cliMod = require('../../bin/videokit-cli.cjs');
@@ -259,11 +260,27 @@ function buildCanvaPresetCatalog() {
         });
     }
 
+    const intros = (typeof overlayMod.listIntroPresets === 'function' ? overlayMod.listIntroPresets() : [])
+        .map((item) => ({
+            id: item.id,
+            name: item.name,
+            tag: item.tag,
+            category: item.category,
+            layout: item.layout,
+            curtainTheme: item.curtain_theme,
+            curtainStyle: item.curtain_style,
+            duration: item.duration,
+            delayBody: item.delay_body,
+            kind: 'intro',
+        }));
+
     return {
-        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.10-beta',
+        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.15-beta',
         subtitles,
         scrolls,
         overlays,
+        intros,
+        introThemes: overlayMod.INTRO_REVEAL_THEMES || {},
         cursorIcons,
         revealTypes: [
             { id: 'sentence', label: '按整句 (逐句)' },
@@ -318,6 +335,9 @@ class CanvaJobManager {
             });
         }
 
+        // Validate optional intro preset synchronously so invalid IDs fail fast with 400
+        const resolvedIntroOverlay = this._resolveIntroOverlay(payload);
+
         const jobId = 'cv_' + Date.now().toString(36) + '_' + crypto.randomBytes(4).toString('hex');
         const fileToken = crypto.randomBytes(24).toString('hex');
         const jobDir = path.join(this.workRoot, jobId);
@@ -335,6 +355,7 @@ class CanvaJobManager {
             outputPath: path.join(jobDir, 'render.mp4'),
             thumbPath: path.join(jobDir, 'thumb.jpg'),
             publicBaseUrl: String(publicBaseUrl || '').replace(/\/+$/, ''),
+            _resolvedIntro: resolvedIntroOverlay,
             outputUrl: '',
             thumbnailUrl: '',
             engine: '',
@@ -350,6 +371,28 @@ class CanvaJobManager {
         });
 
         return this.serializeJob(job);
+    }
+
+    _resolveIntroOverlay(payload = {}) {
+        const introInput = payload.intro !== undefined
+            ? payload.intro
+            : (payload.introPreset ?? payload.intro_preset ?? payload.introStyle ?? payload.intro_style);
+        if (introInput === undefined || introInput === null || introInput === false || introInput === '') {
+            return null;
+        }
+        if (typeof overlayMod.resolveIntroOverlayConfig !== 'function') return null;
+        const introOverrides = {
+            ...(payload.introDuration !== undefined ? { duration: payload.introDuration } : {}),
+            ...(payload.introDelayBody !== undefined ? { delay_body: payload.introDelayBody } : {}),
+            ...(payload.introTheme !== undefined ? { theme: payload.introTheme } : {}),
+            ...(payload.introCurtainStyle !== undefined ? { curtain_style: payload.introCurtainStyle } : {}),
+            ...(payload.introColor1 !== undefined ? { color1: payload.introColor1 } : {}),
+            ...(payload.introColor2 !== undefined ? { color2: payload.introColor2 } : {}),
+            ...(payload.introTopText !== undefined ? { top_text: payload.introTopText } : {}),
+            ...(payload.introBottomText !== undefined ? { bottom_text: payload.introBottomText } : {}),
+            ...(payload.introHookText !== undefined ? { hook_text: payload.introHookText } : {}),
+        };
+        return overlayMod.resolveIntroOverlayConfig(introInput, introOverrides);
     }
 
     serializeJob(job) {
@@ -504,6 +547,11 @@ class CanvaJobManager {
             throw new Error(`未找到预设编号或名称: ${presetCode}`);
         }
 
+        const resolvedIntroOverlay = job._resolvedIntro !== undefined
+            ? job._resolvedIntro
+            : this._resolveIntroOverlay(payload);
+
+        const hasExplicitDuration = Number.isFinite(explicitDuration) && explicitDuration > 0;
         const width = Number(payload.width) === 1080 ? 1080 : 720;
         const height = width === 1080 ? 1920 : 1280;
         const fps = [24, 25, 30].includes(Number(payload.fps)) ? Number(payload.fps) : 30;
@@ -513,13 +561,14 @@ class CanvaJobManager {
 
         const taskObj = {
             id: job.id,
-            engine: String(payload.engine || 'auto'),
+            engine: resolvedIntroOverlay ? 'wysiwyg' : String(payload.engine || 'auto'),
             width,
             height,
             fps,
             quality,
-            duration: effectiveDuration,
+            ...((hasExplicitDuration || !audioPath) ? { duration: effectiveDuration } : {}),
             bgPath: bgMedia.path,
+            ...(resolvedIntroOverlay ? { intro: { ...resolvedIntroOverlay, preset: resolvedIntroOverlay.intro_style } } : {}),
             ...(audioPath ? { audioPath } : {}),
             ...(payload.voiceVolume !== undefined ? { voiceVolume: Number(payload.voiceVolume) } : {}),
             bgVolume: payload.bgVolume !== undefined

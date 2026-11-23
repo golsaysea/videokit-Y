@@ -4701,6 +4701,32 @@ def _ensure_render_workers_started():
         _render_workers_started = True
 
 
+@app.route('/api/presets', methods=['GET'])
+@app.route('/api/reels/presets', methods=['GET'])
+def get_remote_reels_presets():
+    """Return full VideoKit Reels preset catalog (subtitle, scroll, overlay, and opener presets)."""
+    cli_script = os.path.join(PROJECT_ROOT, 'bin', 'videokit-cli.cjs')
+    try:
+        proc = subprocess.run(
+            ['node', cli_script, 'presets'],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=15,
+        )
+        if proc.returncode != 0 or not proc.stdout.strip():
+            return jsonify({
+                "status": "error",
+                "code": "PRESETS_LOAD_FAILED",
+                "error": (proc.stderr or f"CLI exited with code {proc.returncode}").strip(),
+            }), 500
+        return jsonify(json.loads(proc.stdout)), 200
+    except Exception as e:
+        return jsonify({"status": "error", "code": "PRESETS_LOAD_FAILED", "error": str(e)}), 500
+
+
 @app.route('/api/reels/render', methods=['POST'])
 def submit_remote_reels_render():
     """Submit a remote Reels render task (JSON or multipart/form-data). Returns 202 Accepted."""

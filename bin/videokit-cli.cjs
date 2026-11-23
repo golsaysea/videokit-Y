@@ -24,6 +24,14 @@ const {
     REELS_SCROLL_PRESET_ID_MAP,
     resolveBuiltinPreset,
 } = require('../src/reels-presets-init.js');
+const {
+    INTRO_COUNTDOWN_PRESETS,
+    INTRO_REVEAL_THEMES,
+    INTRO_RING_THEMES,
+    buildIntroPresetCatalog,
+    resolveIntroOverlayConfig,
+    getActiveIntroCountdownOverlay,
+} = require('../src/reels-overlay.js');
 
 const CANVAS_EXCLUSIVE_ANIMATIONS = new Set([
     'metronome',
@@ -130,6 +138,8 @@ Options:
   --output-dir <dir>         Output directory for tasks (default: ./out)
   --config <file>            Config JSON path (default: ~/.config/videokit/config.json)
   --quality <high|medium|low> Render quality preset (default: medium)
+  --engine <auto|ass|wysiwyg> Rendering engine (default: auto)
+  --intro <presetId>         Opener preset ID (e.g. cardinal_snow_pine, flag_usa_wave) or 'none'
   --dry-run                  Validate task and print ffmpeg command without rendering
   --overwrite                Overwrite existing output file
   --skip-existing            Skip tasks whose output file already exists
@@ -168,6 +178,7 @@ function parseArgs(argv) {
         config: null,
         quality: null,
         engine: null,
+        intro: null,
         width: null,
         height: null,
         fps: null,
@@ -278,6 +289,10 @@ function parseArgs(argv) {
             args.engine = readValue('--engine');
         } else if (token.startsWith('--engine=')) {
             args.engine = token.slice('--engine='.length);
+        } else if (token === '--intro') {
+            args.intro = readValue('--intro');
+        } else if (token.startsWith('--intro=')) {
+            args.intro = token.slice('--intro='.length);
         } else if (token === '--width') {
             args.width = Number(readValue('--width'));
         } else if (token.startsWith('--width=')) {
@@ -849,6 +864,10 @@ function resolveTaskEngine(task, subConfig = {}, overlays = [], cliArgs = {}, ta
                 wysiwygReasons.push(`overlay_type=${ovType}`);
                 break;
             }
+            if (!ov.disabled && (ovType === 'intro_countdown' || ov.is_intro_countdown === true)) {
+                wysiwygReasons.push('overlay_type=intro_countdown');
+                break;
+            }
         }
     }
 
@@ -1176,6 +1195,10 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         return mergedOv;
     });
 
+    const introResolution = resolveTaskIntroOverlays(task, overlays, cliArgs, taskId);
+    overlays = introResolution.overlays;
+    const activeIntroOverlay = introResolution.activeIntro;
+
     // Resolve rendering engine ('ass' | 'wysiwyg') per §3.1
     const { engine, engineReason } = resolveTaskEngine(task, subConfig, overlays, cliArgs, taskId);
 
@@ -1284,11 +1307,69 @@ function validateTaskFile(taskFilePath, cliArgs = {}) {
         introDelaySec,
         bodyDuration,
         targetDuration,
+        hasExplicitDuration,
+        hasActiveIntroOverlay,
+        introPreset: activeIntroOverlay ? (activeIntroOverlay.intro_style || null) : null,
+        introLayout: activeIntroOverlay ? (activeIntroOverlay.intro_layout || null) : null,
+        introCategory: activeIntroOverlay ? (activeIntroOverlay.intro_category || null) : null,
+        introDelayBody: activeIntroOverlay ? (activeIntroOverlay.intro_delay_body !== false) : null,
         voiceVolume,
         bgVolume,
         bgmVolume,
         outputPath,
     };
+}
+
+/**
+ * Normalize intro_countdown overlays and resolve declarative `task.intro` / `task.intro_preset` / `--intro`
+ * options into normalized Canvas intro overlays.
+ */
+function resolveTaskIntroOverlays(task = {}, overlays = [], cliArgs = {}, taskId = null) {
+    const isIntroOverlay = (ov) => Boolean(
+        ov && typeof ov === 'object' && (String(ov.type || '').toLowerCase() === 'intro_countdown' || ov.is_intro_countdown === true)
+    );
+
+    const resolveSafe = (spec) => {
+        try {
+            return resolveIntroOverlayConfig(spec);
+        } catch (err) {
+            if (err && err.code === 'PRESET_NOT_FOUND') {
+                throw new CLIError('PRESET_NOT_FOUND', err.message, EXIT_CODES.VALIDATION_ERROR, taskId);
+            }
+            throw new CLIError('INVALID_SCHEMA', err ? err.message : 'Invalid intro specification', EXIT_CODES.VALIDATION_ERROR, taskId);
+        }
+    };
+
+    let nextOverlays = Array.isArray(overlays)
+        ? overlays.map((ov) => (isIntroOverlay(ov) ? (resolveSafe(ov) || null) : ov)).filter(Boolean)
+        : [];
+
+    const hasCliIntro = cliArgs && cliArgs.intro !== undefined && cliArgs.intro !== null && String(cliArgs.intro).trim() !== '';
+    const taskIntroSpec = task.intro !== undefined
+        ? task.intro
+        : (task.intro_preset !== undefined
+            ? task.intro_preset
+            : (task.introPreset !== undefined ? task.introPreset : task.intro_style));
+
+    if (hasCliIntro) {
+        const resolved = resolveSafe(String(cliArgs.intro).trim());
+        nextOverlays = nextOverlays.filter((ov) => !isIntroOverlay(ov));
+        if (resolved) nextOverlays.unshift(resolved);
+    } else if (taskIntroSpec !== undefined) {
+        if (taskIntroSpec === false || taskIntroSpec === null) {
+            nextOverlays = nextOverlays.filter((ov) => !isIntroOverlay(ov));
+        } else {
+            const resolved = resolveSafe(taskIntroSpec);
+            nextOverlays = nextOverlays.filter((ov) => !isIntroOverlay(ov));
+            if (resolved) nextOverlays.unshift(resolved);
+        }
+    }
+
+    const activeIntro = typeof getActiveIntroCountdownOverlay === 'function'
+        ? getActiveIntroCountdownOverlay(nextOverlays)
+        : (nextOverlays.find((ov) => isIntroOverlay(ov) && !ov.disabled) || null);
+
+    return { overlays: nextOverlays, activeIntro };
 }
 
 /**
@@ -1611,7 +1692,11 @@ function runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir) {
             targetWidth: plan.width,
             targetHeight: plan.height,
             fps: plan.fps,
-            customDuration: plan.bodyDuration !== undefined ? plan.bodyDuration : plan.targetDuration,
+            customDuration: plan.bodyDuration > 0
+                ? plan.bodyDuration
+                : ((plan.hasActiveIntroOverlay && !plan.audioPath && !plan.contentVideoPath && plan.targetDuration > 0)
+                    ? Math.max(0.01, plan.targetDuration - (plan.introDelaySec || 0))
+                    : plan.targetDuration),
             crf: qualityCrfMap[plan.quality] || 18,
             qualityPreset: qualityPresetMap[plan.quality] || 'medium',
         },
@@ -1770,6 +1855,10 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
             task: taskId,
             engine,
             engine_reason: engineReason,
+            preset: plan.preset || null,
+            intro_preset: plan.introPreset || null,
+            intro_layout: plan.introLayout || null,
+            intro_delay_sec: plan.introDelaySec || 0,
             output: outputPath,
             duration: targetDuration,
             width,
@@ -1811,6 +1900,10 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
                 status: 'ok',
                 engine,
                 engine_reason: engineReason,
+                preset: plan.preset || null,
+                intro_preset: plan.introPreset || null,
+                intro_layout: plan.introLayout || null,
+                intro_delay_sec: plan.introDelaySec || 0,
                 output: outputPath,
                 duration: Math.round(actualDuration * 100) / 100,
                 width,
@@ -1960,6 +2053,10 @@ async function renderReelsTask(taskFilePath, cliArgs = {}, isBatch = false) {
                 status: 'ok',
                 engine,
                 engine_reason: engineReason,
+                preset: plan.preset || null,
+                intro_preset: plan.introPreset || null,
+                intro_layout: plan.introLayout || null,
+                intro_delay_sec: plan.introDelaySec || 0,
                 output: outputPath,
                 duration: Math.round(actualDuration * 100) / 100,
                 width,
@@ -2576,6 +2673,7 @@ async function runCli(argv = process.argv.slice(2)) {
                 subtitle_presets: REELS_PRESET_ID_MAP,
                 scroll_presets: Object.fromEntries(Object.entries(REELS_SCROLL_PRESET_ID_MAP).filter(([k]) => k.startsWith('sc-'))),
                 overlay_presets: REELS_OVERLAY_PRESET_ID_MAP,
+                ...buildIntroPresetCatalog(),
             });
             return EXIT_CODES.OK;
         }
@@ -2592,6 +2690,8 @@ async function runCli(argv = process.argv.slice(2)) {
                 engine: plan.engine,
                 engine_reason: plan.engineReason,
                 preset: plan.preset || null,
+                intro_preset: plan.introPreset || null,
+                intro_layout: plan.introLayout || null,
                 intro_delay_sec: plan.introDelaySec || 0,
                 duration: plan.targetDuration,
                 width: plan.width,
@@ -2651,6 +2751,8 @@ module.exports = {
     ASS_SUPPORTED_ANIMATIONS,
     getPackageVersion,
     getIntroDelaySecForOverlays,
+    resolveTaskIntroOverlays,
+    buildIntroPresetCatalog,
     parseSemverTag,
     compareSemverStrings,
     parseSRTContent,
