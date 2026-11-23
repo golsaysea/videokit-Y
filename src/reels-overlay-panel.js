@@ -258,9 +258,7 @@ class ReelsOverlayPanel {
                         <button class="btn btn-secondary rop-btn" id="rop-add-image" title="添加图片/视频/动图覆层">+ 媒体</button>
                         <button class="btn btn-secondary rop-btn" id="rop-media-library" title="打开固定覆层素材库" style="padding:2px 6px;">📂 素材</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-scroll" title="添加滚动字幕" style="background:#FF6B35;color:#fff;">+ 滚动字幕</button>
-                        <button class="btn btn-secondary rop-btn" id="rop-add-intro" title="在原视频开头叠加光环倒计时开场动画（可调秒数并自动延后朗读与字幕）" style="background:linear-gradient(135deg,#b45309,#d97706);color:#fff;font-weight:700;border:1px solid #fde68a;">+ 🎬 开场</button>
                         <button class="btn btn-secondary rop-btn" id="rop-add-decor" title="添加边缘点缀 / 圣诞装饰 / 发光星星 / 复古画框图层" style="background:linear-gradient(135deg,#dc2626,#d97706);color:#fff;font-weight:700;border:1px solid #fde68a;">+ ✨ 点缀图层</button>
-                        <button class="btn btn-secondary rop-btn" id="rop-add-sticker" title="添加可自由拖拽、缩放与摇摆动效的 32 款圣诞小图标贴纸（双金铃铛/圣诞树/雪人/水晶球等）" style="background:linear-gradient(135deg,#15803d,#dc2626);color:#fff;font-weight:700;border:1px solid #fde68a;">+ 🎄 圣诞小图标</button>
                     </div>
                 </div>
                 <label style="display:flex;align-items:center;gap:6px;margin:6px 0;font-size:11px;cursor:pointer;color:var(--text-secondary);flex-wrap:wrap;" title="关闭后，动态字幕会显示在所有覆层上方">
@@ -5089,9 +5087,15 @@ class ReelsOverlayPanel {
             h: options.h || 260,
         });
         if (this.videoCanvas) this.videoCanvas.addOverlay(ov);
+        if (typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
         this._refreshList();
-        this.selectOverlay(ov);
-        this._syncStickerStackToScopeTasks({ source: options.scopeSource || 'overlay', structuralChange: true, immediate: true });
+        const stickerPanel = typeof window !== 'undefined' ? window._reelsState?.stickerPanel : null;
+        if (stickerPanel && typeof stickerPanel.selectSticker === 'function') {
+            stickerPanel.selectSticker(ov);
+        }
+        this._syncStickerStackToScopeTasks({ source: options.scopeSource || 'sticker', structuralChange: true, immediate: true });
         if (typeof this.videoCanvas?.onOverlayChange === 'function') this.videoCanvas.onOverlayChange(ov);
         if (typeof this.videoCanvas?.render === 'function') this.videoCanvas.render();
         return ov;
@@ -5304,14 +5308,16 @@ class ReelsOverlayPanel {
     }
 
     _addIntroCountdownOverlay(presetId = 'xmas_cp01') {
+        const hasIntroTab = typeof document !== 'undefined' && Boolean(document.querySelector('.inspector-tab[data-tab="intro"]'));
+        const targetTab = hasIntroTab ? 'intro' : 'decor';
         if (typeof window.reelsInspectorSwitch === 'function') {
-            window.reelsInspectorSwitch('decor', document.querySelector('.inspector-tab[data-tab="decor"]'));
+            window.reelsInspectorSwitch(targetTab, document.querySelector(`.inspector-tab[data-tab="${targetTab}"]`));
         } else if (typeof window.switchReelsInspectorTab === 'function') {
-            window.switchReelsInspectorTab('decor');
+            window.switchReelsInspectorTab(targetTab);
         }
-        const dp = window._reelsState?.decorPanel;
-        if (dp && typeof dp.enableIntroCountdown === 'function') {
-            dp.enableIntroCountdown(presetId);
+        const targetPanel = window._reelsState?.introPanel || window._reelsState?.decorPanel;
+        if (targetPanel && typeof targetPanel.enableIntroCountdown === 'function') {
+            targetPanel.enableIntroCountdown(presetId);
             return;
         }
         const ReelsOverlay = window.ReelsOverlay;
@@ -6112,9 +6118,9 @@ class ReelsOverlayPanel {
 
         // 面板显示顺序必须与时间线/预览/导出使用的合成栈一致。
         // getOrderedOverlays 会返回底到顶的普通覆层；列表反转后仍保持“顶层在最上”。
-        // 点缀与颗粒层(decor)、节日开场倒计时(is_intro_countdown)和邀约电话(is_phone_cta)已在顶部独立【✨ 点缀与颗粒】标签页中单独管理，此处不再混入覆层列表。
+        // 点缀(decor)、画面小图标(sticker)、开场效果(intro_countdown)与邀约电话(is_phone_cta)已在顶部各自独立标签页管理，不混入覆层列表。
         const rawOverlays = this.videoCanvas.getOrderedOverlays?.() || this.videoCanvas.overlayMgr.overlays || [];
-        const overlays = rawOverlays.filter(ov => ov && ov.type !== 'decor' && !ov.is_phone_cta && !ov.is_intro_countdown && ov.type !== 'intro_countdown');
+        const overlays = rawOverlays.filter(ov => ov && ov.type !== 'decor' && ov.type !== 'sticker' && !ov.is_phone_cta && !ov.is_intro_countdown && ov.type !== 'intro_countdown');
         if (overlays.length === 0) {
             list.innerHTML = '<div class="rop-empty">暂无覆层，点击上方按钮添加</div>';
             return;
@@ -6312,6 +6318,27 @@ class ReelsOverlayPanel {
 
     selectOverlay(ov) {
         this._flushPendingScopeSync();
+        if (!ov || typeof ov !== 'object') {
+            this.deselectOverlay();
+            return;
+        }
+        // 小图标、开场效果、点缀图层、邀约电话已从「🖼️ 覆层」独立出去；画布点选时只通知各自专属面板，不在覆层里弹出属性。
+        if (ov.type === 'sticker' || ov.type === 'decor' || ov.is_phone_cta || ov.is_intro_countdown || ov.type === 'intro_countdown') {
+            this.deselectOverlay({ keepCanvasSelection: true });
+            if (typeof window !== 'undefined' && window._reelsState) {
+                window._reelsState.overlaySelectedId = ov.id;
+                if (ov.type === 'sticker') {
+                    window._reelsState.stickerPanel?.selectSticker?.(ov);
+                    window.reelsSyncChristmasIconAdjustUI?.(ov);
+                } else if (ov.is_phone_cta) {
+                    window._reelsState.decorPanel?._syncPhoneCtaUI?.(ov);
+                } else if (ov.is_intro_countdown || ov.type === 'intro_countdown') {
+                    window._reelsState.introPanel?.refresh?.();
+                }
+            }
+            ov._selected = true;
+            return;
+        }
         // 清除之前选中的标记
         if (this._selectedOv) {
             this._selectedOv._selected = false;
@@ -6429,11 +6456,15 @@ class ReelsOverlayPanel {
         }
     }
 
-    deselectOverlay() {
+    deselectOverlay(options = {}) {
         this._flushPendingScopeSync();
         if (this._selectedOv) this._selectedOv._selected = false;
         this._selectedOv = null;
-        this.container.querySelector('#rop-props').style.display = 'none';
+        if (!options?.keepCanvasSelection && typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = null;
+        }
+        const propsEl = this.container?.querySelector('#rop-props');
+        if (propsEl) propsEl.style.display = 'none';
         this._refreshList();
     }
 
@@ -8518,121 +8549,31 @@ class ReelsOverlayPanel {
 
     _syncStickerStackToScopeTasks(options = {}) {
         if (this._isSyncingStickerStack || this.videoCanvas?.scopedTask) return;
-        const state = typeof window !== 'undefined' ? window._reelsState : null;
-        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || null;
-        const structuralChange = options?.structuralChange !== false;
         let scope = options?.scopeOverride || null;
         if (!scope) {
-            if (options?.source === 'subtitle') {
+            if (options?.source === 'sticker') {
+                const sp = typeof window !== 'undefined' ? window._reelsState?.stickerPanel : null;
+                scope = sp?._getEffectiveStickerScope?.() || document.getElementById('rsp-style-scope')?.value || 'folder';
+            } else if (options?.source === 'subtitle') {
                 const subScopeEl = typeof document !== 'undefined' ? document.getElementById('reels-style-scope') : null;
                 scope = subScopeEl ? (subScopeEl.value || 'folder') : 'folder';
             } else {
                 scope = this._getOverlayStyleScope();
             }
         }
+        const scopedTasks = (scope === 'task')
+            ? []
+            : this._getStyleApplyScopeTasks(scope, { includeHiddenBatchTasks: true });
 
         this._isSyncingStickerStack = true;
         try {
-            if (structuralChange && typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
-                try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
-            } else if (selectedTask && this.videoCanvas?.overlayMgr) {
-                if (state?._coverEditMode && selectedTask.cover) {
-                    selectedTask.cover.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
-                } else {
-                    selectedTask.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
-                }
-            }
-
-            if (scope === 'task') {
-                if (typeof _syncTasksToActiveTab === 'function') {
-                    try { _syncTasksToActiveTab(); } catch (_) {}
-                }
-                if (typeof _batchAutoSave === 'function') {
-                    try { _batchAutoSave({ skipSync: true }); } catch (_) {}
-                }
-                return;
-            }
-
-            const scopedTasks = this._getStyleApplyScopeTasks(scope, { includeHiddenBatchTasks: true });
-            const liveOverlays = this.videoCanvas?.overlayMgr?.overlays
-                || (state?._coverEditMode ? selectedTask?.cover?.overlays : selectedTask?.overlays)
-                || [];
-            const sourceStickers = liveOverlays
-                .filter(o => o && o.type === 'sticker')
-                .map(s => {
-                    const copy = JSON.parse(JSON.stringify(s, (key, val) => key === '_allOverlays' ? undefined : val));
-                    delete copy._img;
-                    delete copy._imgLoaded;
-                    delete copy._selected;
-                    delete copy._ctaAnimPreviewStart;
-                    delete copy._loopPreviewImmediate;
-                    delete copy._previewPlaying;
-                    delete copy._exporting;
-                    delete copy._staticPreview;
-                    return copy;
-                });
-
-            const applyStickersToTask = (task) => {
-                if (!task || task === selectedTask) return;
-                const existing = Array.isArray(task.overlays) ? task.overlays : [];
-                const existingStickers = existing.filter(o => o && o.type === 'sticker');
-                const otherOverlays = existing.filter(o => o && o.type !== 'sticker');
-                const nextStickers = sourceStickers.map((srcOv, idx) => {
-                    const clone = JSON.parse(JSON.stringify(srcOv));
-                    const prevId = existingStickers[idx]?.id;
-                    clone.id = (prevId && prevId !== srcOv.id)
-                        ? prevId
-                        : ('ov_stk_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
-                    return clone;
-                });
-                task.overlays = [...otherOverlays, ...nextStickers];
-            };
-
-            const updatedIds = new Set();
-            if (Array.isArray(scopedTasks)) {
-                scopedTasks.forEach(task => {
-                    if (!task) return;
-                    if (task.id) updatedIds.add(task.id);
-                    applyStickersToTask(task);
-                });
-            }
-
-            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
-                const activeTabId = selectedTask?._batchTabId
-                    || _batchTableState.activeTabId
-                    || '';
-                for (const tab of _batchTableState.tabs) {
-                    const syncEntireTab = scope === 'all' || (scope === 'tab' && activeTabId && tab?.id === activeTabId);
-                    let tabTouched = false;
-                    for (const t of (tab?.tasks || [])) {
-                        if (!t) continue;
-                        if (syncEntireTab || (t.id && updatedIds.has(t.id))) {
-                            if (selectedTask && ((t === selectedTask) || (t.id && t.id === selectedTask.id))) {
-                                t.overlays = JSON.parse(JSON.stringify(selectedTask.overlays || [], (key, val) => key === '_allOverlays' ? undefined : val));
-                            } else {
-                                applyStickersToTask(t);
-                            }
-                            tabTouched = true;
-                        }
-                    }
-                    if (tabTouched && tab) {
-                        tab._dirty = true;
-                        if (!tab._fromSealedTemplate && (tab.libraryTemplateId || tab._isLiveProject || (tab.tasks && tab.tasks.length))) {
-                            tab._libraryDirty = true;
-                        }
-                    }
-                }
-            }
-
-            if (typeof _syncTasksToActiveTab === 'function') {
-                try { _syncTasksToActiveTab(); } catch (_) {}
-            }
-            if (typeof _batchAutoSave === 'function') {
-                try { _batchAutoSave({ skipSync: true }); } catch (_) {}
-            }
-            if (structuralChange && typeof _renderTaskList === 'function') {
-                try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
-            }
+            _syncScopedOverlayGroupToTasks(this.videoCanvas, {
+                scope,
+                scopedTasks,
+                matcher: _isStickerOverlayObj,
+                idPrefix: 'ov_stk_',
+                structuralChange: options?.structuralChange !== false,
+            });
         } finally {
             this._isSyncingStickerStack = false;
         }
@@ -8659,9 +8600,15 @@ class ReelsOverlayPanel {
         if (!ov || this._isApplyingGenericOverlay) return;
         if (ov.type === 'sticker') {
             this._syncStickerStackToScopeTasks({
-                source: 'overlay',
+                source: 'sticker',
                 structuralChange: Boolean(this._activeScopeSyncOptions?.structuralChange),
                 immediate: Boolean(this._activeScopeSyncOptions?.immediate),
+            });
+            return;
+        }
+        if ((ov.is_intro_countdown || ov.type === 'intro_countdown') && typeof window !== 'undefined' && window._reelsState?.introPanel?._syncIntroStackToScopeTasks) {
+            window._reelsState.introPanel._syncIntroStackToScopeTasks({
+                structuralChange: Boolean(this._activeScopeSyncOptions?.structuralChange),
             });
             return;
         }
@@ -13573,6 +13520,1307 @@ class ReelsOverlayPanel {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 共享工具：独立标签页 (点缀与颗粒 / 小图标 / 开场效果) 的组同步、UI 联动与开场逻辑
+// ═══════════════════════════════════════════════════════════════════════════
+function _isIntroOverlayObj(o) {
+    return Boolean(o && (o.is_intro_countdown || o.type === 'intro_countdown'));
+}
+function _isStickerOverlayObj(o) {
+    return Boolean(o && o.type === 'sticker');
+}
+function _isDecorGroupOverlayObj(o, includeIntro = false) {
+    return Boolean(o && (o.type === 'decor' || o.is_phone_cta || (includeIntro && _isIntroOverlayObj(o))));
+}
+function _hasStandaloneIntroRootInDom() {
+    return typeof document !== 'undefined' && Boolean(document.getElementById('reels-intro-panel-root'));
+}
+function _collectScopedTasksByMode(linkedOverlayPanel, scope = 'folder') {
+    const state = typeof window !== 'undefined' ? window._reelsState : null;
+    const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
+    const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
+    if (scope === 'task') return selectedTask ? [selectedTask] : [];
+    if (scope === 'tab') {
+        if (linkedOverlayPanel && typeof linkedOverlayPanel._collectTabScopeTasks === 'function') {
+            return linkedOverlayPanel._collectTabScopeTasks(selectedTask, allTasks, { includeHiddenBatchTasks: true });
+        }
+        if (selectedTask?._batchTabId) {
+            const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
+            return sameTab.length > 0 ? sameTab : allTasks;
+        }
+        return allTasks;
+    }
+    if (scope === 'all') {
+        if (linkedOverlayPanel && typeof linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
+            return linkedOverlayPanel._getStyleApplyScopeTasks('all');
+        }
+        return allTasks;
+    }
+    if (linkedOverlayPanel && typeof linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
+        return linkedOverlayPanel._getStyleApplyScopeTasks('folder', { includeHiddenBatchTasks: true }) || [];
+    }
+    if (selectedTask?._folderQueueId) {
+        const sameFolder = allTasks.filter(t => t && t._folderQueueId === selectedTask._folderQueueId);
+        if (sameFolder.length > 1 || allTasks.length <= 1) return sameFolder;
+    }
+    if (selectedTask?._batchTabId) {
+        const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
+        if (sameTab.length >= 1) return sameTab;
+    }
+    return allTasks;
+}
+function _cleanCloneOverlayForScope(ov) {
+    const copy = JSON.parse(JSON.stringify(ov, (key, val) => key === '_allOverlays' ? undefined : val));
+    delete copy._img;
+    delete copy._imgLoaded;
+    delete copy._exportImage;
+    delete copy._selected;
+    delete copy._ctaAnimPreviewStart;
+    delete copy._loopPreviewImmediate;
+    delete copy._previewPlaying;
+    delete copy._exporting;
+    delete copy._staticPreview;
+    return copy;
+}
+function _syncScopedOverlayGroupToTasks(videoCanvas, options = {}) {
+    const state = typeof window !== 'undefined' ? window._reelsState : null;
+    const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || null;
+    const structuralChange = options?.structuralChange !== false;
+    const scope = options?.scope || 'folder';
+    const matcher = options?.matcher;
+    const idPrefix = options?.idPrefix || 'ov_';
+    if (typeof matcher !== 'function') return;
+
+    if (structuralChange && typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+        try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+    } else if (selectedTask && videoCanvas?.overlayMgr) {
+        if (state?._coverEditMode && selectedTask.cover) {
+            selectedTask.cover.overlays = [...(videoCanvas.overlayMgr.overlays || [])];
+        } else {
+            selectedTask.overlays = [...(videoCanvas.overlayMgr.overlays || [])];
+        }
+    }
+
+    if (scope === 'task') {
+        if (typeof _syncTasksToActiveTab === 'function') {
+            try { _syncTasksToActiveTab(); } catch (_) {}
+        }
+        if (typeof _batchAutoSave === 'function') {
+            try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+        }
+        if (structuralChange && typeof _renderTaskList === 'function') {
+            try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
+        }
+        return;
+    }
+
+    const scopedTasks = Array.isArray(options?.scopedTasks) ? options.scopedTasks : [];
+    const liveOverlays = videoCanvas?.overlayMgr?.overlays
+        || (state?._coverEditMode ? selectedTask?.cover?.overlays : selectedTask?.overlays)
+        || [];
+    const sourceItems = liveOverlays.filter(o => o && matcher(o)).map(_cleanCloneOverlayForScope);
+
+    const applyToTaskObj = (task) => {
+        if (!task || task === selectedTask) return;
+        const existing = Array.isArray(task.overlays) ? task.overlays : [];
+        const existingGroup = existing.filter(o => o && matcher(o));
+        const otherOverlays = existing.filter(o => o && typeof o.type === 'string' && !Array.isArray(o.tasks) && !matcher(o));
+        const nextGroup = sourceItems.map((srcOv, idx) => {
+            const clone = JSON.parse(JSON.stringify(srcOv));
+            const prevId = existingGroup[idx]?.id;
+            clone.id = (prevId && prevId !== srcOv.id)
+                ? prevId
+                : (idPrefix + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
+            return clone;
+        });
+        task.overlays = [...otherOverlays, ...nextGroup];
+    };
+
+    const updatedIds = new Set();
+    scopedTasks.forEach(task => {
+        if (!task) return;
+        if (task.id) updatedIds.add(task.id);
+        applyToTaskObj(task);
+    });
+
+    if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
+        const activeTabId = selectedTask?._batchTabId || _batchTableState.activeTabId || '';
+        for (const tab of _batchTableState.tabs) {
+            const syncEntireTab = scope === 'all' || (scope === 'tab' && activeTabId && tab?.id === activeTabId);
+            let tabTouched = false;
+            for (const t of (tab?.tasks || [])) {
+                if (!t) continue;
+                if (syncEntireTab || (t.id && updatedIds.has(t.id))) {
+                    if (selectedTask && ((t === selectedTask) || (t.id && t.id === selectedTask.id))) {
+                        t.overlays = JSON.parse(JSON.stringify(selectedTask.overlays || [], (key, val) => key === '_allOverlays' ? undefined : val));
+                    } else {
+                        applyToTaskObj(t);
+                    }
+                    tabTouched = true;
+                }
+            }
+            if (tabTouched && tab) {
+                tab._dirty = true;
+                if (!tab._fromSealedTemplate && (tab.libraryTemplateId || tab._isLiveProject || (tab.tasks && tab.tasks.length))) {
+                    tab._libraryDirty = true;
+                }
+            }
+        }
+    }
+
+    if (typeof _syncTasksToActiveTab === 'function') {
+        try { _syncTasksToActiveTab(); } catch (_) {}
+    }
+    if (typeof _batchAutoSave === 'function') {
+        try { _batchAutoSave({ skipSync: true }); } catch (_) {}
+    }
+    if (structuralChange && typeof _renderTaskList === 'function') {
+        try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
+    }
+}
+function _updateMasterToggleBarUI(container, { checkId, badgeId, barId }, enabled) {
+    const isOn = enabled !== false;
+    const masterCheck = container?.querySelector('#' + checkId);
+    if (masterCheck) masterCheck.checked = isOn;
+    const badge = container?.querySelector('#' + badgeId);
+    if (badge) {
+        badge.textContent = isOn ? '已启用·参与导出' : '已关闭·导出不带';
+        badge.style.background = isOn ? 'rgba(16,185,129,0.28)' : 'rgba(239,68,68,0.24)';
+        badge.style.color = isOn ? '#6ee7b7' : '#fca5a5';
+        badge.style.borderColor = isOn ? 'rgba(52,211,153,0.5)' : 'rgba(248,113,113,0.5)';
+    }
+    const bar = container?.querySelector('#' + barId);
+    if (bar) bar.style.borderColor = isOn ? 'rgba(52,211,153,0.48)' : 'rgba(248,113,113,0.45)';
+}
+function _updateScopeQuickBadgeUI(container, { pageBtnId, tabBtnId, badgeId, effectiveScope, count }) {
+    if (!container) return;
+    const pageBtn = container.querySelector('#' + pageBtnId);
+    const tabBtn = container.querySelector('#' + tabBtnId);
+    const badgeEl = container.querySelector('#' + badgeId);
+    if (pageBtn) pageBtn.classList.toggle('is-active', effectiveScope === 'task');
+    if (tabBtn) tabBtn.classList.toggle('is-active', effectiveScope === 'tab');
+    if (badgeEl) {
+        const badgeMap = {
+            task: `📄 仅本页 (${count || 1}个)`,
+            tab: `📑 本标签页 (${count}个)`,
+            folder: `📂 当前队列 (${count}个)`,
+            all: `🌐 全部标签 (${count}个)`,
+        };
+        badgeEl.textContent = badgeMap[effectiveScope] || `📂 当前队列 (${count}个)`;
+        badgeEl.style.background = effectiveScope === 'task' ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.16)';
+        badgeEl.style.color = effectiveScope === 'task' ? '#fde68a' : '#6ee7b7';
+        badgeEl.style.borderColor = effectiveScope === 'task' ? 'rgba(251, 191, 36, 0.45)' : 'rgba(52, 211, 153, 0.35)';
+    }
+}
+function _previewIntroCountdownTarget() {
+    try {
+        const v2 = typeof window !== 'undefined' ? window.ReelsPreviewV2 : null;
+        if (v2?.isOpen?.()) {
+            // Re-seeking without reload() preserves decoded audio buffers so voice resumes cleanly after intro ends.
+            if (typeof v2.seek === 'function') v2.seek(0);
+            if (typeof v2.play === 'function') v2.play();
+            else if (typeof v2.togglePlay === 'function' && !v2.isPlaying?.()) v2.togglePlay();
+            if (typeof v2.render === 'function') v2.render();
+            return;
+        }
+        if (typeof window._actualSeek === 'function') window._actualSeek({ absoluteTarget: 0 });
+        else if (typeof _actualSeek === 'function') _actualSeek({ absoluteTarget: 0 });
+        const rs = typeof window !== 'undefined' ? window._reelsState : null;
+        const audio = typeof document !== 'undefined' ? document.getElementById('reels-preview-audio') : null;
+        const video = typeof document !== 'undefined' ? document.getElementById('reels-preview-video') : null;
+        const isPlayingV1 = typeof window._isReelsV1PreviewPlaying === 'function'
+            ? window._isReelsV1PreviewPlaying()
+            : Boolean(rs?.isPlaying || rs?.mockPlaying || (audio && !audio.paused) || (video && !video.paused));
+        if (!isPlayingV1) {
+            if (typeof window.reelsTogglePlay === 'function') window.reelsTogglePlay();
+            else if (typeof reelsTogglePlay === 'function') reelsTogglePlay();
+        }
+        if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
+    } catch (_) {}
+}
+function _notifyIntroTimelineChangedSafe() {
+    try {
+        if (typeof window._applyPreviewLoopMode === 'function') window._applyPreviewLoopMode();
+        else if (typeof _applyPreviewLoopMode === 'function') _applyPreviewLoopMode();
+    } catch (_) {}
+    try {
+        const state = typeof window !== 'undefined' ? window._reelsState : null;
+        const task = state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null;
+        if (task) {
+            if (typeof window._updateTimelineForTask === 'function') window._updateTimelineForTask(task);
+            else if (typeof _updateTimelineForTask === 'function') _updateTimelineForTask(task);
+        }
+    } catch (_) {}
+    try {
+        if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
+        else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
+        if (window.ReelsPreviewV2?.isOpen?.()) {
+            // Do not call v2.reload() here: V2 reads live overlays directly and reloading wipes decoded audio buffers.
+            if (typeof window.ReelsPreviewV2.render === 'function') window.ReelsPreviewV2.render();
+        }
+    } catch (_) {}
+}
+function _setPanelInputVal(container, linkAttr, id, val) {
+    const el = container?.querySelector('#' + id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = Boolean(val);
+    else {
+        el.value = val;
+        if (linkAttr) {
+            const ro = container.querySelector(`.rop-num-readout[${linkAttr}="${id}"]`);
+            if (ro) ro.value = val;
+        }
+    }
+}
+function _getPanelInputVal(container, id) {
+    const el = container?.querySelector('#' + id);
+    if (!el) return undefined;
+    if (el.type === 'checkbox') return el.checked;
+    if (el.type === 'range' || el.type === 'number') return Number(el.value);
+    return el.value;
+}
+function _buildMasterToggleBarHtml({
+    barId, checkId, badgeId, labelText, descText, accentColor = '#10b981',
+}) {
+    return `
+        <div id="${barId}" class="rdp-master-bar">
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;margin:0;">
+                <span style="display:flex;align-items:center;gap:7px;font-weight:800;font-size:12.5px;color:#ecfdf5;">
+                    <input type="checkbox" id="${checkId}" checked style="width:15px;height:15px;accent-color:${accentColor};cursor:pointer;">
+                    <span>${labelText}</span>
+                </span>
+                <span id="${badgeId}" style="font-size:10.5px;padding:2px 7px;border-radius:999px;background:rgba(16,185,129,0.28);color:#6ee7b7;border:1px solid rgba(52,211,153,0.5);font-weight:700;white-space:nowrap;">已启用·参与导出</span>
+            </label>
+            <div style="font-size:10.5px;color:var(--text-muted,#94a3b8);line-height:1.35;">${descText}</div>
+        </div>
+    `;
+}
+function _buildScopeCardHtml({
+    titleText, scopeId, applyAllId, pageBtnId, tabBtnId, badgeId,
+    pageTitle, tabTitle, extraHtml = '',
+}) {
+    return `
+        <div class="rdp-layer-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                <div style="font-weight:800;font-size:12px;color:#fde68a;white-space:nowrap;">${titleText}</div>
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <span style="font-size:10.5px;color:var(--text-secondary);white-space:nowrap;">范围:</span>
+                    <select id="${scopeId}" class="rop-select" style="width:auto;padding:2px 5px;font-size:10.5px;">
+                        <option value="task">📄 仅本页 (当前任务)</option>
+                        <option value="tab">📑 本标签页 (当前标签)</option>
+                        <option value="folder" selected>📂 当前队列 / 分组</option>
+                        <option value="all">🌐 全部标签页</option>
+                    </select>
+                    <label style="display:flex;align-items:center;gap:3px;font-size:10.5px;cursor:pointer;margin:0;white-space:nowrap;">
+                        <input type="checkbox" id="${applyAllId}" checked>
+                        <span>同步</span>
+                    </label>
+                </div>
+            </div>
+            <div class="rdp-scope-quick-bar" style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                <button type="button" id="${pageBtnId}" class="rop-btn rdp-scope-btn" style="flex:1;min-width:0;padding:3px 6px;font-size:10.5px;border-radius:6px;cursor:pointer;white-space:nowrap;" title="${pageTitle}">📄 仅应用本页</button>
+                <button type="button" id="${tabBtnId}" class="rop-btn rdp-scope-btn" style="flex:1;min-width:0;padding:3px 6px;font-size:10.5px;border-radius:6px;cursor:pointer;white-space:nowrap;" title="${tabTitle}">📑 应用本标签页</button>
+                <span id="${badgeId}" style="font-size:10px;padding:2px 6px;border-radius:999px;background:rgba(16,185,129,0.16);color:#6ee7b7;border:1px solid rgba(52,211,153,0.35);white-space:nowrap;">📂 队列同步</span>
+            </div>
+            ${extraHtml}
+        </div>
+    `;
+}
+function _getPanelScopeMode(container, { applyAllId, scopeId, defaultScope = 'folder' }) {
+    const applyAll = container?.querySelector('#' + applyAllId)?.checked !== false;
+    const scope = container?.querySelector('#' + scopeId)?.value || defaultScope;
+    if (!applyAll || scope === 'task') return 'task';
+    return scope;
+}
+function _bindScopeControls(panel, { scopeId, applyAllId, pageBtnId, tabBtnId, legacyChkId = '', onSync, onApplyMode }) {
+    const c = panel?.container;
+    if (!c) return;
+    const scopeSel = c.querySelector('#' + scopeId);
+    const applyAllChk = c.querySelector('#' + applyAllId);
+    if (scopeSel) {
+        scopeSel.addEventListener('change', () => {
+            const scope = scopeSel.value || 'folder';
+            const shouldSync = scope !== 'task';
+            if (applyAllChk) applyAllChk.checked = shouldSync;
+            if (legacyChkId) {
+                const legacyChk = document.getElementById(legacyChkId);
+                if (legacyChk) legacyChk.checked = shouldSync;
+            }
+            onSync();
+        });
+    }
+    if (applyAllChk) {
+        applyAllChk.addEventListener('change', () => {
+            if (applyAllChk.checked && scopeSel && scopeSel.value === 'task') {
+                scopeSel.value = 'tab';
+            }
+            if (legacyChkId) {
+                const legacyChk = document.getElementById(legacyChkId);
+                if (legacyChk) legacyChk.checked = Boolean(applyAllChk.checked);
+            }
+            onSync(Boolean(applyAllChk.checked));
+        });
+    }
+    c.querySelector('#' + pageBtnId)?.addEventListener('click', (e) => {
+        e.preventDefault();
+        onApplyMode('task', { toast: true });
+    });
+    c.querySelector('#' + tabBtnId)?.addEventListener('click', (e) => {
+        e.preventDefault();
+        onApplyMode('tab', { toast: true });
+    });
+}
+function _ensureIntroOverlayOnCanvas(videoCanvas, linkedOverlayPanel, opts = {}) {
+    const list = videoCanvas?.overlayMgr?.overlays || [];
+    const intros = list.filter(_isIntroOverlayObj);
+    let ov = intros.length ? intros[intros.length - 1] : null;
+    if (ov) {
+        ov.disabled = false;
+        return ov;
+    }
+    const ReelsOverlayMod = window.ReelsOverlay;
+    if (!ReelsOverlayMod || typeof ReelsOverlayMod.createIntroCountdownOverlay !== 'function') return null;
+    const presets = ReelsOverlayMod.INTRO_COUNTDOWN_PRESETS || {};
+    const createOpts = { start: 0, ...opts };
+    if (createOpts.end === undefined && !(createOpts.intro_style && presets[createOpts.intro_style])) {
+        createOpts.end = 3.0;
+    }
+    ov = ReelsOverlayMod.createIntroCountdownOverlay(createOpts);
+    if (videoCanvas && typeof videoCanvas.addOverlay === 'function') {
+        videoCanvas.addOverlay(ov);
+    } else if (videoCanvas?.overlayMgr?.overlays) {
+        videoCanvas.overlayMgr.overlays.push(ov);
+    }
+    if (linkedOverlayPanel) linkedOverlayPanel._refreshList();
+    return ov;
+}
+const INTRO_REVEAL_LAYOUT_SET = new Set([
+    'curtain_reveal', 'blinds_reveal', 'doors_reveal', 'frost_wipe', 'iris_spotlight', 'gift_scroll_reveal', 'black_reveal', 'eagle_ink_reveal', 'flag_reveal', 'cardinal_reveal', 'paper_reveal',
+]);
+const INTRO_REVEAL_STYLE_TO_LAYOUT = {
+    part_center: 'curtain_reveal',
+    sweep_up: 'curtain_reveal',
+    sheer_breeze: 'curtain_reveal',
+    horizontal_blinds: 'blinds_reveal',
+    plantation_shutter: 'blinds_reveal',
+    vertical_blinds: 'blinds_reveal',
+    sliding_barn: 'doors_reveal',
+    arched_chapel: 'doors_reveal',
+    swing_french: 'doors_reveal',
+    executive_double: 'doors_reveal',
+    wreath_front_door: 'doors_reveal',
+    melt_center: 'frost_wipe',
+    wiper_arc: 'frost_wipe',
+    snow_curtain: 'frost_wipe',
+    circle_iris: 'iris_spotlight',
+    film_leader: 'iris_spotlight',
+    star_iris: 'iris_spotlight',
+    cross_light: 'iris_spotlight',
+    shutter_blades: 'iris_spotlight',
+    diamond_iris: 'iris_spotlight',
+    gift_wrap: 'gift_scroll_reveal',
+    plaid_wrap: 'gift_scroll_reveal',
+    wax_scroll: 'gift_scroll_reveal',
+    envelope_flap: 'gift_scroll_reveal',
+    vertical_split: 'black_reveal',
+    black_fade: 'black_reveal',
+    letterbox_open: 'black_reveal',
+    soft_vignette_fade: 'black_reveal',
+    film_wake: 'black_reveal',
+    black_slats: 'black_reveal',
+    diagonal_slash: 'eagle_ink_reveal',
+    center_wings_split: 'eagle_ink_reveal',
+    horizon_sweep: 'eagle_ink_reveal',
+    flag_usa_sweep: 'flag_reveal',
+    flag_usa_part: 'flag_reveal',
+    flag_canada_sweep: 'flag_reveal',
+    cardinal_snow_slash: 'cardinal_reveal',
+    cardinal_wings_split: 'cardinal_reveal',
+    cardinal_ink_slash: 'cardinal_reveal',
+    cardinal_horizon_sweep: 'cardinal_reveal',
+    parchment_page_turn: 'paper_reveal',
+    newspaper_page_turn: 'paper_reveal',
+    newspaper_ripped_split: 'paper_reveal',
+    minimal_linen_slide: 'paper_reveal',
+    minimal_glass_slide: 'paper_reveal',
+    watercolor_wash: 'paper_reveal',
+};
+const INTRO_REVEAL_CAT_BY_LAYOUT = {
+    curtain_reveal: 'curtain',
+    blinds_reveal: 'blinds',
+    doors_reveal: 'doors',
+    frost_wipe: 'frost',
+    iris_spotlight: 'iris',
+    gift_scroll_reveal: 'gift',
+    black_reveal: 'black',
+    eagle_ink_reveal: 'eagle',
+    flag_reveal: 'flag',
+    cardinal_reveal: 'cardinal',
+    paper_reveal: 'paper',
+};
+const INTRO_BADGE_BY_LAYOUT = {
+    kinetic_stack: '⚡白黄斜体',
+    curtain_reveal: '🎭幕布揭幕',
+    blinds_reveal: '🪟百叶开场',
+    doors_reveal: '🚪双门揭幕',
+    frost_wipe: '❄️冰雪融雪',
+    iris_spotlight: '🎬聚光/胶片',
+    gift_scroll_reveal: '🎁礼盒/卷轴',
+    black_reveal: '🖤黑场开场',
+    eagle_ink_reveal: '🦅鹰击水墨',
+    flag_reveal: '🇺🇸国旗飘扬',
+    cardinal_reveal: '🐦红雀划屏',
+    paper_reveal: '📜纸张玻璃',
+    ring: '⏱️光环倒数',
+};
+
+function _applyIntroCategoryFilterOnContainer(container, cat = 'all') {
+    if (!container) return;
+    const activeCat = cat || 'all';
+    container.querySelectorAll('.rdp-intro-cat-chip').forEach(chip => {
+        chip.classList.toggle('is-active', (chip.dataset.introCat || 'all') === activeCat);
+    });
+    container.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
+        const btnCat = btn.dataset.introCat || 'curtain';
+        const visible = activeCat === 'all' || btnCat === activeCat;
+        if (btn.style) btn.style.display = visible ? '' : 'none';
+    });
+}
+
+function _updateIntroBadgesOnContainer(container, target, isEnabled) {
+    if (!container) return;
+    const dur = Math.max(0.4, Number(target?.end ?? 3.0) || 3.0);
+    const delayBody = target?.intro_delay_body !== false;
+    const layout = target?.intro_layout || 'ring';
+    const styleTag = INTRO_BADGE_BY_LAYOUT[layout] || '🎬光环开场';
+    const label = target
+        ? `${styleTag} · ${dur.toFixed(1)}s · ${delayBody ? '延后朗读' : '0s开场'}`
+        : '54款北美开场 · 幕布/百叶/双门/光环';
+    _setAccBadge(container, 'rdp-acc-intro-badge', label, Boolean(isEnabled));
+}
+function _syncIntroUIOnPanel(panel, ov = undefined) {
+    if (!panel?.container) return;
+    const c = panel.container;
+    const target = ov !== undefined ? ov : panel._getIntroCountdown();
+    panel._syncingIntro = true;
+    try {
+        const exists = Boolean(target);
+        const isEnabled = Boolean(target && !target.disabled);
+        const layout = target?.intro_layout || 'ring';
+        const isKinetic = layout === 'kinetic_stack';
+        const isReveal = INTRO_REVEAL_LAYOUT_SET.has(layout);
+        _setPanelInputVal(c, null, 'rdp-intro-enable', isEnabled);
+        if (!panel._hasSyncedIntroOnce && isEnabled) {
+            panel._hasSyncedIntroOnce = true;
+            const introAcc = c.querySelector('#rdp-acc-intro');
+            if (introAcc) introAcc.open = true;
+        }
+        _updateIntroBadgesOnContainer(c, target, isEnabled);
+
+        const badge = c.querySelector('#rdp-intro-status-badge');
+        if (badge) {
+            if (!exists) {
+                badge.textContent = '未添加 (勾选或点模板启用)';
+                badge.style.background = 'rgba(148,163,184,0.18)';
+                badge.style.color = '#cbd5e1';
+                badge.style.borderColor = 'rgba(148,163,184,0.38)';
+            } else if (isEnabled) {
+                const dur = Math.max(0.4, Number(target.end ?? 3.0) || 3.0);
+                const modeNote = target.intro_delay_body !== false ? '朗读字幕后移' : '0s同步叠加';
+                badge.textContent = `已启用 · ${dur.toFixed(1)}s · ${modeNote}`;
+                badge.style.background = 'rgba(245,158,11,0.28)';
+                badge.style.color = '#fde68a';
+                badge.style.borderColor = 'rgba(251,191,36,0.6)';
+            } else {
+                badge.textContent = '已暂停·不显示';
+                badge.style.background = 'rgba(239,68,68,0.22)';
+                badge.style.color = '#fca5a5';
+                badge.style.borderColor = 'rgba(248,113,113,0.48)';
+            }
+        }
+
+        const kineticSec = c.querySelector('#rdp-intro-kinetic-section');
+        const curtainSec = c.querySelector('#rdp-intro-curtain-section');
+        const ringSec = c.querySelector('#rdp-intro-ring-section');
+        const sharedSec = c.querySelector('#rdp-intro-shared-layout-section');
+        if (kineticSec) kineticSec.style.display = isKinetic ? 'flex' : 'none';
+        if (curtainSec) curtainSec.style.display = isReveal ? 'flex' : 'none';
+        if (ringSec) ringSec.style.display = (!isKinetic && !isReveal) ? 'flex' : 'none';
+        if (sharedSec) sharedSec.style.display = isReveal ? 'none' : '';
+
+        const valanceWrap = c.querySelector('#rdp-intro-valance-wrap');
+        if (valanceWrap) valanceWrap.style.display = layout === 'curtain_reveal' ? 'flex' : 'none';
+        const slatWrap = c.querySelector('#rdp-intro-slat-wrap');
+        if (slatWrap) slatWrap.style.display = (layout === 'blinds_reveal' || target?.intro_curtain_style === 'black_slats') ? 'flex' : 'none';
+
+        _applyIntroCategoryFilterOnContainer(c, panel._introCategory || 'all');
+
+        const activePreset = target?.intro_style || '';
+        c.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
+            btn.classList.toggle('is-active', Boolean(isEnabled && btn.dataset.introPreset === activePreset));
+        });
+
+        if (!target) return;
+
+        const setIntroVal = (id, val) => _setPanelInputVal(c, 'data-intro-link', id, val);
+
+        const dur = Math.max(0.5, Number(target.end ?? 3.0) || 3.0);
+        setIntroVal('rdp-intro-duration', dur);
+        c.querySelectorAll('.rdp-intro-dur-chip').forEach(btn => {
+            const chipSec = parseFloat(btn.dataset.sec);
+            const active = Math.abs(chipSec - dur) < 0.05;
+            btn.style.borderColor = active ? '#f59e0b' : '';
+            btn.style.color = active ? '#fde68a' : '';
+            btn.style.fontWeight = active ? '700' : '';
+            btn.style.background = active ? 'rgba(245,158,11,0.22)' : '';
+        });
+
+        setIntroVal('rdp-intro-delay-body', target.intro_delay_body !== false);
+        setIntroVal('rdp-intro-hook-source', target.intro_hook_source || 'auto');
+        setIntroVal('rdp-intro-hook-text', target.intro_hook_text ?? "Wait don't skip!\nYou need to\nhear this right now!");
+        setIntroVal('rdp-intro-kinetic-font', target.intro_center_font_family || 'Montserrat');
+        setIntroVal('rdp-intro-kinetic-white', target.intro_top_color || '#FFFFFF');
+        setIntroVal('rdp-intro-kinetic-yellow', target.intro_center_color || '#FFE600');
+        setIntroVal('rdp-intro-kinetic-fontsize', Math.round(Number(target.intro_center_fontsize ?? 112)));
+
+        const themeId = target.intro_curtain_theme || 'crimson_velvet';
+        const themesMap = window.ReelsOverlay?.INTRO_REVEAL_THEMES || window.ReelsOverlay?.INTRO_CURTAIN_THEMES || {};
+        const pal = themesMap[themeId] || themesMap.crimson_velvet || { mid: '#86080B', trimColor: '#FACC15' };
+        setIntroVal('rdp-intro-curtain-style', target.intro_curtain_style || 'part_center');
+        setIntroVal('rdp-intro-curtain-theme', themeId);
+        setIntroVal('rdp-intro-curtain-text', isReveal ? (target.intro_center_text ?? '') : '');
+        setIntroVal('rdp-intro-curtain-valance', Boolean(target.intro_curtain_valance));
+        setIntroVal('rdp-intro-slat-count', Math.max(4, Math.min(24, Number(target.intro_slat_count ?? 12) || 12)));
+
+        const c1El = c.querySelector('#rdp-intro-color1');
+        const c2El = c.querySelector('#rdp-intro-color2');
+        const cBadge = c.querySelector('#rdp-intro-color-badge');
+        if (c1El) {
+            c1El.value = target.intro_color1 || pal.mid || '#86080B';
+            if (c1El.dataset) c1El.dataset.customized = target.intro_color1 ? '1' : '';
+        }
+        if (c2El) {
+            c2El.value = target.intro_color2 || pal.trimColor || '#FACC15';
+            if (c2El.dataset) c2El.dataset.customized = target.intro_color2 ? '1' : '';
+        }
+        if (cBadge) {
+            cBadge.textContent = (target.intro_color1 || target.intro_color2) ? '已自定义色彩' : '跟随主题配色';
+        }
+
+        setIntroVal('rdp-intro-top-text', target.intro_top_text ?? 'DAYS BEFORE');
+        setIntroVal('rdp-intro-top-color', target.intro_top_color || '#FFFFFF');
+
+        const centerMode = target.intro_center_mode || 'fixed';
+        setIntroVal('rdp-intro-center-mode', centerMode);
+        setIntroVal('rdp-intro-center-text', target.intro_center_text ?? '37');
+        setIntroVal('rdp-intro-center-color', target.intro_center_color || '#FACC15');
+        setIntroVal('rdp-intro-target-date', target.intro_target_date ?? '12-25');
+        setIntroVal('rdp-intro-day-offset', Number(target.intro_day_offset ?? 0) || 0);
+
+        const fixedWrap = c.querySelector('#rdp-intro-fixed-wrap');
+        const dateWrap = c.querySelector('#rdp-intro-date-wrap');
+        if (fixedWrap) fixedWrap.style.display = centerMode === 'fixed' ? 'flex' : 'none';
+        if (dateWrap) dateWrap.style.display = centerMode === 'days_to_date' ? 'flex' : 'none';
+        const daysPreview = c.querySelector('#rdp-intro-days-preview');
+        if (daysPreview && typeof window.ReelsOverlay?.computeIntroDaysRemaining === 'function') {
+            const computedDays = window.ReelsOverlay.computeIntroDaysRemaining(target.intro_target_date, target.intro_day_offset);
+            daysPreview.textContent = `当前算得: ${computedDays}天`;
+        }
+
+        setIntroVal('rdp-intro-bottom-text', target.intro_bottom_text ?? 'Christmas');
+        setIntroVal('rdp-intro-bottom-color', target.intro_bottom_color || '#FFFFFF');
+        setIntroVal('rdp-intro-underline-enabled', target.intro_bottom_underline_enabled !== false);
+        setIntroVal('rdp-intro-underline-color', target.intro_bottom_underline_color || '#FACC15');
+
+        setIntroVal('rdp-intro-ring-theme', target.intro_ring_theme || 'xmas_rainbow');
+        setIntroVal('rdp-intro-top-font', target.intro_top_font_family || 'Montserrat');
+        setIntroVal('rdp-intro-center-font', target.intro_center_font_family || 'Anton');
+        setIntroVal('rdp-intro-bottom-font', target.intro_bottom_font_family || 'Pacifico');
+        setIntroVal('rdp-intro-ring-radius', Math.round(Number(target.intro_ring_radius ?? 268)));
+        setIntroVal('rdp-intro-ring-thickness', Math.round(Number(target.intro_ring_thickness ?? 12)));
+        setIntroVal('rdp-intro-spark-enabled', target.intro_ring_spark_enabled !== false);
+        setIntroVal('rdp-intro-snow-enabled', Boolean(target.intro_snow_enabled));
+        setIntroVal('rdp-intro-snow-density', Math.round(Number(target.intro_snow_density ?? 32)));
+        setIntroVal('rdp-intro-scrim', Math.round(Number(target.intro_backdrop_scrim ?? (isKinetic ? 0 : 16))));
+        setIntroVal('rdp-intro-scale', Math.round(Number(target.intro_scale ?? 100)));
+        setIntroVal('rdp-intro-offset-y', Math.round(Number(target.intro_offset_y ?? (isKinetic ? 0 : -20))));
+        setIntroVal('rdp-intro-offset-x', Math.round(Number(target.intro_offset_x ?? 0)));
+    } finally {
+        panel._syncingIntro = false;
+    }
+}
+function _syncIntroOverlayFromPanel(panel, options = {}) {
+    if (!panel?.container || panel._syncingIntro) return;
+    const c = panel.container;
+    const getVal = (id) => _getPanelInputVal(c, id);
+    const ov = panel._ensureIntroCountdownOverlay();
+    if (!ov) return;
+    if (typeof panel._ensureIntroMasterEnabled === 'function') panel._ensureIntroMasterEnabled();
+    ov.disabled = false;
+    ov.start = 0;
+
+    const dur = Math.max(0.4, Math.min(15, Number(getVal('rdp-intro-duration') ?? ov.end ?? 3.0) || 3.0));
+    ov.end = dur;
+    ov.intro_delay_body = Boolean(getVal('rdp-intro-delay-body'));
+
+    const layout = ov.intro_layout || 'ring';
+    const isKinetic = layout === 'kinetic_stack';
+    const isReveal = INTRO_REVEAL_LAYOUT_SET.has(layout);
+    if (isKinetic) {
+        ov.intro_hook_source = getVal('rdp-intro-hook-source') || 'auto';
+        ov.intro_hook_text = String(getVal('rdp-intro-hook-text') ?? ov.intro_hook_text ?? '');
+        ov.intro_center_font_family = getVal('rdp-intro-kinetic-font') || 'Montserrat';
+        ov.intro_top_color = getVal('rdp-intro-kinetic-white') || '#FFFFFF';
+        ov.intro_center_color = getVal('rdp-intro-kinetic-yellow') || '#FFE600';
+        ov.intro_center_fontsize = Math.max(36, Number(getVal('rdp-intro-kinetic-fontsize') ?? ov.intro_center_fontsize ?? 112));
+    } else if (isReveal) {
+        const chosenStyle = getVal('rdp-intro-curtain-style') || ov.intro_curtain_style || 'part_center';
+        const nextLayout = INTRO_REVEAL_STYLE_TO_LAYOUT[chosenStyle] || layout;
+        ov.intro_curtain_style = chosenStyle;
+        ov.intro_layout = nextLayout;
+        ov.intro_category = INTRO_REVEAL_CAT_BY_LAYOUT[nextLayout] || ov.intro_category || 'curtain';
+        ov.intro_curtain_theme = getVal('rdp-intro-curtain-theme') || 'crimson_velvet';
+        ov.intro_center_text = String(getVal('rdp-intro-curtain-text') ?? '');
+        ov.intro_curtain_valance = Boolean(getVal('rdp-intro-curtain-valance'));
+        ov.intro_slat_count = Math.max(4, Math.min(24, Number(getVal('rdp-intro-slat-count') ?? ov.intro_slat_count ?? 12) || 12));
+        const c1El = c.querySelector('#rdp-intro-color1');
+        const c2El = c.querySelector('#rdp-intro-color2');
+        ov.intro_color1 = (c1El?.dataset?.customized === '1' && c1El.value) ? c1El.value : (ov.intro_color1 || '');
+        ov.intro_color2 = (c2El?.dataset?.customized === '1' && c2El.value) ? c2El.value : (ov.intro_color2 || '');
+    } else {
+        ov.intro_top_text = String(getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
+        ov.intro_top_color = getVal('rdp-intro-top-color') || '#FFFFFF';
+        ov.intro_center_mode = getVal('rdp-intro-center-mode') || 'fixed';
+        ov.intro_center_text = String(getVal('rdp-intro-center-text') ?? ov.intro_center_text ?? '37');
+        ov.intro_center_color = getVal('rdp-intro-center-color') || '#FACC15';
+        ov.intro_target_date = String(getVal('rdp-intro-target-date') ?? '12-25').trim() || '12-25';
+        ov.intro_day_offset = Number(getVal('rdp-intro-day-offset') ?? 0) || 0;
+        ov.intro_bottom_text = String(getVal('rdp-intro-bottom-text') ?? ov.intro_bottom_text ?? 'Christmas');
+        ov.intro_bottom_color = getVal('rdp-intro-bottom-color') || '#FFFFFF';
+        ov.intro_bottom_underline_enabled = Boolean(getVal('rdp-intro-underline-enabled'));
+        ov.intro_bottom_underline_color = getVal('rdp-intro-underline-color') || '#FACC15';
+
+        const themeId = getVal('rdp-intro-ring-theme') || ov.intro_ring_theme || 'xmas_rainbow';
+        ov.intro_ring_theme = themeId;
+        const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
+        if (theme && (!Array.isArray(ov.intro_ring_colors) || ov.intro_ring_colors.length === 0)) {
+            ov.intro_ring_colors = [...theme.colors];
+        }
+
+        ov.intro_top_font_family = getVal('rdp-intro-top-font') || 'Montserrat';
+        ov.intro_center_font_family = getVal('rdp-intro-center-font') || 'Anton';
+        ov.intro_bottom_font_family = getVal('rdp-intro-bottom-font') || 'Pacifico';
+        ov.intro_ring_radius = Math.max(120, Number(getVal('rdp-intro-ring-radius') ?? 268));
+        ov.intro_ring_thickness = Math.max(2, Number(getVal('rdp-intro-ring-thickness') ?? 12));
+        ov.intro_ring_spark_enabled = Boolean(getVal('rdp-intro-spark-enabled'));
+        ov.intro_snow_enabled = Boolean(getVal('rdp-intro-snow-enabled'));
+        ov.intro_snow_density = Math.max(0, Number(getVal('rdp-intro-snow-density') ?? 32));
+    }
+
+    if (INTRO_REVEAL_LAYOUT_SET.has(ov.intro_layout || 'ring')) {
+        ov.intro_backdrop_scrim = 0;
+        ov.intro_scale = 100;
+        ov.intro_offset_y = 0;
+        ov.intro_offset_x = 0;
+    } else {
+        ov.intro_backdrop_scrim = Math.max(0, Number(getVal('rdp-intro-scrim') ?? (isKinetic ? 0 : 16)));
+        ov.intro_scale = Math.max(40, Number(getVal('rdp-intro-scale') ?? 100));
+        ov.intro_offset_y = Number(getVal('rdp-intro-offset-y') ?? (isKinetic ? 0 : -20)) || 0;
+        ov.intro_offset_x = Number(getVal('rdp-intro-offset-x') ?? 0) || 0;
+    }
+
+    panel._syncIntroUI(ov);
+    const structural = Boolean(options?.structuralChange);
+    panel._syncScopeAndRender(ov, { structuralChange: structural });
+    if (structural) panel._notifyIntroTimelineChanged();
+}
+function _bindIntroCardEventsOnPanel(panel) {
+    const c = panel?.container;
+    if (!c || !c.querySelector('#rdp-intro-enable')) return;
+    const q = (sel) => c.querySelector(sel);
+
+    c.querySelectorAll('.rop-num-readout[data-intro-link]').forEach(numEl => {
+        const rangeId = numEl.dataset.introLink;
+        const rangeEl = c.querySelector('#' + rangeId);
+        if (!rangeEl) return;
+        const isDuration = rangeId === 'rdp-intro-duration';
+        rangeEl.addEventListener('input', () => {
+            numEl.value = rangeEl.value;
+            panel._syncToIntroOverlay({ structuralChange: isDuration });
+        });
+        numEl.addEventListener('input', () => {
+            rangeEl.value = numEl.value;
+            panel._syncToIntroOverlay({ structuralChange: isDuration });
+        });
+    });
+
+    const enableChk = q('#rdp-intro-enable');
+    if (enableChk) {
+        enableChk.addEventListener('change', () => {
+            if (enableChk.checked) {
+                const ov = panel._ensureIntroCountdownOverlay();
+                if (ov) {
+                    if (typeof panel._ensureIntroMasterEnabled === 'function') panel._ensureIntroMasterEnabled();
+                    ov.disabled = false;
+                    const introAcc = q('#rdp-acc-intro');
+                    if (introAcc) introAcc.open = true;
+                    panel._syncIntroUI(ov);
+                    panel._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
+                    panel._notifyIntroTimelineChanged();
+                    panel._previewIntroCountdown(ov);
+                }
+            } else {
+                const ov = panel._getIntroCountdown();
+                if (ov) {
+                    ov.disabled = true;
+                    panel._syncIntroUI(ov);
+                    panel._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
+                    panel._notifyIntroTimelineChanged();
+                }
+            }
+        });
+    }
+
+    q('#rdp-intro-preview-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        if (typeof panel._ensureIntroMasterEnabled === 'function') panel._ensureIntroMasterEnabled();
+        ov.disabled = false;
+        const introAcc = q('#rdp-acc-intro');
+        if (introAcc) introAcc.open = true;
+        panel._syncIntroUI(ov);
+        panel._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
+        panel._notifyIntroTimelineChanged();
+        panel._previewIntroCountdown(ov);
+    });
+
+    q('#rdp-intro-delete-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const intros = panel._getIntroCountdownOverlays();
+        intros.forEach(item => {
+            if (panel.videoCanvas && typeof panel.videoCanvas.removeOverlay === 'function') {
+                panel.videoCanvas.removeOverlay(item.id);
+            }
+        });
+        if (typeof panel._syncIntroStackAfterDelete === 'function') {
+            panel._syncIntroStackAfterDelete();
+        } else if (typeof panel._syncDecorStackToScopeTasks === 'function') {
+            panel._syncDecorStackToScopeTasks({ structuralChange: true });
+        }
+        panel._syncIntroUI(null);
+        if (panel.linkedOverlayPanel) panel.linkedOverlayPanel._refreshList();
+        panel._notifyIntroTimelineChanged();
+        if (typeof panel.videoCanvas?.onOverlayChange === 'function') {
+            panel.videoCanvas.onOverlayChange(null);
+        }
+    });
+
+    c.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            panel.applyIntroPreset(btn.dataset.introPreset || 'xmas_cp01');
+        });
+    });
+
+    c.querySelectorAll('.rdp-intro-dur-chip').forEach(chip => {
+        chip.addEventListener('click', (e) => {
+            e.preventDefault();
+            const sec = Math.max(0.5, Math.min(15, parseFloat(chip.dataset.sec) || 3.0));
+            const r = q('#rdp-intro-duration');
+            const n = q('#rdp-intro-duration-num');
+            if (r) r.value = String(sec);
+            if (n) n.value = String(sec);
+            panel._syncToIntroOverlay({ structuralChange: true });
+        });
+    });
+
+    q('#rdp-intro-ring-theme')?.addEventListener('change', (e) => {
+        const themeId = e.target.value || 'xmas_rainbow';
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
+        ov.intro_ring_theme = themeId;
+        if (theme) {
+            ov.intro_ring_colors = [...theme.colors];
+            ov.intro_center_color = theme.centerColor;
+            ov.intro_bottom_underline_color = theme.underlineColor;
+            ov.intro_ring_spark_color = theme.sparkColor;
+            const cc = q('#rdp-intro-center-color');
+            const uc = q('#rdp-intro-underline-color');
+            if (cc) cc.value = theme.centerColor;
+            if (uc) uc.value = theme.underlineColor;
+        }
+        panel._syncToIntroOverlay({ structuralChange: false });
+    });
+
+    c.querySelectorAll('.rdp-intro-cat-chip').forEach(chip => {
+        chip.addEventListener('click', (e) => {
+            e.preventDefault();
+            panel._introCategory = chip.dataset.introCat || 'all';
+            _applyIntroCategoryFilterOnContainer(c, panel._introCategory);
+        });
+    });
+
+    q('#rdp-intro-curtain-theme')?.addEventListener('change', () => {
+        const c1El = q('#rdp-intro-color1');
+        const c2El = q('#rdp-intro-color2');
+        if (c1El?.dataset) c1El.dataset.customized = '';
+        if (c2El?.dataset) c2El.dataset.customized = '';
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (ov) {
+            ov.intro_color1 = '';
+            ov.intro_color2 = '';
+        }
+        panel._syncToIntroOverlay({ structuralChange: false });
+    });
+
+    ['rdp-intro-color1', 'rdp-intro-color2'].forEach(cid => {
+        const cel = q('#' + cid);
+        if (!cel) return;
+        const onColorPick = () => {
+            if (cel.dataset) cel.dataset.customized = '1';
+            panel._syncToIntroOverlay({ structuralChange: false });
+        };
+        cel.addEventListener('input', onColorPick);
+        cel.addEventListener('change', onColorPick);
+    });
+
+    q('#rdp-intro-color-reset')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const c1El = q('#rdp-intro-color1');
+        const c2El = q('#rdp-intro-color2');
+        if (c1El?.dataset) c1El.dataset.customized = '';
+        if (c2El?.dataset) c2El.dataset.customized = '';
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (ov) {
+            ov.intro_color1 = '';
+            ov.intro_color2 = '';
+        }
+        panel._syncToIntroOverlay({ structuralChange: false });
+    });
+
+    const introStructuralIds = new Set(['rdp-intro-delay-body', 'rdp-intro-hook-source']);
+    const introFieldIds = [
+        'rdp-intro-delay-body',
+        'rdp-intro-hook-source', 'rdp-intro-hook-text',
+        'rdp-intro-kinetic-font', 'rdp-intro-kinetic-white', 'rdp-intro-kinetic-yellow',
+        'rdp-intro-curtain-style', 'rdp-intro-curtain-text', 'rdp-intro-curtain-valance', 'rdp-intro-slat-count',
+        'rdp-intro-top-text', 'rdp-intro-top-color',
+        'rdp-intro-center-mode', 'rdp-intro-center-text', 'rdp-intro-center-color',
+        'rdp-intro-target-date', 'rdp-intro-day-offset',
+        'rdp-intro-bottom-text', 'rdp-intro-bottom-color',
+        'rdp-intro-underline-enabled', 'rdp-intro-underline-color',
+        'rdp-intro-top-font', 'rdp-intro-center-font', 'rdp-intro-bottom-font',
+        'rdp-intro-spark-enabled', 'rdp-intro-snow-enabled',
+    ];
+    introFieldIds.forEach(id => {
+        const el = q('#' + id);
+        if (!el) return;
+        const structural = introStructuralIds.has(id);
+        const evName = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+        el.addEventListener(evName, () => {
+            panel._syncToIntroOverlay({ structuralChange: structural });
+        });
+        if (evName !== 'change') {
+            el.addEventListener('change', () => {
+                panel._syncToIntroOverlay({ structuralChange: structural });
+            });
+        }
+    });
+}
+function _applyPanelScopeMode(panel, targetScope, {
+    scopeId, applyAllId, legacyChkId = '',
+    getScopeTasks, syncStackFn, updateUiFn, getActiveOvFn, toastPrefix = '设置', toast = false,
+}) {
+    const cleanScope = ['task', 'tab', 'folder', 'all'].includes(targetScope) ? targetScope : 'folder';
+    const scopeSel = panel?.container?.querySelector('#' + scopeId);
+    const applyAllChk = panel?.container?.querySelector('#' + applyAllId);
+    const shouldSync = cleanScope !== 'task';
+    if (scopeSel) scopeSel.value = cleanScope;
+    if (applyAllChk) applyAllChk.checked = shouldSync;
+    if (legacyChkId) {
+        const legacyChk = document.getElementById(legacyChkId);
+        if (legacyChk) legacyChk.checked = shouldSync;
+    }
+    if (shouldSync) {
+        syncStackFn();
+    } else if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
+        try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
+    }
+    updateUiFn();
+    const ov = typeof getActiveOvFn === 'function' ? getActiveOvFn() : null;
+    if (typeof panel?.videoCanvas?.onOverlayChange === 'function') {
+        panel.videoCanvas.onOverlayChange(ov);
+    }
+    if (toast && typeof showToast === 'function') {
+        const targets = getScopeTasks(cleanScope);
+        if (cleanScope === 'task') showToast(`📄 已设为【仅应用本页】：后续${toastPrefix}仅作用于当前任务`, 'info');
+        else if (cleanScope === 'tab') showToast(`📑 已将当前${toastPrefix}应用到本标签页（共 ${targets.length} 个任务）`, 'success');
+        else if (cleanScope === 'all') showToast(`🌐 已将当前${toastPrefix}应用到全部标签页（共 ${targets.length} 个任务）`, 'success');
+        else showToast(`📂 已将当前${toastPrefix}同步到当前队列（共 ${targets.length} 个任务）`, 'success');
+    }
+    return true;
+}
+function _enableIntroPresetOnPanel(panel, presetId = 'xmas_cp01') {
+    if (typeof panel._ensureIntroMasterEnabled === 'function') panel._ensureIntroMasterEnabled();
+    const existed = Boolean(panel._getIntroCountdown());
+    const ov = panel._ensureIntroCountdownOverlay({ intro_style: presetId });
+    if (!ov) return null;
+    if (presetId && typeof window.ReelsOverlay?.applyIntroCountdownPreset === 'function' && (existed || ov.intro_style !== presetId)) {
+        window.ReelsOverlay.applyIntroCountdownPreset(ov, presetId);
+    }
+    ov.disabled = false;
+    const introAcc = panel.container?.querySelector('#rdp-acc-intro');
+    if (introAcc) introAcc.open = true;
+    panel._syncIntroUI(ov);
+    panel._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
+    panel._notifyIntroTimelineChanged();
+    return ov;
+}
+function _buildIntroCardHtml({ openAccordion = false } = {}) {
+    const introPresets = window.ReelsOverlay?.INTRO_COUNTDOWN_PRESETS || {
+        xmas_cp01: { id: 'xmas_cp01', name: '🎄 圣诞倒计时光环 (cp-01同款)', tag: 'DAYS BEFORE 37 Christmas', intro_category: 'ring', intro_layout: 'ring' },
+        xmas_auto_days: { id: 'xmas_auto_days', name: '📅 圣诞自动日历倒数', tag: '自动算距 12/25 天数', intro_category: 'ring', intro_layout: 'ring' },
+        thx_auto_days: { id: 'thx_auto_days', name: '🍂 感恩节暖秋倒计时', tag: 'THANKSGIVING 暖秋环', intro_category: 'ring', intro_layout: 'ring' },
+        newyear_countdown: { id: 'newyear_countdown', name: '🎆 新年祝福金环开场', tag: 'DAYS TO New Year', intro_category: 'ring', intro_layout: 'ring' },
+        ready_321: { id: 'ready_321', name: '⏱️ 3·2·1 紧迫读秒开场', tag: '逐秒 3 → 2 → 1 吸睛停顿', intro_category: 'ring', intro_layout: 'ring' },
+        morning_prayer_gold: { id: 'morning_prayer_gold', name: '✝️ 圣光晨祷金环开场', tag: "TODAY'S PRAYER Amen", intro_category: 'ring', intro_layout: 'ring' },
+        curtain_red_reveal: { id: 'curtain_red_reveal', name: '🎭 红色幕布拉开开场 (FB同款)', tag: '剧场红丝绒幕布对开 / 上升揭幕', intro_category: 'curtain', intro_layout: 'curtain_reveal' },
+    };
+    const visibleIntroEntries = Object.entries(introPresets).filter(([, cfg]) => cfg && !cfg.hiddenFromIntroPicker);
+    const catCounts = { all: visibleIntroEntries.length };
+    visibleIntroEntries.forEach(([, cfg]) => {
+        const cat = cfg.intro_category || (cfg.intro_layout === 'ring' ? 'ring' : 'curtain');
+        catCounts[cat] = (catCounts[cat] || 0) + 1;
+    });
+    const introCategories = [
+        ['all', '✨ 全部'],
+        ['flag', '🇺🇸 国旗迎风'],
+        ['cardinal', '🐦 北美红雀'],
+        ['paper', '📜 纸张报纸·莫兰迪水彩'],
+        ['eagle', '🦅 白头鹰水墨'],
+        ['black', '🖤 黑场开场'],
+        ['curtain', '🎭 幕布纱帘'],
+        ['blinds', '🪟 百叶窗'],
+        ['doors', '🚪 谷仓教堂门'],
+        ['frost', '❄️ 冰雪除雾'],
+        ['iris', '🎬 聚光胶片'],
+        ['gift', '🎁 礼盒卷轴'],
+        ['ring', '⏱️ 倒数光环'],
+    ];
+    const introCatBarHtml = introCategories.map(([catId, label]) => `
+        <button type="button" class="rdp-intro-cat-chip ${catId === 'all' ? 'is-active' : ''}" data-intro-cat="${catId}">${label} (${catCounts[catId] || 0})</button>
+    `).join('');
+    const introPresetButtonsHtml = visibleIntroEntries.map(([id, cfg]) => {
+        const cat = cfg.intro_category || (cfg.intro_layout === 'ring' ? 'ring' : 'curtain');
+        return `
+        <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}" data-intro-cat="${cat}">
+            <span class="rdp-intro-preset-title">${cfg.name}</span>
+            <span class="rdp-intro-preset-tag">${cfg.tag || ''}</span>
+        </button>
+    `;
+    }).join('');
+    const curtainThemes = window.ReelsOverlay?.INTRO_REVEAL_THEMES || window.ReelsOverlay?.INTRO_CURTAIN_THEMES || {
+        crimson_velvet: { name: '❤️ 经典深红天鹅绒（百老汇同款）' },
+        burgundy_opera: { name: '🍷 暗酒红歌剧院丝绒' },
+        emerald_xmas: { name: '🎄 圣诞祖母绿丝绒' },
+        midnight_star: { name: '🌌 圣夜星蓝丝绒' },
+    };
+    const introCurtainThemeOptionsHtml = Object.entries(curtainThemes).map(([id, t]) => `<option value="${id}">${t.name}</option>`).join('');
+    const introThemes = window.ReelsOverlay?.INTRO_RING_THEMES || {
+        xmas_rainbow: { name: '🎄 圣诞四色炫彩 (黄→橙→红→绿)' },
+        autumn_warm: { name: '🍂 感恩暖秋丰收 (金→琥珀→赤陶)' },
+        gold_ivory: { name: '✨ 圣夜金白奢华 (象牙白→鎏金)' },
+        frost_aurora: { name: '❄️ 冰雪极光星夜 (冰蓝→靛紫)' },
+        ruby_emerald: { name: '🎁 冬青红绿礼赞 (圣红→金→松绿)' },
+    };
+    const introThemeOptionsHtml = Object.entries(introThemes).map(([id, t]) => `<option value="${id}">${t.name}</option>`).join('');
+    const introFontOptionsHtml = ['Montserrat', 'Anton', 'Pacifico', 'Dancing Script', 'Great Vibes', 'Lora', 'Georgia', 'Arial', 'Impact']
+        .map(f => `<option value="${f}">${f}</option>`).join('');
+    return `
+        <!-- ═══ 独立专区: 🎬 视频开场效果 (幕布/百叶窗/双门/冰雪/聚光胶片/礼物卷轴/光环倒数) ═══ -->
+        <div id="rdp-intro-card" class="rdp-intro-card">
+            <div class="rdp-cta-header">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;min-width:0;flex:1;">
+                    <input type="checkbox" id="rdp-intro-enable" style="width:15px;height:15px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
+                    <span style="font-weight:800;font-size:12.5px;color:#fde68a;white-space:nowrap;">🎬 视频开场效果 (${visibleIntroEntries.length}款)</span>
+                    <span id="rdp-intro-status-badge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">未添加 (勾选或点模板启用)</span>
+                </label>
+                <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                    <button type="button" id="rdp-intro-preview-btn" class="rop-btn" style="padding:2px 7px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:1px solid #fde68a;border-radius:5px;cursor:pointer;" title="回到 0.00s 播放开场动画与音画衔接效果">▶ 预览开场</button>
+                    <button type="button" id="rdp-intro-delete-btn" class="rop-btn" style="padding:2px 6px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;" title="从当前任务与同步队列中移除开场动效">🗑️</button>
+                </div>
+            </div>
+
+            <details class="rop-scroll-subacc rdp-cta-subacc" id="rdp-acc-intro" ${openAccordion ? 'open' : ''}>
+                <summary>
+                    <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>北美热门开场样式 · 颜色定制 · 音画延后同步</span></span>
+                    <span class="rop-acc-badge" id="rdp-acc-intro-badge">${visibleIntroEntries.length}款 · 自动延后朗读</span>
+                </summary>
+                <div class="rop-scroll-subacc-body" style="display:flex;flex-direction:column;gap:7px;">
+                    <div id="rdp-intro-cat-bar" class="rdp-intro-cat-bar">${introCatBarHtml}</div>
+                    <div id="rdp-intro-preset-grid" class="rdp-intro-preset-grid">${introPresetButtonsHtml}</div>
+
+                    <div class="rdp-card-section">
+                        <div class="rop-row rop-num-row">
+                            <label style="font-weight:700;color:#fde68a;">开场秒数</label>
+                            <input type="range" id="rdp-intro-duration" class="rop-range" min="0.5" max="15" step="0.1" value="3.0">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-duration" id="rdp-intro-duration-num" min="0.5" max="15" step="0.1" value="3.0">
+                            <span style="font-size:10px;color:var(--text-muted);">秒</span>
+                        </div>
+                        <div class="rop-row" style="gap:4px;flex-wrap:wrap;">
+                            <span style="font-size:10.5px;color:var(--text-secondary);">快选:</span>
+                            ${[2.0, 2.5, 3.0, 3.5, 4.0].map(sec => `<button type="button" class="rop-btn rdp-intro-dur-chip" data-sec="${sec}" style="padding:2px 6px;font-size:10px;border-radius:4px;">${sec}s</button>`).join('')}
+                        </div>
+                        <label style="display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.35;color:#fef3c7;cursor:pointer;margin-top:2px;">
+                            <input type="checkbox" id="rdp-intro-delay-body" checked style="margin-top:2px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
+                            <span><b>开场后才开始朗读/字幕/滚动</b>（底片与BGM从0s连续播放；不勾选则0s直接叠加同步）</span>
+                        </label>
+                    </div>
+
+                    <div id="rdp-intro-kinetic-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
+                        <div class="rop-row">
+                            <label>开场词源</label>
+                            <select id="rdp-intro-hook-source" class="rop-select" style="flex:1;min-width:0;">
+                                <option value="auto">自动同步正文前句 (0s开场时不重复正文字幕)</option>
+                                <option value="custom">自定义独立开场钩子台词</option>
+                            </select>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--text-secondary);">
+                                <span>开场钩子词（每行 1~3 个词效果最佳，留空或无语音时使用下方示例）：</span>
+                            </div>
+                            <textarea id="rdp-intro-hook-text" class="rop-input" rows="3" style="width:100%;min-height:56px;resize:vertical;line-height:1.35;font-size:11.5px;" placeholder="每行1~3个词，例如：&#10;Wait don't skip!&#10;You need to&#10;hear this right now!"></textarea>
+                        </div>
+                        <div class="rop-row" style="gap:6px;flex-wrap:wrap;">
+                            <label>字体</label>
+                            <select id="rdp-intro-kinetic-font" class="rop-select" style="flex:1;min-width:90px;">${introFontOptionsHtml}</select>
+                            <span style="font-size:10.5px;color:var(--text-secondary);">上白</span>
+                            <input type="color" id="rdp-intro-kinetic-white" class="rop-color" value="#FFFFFF" title="上方铺垫词纯白色">
+                            <span style="font-size:10.5px;color:var(--text-secondary);">焦黄</span>
+                            <input type="color" id="rdp-intro-kinetic-yellow" class="rop-color" value="#FFE600" title="当前焦点词高亮黄色">
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>字体大小</label>
+                            <input type="range" id="rdp-intro-kinetic-fontsize" class="rop-range" min="64" max="180" step="2" value="112">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-kinetic-fontsize" min="64" max="180" step="2" value="112">
+                        </div>
+                    </div>
+
+                    <div id="rdp-intro-curtain-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
+                        <div class="rop-row">
+                            <label>揭幕方式</label>
+                            <select id="rdp-intro-curtain-style" class="rop-select" style="flex:1;min-width:0;">
+                                <optgroup label="🇺🇸 国旗飘扬开场">
+                                    <option value="flag_usa_sweep">🇺🇸 美国星条旗迎风拂开</option>
+                                    <option value="flag_usa_part">🗽 美国双开星条旗礼堂揭幕</option>
+                                    <option value="flag_canada_sweep">🇨🇦 加拿大红枫国旗迎风拂开</option>
+                                </optgroup>
+                                <optgroup label="🐦 北美红雀开场">
+                                    <option value="cardinal_snow_slash">🐦 雪落松枝红雀振翅划开</option>
+                                    <option value="cardinal_wings_split">✨ 红雀信使金粉双分揭幕</option>
+                                    <option value="cardinal_ink_slash">🎨 红雀丹青朱墨斜划开场</option>
+                                    <option value="cardinal_horizon_sweep">🌅 晨曦红雀温柔上下开屏</option>
+                                </optgroup>
+                                <optgroup label="📜 简约羊皮纸 / 报纸 / 莫兰迪水彩 / 磨砂玻璃">
+                                    <option value="watercolor_wash">🎨 莫兰迪水彩冷压纸晕染开场</option>
+                                    <option value="parchment_page_turn">📜 极简羊皮纸3D柔和翻页</option>
+                                    <option value="newspaper_page_turn">📰 复古报纸头版3D高光翻页</option>
+                                    <option value="newspaper_ripped_split">🗞️ 极简报纸手撕对开揭幕</option>
+                                    <option value="minimal_linen_slide">🤍 极简莫兰迪亚麻双片滑开</option>
+                                    <option value="minimal_glass_slide">🧊 极简轻奢磨砂玻璃滑开</option>
+                                </optgroup>
+                                <optgroup label="🦅 白头鹰水墨划开">
+                                    <option value="diagonal_slash">🦅 白头鹰俯冲水墨斜划撕裂</option>
+                                    <option value="center_wings_split">🦅 雄鹰展翅水墨左右劈开</option>
+                                    <option value="horizon_sweep">🕊️ 晨曦雄鹰展翅上下拂开</option>
+                                </optgroup>
+                                <optgroup label="🖤 黑场渐亮 / 纯黑对开 / 电影遮幅">
+                                    <option value="vertical_split">🖤 纯黑中线对开拉开（FB 1170616同款）</option>
+                                    <option value="black_fade">🌑 电影感纯黑柔和渐亮淡入</option>
+                                    <option value="letterbox_open">🎬 电影宽银幕上下黑幕推开</option>
+                                    <option value="soft_vignette_fade">🔦 黑夜柔和聚光破黑渐亮</option>
+                                    <option value="film_wake">⚡ 黑场电影胶片微光唤醒</option>
+                                    <option value="black_slats">◼️ 极简哑光黑条百叶收起</option>
+                                </optgroup>
+                                <optgroup label="🎭 丝绒幕布 / 透光纱帘">
+                                    <option value="part_center">🎭 左右对开拉开（剧场丝绒同款）</option>
+                                    <option value="sweep_up">🎪 底部向上升起揭幕</option>
+                                    <option value="sheer_breeze">🌬️ 微风轻纱半透明飘开（Ins爆款）</option>
+                                </optgroup>
+                                <optgroup label="🪟 百叶窗 / 美式木扇">
+                                    <option value="plantation_shutter">🏡 宽叶 Plantation Shutter 翻转</option>
+                                    <option value="horizontal_blinds">🪟 横向实木百叶逐扇开启</option>
+                                    <option value="vertical_blinds">🏛️ 落地竖向百叶拉帘打开</option>
+                                </optgroup>
+                                <optgroup label="🚪 美式谷仓门 / 教堂双门">
+                                    <option value="sliding_barn">🚪 美式木纹 X 型谷仓门推开</option>
+                                    <option value="executive_double">⚓ 皇家鎏金实木礼堂双大门</option>
+                                    <option value="arched_chapel">⛪ 教堂弧顶红木双开门圣光开</option>
+                                    <option value="swing_french">🖤 现代黑框法式透光格栅门</option>
+                                    <option value="wreath_front_door">🎄 圣诞松枝花环大门推开</option>
+                                </optgroup>
+                                <optgroup label="❄️ 冰雪消融 / 雾气擦窗">
+                                    <option value="melt_center">🧊 冰霜/薄雾自中心消融透视</option>
+                                    <option value="wiper_arc">💧 雨刷水雾玻璃弧形一笔擦亮</option>
+                                    <option value="snow_curtain">❄️ 暴雪飘雪风幕两侧吹散</option>
+                                </optgroup>
+                                <optgroup label="🎬 聚光孔 / 快门 / 321胶片">
+                                    <option value="circle_iris">🔦 好莱坞聚光圆孔扩展</option>
+                                    <option value="film_leader">🎞️ 经典 3·2·1 电影胶片倒数片头</option>
+                                    <option value="star_iris">⭐ 伯利恒圣星四芒扩亮</option>
+                                    <option value="cross_light">✝️ 金色圣光十字裂隙展开</option>
+                                    <option value="shutter_blades">📷 8叶机械快门叶片张开</option>
+                                    <option value="diamond_iris">💎 菱形钻切聚焦高奢展开</option>
+                                </optgroup>
+                                <optgroup label="🎁 礼物拆盒 / 加拿大格子 / 卷轴">
+                                    <option value="gift_wrap">🎁 节日丝带蝴蝶结拆礼物</option>
+                                    <option value="plaid_wrap">🧣 加拿大红黑格纹礼盒拆封</option>
+                                    <option value="wax_scroll">📜 复古羊皮圣经双轴卷轴展开</option>
+                                    <option value="envelope_flap">✉️ 火漆印信封裂封开启</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="rop-row">
+                            <label>配色质感</label>
+                            <select id="rdp-intro-curtain-theme" class="rop-select" style="flex:1;min-width:0;">${introCurtainThemeOptionsHtml}</select>
+                        </div>
+                        <div class="rop-row" style="gap:5px;flex-wrap:wrap;align-items:center;">
+                            <label>自由调色</label>
+                            <span style="font-size:10.5px;color:var(--text-secondary);">主色</span>
+                            <input type="color" id="rdp-intro-color1" class="rop-color" value="#86080B" title="自定义幕布/木门/百叶/冰雪主色调">
+                            <span style="font-size:10.5px;color:var(--text-secondary);">点缀</span>
+                            <input type="color" id="rdp-intro-color2" class="rop-color" value="#FACC15" title="自定义流苏/门把/丝带/星光颜色">
+                            <button type="button" id="rdp-intro-color-reset" class="rop-btn" style="padding:2px 6px;font-size:10px;border-radius:4px;" title="恢复所选北美配色主题的默认双色">↺ 默认</button>
+                            <span id="rdp-intro-color-badge" style="font-size:10px;color:#cbd5e1;">跟随主题配色</span>
+                        </div>
+                        <div class="rop-row rop-num-row" id="rdp-intro-slat-wrap" style="display:none;">
+                            <label>百叶扇数</label>
+                            <input type="range" id="rdp-intro-slat-count" class="rop-range" min="4" max="24" step="1" value="12">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-slat-count" min="4" max="24" step="1" value="12">
+                        </div>
+                        <div class="rop-row">
+                            <label>开场标题</label>
+                            <input type="text" id="rdp-intro-curtain-text" class="rop-input" value="" placeholder="留空=纯粹揭幕；可填标题在开幕前淡出" style="flex:1;min-width:0;">
+                        </div>
+                        <label id="rdp-intro-valance-wrap" style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin:0;">
+                            <input type="checkbox" id="rdp-intro-curtain-valance" style="accent-color:#f59e0b;">
+                            <span>✨ 添加顶部金色流苏舞台幔帘</span>
+                        </label>
+                    </div>
+
+                    <div id="rdp-intro-ring-section" style="display:flex;flex-direction:column;gap:7px;">
+                    <div class="rdp-card-section">
+                        <div class="rop-row">
+                            <label>顶部文字</label>
+                            <input type="text" id="rdp-intro-top-text" class="rop-input" value="DAYS BEFORE" placeholder="DAYS BEFORE 或 12月25日" style="flex:1;min-width:0;">
+                            <input type="color" id="rdp-intro-top-color" class="rop-color" value="#FFFFFF" title="顶部文字颜色">
+                        </div>
+                        <div class="rop-row">
+                            <label>数字模式</label>
+                            <select id="rdp-intro-center-mode" class="rop-select" style="flex:1;min-width:0;">
+                                <option value="fixed">自定义数字 / 时间 / 文案 (如 35)</option>
+                                <option value="days_to_date">按目标日期自动算天数</option>
+                                <option value="countdown_sec">按开场秒数实时读秒 (3→2→1)</option>
+                            </select>
+                        </div>
+                        <div class="rop-row" id="rdp-intro-fixed-wrap">
+                            <label>中心内容</label>
+                            <input type="text" id="rdp-intro-center-text" class="rop-input" value="37" placeholder="直接填 35 / 35天 / 12:00 / ✝️" style="flex:1;min-width:0;">
+                            <input type="color" id="rdp-intro-center-color" class="rop-color" value="#FACC15" title="中心数字颜色">
+                        </div>
+                        <div class="rop-row" id="rdp-intro-date-wrap" style="display:none;flex-wrap:wrap;gap:5px;">
+                            <label>目标日期</label>
+                            <input type="text" id="rdp-intro-target-date" class="rop-input" value="12-25" placeholder="12-25 / 12.25 / 12月25日" style="width:128px;">
+                            <span style="font-size:10.5px;color:var(--text-secondary);">校准</span>
+                            <input type="number" id="rdp-intro-day-offset" class="rop-input" value="0" step="1" style="width:52px;" title="天数微调，如 +1 或 -1">
+                            <span id="rdp-intro-days-preview" style="font-size:10.5px;color:#fde68a;font-weight:700;">—</span>
+                        </div>
+                        <div class="rop-row">
+                            <label>底部手写</label>
+                            <input type="text" id="rdp-intro-bottom-text" class="rop-input" value="Christmas" placeholder="Christmas / Amen" style="flex:1;min-width:0;">
+                            <input type="color" id="rdp-intro-bottom-color" class="rop-color" value="#FFFFFF" title="底部手写文字颜色">
+                        </div>
+                        <div class="rop-row">
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
+                                <input type="checkbox" id="rdp-intro-underline-enabled" checked style="accent-color:#f59e0b;"> 底部金线
+                            </label>
+                            <input type="color" id="rdp-intro-underline-color" class="rop-color" value="#FACC15" title="底部横线颜色">
+                        </div>
+                    </div>
+
+                    <div class="rdp-card-section">
+                        <div class="rop-row">
+                            <label>光环配色</label>
+                            <select id="rdp-intro-ring-theme" class="rop-select" style="flex:1;min-width:0;">${introThemeOptionsHtml}</select>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+                            <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">顶部字体
+                                <select id="rdp-intro-top-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
+                            </label>
+                            <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">数字字体
+                                <select id="rdp-intro-center-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
+                            </label>
+                            <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">底部手写体
+                                <select id="rdp-intro-bottom-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
+                            </label>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>光环半径</label>
+                            <input type="range" id="rdp-intro-ring-radius" class="rop-range" min="150" max="400" step="2" value="268">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-ring-radius" min="150" max="400" step="2" value="268">
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>光环粗细</label>
+                            <input type="range" id="rdp-intro-ring-thickness" class="rop-range" min="4" max="30" step="1" value="12">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-ring-thickness" min="4" max="30" step="1" value="12">
+                        </div>
+                        <div class="rop-row" style="gap:10px;">
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
+                                <input type="checkbox" id="rdp-intro-spark-enabled" checked style="accent-color:#f59e0b;"> ✦ 弧端转动星芒
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
+                                <input type="checkbox" id="rdp-intro-snow-enabled" checked style="accent-color:#f59e0b;"> ❄️ 飘雪氛围
+                            </label>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>雪花密度</label>
+                            <input type="range" id="rdp-intro-snow-density" class="rop-range" min="0" max="80" step="2" value="32">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-snow-density" min="0" max="80" step="2" value="32">
+                        </div>
+                    </div>
+                    </div>
+                    <div id="rdp-intro-shared-layout-section" class="rdp-card-section">
+                        <div class="rop-row rop-num-row">
+                            <label>聚光暗角</label>
+                            <input type="range" id="rdp-intro-scrim" class="rop-range" min="0" max="70" step="2" value="16">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-scrim" min="0" max="70" step="2" value="16">
+                            <span style="font-size:10px;color:var(--text-muted);">%</span>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>整体缩放</label>
+                            <input type="range" id="rdp-intro-scale" class="rop-range" min="50" max="150" step="2" value="100">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-scale" min="50" max="150" step="2" value="100">
+                            <span style="font-size:10px;color:var(--text-muted);">%</span>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>垂直偏移</label>
+                            <input type="range" id="rdp-intro-offset-y" class="rop-range" min="-450" max="450" step="5" value="-20">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-offset-y" min="-450" max="450" step="5" value="-20">
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>水平偏移</label>
+                            <input type="range" id="rdp-intro-offset-x" class="rop-range" min="-300" max="300" step="5" value="0">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-offset-x" min="-300" max="300" step="5" value="0">
+                        </div>
+                    </div>
+                </div>
+            </details>
+        </div>
+    `;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // ✨ 独立专属大面板：点缀、黑色氛围模板、飘浮粒子与电影颗粒工作台 (ReelsDecorPanel)
 // ═══════════════════════════════════════════════════════════════════════════
 class ReelsDecorPanel {
@@ -13602,9 +14850,15 @@ class ReelsDecorPanel {
         return list.filter(o => o && o.type === 'decor');
     }
 
+    _getIntroHostPanel() {
+        if (this.container?.querySelector('#rdp-intro-enable')) return this;
+        const introPanel = typeof window !== 'undefined' ? window._reelsState?.introPanel : null;
+        return introPanel || this;
+    }
+
     _getIntroCountdownOverlays() {
         const list = this.videoCanvas?.overlayMgr?.overlays || [];
-        return list.filter(o => o && (o.is_intro_countdown || o.type === 'intro_countdown'));
+        return list.filter(_isIntroOverlayObj);
     }
 
     _getIntroCountdown() {
@@ -13613,81 +14867,32 @@ class ReelsDecorPanel {
     }
 
     _ensureIntroCountdownOverlay(opts = {}) {
-        let ov = this._getIntroCountdown();
-        if (ov) {
-            ov.disabled = false;
-            return ov;
-        }
-        const ReelsOverlayMod = window.ReelsOverlay;
-        if (!ReelsOverlayMod || typeof ReelsOverlayMod.createIntroCountdownOverlay !== 'function') return null;
-        ov = ReelsOverlayMod.createIntroCountdownOverlay({
-            start: 0,
-            end: 3.0,
-            ...opts,
-        });
-        if (this.videoCanvas && typeof this.videoCanvas.addOverlay === 'function') {
-            this.videoCanvas.addOverlay(ov);
-        } else if (this.videoCanvas?.overlayMgr?.overlays) {
-            this.videoCanvas.overlayMgr.overlays.push(ov);
-        }
-        if (this.linkedOverlayPanel) {
-            this.linkedOverlayPanel._refreshList();
-        }
-        return ov;
+        return _ensureIntroOverlayOnCanvas(this.videoCanvas, this.linkedOverlayPanel, opts);
     }
 
     _notifyIntroTimelineChanged() {
-        try {
-            if (typeof window._applyPreviewLoopMode === 'function') window._applyPreviewLoopMode();
-            else if (typeof _applyPreviewLoopMode === 'function') _applyPreviewLoopMode();
-        } catch (_) {}
-        try {
-            const state = typeof window !== 'undefined' ? window._reelsState : null;
-            const task = state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null;
-            if (task) {
-                if (typeof window._updateTimelineForTask === 'function') window._updateTimelineForTask(task);
-                else if (typeof _updateTimelineForTask === 'function') _updateTimelineForTask(task);
-            }
-        } catch (_) {}
-        try {
-            if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
-            else if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
-            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
-        } catch (_) {}
+        _notifyIntroTimelineChangedSafe();
     }
 
     _previewIntroCountdown(ov = null) {
         const target = ov || this._getIntroCountdown();
         if (!target) return;
-        try {
-            if (typeof window._actualSeek === 'function') window._actualSeek({ absoluteTarget: 0 });
-            else if (typeof _actualSeek === 'function') _actualSeek({ absoluteTarget: 0 });
-            const isPlaying = Boolean(typeof window !== 'undefined' && window._reelsState?.isPlaying);
-            if (!isPlaying) {
-                if (typeof window.reelsTogglePlay === 'function') window.reelsTogglePlay();
-                else if (typeof reelsTogglePlay === 'function') reelsTogglePlay();
-            }
-            if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
-        } catch (_) {}
+        _previewIntroCountdownTarget();
     }
 
     enableIntroCountdown(presetId = 'xmas_cp01') {
-        const existed = Boolean(this._getIntroCountdown());
-        const ov = this._ensureIntroCountdownOverlay({ intro_style: presetId });
-        if (!ov) return null;
-        if (existed && presetId && typeof window.ReelsOverlay?.applyIntroCountdownPreset === 'function') {
-            window.ReelsOverlay.applyIntroCountdownPreset(ov, presetId);
+        const host = this._getIntroHostPanel();
+        if (host !== this && typeof host.enableIntroCountdown === 'function') {
+            return host.enableIntroCountdown(presetId);
         }
-        ov.disabled = false;
-        const introAcc = this.container?.querySelector('#rdp-acc-intro');
-        if (introAcc) introAcc.open = true;
-        this._syncIntroUI(ov);
-        this._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
-        this._notifyIntroTimelineChanged();
-        return ov;
+        return _enableIntroPresetOnPanel(this, presetId);
     }
 
     applyIntroPreset(presetId) {
+        const host = this._getIntroHostPanel();
+        if (host !== this && typeof host.applyIntroPreset === 'function') {
+            return host.applyIntroPreset(presetId);
+        }
         const ov = this.enableIntroCountdown(presetId);
         if (ov) this._previewIntroCountdown(ov);
         return ov;
@@ -13891,47 +15096,6 @@ class ReelsDecorPanel {
             <option value="pure_text_stroked">💬 纯文字粗描边 (无底框)</option>
         `;
 
-        const introPresets = window.ReelsOverlay?.INTRO_COUNTDOWN_PRESETS || {
-            xmas_cp01: { id: 'xmas_cp01', name: '🎄 圣诞倒计时光环 (cp-01同款)', tag: 'DAYS BEFORE 37 Christmas' },
-            xmas_auto_days: { id: 'xmas_auto_days', name: '📅 圣诞自动日历倒数', tag: '自动算距 12/25 天数' },
-            thx_auto_days: { id: 'thx_auto_days', name: '🍂 感恩节暖秋倒计时', tag: 'THANKSGIVING 暖秋环' },
-            newyear_countdown: { id: 'newyear_countdown', name: '🎆 新年祝福金环开场', tag: 'DAYS TO New Year' },
-            ready_321: { id: 'ready_321', name: '⏱️ 3·2·1 紧迫读秒开场', tag: '逐秒 3 → 2 → 1 吸睛停顿' },
-            morning_prayer_gold: { id: 'morning_prayer_gold', name: '✝️ 圣光晨祷金环开场', tag: "TODAY'S PRAYER Amen" },
-            fb_yellow_stack_hook: { id: 'fb_yellow_stack_hook', name: '⚡ 爆款白黄斜体开场 (FB同款)', tag: '白色逐词堆叠 + 亮黄焦点冲击' },
-            curtain_red_reveal: { id: 'curtain_red_reveal', name: '🎭 红色幕布拉开开场 (FB同款)', tag: '剧场红丝绒幕布对开 / 上升揭幕' },
-        };
-        const introPresetButtonsHtml = Object.entries(introPresets).map(([id, cfg]) => `
-            <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}">
-                <span class="rdp-intro-preset-title">${cfg.name}</span>
-                <span class="rdp-intro-preset-tag">${cfg.tag || ''}</span>
-            </button>
-        `).join('');
-
-        const curtainThemes = window.ReelsOverlay?.INTRO_CURTAIN_THEMES || {
-            crimson_velvet: { name: '❤️ 经典深红天鹅绒（FB同款）' },
-            burgundy_opera: { name: '🍷 暗酒红歌剧院丝绒' },
-            emerald_xmas: { name: '🎄 圣诞祖母绿丝绒' },
-            midnight_star: { name: '🌌 圣夜星蓝丝绒' },
-        };
-        const introCurtainThemeOptionsHtml = Object.entries(curtainThemes).map(([id, t]) =>
-            `<option value="${id}">${t.name}</option>`
-        ).join('');
-
-        const introThemes = window.ReelsOverlay?.INTRO_RING_THEMES || {
-            xmas_rainbow: { name: '🎄 圣诞四色炫彩 (黄→橙→红→绿)' },
-            autumn_warm: { name: '🍂 感恩暖秋丰收 (金→琥珀→赤陶)' },
-            gold_ivory: { name: '✨ 圣夜金白奢华 (象牙白→鎏金)' },
-            frost_aurora: { name: '❄️ 冰雪极光星夜 (冰蓝→靛紫)' },
-            ruby_emerald: { name: '🎁 冬青红绿礼赞 (圣红→金→松绿)' },
-        };
-        const introThemeOptionsHtml = Object.entries(introThemes).map(([id, t]) =>
-            `<option value="${id}">${t.name}</option>`
-        ).join('');
-
-        const introFontOptionsHtml = ['Montserrat', 'Anton', 'Pacifico', 'Dancing Script', 'Great Vibes', 'Lora', 'Georgia', 'Arial', 'Impact']
-            .map(f => `<option value="${f}">${f}</option>`).join('');
-
         this.container.innerHTML = `
             <div class="rop-root rdp-root">
                 <!-- 顶部独立启用总开关 -->
@@ -13983,217 +15147,7 @@ class ReelsDecorPanel {
                     <div id="rdp-layer-list" style="display:flex;flex-direction:column;gap:4px;"></div>
                 </div>
 
-                <!-- ═══ 独立专区: 🎬 视频开场效果 (光环倒计时 / FB爆款白黄斜体开场，直加于本机素材) ═══ -->
-                <div id="rdp-intro-card" class="rdp-intro-card">
-                    <div class="rdp-cta-header">
-                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0;min-width:0;flex:1;">
-                            <input type="checkbox" id="rdp-intro-enable" style="width:15px;height:15px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
-                            <span style="font-weight:800;font-size:12.5px;color:#fde68a;white-space:nowrap;">🎬 视频开场效果</span>
-                            <span id="rdp-intro-status-badge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(148,163,184,0.2);color:#cbd5e1;border:1px solid rgba(148,163,184,0.38);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">未添加 (勾选或点模板启用)</span>
-                        </label>
-                        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-                            <button type="button" id="rdp-intro-preview-btn" class="rop-btn" style="padding:2px 7px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:1px solid #fde68a;border-radius:5px;cursor:pointer;" title="回到 0.00s 播放开场动画与音画衔接效果">▶ 预览开场</button>
-                            <button type="button" id="rdp-intro-delete-btn" class="rop-btn" style="padding:2px 6px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:5px;cursor:pointer;" title="从当前任务与同步队列中移除开场动效">🗑️</button>
-                        </div>
-                    </div>
-
-                    <details class="rop-scroll-subacc rdp-cta-subacc" id="rdp-acc-intro">
-                        <summary>
-                            <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>预设样式 · 秒数调节 · 音画延后同步</span></span>
-                            <span class="rop-acc-badge" id="rdp-acc-intro-badge">3.0s · 自动延后朗读</span>
-                        </summary>
-                        <div class="rop-scroll-subacc-body" style="display:flex;flex-direction:column;gap:7px;">
-                            <div id="rdp-intro-preset-grid" class="rdp-intro-preset-grid">
-                                ${introPresetButtonsHtml}
-                            </div>
-
-                            <!-- 1) 秒数调节与音频字幕同步模式 -->
-                            <div class="rdp-card-section">
-                                <div class="rop-row rop-num-row">
-                                    <label style="font-weight:700;color:#fde68a;">开场秒数</label>
-                                    <input type="range" id="rdp-intro-duration" class="rop-range" min="0.5" max="15" step="0.1" value="3.0">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-duration" id="rdp-intro-duration-num" min="0.5" max="15" step="0.1" value="3.0">
-                                    <span style="font-size:11px;color:var(--text-muted);">秒</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
-                                    <span style="font-size:10.5px;color:var(--text-secondary);">快选:</span>
-                                    ${[2.0, 2.5, 3.0, 3.5, 4.0].map(sec => `
-                                        <button type="button" class="rop-btn rdp-intro-dur-chip" data-sec="${sec}" style="padding:2px 6px;font-size:10px;border-radius:4px;">${sec}s</button>
-                                    `).join('')}
-                                </div>
-                                <label style="display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.35;color:#fef3c7;cursor:pointer;margin-top:2px;">
-                                    <input type="checkbox" id="rdp-intro-delay-body" checked style="margin-top:2px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
-                                    <span><b>开场后才开始朗读/字幕/滚动</b>（底片与BGM从0s连续播放；不勾选则0s直接叠加同步）</span>
-                                </label>
-                            </div>
-
-                            <!-- 1.5) FB 爆款白黄斜体逐词开场参数 (kinetic_stack 专属) -->
-                            <div id="rdp-intro-kinetic-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
-                                <div class="rop-row">
-                                    <label>开场词源</label>
-                                    <select id="rdp-intro-hook-source" class="rop-select" style="flex:1;min-width:0;">
-                                        <option value="auto">自动同步正文前句 (0s开场时不重复正文字幕)</option>
-                                        <option value="custom">自定义独立开场钩子台词</option>
-                                    </select>
-                                </div>
-                                <div style="display:flex;flex-direction:column;gap:4px;">
-                                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;color:var(--text-secondary);">
-                                        <span>开场钩子词（每行 1~3 个词效果最佳，留空或无语音时使用下方示例）：</span>
-                                    </div>
-                                    <textarea id="rdp-intro-hook-text" class="rop-input" rows="3" style="width:100%;min-height:56px;resize:vertical;line-height:1.35;font-size:11.5px;" placeholder="每行1~3个词，例如：&#10;Wait don't skip!&#10;You need to&#10;hear this right now!"></textarea>
-                                </div>
-                                <div class="rop-row" style="gap:6px;flex-wrap:wrap;">
-                                    <label>字体</label>
-                                    <select id="rdp-intro-kinetic-font" class="rop-select" style="flex:1;min-width:90px;">${introFontOptionsHtml}</select>
-                                    <span style="font-size:10.5px;color:var(--text-secondary);">上白</span>
-                                    <input type="color" id="rdp-intro-kinetic-white" class="rop-color" value="#FFFFFF" title="上方铺垫词纯白色">
-                                    <span style="font-size:10.5px;color:var(--text-secondary);">焦黄</span>
-                                    <input type="color" id="rdp-intro-kinetic-yellow" class="rop-color" value="#FFE600" title="当前焦点词高亮黄色">
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>字体大小</label>
-                                    <input type="range" id="rdp-intro-kinetic-fontsize" class="rop-range" min="64" max="180" step="2" value="112">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-kinetic-fontsize" min="64" max="180" step="2" value="112">
-                                </div>
-                            </div>
-
-                            <!-- 1.8) 红色幕布拉开开场参数 (curtain_reveal 专属) -->
-                            <div id="rdp-intro-curtain-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
-                                <div class="rop-row">
-                                    <label>拉开方式</label>
-                                    <select id="rdp-intro-curtain-style" class="rop-select" style="flex:1;min-width:0;">
-                                        <option value="part_center">🎭 左右对开拉开（FB 剧场同款）</option>
-                                        <option value="sweep_up">🎪 底部向上升起揭幕</option>
-                                    </select>
-                                </div>
-                                <div class="rop-row">
-                                    <label>幕布质感</label>
-                                    <select id="rdp-intro-curtain-theme" class="rop-select" style="flex:1;min-width:0;">
-                                        ${introCurtainThemeOptionsHtml}
-                                    </select>
-                                </div>
-                                <div class="rop-row">
-                                    <label>幕布标题</label>
-                                    <input type="text" id="rdp-intro-curtain-text" class="rop-input" value="" placeholder="留空=纯红丝绒幕布；可填标题在开幕前淡出" style="flex:1;min-width:0;">
-                                </div>
-                                <label style="display:flex;align-items:center;gap:6px;font-size:11px;cursor:pointer;margin:0;">
-                                    <input type="checkbox" id="rdp-intro-curtain-valance" style="accent-color:#f59e0b;">
-                                    <span>✨ 添加顶部金色流苏舞台幔帘</span>
-                                </label>
-                            </div>
-
-                            <div id="rdp-intro-ring-section" style="display:flex;flex-direction:column;gap:7px;">
-                            <!-- 2) 倒计时文案与模式 -->
-                            <div class="rdp-card-section">
-                                <div class="rop-row">
-                                    <label>顶部文字</label>
-                                    <input type="text" id="rdp-intro-top-text" class="rop-input" value="DAYS BEFORE" placeholder="DAYS BEFORE 或 12月25日" style="flex:1;min-width:0;">
-                                    <input type="color" id="rdp-intro-top-color" class="rop-color" value="#FFFFFF" title="顶部文字颜色">
-                                </div>
-                                <div class="rop-row">
-                                    <label>数字模式</label>
-                                    <select id="rdp-intro-center-mode" class="rop-select" style="flex:1;min-width:0;">
-                                        <option value="fixed">自定义数字 / 时间 / 文案 (如 35)</option>
-                                        <option value="days_to_date">按目标日期自动算天数</option>
-                                        <option value="countdown_sec">按开场秒数实时读秒 (3→2→1)</option>
-                                    </select>
-                                </div>
-                                <div class="rop-row" id="rdp-intro-fixed-wrap">
-                                    <label>中心内容</label>
-                                    <input type="text" id="rdp-intro-center-text" class="rop-input" value="37" placeholder="直接填 35 / 35天 / 12:00 / ✝️" style="flex:1;min-width:0;">
-                                    <input type="color" id="rdp-intro-center-color" class="rop-color" value="#FACC15" title="中心数字颜色">
-                                </div>
-                                <div class="rop-row" id="rdp-intro-date-wrap" style="display:none;flex-wrap:wrap;gap:5px;">
-                                    <label>目标日期</label>
-                                    <input type="text" id="rdp-intro-target-date" class="rop-input" value="12-25" placeholder="12-25 / 12.25 / 12月25日" style="width:128px;">
-                                    <span style="font-size:10.5px;color:var(--text-secondary);">校准</span>
-                                    <input type="number" id="rdp-intro-day-offset" class="rop-input" value="0" step="1" style="width:52px;" title="天数微调，如 +1 或 -1">
-                                    <span id="rdp-intro-days-preview" style="font-size:10.5px;color:#fde68a;font-weight:700;">—</span>
-                                </div>
-                                <div class="rop-row">
-                                    <label>底部手写</label>
-                                    <input type="text" id="rdp-intro-bottom-text" class="rop-input" value="Christmas" placeholder="Christmas / Amen" style="flex:1;min-width:0;">
-                                    <input type="color" id="rdp-intro-bottom-color" class="rop-color" value="#FFFFFF" title="底部手写文字颜色">
-                                </div>
-                                <div class="rop-row">
-                                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
-                                        <input type="checkbox" id="rdp-intro-underline-enabled" checked style="accent-color:#f59e0b;"> 底部金线
-                                    </label>
-                                    <input type="color" id="rdp-intro-underline-color" class="rop-color" value="#FACC15" title="底部横线颜色">
-                                </div>
-                            </div>
-
-                            <!-- 3) 光环配色、字体与氛围参数 -->
-                            <div class="rdp-card-section">
-                                <div class="rop-row">
-                                    <label>光环配色</label>
-                                    <select id="rdp-intro-ring-theme" class="rop-select" style="flex:1;min-width:0;">
-                                        ${introThemeOptionsHtml}
-                                    </select>
-                                </div>
-                                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
-                                    <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">顶部字体
-                                        <select id="rdp-intro-top-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
-                                    </label>
-                                    <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">数字字体
-                                        <select id="rdp-intro-center-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
-                                    </label>
-                                    <label style="font-size:10px;color:var(--text-secondary);display:flex;flex-direction:column;gap:2px;">底部手写体
-                                        <select id="rdp-intro-bottom-font" class="rop-select" style="font-size:10.5px;padding:2px 4px;">${introFontOptionsHtml}</select>
-                                    </label>
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>光环半径</label>
-                                    <input type="range" id="rdp-intro-ring-radius" class="rop-range" min="150" max="400" step="2" value="268">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-ring-radius" min="150" max="400" step="2" value="268">
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>光环粗细</label>
-                                    <input type="range" id="rdp-intro-ring-thickness" class="rop-range" min="4" max="30" step="1" value="12">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-ring-thickness" min="4" max="30" step="1" value="12">
-                                </div>
-                                <div class="rop-row" style="gap:10px;">
-                                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
-                                        <input type="checkbox" id="rdp-intro-spark-enabled" checked style="accent-color:#f59e0b;"> ✦ 弧端转动星芒
-                                    </label>
-                                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
-                                        <input type="checkbox" id="rdp-intro-snow-enabled" checked style="accent-color:#f59e0b;"> ❄️ 飘雪氛围
-                                    </label>
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>雪花密度</label>
-                                    <input type="range" id="rdp-intro-snow-density" class="rop-range" min="0" max="80" step="2" value="32">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-snow-density" min="0" max="80" step="2" value="32">
-                                </div>
-                            </div>
-                            </div>
-                            <div id="rdp-intro-shared-layout-section" class="rdp-card-section">
-                                <div class="rop-row rop-num-row">
-                                    <label>聚光暗角</label>
-                                    <input type="range" id="rdp-intro-scrim" class="rop-range" min="0" max="70" step="2" value="16">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-scrim" min="0" max="70" step="2" value="16">
-                                    <span style="font-size:10px;color:var(--text-muted);">%</span>
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>整体缩放</label>
-                                    <input type="range" id="rdp-intro-scale" class="rop-range" min="50" max="150" step="2" value="100">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-scale" min="50" max="150" step="2" value="100">
-                                    <span style="font-size:10px;color:var(--text-muted);">%</span>
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>垂直偏移</label>
-                                    <input type="range" id="rdp-intro-offset-y" class="rop-range" min="-450" max="450" step="5" value="-20">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-offset-y" min="-450" max="450" step="5" value="-20">
-                                </div>
-                                <div class="rop-row rop-num-row">
-                                    <label>水平偏移</label>
-                                    <input type="range" id="rdp-intro-offset-x" class="rop-range" min="-300" max="300" step="5" value="0">
-                                    <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-offset-x" min="-300" max="300" step="5" value="0">
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-                </div>
+                ${_hasStandaloneIntroRootInDom() ? '' : _buildIntroCardHtml({ openAccordion: false })}
 
                 <!-- 折叠区 ①: 🎨 预设模板库（默认展开，点击即用） -->
                 <details class="rop-scroll-accordion rdp-accordion" id="rdp-acc-presets" open>
@@ -14604,20 +15558,11 @@ class ReelsDecorPanel {
     }
 
     _syncMasterEnableUI(enabled) {
-        const isOn = enabled !== false;
-        const masterCheck = this.container?.querySelector('#rdp-master-enable');
-        if (masterCheck) masterCheck.checked = isOn;
-        const badge = this.container?.querySelector('#rdp-master-status-badge');
-        if (badge) {
-            badge.textContent = isOn ? '已启用·参与导出' : '已关闭·导出不带';
-            badge.style.background = isOn ? 'rgba(16,185,129,0.28)' : 'rgba(239,68,68,0.24)';
-            badge.style.color = isOn ? '#6ee7b7' : '#fca5a5';
-            badge.style.borderColor = isOn ? 'rgba(52,211,153,0.5)' : 'rgba(248,113,113,0.5)';
-        }
-        const bar = this.container?.querySelector('#rdp-master-bar');
-        if (bar) {
-            bar.style.borderColor = isOn ? 'rgba(52,211,153,0.48)' : 'rgba(248,113,113,0.45)';
-        }
+        _updateMasterToggleBarUI(this.container, {
+            checkId: 'rdp-master-enable',
+            badgeId: 'rdp-master-status-badge',
+            barId: 'rdp-master-bar',
+        }, enabled);
     }
 
     _bindEvents() {
@@ -14730,47 +15675,21 @@ class ReelsDecorPanel {
         }
 
         // 样式作用范围与同步开关（支持：仅应用本页 / 应用本标签页 / 当前队列 / 全部标签页）
-        const scopeSel = this.container.querySelector('#rdp-style-scope');
-        const applyAllChk = this.container.querySelector('#rdp-apply-all');
-        if (scopeSel) {
-            scopeSel.addEventListener('change', () => {
-                const scope = scopeSel.value || 'folder';
-                const shouldSync = scope !== 'task';
-                if (applyAllChk) applyAllChk.checked = shouldSync;
-                const ropDecorChk = document.getElementById('rop-decor-apply-all');
-                if (ropDecorChk) ropDecorChk.checked = shouldSync;
-                this._syncDecorStackToScopeTasks();
+        _bindScopeControls(this, {
+            scopeId: 'rdp-style-scope',
+            applyAllId: 'rdp-apply-all',
+            pageBtnId: 'rdp-apply-page-btn',
+            tabBtnId: 'rdp-apply-tab-btn',
+            legacyChkId: 'rop-decor-apply-all',
+            onSync: (shouldSync = true) => {
+                if (shouldSync) this._syncDecorStackToScopeTasks();
                 this._updateScopeQuickUI();
                 const ov = this._getSelectedDecor();
                 if (typeof this.videoCanvas?.onOverlayChange === 'function') {
                     this.videoCanvas.onOverlayChange(ov);
                 }
-            });
-        }
-        if (applyAllChk) {
-            applyAllChk.addEventListener('change', () => {
-                if (applyAllChk.checked && scopeSel && scopeSel.value === 'task') {
-                    scopeSel.value = 'tab';
-                }
-                const ropDecorChk = document.getElementById('rop-decor-apply-all');
-                if (ropDecorChk) ropDecorChk.checked = Boolean(applyAllChk.checked);
-                if (applyAllChk.checked) {
-                    this._syncDecorStackToScopeTasks();
-                }
-                this._updateScopeQuickUI();
-                const ov = this._getSelectedDecor();
-                if (typeof this.videoCanvas?.onOverlayChange === 'function') {
-                    this.videoCanvas.onOverlayChange(ov);
-                }
-            });
-        }
-        this.container.querySelector('#rdp-apply-page-btn')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.applyDecorScopeMode('task', { toast: true });
-        });
-        this.container.querySelector('#rdp-apply-tab-btn')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.applyDecorScopeMode('tab', { toast: true });
+            },
+            onApplyMode: (targetScope, opts) => this.applyDecorScopeMode(targetScope, opts),
         });
         this._updateScopeQuickUI();
 
@@ -14857,155 +15776,7 @@ class ReelsDecorPanel {
     }
 
     _bindIntroModuleEvents() {
-        if (!this.container) return;
-        const q = (sel) => this.container.querySelector(sel);
-
-        // 绑定 range <-> number readout (data-intro-link)
-        this.container.querySelectorAll('.rop-num-readout[data-intro-link]').forEach(numEl => {
-            const rangeId = numEl.dataset.introLink;
-            const rangeEl = this.container.querySelector('#' + rangeId);
-            if (!rangeEl) return;
-            const isDuration = rangeId === 'rdp-intro-duration';
-            rangeEl.addEventListener('input', () => {
-                numEl.value = rangeEl.value;
-                this._syncToIntroOverlay({ structuralChange: isDuration });
-            });
-            numEl.addEventListener('input', () => {
-                rangeEl.value = numEl.value;
-                this._syncToIntroOverlay({ structuralChange: isDuration });
-            });
-        });
-
-        // 启用/暂停总开关
-        const enableChk = q('#rdp-intro-enable');
-        if (enableChk) {
-            enableChk.addEventListener('change', () => {
-                if (enableChk.checked) {
-                    const ov = this._ensureIntroCountdownOverlay();
-                    if (ov) {
-                        ov.disabled = false;
-                        const introAcc = q('#rdp-acc-intro');
-                        if (introAcc) introAcc.open = true;
-                        this._syncIntroUI(ov);
-                        this._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
-                        this._notifyIntroTimelineChanged();
-                        this._previewIntroCountdown(ov);
-                    }
-                } else {
-                    const ov = this._getIntroCountdown();
-                    if (ov) {
-                        ov.disabled = true;
-                        this._syncIntroUI(ov);
-                        this._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
-                        this._notifyIntroTimelineChanged();
-                    }
-                }
-            });
-        }
-
-        // 从 0s 预览开场按钮
-        q('#rdp-intro-preview-btn')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            const ov = this._ensureIntroCountdownOverlay();
-            if (!ov) return;
-            ov.disabled = false;
-            const introAcc = q('#rdp-acc-intro');
-            if (introAcc) introAcc.open = true;
-            this._syncIntroUI(ov);
-            this._syncScopeAndRender(ov, { structuralChange: true, immediate: true });
-            this._notifyIntroTimelineChanged();
-            this._previewIntroCountdown(ov);
-        });
-
-        // 移除开场按钮
-        q('#rdp-intro-delete-btn')?.addEventListener('click', (e) => {
-            e.preventDefault();
-            const intros = this._getIntroCountdownOverlays();
-            intros.forEach(item => {
-                if (this.videoCanvas && typeof this.videoCanvas.removeOverlay === 'function') {
-                    this.videoCanvas.removeOverlay(item.id);
-                }
-            });
-            this._syncDecorStackToScopeTasks({ structuralChange: true });
-            this._syncIntroUI(null);
-            if (this.linkedOverlayPanel) this.linkedOverlayPanel._refreshList();
-            this._notifyIntroTimelineChanged();
-            if (typeof this.videoCanvas?.onOverlayChange === 'function') {
-                this.videoCanvas.onOverlayChange(this._getSelectedDecor());
-            }
-        });
-
-        // 预设按钮点击
-        this.container.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const presetId = btn.dataset.introPreset || 'xmas_cp01';
-                this.applyIntroPreset(presetId);
-            });
-        });
-
-        // 快选秒数按钮
-        this.container.querySelectorAll('.rdp-intro-dur-chip').forEach(chip => {
-            chip.addEventListener('click', (e) => {
-                e.preventDefault();
-                const sec = Math.max(0.5, Math.min(15, parseFloat(chip.dataset.sec) || 3.0));
-                const r = q('#rdp-intro-duration');
-                const n = q('#rdp-intro-duration-num');
-                if (r) r.value = String(sec);
-                if (n) n.value = String(sec);
-                this._syncToIntroOverlay({ structuralChange: true });
-            });
-        });
-
-        // 光环配色方案切换（同步预设环色/字色）
-        q('#rdp-intro-ring-theme')?.addEventListener('change', (e) => {
-            const themeId = e.target.value || 'xmas_rainbow';
-            const ov = this._ensureIntroCountdownOverlay();
-            if (!ov) return;
-            const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
-            ov.intro_ring_theme = themeId;
-            if (theme) {
-                ov.intro_ring_colors = [...theme.colors];
-                ov.intro_center_color = theme.centerColor;
-                ov.intro_bottom_underline_color = theme.underlineColor;
-                ov.intro_ring_spark_color = theme.sparkColor;
-                const cc = q('#rdp-intro-center-color');
-                const uc = q('#rdp-intro-underline-color');
-                if (cc) cc.value = theme.centerColor;
-                if (uc) uc.value = theme.underlineColor;
-            }
-            this._syncToIntroOverlay({ structuralChange: false });
-        });
-
-        // 其余表单项统一绑定到 _syncToIntroOverlay
-        const introStructuralIds = new Set(['rdp-intro-delay-body', 'rdp-intro-hook-source']);
-        const introFieldIds = [
-            'rdp-intro-delay-body',
-            'rdp-intro-hook-source', 'rdp-intro-hook-text',
-            'rdp-intro-kinetic-font', 'rdp-intro-kinetic-white', 'rdp-intro-kinetic-yellow',
-            'rdp-intro-curtain-style', 'rdp-intro-curtain-theme', 'rdp-intro-curtain-text', 'rdp-intro-curtain-valance',
-            'rdp-intro-top-text', 'rdp-intro-top-color',
-            'rdp-intro-center-mode', 'rdp-intro-center-text', 'rdp-intro-center-color',
-            'rdp-intro-target-date', 'rdp-intro-day-offset',
-            'rdp-intro-bottom-text', 'rdp-intro-bottom-color',
-            'rdp-intro-underline-enabled', 'rdp-intro-underline-color',
-            'rdp-intro-top-font', 'rdp-intro-center-font', 'rdp-intro-bottom-font',
-            'rdp-intro-spark-enabled', 'rdp-intro-snow-enabled',
-        ];
-        introFieldIds.forEach(id => {
-            const el = q('#' + id);
-            if (!el) return;
-            const structural = introStructuralIds.has(id);
-            const evName = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
-            el.addEventListener(evName, () => {
-                this._syncToIntroOverlay({ structuralChange: structural });
-            });
-            if (evName !== 'change') {
-                el.addEventListener('change', () => {
-                    this._syncToIntroOverlay({ structuralChange: structural });
-                });
-            }
-        });
+        _bindIntroCardEventsOnPanel(this);
     }
 
     _bindPhoneCtaModuleEvents() {
@@ -15576,222 +16347,15 @@ class ReelsDecorPanel {
     }
 
     _updateIntroBadges(target, isEnabled) {
-        if (!this.container) return;
-        const dur = Math.max(0.4, Number(target?.end ?? 3.0) || 3.0);
-        const delayBody = target?.intro_delay_body !== false;
-        const styleTag = target?.intro_layout === 'kinetic_stack'
-            ? '⚡白黄斜体'
-            : (target?.intro_layout === 'curtain_reveal' ? '🎭红幕拉开' : '🎬光环开场');
-        const label = target
-            ? `${styleTag} · ${dur.toFixed(1)}s · ${delayBody ? '延后朗读' : '0s开场'}`
-            : '3.0s · 光环/白黄/红幕开场';
-        _setAccBadge(this.container, 'rdp-acc-intro-badge', label, Boolean(isEnabled));
+        _updateIntroBadgesOnContainer(this.container, target, isEnabled);
     }
 
     _syncIntroUI(ov = undefined) {
-        if (!this.container) return;
-        const target = ov !== undefined ? ov : this._getIntroCountdown();
-        this._syncingIntro = true;
-        try {
-            const exists = Boolean(target);
-            const isEnabled = Boolean(target && !target.disabled);
-            const layout = target?.intro_layout || 'ring';
-            const isKinetic = layout === 'kinetic_stack';
-            const isCurtain = layout === 'curtain_reveal';
-            this._setVal('rdp-intro-enable', isEnabled);
-            if (!this._hasSyncedIntroOnce && isEnabled) {
-                this._hasSyncedIntroOnce = true;
-                const introAcc = this.container.querySelector('#rdp-acc-intro');
-                if (introAcc) introAcc.open = true;
-            }
-            this._updateIntroBadges(target, isEnabled);
-
-            const badge = this.container.querySelector('#rdp-intro-status-badge');
-            if (badge) {
-                if (!exists) {
-                    badge.textContent = '未添加 (勾选或点模板启用)';
-                    badge.style.background = 'rgba(148,163,184,0.18)';
-                    badge.style.color = '#cbd5e1';
-                    badge.style.borderColor = 'rgba(148,163,184,0.38)';
-                } else if (isEnabled) {
-                    const dur = Math.max(0.4, Number(target.end ?? 3.0) || 3.0);
-                    const modeNote = target.intro_delay_body !== false ? '朗读字幕后移' : '0s同步叠加';
-                    badge.textContent = `已启用 · ${dur.toFixed(1)}s · ${modeNote}`;
-                    badge.style.background = 'rgba(245,158,11,0.28)';
-                    badge.style.color = '#fde68a';
-                    badge.style.borderColor = 'rgba(251,191,36,0.6)';
-                } else {
-                    badge.textContent = '已暂停·不显示';
-                    badge.style.background = 'rgba(239,68,68,0.22)';
-                    badge.style.color = '#fca5a5';
-                    badge.style.borderColor = 'rgba(248,113,113,0.48)';
-                }
-            }
-
-            const kineticSec = this.container.querySelector('#rdp-intro-kinetic-section');
-            const curtainSec = this.container.querySelector('#rdp-intro-curtain-section');
-            const ringSec = this.container.querySelector('#rdp-intro-ring-section');
-            const sharedSec = this.container.querySelector('#rdp-intro-shared-layout-section');
-            if (kineticSec) kineticSec.style.display = isKinetic ? 'flex' : 'none';
-            if (curtainSec) curtainSec.style.display = isCurtain ? 'flex' : 'none';
-            if (ringSec) ringSec.style.display = (!isKinetic && !isCurtain) ? 'flex' : 'none';
-            if (sharedSec) sharedSec.style.display = isCurtain ? 'none' : '';
-
-            const activePreset = target?.intro_style || '';
-            this.container.querySelectorAll('.rdp-intro-preset-btn').forEach(btn => {
-                btn.classList.toggle('is-active', Boolean(isEnabled && btn.dataset.introPreset === activePreset));
-            });
-
-            if (!target) return;
-
-            const setIntroVal = (id, val) => {
-                const el = this.container.querySelector('#' + id);
-                if (!el) return;
-                if (el.type === 'checkbox') el.checked = Boolean(val);
-                else el.value = val;
-                const ro = this.container.querySelector(`.rop-num-readout[data-intro-link="${id}"]`);
-                if (ro) ro.value = val;
-            };
-
-            const dur = Math.max(0.5, Number(target.end ?? 3.0) || 3.0);
-            setIntroVal('rdp-intro-duration', dur);
-            this.container.querySelectorAll('.rdp-intro-dur-chip').forEach(btn => {
-                const chipSec = parseFloat(btn.dataset.sec);
-                const active = Math.abs(chipSec - dur) < 0.05;
-                btn.style.borderColor = active ? '#f59e0b' : '';
-                btn.style.color = active ? '#fde68a' : '';
-                btn.style.fontWeight = active ? '700' : '';
-                btn.style.background = active ? 'rgba(245,158,11,0.22)' : '';
-            });
-
-            setIntroVal('rdp-intro-delay-body', target.intro_delay_body !== false);
-            setIntroVal('rdp-intro-hook-source', target.intro_hook_source || 'auto');
-            setIntroVal('rdp-intro-hook-text', target.intro_hook_text ?? "Wait don't skip!\nYou need to\nhear this right now!");
-            setIntroVal('rdp-intro-kinetic-font', target.intro_center_font_family || 'Montserrat');
-            setIntroVal('rdp-intro-kinetic-white', target.intro_top_color || '#FFFFFF');
-            setIntroVal('rdp-intro-kinetic-yellow', target.intro_center_color || '#FFE600');
-            setIntroVal('rdp-intro-kinetic-fontsize', Math.round(Number(target.intro_center_fontsize ?? 112)));
-
-            setIntroVal('rdp-intro-curtain-style', target.intro_curtain_style || 'part_center');
-            setIntroVal('rdp-intro-curtain-theme', target.intro_curtain_theme || 'crimson_velvet');
-            setIntroVal('rdp-intro-curtain-text', isCurtain ? (target.intro_center_text ?? '') : '');
-            setIntroVal('rdp-intro-curtain-valance', Boolean(target.intro_curtain_valance));
-
-            setIntroVal('rdp-intro-top-text', target.intro_top_text ?? 'DAYS BEFORE');
-            setIntroVal('rdp-intro-top-color', target.intro_top_color || '#FFFFFF');
-
-            const centerMode = target.intro_center_mode || 'fixed';
-            setIntroVal('rdp-intro-center-mode', centerMode);
-            setIntroVal('rdp-intro-center-text', target.intro_center_text ?? '37');
-            setIntroVal('rdp-intro-center-color', target.intro_center_color || '#FACC15');
-            setIntroVal('rdp-intro-target-date', target.intro_target_date ?? '12-25');
-            setIntroVal('rdp-intro-day-offset', Number(target.intro_day_offset ?? 0) || 0);
-
-            const fixedWrap = this.container.querySelector('#rdp-intro-fixed-wrap');
-            const dateWrap = this.container.querySelector('#rdp-intro-date-wrap');
-            if (fixedWrap) fixedWrap.style.display = centerMode === 'fixed' ? 'flex' : 'none';
-            if (dateWrap) dateWrap.style.display = centerMode === 'days_to_date' ? 'flex' : 'none';
-            const daysPreview = this.container.querySelector('#rdp-intro-days-preview');
-            if (daysPreview && typeof window.ReelsOverlay?.computeIntroDaysRemaining === 'function') {
-                const computedDays = window.ReelsOverlay.computeIntroDaysRemaining(target.intro_target_date, target.intro_day_offset);
-                daysPreview.textContent = `当前算得: ${computedDays}天`;
-            }
-
-            setIntroVal('rdp-intro-bottom-text', target.intro_bottom_text ?? 'Christmas');
-            setIntroVal('rdp-intro-bottom-color', target.intro_bottom_color || '#FFFFFF');
-            setIntroVal('rdp-intro-underline-enabled', target.intro_bottom_underline_enabled !== false);
-            setIntroVal('rdp-intro-underline-color', target.intro_bottom_underline_color || '#FACC15');
-
-            setIntroVal('rdp-intro-ring-theme', target.intro_ring_theme || 'xmas_rainbow');
-            setIntroVal('rdp-intro-top-font', target.intro_top_font_family || 'Montserrat');
-            setIntroVal('rdp-intro-center-font', target.intro_center_font_family || 'Anton');
-            setIntroVal('rdp-intro-bottom-font', target.intro_bottom_font_family || 'Pacifico');
-            setIntroVal('rdp-intro-ring-radius', Math.round(Number(target.intro_ring_radius ?? 268)));
-            setIntroVal('rdp-intro-ring-thickness', Math.round(Number(target.intro_ring_thickness ?? 12)));
-            setIntroVal('rdp-intro-spark-enabled', target.intro_ring_spark_enabled !== false);
-            setIntroVal('rdp-intro-snow-enabled', Boolean(target.intro_snow_enabled));
-            setIntroVal('rdp-intro-snow-density', Math.round(Number(target.intro_snow_density ?? 32)));
-            setIntroVal('rdp-intro-scrim', Math.round(Number(target.intro_backdrop_scrim ?? (isKinetic ? 0 : 16))));
-            setIntroVal('rdp-intro-scale', Math.round(Number(target.intro_scale ?? 100)));
-            setIntroVal('rdp-intro-offset-y', Math.round(Number(target.intro_offset_y ?? (isKinetic ? 0 : -20))));
-            setIntroVal('rdp-intro-offset-x', Math.round(Number(target.intro_offset_x ?? 0)));
-        } finally {
-            this._syncingIntro = false;
-        }
+        _syncIntroUIOnPanel(this, ov);
     }
 
     _syncToIntroOverlay(options = {}) {
-        if (this._syncingIntro) return;
-        const ov = this._ensureIntroCountdownOverlay();
-        if (!ov) return;
-        ov.disabled = false;
-        ov.start = 0;
-
-        const dur = Math.max(0.4, Math.min(15, Number(this._getVal('rdp-intro-duration') ?? ov.end ?? 3.0) || 3.0));
-        ov.end = dur;
-        ov.intro_delay_body = Boolean(this._getVal('rdp-intro-delay-body'));
-
-        const layout = ov.intro_layout || 'ring';
-        const isKinetic = layout === 'kinetic_stack';
-        const isCurtain = layout === 'curtain_reveal';
-        if (isKinetic) {
-            ov.intro_hook_source = this._getVal('rdp-intro-hook-source') || 'auto';
-            ov.intro_hook_text = String(this._getVal('rdp-intro-hook-text') ?? ov.intro_hook_text ?? '');
-            ov.intro_center_font_family = this._getVal('rdp-intro-kinetic-font') || 'Montserrat';
-            ov.intro_top_color = this._getVal('rdp-intro-kinetic-white') || '#FFFFFF';
-            ov.intro_center_color = this._getVal('rdp-intro-kinetic-yellow') || '#FFE600';
-            ov.intro_center_fontsize = Math.max(36, Number(this._getVal('rdp-intro-kinetic-fontsize') ?? ov.intro_center_fontsize ?? 112));
-        } else if (isCurtain) {
-            ov.intro_curtain_style = this._getVal('rdp-intro-curtain-style') || 'part_center';
-            ov.intro_curtain_theme = this._getVal('rdp-intro-curtain-theme') || 'crimson_velvet';
-            ov.intro_center_text = String(this._getVal('rdp-intro-curtain-text') ?? '');
-            ov.intro_curtain_valance = Boolean(this._getVal('rdp-intro-curtain-valance'));
-        } else {
-            ov.intro_top_text = String(this._getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
-            ov.intro_top_color = this._getVal('rdp-intro-top-color') || '#FFFFFF';
-            ov.intro_center_mode = this._getVal('rdp-intro-center-mode') || 'fixed';
-            ov.intro_center_text = String(this._getVal('rdp-intro-center-text') ?? ov.intro_center_text ?? '37');
-            ov.intro_center_color = this._getVal('rdp-intro-center-color') || '#FACC15';
-            ov.intro_target_date = String(this._getVal('rdp-intro-target-date') ?? '12-25').trim() || '12-25';
-            ov.intro_day_offset = Number(this._getVal('rdp-intro-day-offset') ?? 0) || 0;
-            ov.intro_bottom_text = String(this._getVal('rdp-intro-bottom-text') ?? ov.intro_bottom_text ?? 'Christmas');
-            ov.intro_bottom_color = this._getVal('rdp-intro-bottom-color') || '#FFFFFF';
-            ov.intro_bottom_underline_enabled = Boolean(this._getVal('rdp-intro-underline-enabled'));
-            ov.intro_bottom_underline_color = this._getVal('rdp-intro-underline-color') || '#FACC15';
-
-            const themeId = this._getVal('rdp-intro-ring-theme') || ov.intro_ring_theme || 'xmas_rainbow';
-            ov.intro_ring_theme = themeId;
-            const theme = window.ReelsOverlay?.INTRO_RING_THEMES?.[themeId];
-            if (theme && (!Array.isArray(ov.intro_ring_colors) || ov.intro_ring_colors.length === 0)) {
-                ov.intro_ring_colors = [...theme.colors];
-            }
-
-            ov.intro_top_font_family = this._getVal('rdp-intro-top-font') || 'Montserrat';
-            ov.intro_center_font_family = this._getVal('rdp-intro-center-font') || 'Anton';
-            ov.intro_bottom_font_family = this._getVal('rdp-intro-bottom-font') || 'Pacifico';
-            ov.intro_ring_radius = Math.max(120, Number(this._getVal('rdp-intro-ring-radius') ?? 268));
-            ov.intro_ring_thickness = Math.max(2, Number(this._getVal('rdp-intro-ring-thickness') ?? 12));
-            ov.intro_ring_spark_enabled = Boolean(this._getVal('rdp-intro-spark-enabled'));
-            ov.intro_snow_enabled = Boolean(this._getVal('rdp-intro-snow-enabled'));
-            ov.intro_snow_density = Math.max(0, Number(this._getVal('rdp-intro-snow-density') ?? 32));
-        }
-
-        if (isCurtain) {
-            ov.intro_backdrop_scrim = 0;
-            ov.intro_scale = 100;
-            ov.intro_offset_y = 0;
-            ov.intro_offset_x = 0;
-        } else {
-            ov.intro_backdrop_scrim = Math.max(0, Number(this._getVal('rdp-intro-scrim') ?? (isKinetic ? 0 : 16)));
-            ov.intro_scale = Math.max(40, Number(this._getVal('rdp-intro-scale') ?? 100));
-            ov.intro_offset_y = Number(this._getVal('rdp-intro-offset-y') ?? (isKinetic ? 0 : -20)) || 0;
-            ov.intro_offset_x = Number(this._getVal('rdp-intro-offset-x') ?? 0) || 0;
-        }
-
-        this._syncIntroUI(ov);
-        const structural = Boolean(options?.structuralChange);
-        this._syncScopeAndRender(ov, { structuralChange: structural });
-        if (structural) this._notifyIntroTimelineChanged();
+        _syncIntroOverlayFromPanel(this, options);
     }
 
     applyPreset(styleId) {
@@ -16020,254 +16584,67 @@ class ReelsDecorPanel {
     }
 
     _getEffectiveDecorScope() {
-        const applyAll = this.container?.querySelector('#rdp-apply-all')?.checked !== false;
-        const scope = this.container?.querySelector('#rdp-style-scope')?.value || 'folder';
-        if (!applyAll || scope === 'task') return 'task';
-        return scope;
+        return _getPanelScopeMode(this.container, { applyAllId: 'rdp-apply-all', scopeId: 'rdp-style-scope' });
     }
 
     _getDecorScopeTasks(scopeOverride = null) {
-        const state = typeof window !== 'undefined' ? window._reelsState : null;
-        const allTasks = Array.isArray(state?.tasks) ? state.tasks.filter(Boolean) : [];
-        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || allTasks[0] || null;
         const scope = scopeOverride || this._getEffectiveDecorScope();
-        if (scope === 'task') {
-            return selectedTask ? [selectedTask] : [];
-        }
-        if (scope === 'tab') {
-            if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._collectTabScopeTasks === 'function') {
-                return this.linkedOverlayPanel._collectTabScopeTasks(selectedTask, allTasks, { includeHiddenBatchTasks: true });
-            }
-            if (selectedTask?._batchTabId) {
-                const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
-                return sameTab.length > 0 ? sameTab : allTasks;
-            }
-            return allTasks;
-        }
-        if (scope === 'all') {
-            if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
-                return this.linkedOverlayPanel._getStyleApplyScopeTasks('all');
-            }
-            return allTasks;
-        }
-        // scope === 'folder' (当前队列)
-        if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._getStyleApplyScopeTasks === 'function') {
-            return this.linkedOverlayPanel._getStyleApplyScopeTasks('folder') || [];
-        }
-        if (selectedTask?._folderQueueId) {
-            const sameFolder = allTasks.filter(t => t && t._folderQueueId === selectedTask._folderQueueId);
-            if (sameFolder.length > 1 || allTasks.length <= 1) return sameFolder;
-        }
-        if (selectedTask?._batchTabId) {
-            const sameTab = allTasks.filter(t => t && t._batchTabId === selectedTask._batchTabId);
-            if (sameTab.length >= 1) return sameTab;
-        }
-        return allTasks;
+        return _collectScopedTasksByMode(this.linkedOverlayPanel, scope);
     }
 
     _updateScopeQuickUI() {
-        if (!this.container) return;
         const effectiveScope = this._getEffectiveDecorScope();
         const count = this._getDecorScopeTasks(effectiveScope).length;
-        const pageBtn = this.container.querySelector('#rdp-apply-page-btn');
-        const tabBtn = this.container.querySelector('#rdp-apply-tab-btn');
-        const badgeEl = this.container.querySelector('#rdp-scope-badge');
-
-        if (pageBtn) pageBtn.classList.toggle('is-active', effectiveScope === 'task');
-        if (tabBtn) tabBtn.classList.toggle('is-active', effectiveScope === 'tab');
-
-        if (badgeEl) {
-            const badgeMap = {
-                task: `📄 仅本页 (${count || 1}个)`,
-                tab: `📑 本标签页 (${count}个)`,
-                folder: `📂 当前队列 (${count}个)`,
-                all: `🌐 全部标签 (${count}个)`,
-            };
-            badgeEl.textContent = badgeMap[effectiveScope] || `📂 当前队列 (${count}个)`;
-            if (effectiveScope === 'task') {
-                badgeEl.style.background = 'rgba(245, 158, 11, 0.18)';
-                badgeEl.style.color = '#fde68a';
-                badgeEl.style.borderColor = 'rgba(251, 191, 36, 0.45)';
-            } else {
-                badgeEl.style.background = 'rgba(16, 185, 129, 0.16)';
-                badgeEl.style.color = '#6ee7b7';
-                badgeEl.style.borderColor = 'rgba(52, 211, 153, 0.35)';
-            }
-        }
+        _updateScopeQuickBadgeUI(this.container, {
+            pageBtnId: 'rdp-apply-page-btn',
+            tabBtnId: 'rdp-apply-tab-btn',
+            badgeId: 'rdp-scope-badge',
+            effectiveScope,
+            count,
+        });
     }
 
     applyDecorScopeMode(targetScope, options = {}) {
-        const cleanScope = ['task', 'tab', 'folder', 'all'].includes(targetScope) ? targetScope : 'folder';
-        const scopeSel = this.container?.querySelector('#rdp-style-scope');
-        const applyAllChk = this.container?.querySelector('#rdp-apply-all');
-        const shouldSync = cleanScope !== 'task';
-
-        if (scopeSel) scopeSel.value = cleanScope;
-        if (applyAllChk) applyAllChk.checked = shouldSync;
-
-        const ropDecorChk = document.getElementById('rop-decor-apply-all');
-        if (ropDecorChk) ropDecorChk.checked = shouldSync;
-
         if (this._decorSyncTimer && typeof clearTimeout === 'function') {
             clearTimeout(this._decorSyncTimer);
             this._decorSyncTimer = null;
         }
         this._pendingDecorSyncOv = null;
         this._pendingDecorStructural = false;
-
-        if (shouldSync) {
-            this._syncDecorStackToScopeTasks();
-        } else if (typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
-            try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
-        }
-
-        this._updateScopeQuickUI();
-        const ov = this._getSelectedDecor();
-        if (typeof this.videoCanvas?.onOverlayChange === 'function') {
-            this.videoCanvas.onOverlayChange(ov);
-        }
+        const ok = _applyPanelScopeMode(this, targetScope, {
+            scopeId: 'rdp-style-scope',
+            applyAllId: 'rdp-apply-all',
+            legacyChkId: 'rop-decor-apply-all',
+            getScopeTasks: (s) => this._getDecorScopeTasks(s),
+            syncStackFn: () => this._syncDecorStackToScopeTasks(),
+            updateUiFn: () => this._updateScopeQuickUI(),
+            getActiveOvFn: () => this._getSelectedDecor(),
+            toastPrefix: '装饰',
+            toast: Boolean(options?.toast),
+        });
         if (this.linkedOverlayPanel && typeof this.linkedOverlayPanel._syncFromOverlay === 'function' && this.linkedOverlayPanel._selectedOv?.type === 'decor') {
             this.linkedOverlayPanel._syncFromOverlay(this.linkedOverlayPanel._selectedOv);
         }
-
-        if (options?.toast && typeof showToast === 'function') {
-            const targets = this._getDecorScopeTasks(cleanScope);
-            if (cleanScope === 'task') {
-                showToast('📄 已设为【仅应用本页】：后续装饰修改仅作用于当前任务', 'info');
-            } else if (cleanScope === 'tab') {
-                showToast(`📑 已将当前装饰应用到本标签页（共 ${targets.length} 个任务）`, 'success');
-            } else if (cleanScope === 'all') {
-                showToast(`🌐 已将当前装饰应用到全部标签页（共 ${targets.length} 个任务）`, 'success');
-            } else {
-                showToast(`📂 已将当前装饰同步到当前队列（共 ${targets.length} 个任务）`, 'success');
-            }
-        }
-        return true;
+        return ok;
     }
 
     _syncDecorStackToScopeTasks(options = {}) {
         if (this._isSyncingDecorStack) return;
-        const structuralChange = options?.structuralChange !== false;
         const scope = this._getEffectiveDecorScope();
         if (scope === 'task') return;
-
-        const state = typeof window !== 'undefined' ? window._reelsState : null;
-        const selectedTask = (state && state.selectedIdx >= 0 ? state.tasks?.[state.selectedIdx] : null) || null;
         const scopedTasks = this._getDecorScopeTasks(scope);
         if (!Array.isArray(scopedTasks) || scopedTasks.length === 0) return;
 
+        const includeIntro = !_hasStandaloneIntroRootInDom();
         this._isSyncingDecorStack = true;
         try {
-            if (structuralChange && typeof _syncCurrentOverlayEditorToSelectedTask === 'function') {
-                try { _syncCurrentOverlayEditorToSelectedTask(); } catch (_) {}
-            } else if (selectedTask && this.videoCanvas?.overlayMgr) {
-                if (state?._coverEditMode && selectedTask.cover) {
-                    selectedTask.cover.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
-                } else {
-                    selectedTask.overlays = [...(this.videoCanvas.overlayMgr.overlays || [])];
-                }
-            }
-            const sourceDecors = this._getDecorOverlays().map(d => {
-                const copy = JSON.parse(JSON.stringify(d, (key, val) => key === '_allOverlays' ? undefined : val));
-                delete copy._img;
-                delete copy._imgLoaded;
-                delete copy._selected;
-                return copy;
+            _syncScopedOverlayGroupToTasks(this.videoCanvas, {
+                scope,
+                scopedTasks,
+                matcher: o => _isDecorGroupOverlayObj(o, includeIntro),
+                idPrefix: 'ov_decor_',
+                structuralChange: options?.structuralChange !== false,
             });
-            const sourcePhoneCtas = this._getPhoneCtaOverlays().map(c => {
-                const copy = JSON.parse(JSON.stringify(c, (key, val) => key === '_allOverlays' ? undefined : val));
-                delete copy._img;
-                delete copy._imgLoaded;
-                delete copy._exportImage;
-                delete copy._selected;
-                delete copy._ctaAnimPreviewStart;
-                return copy;
-            });
-            const sourceIntros = this._getIntroCountdownOverlays().map(intro => {
-                const copy = JSON.parse(JSON.stringify(intro, (key, val) => key === '_allOverlays' ? undefined : val));
-                delete copy._selected;
-                delete copy._previewPlaying;
-                delete copy._exporting;
-                return copy;
-            });
-
-            const applyToTaskObj = (task) => {
-                if (!task || task === selectedTask) return;
-                const existing = Array.isArray(task.overlays) ? task.overlays : [];
-                const existingDecors = existing.filter(o => o && o.type === 'decor');
-                const existingPhoneCtas = existing.filter(o => o && o.is_phone_cta);
-                const existingIntros = existing.filter(o => o && (o.is_intro_countdown || o.type === 'intro_countdown'));
-                const otherOverlays = existing.filter(o => o && typeof o.type === 'string' && !Array.isArray(o.tasks) && o.type !== 'decor' && !o.is_phone_cta && !o.is_intro_countdown && o.type !== 'intro_countdown');
-                const nextDecors = sourceDecors.map((srcOv, idx) => {
-                    const clone = JSON.parse(JSON.stringify(srcOv));
-                    const prevId = existingDecors[idx]?.id;
-                    clone.id = (prevId && prevId !== srcOv.id)
-                        ? prevId
-                        : ('ov_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
-                    return clone;
-                });
-                const nextPhoneCtas = sourcePhoneCtas.map((srcOv, idx) => {
-                    const clone = JSON.parse(JSON.stringify(srcOv));
-                    const prevId = existingPhoneCtas[idx]?.id;
-                    clone.id = (prevId && prevId !== srcOv.id)
-                        ? prevId
-                        : ('ov_cta_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
-                    return clone;
-                });
-                const nextIntros = sourceIntros.map((srcOv, idx) => {
-                    const clone = JSON.parse(JSON.stringify(srcOv));
-                    const prevId = existingIntros[idx]?.id;
-                    clone.id = (prevId && prevId !== srcOv.id)
-                        ? prevId
-                        : ('ov_intro_' + Date.now().toString(36) + '_' + idx + '_' + Math.random().toString(36).slice(2, 6));
-                    return clone;
-                });
-                task.overlays = [...otherOverlays, ...nextDecors, ...nextPhoneCtas, ...nextIntros];
-            };
-
-            const updatedIds = new Set();
-            scopedTasks.forEach(task => {
-                if (!task) return;
-                if (task.id) updatedIds.add(task.id);
-                applyToTaskObj(task);
-            });
-
-            if (typeof _batchTableState !== 'undefined' && Array.isArray(_batchTableState?.tabs)) {
-                const activeTabId = selectedTask?._batchTabId
-                    || _batchTableState.activeTabId
-                    || '';
-                for (const tab of _batchTableState.tabs) {
-                    const syncEntireTab = scope === 'all' || (scope === 'tab' && activeTabId && tab?.id === activeTabId);
-                    let tabTouched = false;
-                    for (const t of (tab?.tasks || [])) {
-                        if (!t) continue;
-                        if (syncEntireTab || (t.id && updatedIds.has(t.id))) {
-                            if (selectedTask && ((t === selectedTask) || (t.id && t.id === selectedTask.id))) {
-                                t.overlays = JSON.parse(JSON.stringify(selectedTask.overlays || [], (key, val) => key === '_allOverlays' ? undefined : val));
-                            } else {
-                                applyToTaskObj(t);
-                            }
-                            tabTouched = true;
-                        }
-                    }
-                    if (tabTouched && tab) {
-                        tab._dirty = true;
-                        if (!tab._fromSealedTemplate && (tab.libraryTemplateId || tab._isLiveProject || (tab.tasks && tab.tasks.length))) {
-                            tab._libraryDirty = true;
-                        }
-                    }
-                }
-            }
-
-            if (typeof _syncTasksToActiveTab === 'function') {
-                try { _syncTasksToActiveTab(); } catch (_) {}
-            }
-            if (typeof _batchAutoSave === 'function') {
-                try { _batchAutoSave({ skipSync: true }); } catch (_) {}
-            }
-            if (structuralChange && typeof _renderTaskList === 'function') {
-                try { _renderTaskList({ preserveScroll: true }); } catch (_) {}
-            }
         } finally {
             this._isSyncingDecorStack = false;
         }
@@ -16410,8 +16787,950 @@ class ReelsDecorPanel {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎬 独立专属面板：视频开场效果工作台 (ReelsIntroPanel)
+// ═══════════════════════════════════════════════════════════════════════════
+class ReelsIntroPanel {
+    constructor(container, videoCanvasProxy, linkedOverlayPanel = null) {
+        this.container = container;
+        this.videoCanvas = videoCanvasProxy;
+        this.linkedOverlayPanel = linkedOverlayPanel;
+        this._syncingIntro = false;
+        this._hasSyncedIntroOnce = false;
+        this._renderUI();
+        this._bindEvents();
+        this.refresh();
+    }
+
+    _getIntroCountdownOverlays() {
+        const list = this.videoCanvas?.overlayMgr?.overlays || [];
+        return list.filter(_isIntroOverlayObj);
+    }
+
+    _getIntroCountdown() {
+        const list = this._getIntroCountdownOverlays();
+        return list.length ? list[list.length - 1] : null;
+    }
+
+    _ensureIntroCountdownOverlay(opts = {}) {
+        return _ensureIntroOverlayOnCanvas(this.videoCanvas, this.linkedOverlayPanel, opts);
+    }
+
+    _notifyIntroTimelineChanged() {
+        _notifyIntroTimelineChangedSafe();
+    }
+
+    _previewIntroCountdown(ov = null) {
+        const target = ov || this._getIntroCountdown();
+        if (!target) return;
+        _previewIntroCountdownTarget();
+    }
+
+    _syncMasterEnableUI(enabled) {
+        _updateMasterToggleBarUI(this.container, {
+            checkId: 'rip-master-enable',
+            badgeId: 'rip-master-status-badge',
+            barId: 'rip-master-bar',
+        }, enabled);
+    }
+
+    _ensureIntroMasterEnabled() {
+        const masterCheck = this.container?.querySelector('#rip-master-enable');
+        if (masterCheck && !masterCheck.checked) {
+            masterCheck.checked = true;
+            this._syncMasterEnableUI(true);
+            if (typeof window.reelsOnIntroToggleChange === 'function') {
+                window.reelsOnIntroToggleChange(masterCheck);
+            }
+        }
+    }
+
+    _getEffectiveIntroScope() {
+        return _getPanelScopeMode(this.container, { applyAllId: 'rip-apply-all', scopeId: 'rip-style-scope' });
+    }
+
+    _getIntroScopeTasks(scopeOverride = null) {
+        const scope = scopeOverride || this._getEffectiveIntroScope();
+        return _collectScopedTasksByMode(this.linkedOverlayPanel, scope);
+    }
+
+    _updateScopeQuickUI() {
+        const effectiveScope = this._getEffectiveIntroScope();
+        const count = this._getIntroScopeTasks(effectiveScope).length;
+        _updateScopeQuickBadgeUI(this.container, {
+            pageBtnId: 'rip-apply-page-btn',
+            tabBtnId: 'rip-apply-tab-btn',
+            badgeId: 'rip-scope-badge',
+            effectiveScope,
+            count,
+        });
+    }
+
+    applyIntroScopeMode(targetScope, options = {}) {
+        return _applyPanelScopeMode(this, targetScope, {
+            scopeId: 'rip-style-scope',
+            applyAllId: 'rip-apply-all',
+            getScopeTasks: (s) => this._getIntroScopeTasks(s),
+            syncStackFn: () => this._syncIntroStackToScopeTasks({ structuralChange: true }),
+            updateUiFn: () => this._updateScopeQuickUI(),
+            getActiveOvFn: () => this._getIntroCountdown(),
+            toastPrefix: '开场效果',
+            toast: Boolean(options?.toast),
+        });
+    }
+
+    _syncIntroStackToScopeTasks(options = {}) {
+        if (this._isSyncingIntroStack) return;
+        const scope = this._getEffectiveIntroScope();
+        if (scope === 'task') return;
+        const scopedTasks = this._getIntroScopeTasks(scope);
+        if (!Array.isArray(scopedTasks) || scopedTasks.length === 0) return;
+        this._isSyncingIntroStack = true;
+        try {
+            _syncScopedOverlayGroupToTasks(this.videoCanvas, {
+                scope,
+                scopedTasks,
+                matcher: _isIntroOverlayObj,
+                idPrefix: 'ov_intro_',
+                structuralChange: options?.structuralChange !== false,
+            });
+        } finally {
+            this._isSyncingIntroStack = false;
+        }
+    }
+
+    _syncIntroStackAfterDelete() {
+        this._syncIntroStackToScopeTasks({ structuralChange: true });
+    }
+
+    _syncScopeAndRender(ov, options = {}) {
+        const structuralChange = Boolean(options?.structuralChange);
+        this._syncIntroStackToScopeTasks({ structuralChange });
+        if (typeof this.videoCanvas?.render === 'function') this.videoCanvas.render();
+        if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+            this.videoCanvas.onOverlayChange(ov, { skipTimelineSync: !structuralChange });
+        }
+        if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+    }
+
+    enableIntroCountdown(presetId = 'xmas_cp01') {
+        return _enableIntroPresetOnPanel(this, presetId);
+    }
+
+    applyIntroPreset(presetId) {
+        const ov = this.enableIntroCountdown(presetId);
+        if (ov) this._previewIntroCountdown(ov);
+        return ov;
+    }
+
+    _syncIntroUI(ov = undefined) {
+        _syncIntroUIOnPanel(this, ov);
+    }
+
+    _syncToIntroOverlay(options = {}) {
+        _syncIntroOverlayFromPanel(this, options);
+    }
+
+    _renderUI() {
+        if (!this.container) return;
+        this.container.innerHTML = `
+            <div class="rop-root rdp-root">
+                ${_buildMasterToggleBarHtml({
+                    barId: 'rip-master-bar',
+                    checkId: 'rip-master-enable',
+                    badgeId: 'rip-master-status-badge',
+                    labelText: '启用开场效果',
+                    descText: '📌 独立开场层（67款北美风：白头鹰水墨划开 / FB纯黑对开 / 高清实拍谷仓教堂木门 / 幕布纱帘 / 百叶 / 冰雪 / 聚光321 / 礼物卷轴 / 光环；「爆款出字」在 T 字幕）',
+                    accentColor: '#f59e0b',
+                })}
+                ${_buildScopeCardHtml({
+                    titleText: '🎬 作用范围与同步',
+                    scopeId: 'rip-style-scope',
+                    applyAllId: 'rip-apply-all',
+                    pageBtnId: 'rip-apply-page-btn',
+                    tabBtnId: 'rip-apply-tab-btn',
+                    badgeId: 'rip-scope-badge',
+                    pageTitle: '仅将当前开场效果应用到本页（当前选中这一条任务），不影响其他任务',
+                    tabTitle: '立即将当前开场效果同步应用到本标签页的全部任务',
+                })}
+                ${_buildIntroCardHtml({ openAccordion: true })}
+            </div>
+        `;
+    }
+
+    _bindEvents() {
+        if (!this.container) return;
+        const masterCheck = this.container.querySelector('#rip-master-enable');
+        if (masterCheck) {
+            masterCheck.addEventListener('change', () => {
+                const enabled = Boolean(masterCheck.checked);
+                this._syncMasterEnableUI(enabled);
+                if (typeof window.reelsOnIntroToggleChange === 'function') {
+                    window.reelsOnIntroToggleChange(masterCheck);
+                }
+            });
+        }
+        _bindScopeControls(this, {
+            scopeId: 'rip-style-scope',
+            applyAllId: 'rip-apply-all',
+            pageBtnId: 'rip-apply-page-btn',
+            tabBtnId: 'rip-apply-tab-btn',
+            onSync: (shouldSync = true) => {
+                if (shouldSync) this._syncIntroStackToScopeTasks({ structuralChange: true });
+                this._updateScopeQuickUI();
+                const ov = this._getIntroCountdown();
+                if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                    this.videoCanvas.onOverlayChange(ov);
+                }
+            },
+            onApplyMode: (targetScope, opts) => this.applyIntroScopeMode(targetScope, opts),
+        });
+        this._updateScopeQuickUI();
+        _bindIntroCardEventsOnPanel(this);
+    }
+
+    refresh() {
+        const globalToggle = document.getElementById('reels-intro-toggle');
+        if (globalToggle) {
+            this._syncMasterEnableUI(globalToggle.checked);
+        }
+        this._syncIntroUI(this._getIntroCountdown());
+        this._updateScopeQuickUI();
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎄 独立专属面板：画面小图标工作台 (ReelsStickerPanel)
+// ═══════════════════════════════════════════════════════════════════════════
+class ReelsStickerPanel {
+    constructor(container, videoCanvasProxy, linkedOverlayPanel = null) {
+        this.container = container;
+        this.videoCanvas = videoCanvasProxy;
+        this.linkedOverlayPanel = linkedOverlayPanel;
+        this._selectedStickerId = null;
+        this._activeCategory = 'all';
+        this._clickMode = 'replace';
+        this._syncing = false;
+        this._renderUI();
+        this._bindEvents();
+        this.refresh();
+    }
+
+    _getStickerOverlays() {
+        const list = this.videoCanvas?.overlayMgr?.overlays || [];
+        return list.filter(_isStickerOverlayObj);
+    }
+
+    _getSelectedSticker() {
+        const list = this._getStickerOverlays();
+        if (!list.length) return null;
+        if (this._selectedStickerId) {
+            const hit = list.find(o => o.id === this._selectedStickerId);
+            if (hit) return hit;
+        }
+        const globalId = typeof window !== 'undefined' ? window._reelsState?.overlaySelectedId : null;
+        if (globalId) {
+            const globalHit = list.find(o => o.id === globalId);
+            if (globalHit) {
+                this._selectedStickerId = globalHit.id;
+                return globalHit;
+            }
+        }
+        this._selectedStickerId = list[list.length - 1].id;
+        return list[list.length - 1];
+    }
+
+    _syncMasterEnableUI(enabled) {
+        _updateMasterToggleBarUI(this.container, {
+            checkId: 'rsp-master-enable',
+            badgeId: 'rsp-master-status-badge',
+            barId: 'rsp-master-bar',
+        }, enabled);
+    }
+
+    _ensureStickerMasterEnabled() {
+        const masterCheck = this.container?.querySelector('#rsp-master-enable');
+        if (masterCheck && !masterCheck.checked) {
+            masterCheck.checked = true;
+            this._syncMasterEnableUI(true);
+            if (typeof window.reelsOnStickerToggleChange === 'function') {
+                window.reelsOnStickerToggleChange(masterCheck);
+            }
+        }
+    }
+
+    _getEffectiveStickerScope() {
+        return _getPanelScopeMode(this.container, { applyAllId: 'rsp-apply-all', scopeId: 'rsp-style-scope' });
+    }
+
+    _getStickerScopeTasks(scopeOverride = null) {
+        const scope = scopeOverride || this._getEffectiveStickerScope();
+        return _collectScopedTasksByMode(this.linkedOverlayPanel, scope);
+    }
+
+    _updateScopeQuickUI() {
+        const effectiveScope = this._getEffectiveStickerScope();
+        const count = this._getStickerScopeTasks(effectiveScope).length;
+        _updateScopeQuickBadgeUI(this.container, {
+            pageBtnId: 'rsp-apply-page-btn',
+            tabBtnId: 'rsp-apply-tab-btn',
+            badgeId: 'rsp-scope-badge',
+            effectiveScope,
+            count,
+        });
+    }
+
+    applyStickerScopeMode(targetScope, options = {}) {
+        return _applyPanelScopeMode(this, targetScope, {
+            scopeId: 'rsp-style-scope',
+            applyAllId: 'rsp-apply-all',
+            getScopeTasks: (s) => this._getStickerScopeTasks(s),
+            syncStackFn: () => this._syncStickerStackToScopeTasks({ structuralChange: true }),
+            updateUiFn: () => this._updateScopeQuickUI(),
+            getActiveOvFn: () => this._getSelectedSticker(),
+            toastPrefix: '小图标',
+            toast: Boolean(options?.toast),
+        });
+    }
+
+    _syncStickerStackToScopeTasks(options = {}) {
+        if (this._isSyncingStickerStack) return;
+        const scope = this._getEffectiveStickerScope();
+        if (scope === 'task') return;
+        const scopedTasks = this._getStickerScopeTasks(scope);
+        if (!Array.isArray(scopedTasks) || scopedTasks.length === 0) return;
+        this._isSyncingStickerStack = true;
+        try {
+            _syncScopedOverlayGroupToTasks(this.videoCanvas, {
+                scope,
+                scopedTasks,
+                matcher: _isStickerOverlayObj,
+                idPrefix: 'ov_stk_',
+                structuralChange: options?.structuralChange !== false,
+            });
+        } finally {
+            this._isSyncingStickerStack = false;
+        }
+    }
+
+    _commitStickerChange(ov, { structuralChange = false } = {}) {
+        if (!ov) return;
+        if (ov.cta_loop_anim && ov.cta_loop_anim !== 'none' && typeof performance !== 'undefined') {
+            ov._ctaAnimPreviewStart = performance.now();
+            ov._loopPreviewImmediate = true;
+        } else {
+            delete ov._ctaAnimPreviewStart;
+            delete ov._loopPreviewImmediate;
+        }
+        const task = (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState.selectedIdx]) || null;
+        if (task && this.videoCanvas?.overlayMgr) {
+            if (window._reelsState?._coverEditMode && task.cover) {
+                task.cover.overlays = [...this.videoCanvas.overlayMgr.overlays];
+            } else {
+                task.overlays = [...this.videoCanvas.overlayMgr.overlays];
+            }
+        }
+        this._syncStickerStackToScopeTasks({ structuralChange });
+        if (typeof this.videoCanvas?.render === 'function') this.videoCanvas.render();
+        if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+            this.videoCanvas.onOverlayChange(ov, { skipTimelineSync: !structuralChange });
+        }
+        if (window.ReelsPreviewV2?.isOpen?.()) window.ReelsPreviewV2.render();
+        if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
+            window.reelsSyncChristmasIconAdjustUI(ov);
+        }
+    }
+
+    selectSticker(ovOrId) {
+        const list = this._getStickerOverlays();
+        const ov = typeof ovOrId === 'string'
+            ? list.find(o => o.id === ovOrId)
+            : (ovOrId && _isStickerOverlayObj(ovOrId) ? ovOrId : null);
+        this._selectedStickerId = ov?.id || null;
+        if (ov && typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
+        this._renderLayerList();
+        this._syncFromStickerOverlay(ov);
+    }
+
+    addOrApplySticker(kind = 'jingle_bell', { forceNew = false } = {}) {
+        this._ensureStickerMasterEnabled();
+        const existing = (!forceNew && this._clickMode === 'replace') ? this._getSelectedSticker() : null;
+        const defaultLoop = (kind === 'jingle_bell' || kind === 'santa_feather' || kind === 'xmas_velvet_bow') ? 'sway_bell' : 'float';
+        if (existing) {
+            const meta = (typeof window !== 'undefined' && window.HOLIDAY_ICON_MAP?.[kind]) || null;
+            existing.sticker_kind = kind;
+            existing.disabled = false;
+            existing.name = meta ? `${meta.emoji} ${meta.label}` : `🎄 ${kind}`;
+            if (!existing.cta_loop_anim || existing.cta_loop_anim === 'none') {
+                existing.cta_loop_anim = defaultLoop;
+            }
+            this._selectedStickerId = existing.id;
+            if (typeof window !== 'undefined' && window._reelsState) {
+                window._reelsState.overlaySelectedId = existing.id;
+            }
+            this._renderLayerList();
+            this._syncFromStickerOverlay(existing);
+            this._commitStickerChange(existing, { structuralChange: true });
+            return existing;
+        }
+        const ReelsOverlayMod = window.ReelsOverlay;
+        if (!ReelsOverlayMod || typeof ReelsOverlayMod.createStickerOverlay !== 'function') return null;
+        const list = this._getStickerOverlays();
+        const offsetIdx = list.length;
+        const ov = ReelsOverlayMod.createStickerOverlay({
+            sticker_kind: kind,
+            cta_loop_anim: defaultLoop,
+            x: 410 + (offsetIdx % 3) * 40 - (offsetIdx > 0 ? 40 : 0),
+            y: 230 + Math.floor(offsetIdx / 3) * 60,
+            w: 250,
+            h: 250,
+        });
+        if (this.videoCanvas && typeof this.videoCanvas.addOverlay === 'function') {
+            this.videoCanvas.addOverlay(ov);
+        } else if (this.videoCanvas?.overlayMgr?.overlays) {
+            this.videoCanvas.overlayMgr.overlays.push(ov);
+        }
+        this._selectedStickerId = ov.id;
+        if (typeof window !== 'undefined' && window._reelsState) {
+            window._reelsState.overlaySelectedId = ov.id;
+        }
+        if (this.linkedOverlayPanel) this.linkedOverlayPanel._refreshList();
+        this._renderLayerList();
+        this._syncFromStickerOverlay(ov);
+        this._commitStickerChange(ov, { structuralChange: true });
+        return ov;
+    }
+
+    _populateCatalogGrid() {
+        const grid = this.container?.querySelector('#rsp-catalog-grid');
+        if (!grid) return;
+        const catalog = (typeof window !== 'undefined' && Array.isArray(window.HOLIDAY_ICON_CATALOG))
+            ? window.HOLIDAY_ICON_CATALOG
+            : [];
+        if (!catalog.length) {
+            grid.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:#94a3b8;padding:8px;">正在加载圣诞/节日小图标库...</div>';
+            return;
+        }
+        if (grid.dataset.populated === '1') {
+            this._filterCatalogGrid();
+            return;
+        }
+        grid.dataset.populated = '1';
+        grid.innerHTML = '';
+        for (const item of catalog) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'rsp-icon-card';
+            btn.dataset.kind = item.id;
+            btn.dataset.cat = item.category || '圣诞经典';
+            btn.title = `${item.emoji} ${item.label}（点击放置或替换当前选中图标）`;
+            btn.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(15,23,42,0.55);color:#f8fafc;cursor:pointer;font-size:10px;line-height:1.2;transition:all 0.14s;';
+
+            const cvs = document.createElement('canvas');
+            cvs.width = 40;
+            cvs.height = 40;
+            cvs.style.cssText = 'width:34px;height:34px;pointer-events:none;';
+            if (typeof window.drawHolidayStickerIcon === 'function') {
+                const c2d = cvs.getContext('2d');
+                if (c2d) {
+                    try {
+                        window.drawHolidayStickerIcon(c2d, item.id, 20, 20, 32, { angleDeg: 0, timeSec: 0.35, shadow: true });
+                    } catch (_) {}
+                }
+            }
+            const lbl = document.createElement('span');
+            lbl.textContent = item.label;
+            lbl.style.cssText = 'max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            btn.appendChild(cvs);
+            btn.appendChild(lbl);
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.addOrApplySticker(item.id);
+            });
+            grid.appendChild(btn);
+        }
+        const allChip = this.container.querySelector('.rsp-cat-chip[data-cat="all"]');
+        if (allChip) allChip.textContent = `全部 (${catalog.length})`;
+        this._filterCatalogGrid();
+    }
+
+    _filterCatalogGrid() {
+        const selected = this._getSelectedSticker();
+        const activeKind = selected?.sticker_kind || '';
+        this.container?.querySelectorAll('.rsp-icon-card').forEach(card => {
+            const matchCat = this._activeCategory === 'all' || card.dataset.cat === this._activeCategory;
+            card.style.display = matchCat ? 'flex' : 'none';
+            const isSel = Boolean(activeKind && card.dataset.kind === activeKind);
+            card.style.borderColor = isSel ? '#facc15' : 'rgba(255,255,255,0.12)';
+            card.style.background = isSel ? 'rgba(250,204,21,0.18)' : 'rgba(15,23,42,0.55)';
+            card.style.boxShadow = isSel ? '0 0 0 1px rgba(250,204,21,0.45)' : 'none';
+        });
+    }
+
+    _renderLayerList() {
+        const listEl = this.container?.querySelector('#rsp-layer-list');
+        if (!listEl) return;
+        const stickers = this._getStickerOverlays();
+        if (!stickers.length) {
+            listEl.innerHTML = `<div style="padding:5px 8px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px dashed rgba(74,222,128,0.4);color:#bbf7d0;font-size:11px;">💡 暂未添加画面小图标，点击下方图标或“➕ 放置图标”即可加入全部任务！</div>`;
+            return;
+        }
+        const selected = this._getSelectedSticker();
+        listEl.innerHTML = stickers.map((s, idx) => {
+            const isSel = selected && selected.id === s.id;
+            const meta = (typeof window !== 'undefined' && window.HOLIDAY_ICON_MAP?.[s.sticker_kind]) || null;
+            const label = s.name || (meta ? `${meta.emoji} ${meta.label}` : `🎄 图标 #${idx + 1}`);
+            const isHidden = Boolean(s.disabled) || (s.opacity !== undefined && s.opacity <= 0);
+            const durText = (s.scroll_end_auto !== false && Number(s.end ?? 9999) >= 9999)
+                ? '全程'
+                : `${Number(s.start || 0).toFixed(1)}-${Number(s.end || 5).toFixed(1)}s`;
+            return `
+                <div class="rsp-layer-item" data-ov-id="${s.id}" style="display:flex;align-items:center;justify-content:space-between;gap:5px;padding:4px 7px;border-radius:6px;cursor:pointer;border:1px solid ${isSel ? '#facc15' : '#334155'};background:${isSel ? 'rgba(250,204,21,0.15)' : 'rgba(15,23,42,0.45)'};">
+                    <label style="display:flex;align-items:center;gap:5px;min-width:0;flex:1;cursor:pointer;margin:0;">
+                        <input type="checkbox" class="rsp-layer-enable-chk" data-ov-id="${s.id}" ${isHidden ? '' : 'checked'} style="accent-color:#22c55e;flex-shrink:0;">
+                        <span class="rsp-layer-title" style="font-size:11px;font-weight:${isSel ? '700' : '500'};color:${isHidden ? '#94a3b8' : '#fef9c3'};text-decoration:${isHidden ? 'line-through' : 'none'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label} <span style="opacity:0.65;font-size:10px;">(${Math.round(Number(s.w) || 250)}px · ${durText})</span></span>
+                    </label>
+                    <button type="button" class="rsp-layer-del-btn" data-ov-id="${s.id}" style="padding:1px 5px;font-size:10px;border:none;background:rgba(239,68,68,0.16);color:#fca5a5;border-radius:4px;cursor:pointer;" title="删除该图标">🗑️</button>
+                </div>
+            `;
+        }).join('');
+
+        listEl.querySelectorAll('.rsp-layer-item').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.closest('button') || e.target.classList.contains('rsp-layer-enable-chk')) return;
+                this.selectSticker(row.dataset.ovId);
+            });
+        });
+        listEl.querySelectorAll('.rsp-layer-enable-chk').forEach(chk => {
+            chk.addEventListener('change', (e) => {
+                e.stopPropagation();
+                const ov = this._getStickerOverlays().find(o => o.id === chk.dataset.ovId);
+                if (!ov) return;
+                ov.disabled = !chk.checked;
+                this._renderLayerList();
+                this._commitStickerChange(ov, { structuralChange: true });
+            });
+        });
+        listEl.querySelectorAll('.rsp-layer-del-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.ovId;
+                if (this.videoCanvas && typeof this.videoCanvas.removeOverlay === 'function') {
+                    this.videoCanvas.removeOverlay(id);
+                }
+                if (this._selectedStickerId === id) this._selectedStickerId = null;
+                this._syncStickerStackToScopeTasks({ structuralChange: true });
+                if (this.linkedOverlayPanel) this.linkedOverlayPanel._refreshList();
+                this.refresh();
+                if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                    this.videoCanvas.onOverlayChange(this._getSelectedSticker());
+                }
+            });
+        });
+    }
+
+    _syncFromStickerOverlay(ov = undefined) {
+        if (!this.container) return;
+        const target = ov !== undefined ? ov : this._getSelectedSticker();
+        this._syncing = true;
+        try {
+            const setVal = (id, val) => _setPanelInputVal(this.container, 'data-sticker-link', id, val);
+            const labelEl = this.container.querySelector('#rsp-active-label');
+            if (labelEl) {
+                const meta = target ? (window.HOLIDAY_ICON_MAP?.[target.sticker_kind] || null) : null;
+                labelEl.textContent = target
+                    ? `🎛 当前: ${target.name || (meta ? `${meta.emoji} ${meta.label}` : '圣诞小图标')}`
+                    : '🎛 尚未选中图标（点下方图标即可放置）';
+            }
+            const sz = target ? Math.max(40, Math.min(500, Math.round(Number(target.w) || 250))) : 250;
+            const cx = target ? ((Number(target.x) || 0) + sz / 2) : 540;
+            const cy = target ? ((Number(target.y) || 0) + (Number(target.h) || sz) / 2) : 355;
+            setVal('rsp-size', sz);
+            setVal('rsp-x', Math.round(cx - 540));
+            setVal('rsp-y', Math.round(cy - 960));
+            setVal('rsp-angle', target ? Math.round(Number(target.rotation) || 0) : 0);
+            setVal('rsp-loop-anim', target?.cta_loop_anim || 'sway_bell');
+            setVal('rsp-anim-in', target?.anim_in_type || 'elastic_pop');
+            setVal('rsp-shadow', target ? target.sticker_shadow !== false : true);
+            setVal('rsp-sparkles', Boolean(target?.sticker_sparkles));
+
+            const isFull = !target || (target.scroll_end_auto !== false && Number(target.end ?? 9999) >= 9999);
+            setVal('rsp-full-duration', isFull);
+            setVal('rsp-start', target ? Number(target.start ?? 0) : 0);
+            setVal('rsp-end', isFull ? 9999 : Number(target?.end ?? 5));
+            const startEl = this.container.querySelector('#rsp-start');
+            const endEl = this.container.querySelector('#rsp-end');
+            if (startEl) startEl.disabled = isFull;
+            if (endEl) endEl.disabled = isFull;
+            this._filterCatalogGrid();
+        } finally {
+            this._syncing = false;
+        }
+    }
+
+    _syncToStickerOverlay(mutator, { structuralChange = false } = {}) {
+        if (this._syncing) return;
+        this._ensureStickerMasterEnabled();
+        let ov = this._getSelectedSticker();
+        if (!ov) {
+            ov = this.addOrApplySticker('jingle_bell', { forceNew: true });
+        }
+        if (!ov) return;
+        if (typeof mutator === 'function') mutator(ov);
+        this._syncFromStickerOverlay(ov);
+        this._renderLayerList();
+        this._commitStickerChange(ov, { structuralChange });
+    }
+
+    _renderUI() {
+        if (!this.container) return;
+        const combos = (typeof window !== 'undefined' && Array.isArray(window.XMAS_ICON_SUBTITLE_COMBOS))
+            ? window.XMAS_ICON_SUBTITLE_COMBOS
+            : [];
+        const comboButtonsHtml = combos.map(c => `
+            <button type="button" class="rop-btn rsp-combo-btn" data-combo-id="${c.id}"
+                style="padding:4px 7px;font-size:10.5px;border-radius:6px;background:rgba(15,23,42,0.55);color:#fef3c7;border:1px solid rgba(250,204,21,0.3);cursor:pointer;text-align:left;line-height:1.25;">${c.label}</button>
+        `).join('');
+
+        const layerAndActionHtml = `
+            <div style="display:flex;gap:4px;flex-wrap:nowrap;">
+                <button type="button" id="rsp-add-btn" class="rop-btn" style="flex:1;min-width:0;padding:4px 6px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#15803d,#22c55e);color:#fff;border:1px solid #4ade80;border-radius:6px;cursor:pointer;white-space:nowrap;">➕ 放新小图标</button>
+                <button type="button" id="rsp-clear-btn" class="rop-btn" style="padding:4px 8px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:6px;cursor:pointer;white-space:nowrap;" title="清空当前任务及同步范围中的全部小图标">🗑️ 清空</button>
+            </div>
+            <div id="rsp-layer-list" style="display:flex;flex-direction:column;gap:4px;"></div>
+        `;
+
+        this.container.innerHTML = `
+            <div class="rop-root rdp-root">
+                ${_buildMasterToggleBarHtml({
+                    barId: 'rsp-master-bar',
+                    checkId: 'rsp-master-enable',
+                    badgeId: 'rsp-master-status-badge',
+                    labelText: '启用画面小图标',
+                    descText: '📌 独立小图标层（与点缀、开场、文字覆层完全分离；单独控制显示与跨页面同步，永不串扰）',
+                    accentColor: '#22c55e',
+                })}
+                ${_buildScopeCardHtml({
+                    titleText: '🎄 作用范围与图标图层',
+                    scopeId: 'rsp-style-scope',
+                    applyAllId: 'rsp-apply-all',
+                    pageBtnId: 'rsp-apply-page-btn',
+                    tabBtnId: 'rsp-apply-tab-btn',
+                    badgeId: 'rsp-scope-badge',
+                    pageTitle: '仅将当前小图标设置应用到本页（当前任务），不影响同标签页其他任务',
+                    tabTitle: '立即将当前小图标同步应用到本标签页的全部任务',
+                    extraHtml: layerAndActionHtml,
+                })}
+
+                <details class="rop-scroll-accordion rdp-accordion" id="rsp-acc-catalog" open>
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎄 40款节日/圣诞小图标</span></span>
+                        <div style="display:flex;gap:3px;" onclick="event.stopPropagation()">
+                            <button type="button" id="rsp-mode-replace" class="rop-btn is-active" style="padding:1px 6px;font-size:10px;border-radius:999px;border:1px solid #facc15;background:rgba(250,204,21,0.22);color:#fef08a;cursor:pointer;">切换当前</button>
+                            <button type="button" id="rsp-mode-add" class="rop-btn" style="padding:1px 6px;font-size:10px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">➕叠加新图标</button>
+                        </div>
+                    </summary>
+                    <div class="rop-scroll-acc-body" style="gap:6px;">
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="all" style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(250,204,21,0.22);border:1px solid #facc15;color:#fef08a;cursor:pointer;">全部 (40)</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="飞羽红雀" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🪶 红雀羽毛</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="圣诞经典" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🔔 圣诞经典</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="萌物人物" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">⛄ 萌物人物</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="圣夜信仰" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🌟 圣夜信仰</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="冬日美食" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🍪 冬日美食</button>
+                        </div>
+                        <div id="rsp-catalog-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;max-height:240px;overflow-y:auto;padding-right:2px;"></div>
+                    </div>
+                </details>
+
+                <details class="rop-scroll-accordion rdp-accordion" id="rsp-acc-adjust" open>
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span id="rsp-active-label">🎛 调整当前小图标</span></span>
+                    </summary>
+                    <div class="rop-scroll-acc-body" style="gap:6px;">
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            <button type="button" class="rop-btn rsp-pos-btn" data-pos="tree-top" style="font-size:10px;padding:3px 6px;border-radius:5px;border:1px solid #475569;background:rgba(15,23,42,0.55);color:#e2e8f0;cursor:pointer;">🌲 树顶上方</button>
+                            <button type="button" class="rop-btn rsp-pos-btn" data-pos="above-sub" style="font-size:10px;padding:3px 6px;border-radius:5px;border:1px solid #475569;background:rgba(15,23,42,0.55);color:#e2e8f0;cursor:pointer;">💬 字幕上方</button>
+                            <button type="button" class="rop-btn rsp-pos-btn" data-pos="sub-below" style="font-size:10px;padding:3px 6px;border-radius:5px;border:1px solid #475569;background:rgba(15,23,42,0.55);color:#e2e8f0;cursor:pointer;">💬 字幕下方</button>
+                            <button type="button" class="rop-btn rsp-pos-btn" data-pos="bottom-center" style="font-size:10px;padding:3px 6px;border-radius:5px;border:1px solid #475569;background:rgba(15,23,42,0.55);color:#e2e8f0;cursor:pointer;">⬇ 底部居中</button>
+                            <button type="button" class="rop-btn rsp-pos-btn" data-pos="center" style="font-size:10px;padding:3px 6px;border-radius:5px;border:1px solid #475569;background:rgba(15,23,42,0.55);color:#e2e8f0;cursor:pointer;">🎯 画面中心</button>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>大小</label>
+                            <input type="range" id="rsp-size" class="rop-range" min="40" max="500" step="5" value="250">
+                            <input type="number" class="rop-num-readout rop-num-short" data-sticker-link="rsp-size" min="40" max="500" step="5" value="250">
+                            <span style="font-size:10px;color:var(--text-muted);">px</span>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>左右X</label>
+                            <input type="range" id="rsp-x" class="rop-range" min="-540" max="540" step="2" value="0">
+                            <input type="number" class="rop-num-readout rop-num-short" data-sticker-link="rsp-x" min="-540" max="540" step="2" value="0">
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>上下Y</label>
+                            <input type="range" id="rsp-y" class="rop-range" min="-960" max="960" step="2" value="-605">
+                            <input type="number" class="rop-num-readout rop-num-short" data-sticker-link="rsp-y" min="-960" max="960" step="2" value="-605">
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>旋转角度</label>
+                            <input type="range" id="rsp-angle" class="rop-range" min="-180" max="180" step="1" value="0">
+                            <input type="number" class="rop-num-readout rop-num-short" data-sticker-link="rsp-angle" min="-180" max="180" step="1" value="0">
+                            <span style="font-size:10px;color:var(--text-muted);">°</span>
+                        </div>
+                        <div class="rop-row" style="gap:6px;">
+                            <label style="white-space:nowrap;">持续动效</label>
+                            <select id="rsp-loop-anim" class="rop-select" style="flex:1;min-width:0;">
+                                <option value="sway_bell">🔔 铃铛摆动</option>
+                                <option value="float">🎈 柔和上下轻浮</option>
+                                <option value="pulse">💓 心跳缩放</option>
+                                <option value="twinkle">✨ 闪烁星光</option>
+                                <option value="none">⏸️ 保持静止</option>
+                            </select>
+                        </div>
+                        <div class="rop-row" style="gap:6px;">
+                            <label style="white-space:nowrap;">进场动效</label>
+                            <select id="rsp-anim-in" class="rop-select" style="flex:1;min-width:0;">
+                                <option value="elastic_pop">🎾 弹性弹出</option>
+                                <option value="fade">🌫️ 柔和渐显</option>
+                                <option value="pop">✨ 放大弹出</option>
+                                <option value="slide_up">⬆️ 向上滑入</option>
+                                <option value="none">⚡ 立即显示</option>
+                            </select>
+                        </div>
+                        <div class="rop-row" style="gap:10px;">
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
+                                <input type="checkbox" id="rsp-shadow" checked style="accent-color:#22c55e;"> 🌑 立体投影
+                            </label>
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;">
+                                <input type="checkbox" id="rsp-sparkles" style="accent-color:#facc15;"> ✨ 闪烁星光
+                            </label>
+                        </div>
+                        <div class="rop-row" style="gap:6px;flex-wrap:wrap;">
+                            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;margin:0;white-space:nowrap;">
+                                <input type="checkbox" id="rsp-full-duration" checked style="accent-color:#22c55e;"> 全程显示
+                            </label>
+                            <input type="number" id="rsp-start" class="rop-num-readout rop-num-short" min="0" step="0.1" value="0" style="width:52px;" title="出现时间(秒)">
+                            <span style="font-size:10px;color:var(--text-muted);">→</span>
+                            <input type="number" id="rsp-end" class="rop-num-readout rop-num-short" min="0.1" step="0.1" value="9999" style="width:58px;" title="消失时间(秒)">
+                            <span style="font-size:10px;color:var(--text-muted);">秒</span>
+                        </div>
+                    </div>
+                </details>
+
+                ${combos.length ? `
+                <details class="rop-scroll-accordion rdp-accordion" id="rsp-acc-combos">
+                    <summary>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>✨ 图标 + 爆款字幕联动搭配 (${combos.length}套)</span></span>
+                    </summary>
+                    <div class="rop-scroll-acc-body" style="gap:4px;">
+                        ${comboButtonsHtml}
+                    </div>
+                </details>` : ''}
+            </div>
+        `;
+    }
+
+    _bindEvents() {
+        if (!this.container) return;
+        const q = (sel) => this.container.querySelector(sel);
+
+        const masterCheck = q('#rsp-master-enable');
+        if (masterCheck) {
+            masterCheck.addEventListener('change', () => {
+                const enabled = Boolean(masterCheck.checked);
+                this._syncMasterEnableUI(enabled);
+                if (typeof window.reelsOnStickerToggleChange === 'function') {
+                    window.reelsOnStickerToggleChange(masterCheck);
+                }
+            });
+        }
+
+        _bindScopeControls(this, {
+            scopeId: 'rsp-style-scope',
+            applyAllId: 'rsp-apply-all',
+            pageBtnId: 'rsp-apply-page-btn',
+            tabBtnId: 'rsp-apply-tab-btn',
+            onSync: (shouldSync = true) => {
+                if (shouldSync) this._syncStickerStackToScopeTasks({ structuralChange: true });
+                this._updateScopeQuickUI();
+                const ov = this._getSelectedSticker();
+                if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                    this.videoCanvas.onOverlayChange(ov);
+                }
+            },
+            onApplyMode: (targetScope, opts) => this.applyStickerScopeMode(targetScope, opts),
+        });
+        this._updateScopeQuickUI();
+
+        q('#rsp-add-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            const active = this._getSelectedSticker();
+            this.addOrApplySticker(active?.sticker_kind || 'jingle_bell', { forceNew: true });
+        });
+
+        q('#rsp-clear-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this._getStickerOverlays().forEach(s => {
+                if (this.videoCanvas && typeof this.videoCanvas.removeOverlay === 'function') {
+                    this.videoCanvas.removeOverlay(s.id);
+                }
+            });
+            this._selectedStickerId = null;
+            this._syncStickerStackToScopeTasks({ structuralChange: true });
+            if (this.linkedOverlayPanel) this.linkedOverlayPanel._refreshList();
+            this.refresh();
+            if (typeof this.videoCanvas?.onOverlayChange === 'function') {
+                this.videoCanvas.onOverlayChange(null);
+            }
+        });
+
+        const setClickMode = (mode) => {
+            this._clickMode = mode === 'add' ? 'add' : 'replace';
+            const repBtn = q('#rsp-mode-replace');
+            const addBtn = q('#rsp-mode-add');
+            if (repBtn) {
+                const act = this._clickMode === 'replace';
+                repBtn.style.borderColor = act ? '#facc15' : '#475569';
+                repBtn.style.background = act ? 'rgba(250,204,21,0.22)' : 'transparent';
+                repBtn.style.color = act ? '#fef08a' : '#cbd5e1';
+            }
+            if (addBtn) {
+                const act = this._clickMode === 'add';
+                addBtn.style.borderColor = act ? '#4ade80' : '#475569';
+                addBtn.style.background = act ? 'rgba(34,197,94,0.22)' : 'transparent';
+                addBtn.style.color = act ? '#bbf7d0' : '#cbd5e1';
+            }
+        };
+        q('#rsp-mode-replace')?.addEventListener('click', (e) => { e.preventDefault(); setClickMode('replace'); });
+        q('#rsp-mode-add')?.addEventListener('click', (e) => { e.preventDefault(); setClickMode('add'); });
+
+        this.container.querySelectorAll('.rsp-cat-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.preventDefault();
+                this._activeCategory = chip.dataset.cat || 'all';
+                this.container.querySelectorAll('.rsp-cat-chip').forEach(b => {
+                    const act = b === chip;
+                    b.style.borderColor = act ? '#facc15' : '#475569';
+                    b.style.background = act ? 'rgba(250,204,21,0.22)' : 'transparent';
+                    b.style.color = act ? '#fef08a' : '#cbd5e1';
+                });
+                this._filterCatalogGrid();
+            });
+        });
+
+        this.container.querySelectorAll('.rsp-pos-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const pos = btn.dataset.pos;
+                this._syncToStickerOverlay((ov) => {
+                    const w = Number(ov.w) || 250;
+                    const h = Number(ov.h) || 250;
+                    if (pos === 'tree-top') { ov.x = Math.round(540 - w / 2); ov.y = 220; }
+                    else if (pos === 'above-sub') { ov.x = Math.round(540 - w / 2); ov.y = Math.round(1080 - h); }
+                    else if (pos === 'sub-below') { ov.x = Math.round(540 - w / 2); ov.y = 1480; }
+                    else if (pos === 'bottom-center') { ov.x = Math.round(540 - w / 2); ov.y = Math.round(1720 - h); }
+                    else if (pos === 'center') { ov.x = Math.round(540 - w / 2); ov.y = Math.round(960 - h / 2); }
+                });
+            });
+        });
+
+        this.container.querySelectorAll('.rop-num-readout[data-sticker-link]').forEach(numEl => {
+            const rangeId = numEl.dataset.stickerLink;
+            const rangeEl = q('#' + rangeId);
+            if (!rangeEl) return;
+            const applyField = (raw) => {
+                const val = Number(raw);
+                this._syncToStickerOverlay((ov) => {
+                    if (rangeId === 'rsp-size') {
+                        const sz = Math.max(40, Math.min(900, Math.round(val || 250)));
+                        const cx = (Number(ov.x) || 0) + (Number(ov.w) || sz) / 2;
+                        const cy = (Number(ov.y) || 0) + (Number(ov.h) || sz) / 2;
+                        ov.w = sz;
+                        ov.h = sz;
+                        ov.x = Math.round(cx - sz / 2);
+                        ov.y = Math.round(cy - sz / 2);
+                    } else if (rangeId === 'rsp-x') {
+                        ov.x = Math.round(540 + (val || 0) - (Number(ov.w) || 250) / 2);
+                    } else if (rangeId === 'rsp-y') {
+                        ov.y = Math.round(960 + (val || 0) - (Number(ov.h) || 250) / 2);
+                    } else if (rangeId === 'rsp-angle') {
+                        ov.rotation = Math.round(val || 0);
+                    }
+                });
+            };
+            rangeEl.addEventListener('input', () => { numEl.value = rangeEl.value; applyField(rangeEl.value); });
+            numEl.addEventListener('input', () => { rangeEl.value = numEl.value; applyField(numEl.value); });
+        });
+
+        q('#rsp-loop-anim')?.addEventListener('change', (e) => {
+            this._syncToStickerOverlay((ov) => { ov.cta_loop_anim = e.target.value || 'sway_bell'; });
+        });
+        q('#rsp-anim-in')?.addEventListener('change', (e) => {
+            this._syncToStickerOverlay((ov) => { ov.anim_in_type = e.target.value || 'elastic_pop'; });
+        });
+        q('#rsp-shadow')?.addEventListener('change', (e) => {
+            this._syncToStickerOverlay((ov) => { ov.sticker_shadow = Boolean(e.target.checked); });
+        });
+        q('#rsp-sparkles')?.addEventListener('change', (e) => {
+            this._syncToStickerOverlay((ov) => { ov.sticker_sparkles = Boolean(e.target.checked); });
+        });
+        q('#rsp-full-duration')?.addEventListener('change', (e) => {
+            const full = Boolean(e.target.checked);
+            this._syncToStickerOverlay((ov) => {
+                if (full) {
+                    ov.scroll_end_auto = true;
+                    ov.start = 0;
+                    ov.end = 9999;
+                } else {
+                    ov.scroll_end_auto = false;
+                    if (Number(ov.end ?? 9999) >= 9999) {
+                        ov.end = Math.round(((Number(ov.start) || 0) + 5) * 10) / 10;
+                    }
+                }
+            }, { structuralChange: true });
+        });
+        const onTimeInput = () => {
+            const st = Math.max(0, Number(q('#rsp-start')?.value) || 0);
+            const en = Math.max(st + 0.1, Number(q('#rsp-end')?.value) || (st + 5));
+            this._syncToStickerOverlay((ov) => {
+                ov.scroll_end_auto = false;
+                ov.start = st;
+                ov.end = en;
+            }, { structuralChange: true });
+        };
+        q('#rsp-start')?.addEventListener('change', onTimeInput);
+        q('#rsp-end')?.addEventListener('change', onTimeInput);
+
+        this.container.querySelectorAll('.rsp-combo-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this._ensureStickerMasterEnabled();
+                if (typeof window.reelsApplyChristmasComboPreset === 'function') {
+                    window.reelsApplyChristmasComboPreset(btn.dataset.comboId);
+                }
+                this.refresh();
+            });
+        });
+    }
+
+    refresh() {
+        const globalToggle = document.getElementById('reels-sticker-toggle');
+        if (globalToggle) {
+            this._syncMasterEnableUI(globalToggle.checked);
+        }
+        this._populateCatalogGrid();
+        this._renderLayerList();
+        this._syncFromStickerOverlay(this._getSelectedSticker());
+        this._updateScopeQuickUI();
+    }
+}
+
 // Export
 if (typeof window !== 'undefined') {
     window.ReelsOverlayPanel = ReelsOverlayPanel;
     window.ReelsDecorPanel = ReelsDecorPanel;
+    window.ReelsIntroPanel = ReelsIntroPanel;
+    window.ReelsStickerPanel = ReelsStickerPanel;
 }

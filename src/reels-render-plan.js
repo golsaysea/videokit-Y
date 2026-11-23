@@ -437,7 +437,10 @@
             && window._reelsState.tasks[window._reelsState.selectedIdx] === task;
         const overlays = (isCurrentTask && window._reelsState?.overlayProxy?.overlayMgr?.overlays) || task?.overlays || [];
         if (typeof root.ReelsOverlay?.getIntroDelaySec === 'function') {
-            return root.ReelsOverlay.getIntroDelaySec(overlays);
+            const showIntro = typeof window !== 'undefined' && typeof window._isReelsIntroToggleEnabled === 'function'
+                ? window._isReelsIntroToggleEnabled()
+                : undefined;
+            return root.ReelsOverlay.getIntroDelaySec(overlays, showIntro === undefined ? {} : { showIntro });
         }
         for (let i = overlays.length - 1; i >= 0; i--) {
             const ov = overlays[i];

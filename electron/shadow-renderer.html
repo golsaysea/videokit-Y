@@ -200,6 +200,7 @@ ipcRenderer.on('render-chunk', async (event, config) => {
             scriptPaths.textDirection,
             scriptPaths.animEngine,
             scriptPaths.richText,
+            scriptPaths.introAssets,
             scriptPaths.overlay,
             scriptPaths.canvasRenderer,
             scriptPaths.fontMetadata,
@@ -222,6 +223,9 @@ ipcRenderer.on('render-chunk', async (event, config) => {
             if (fontsToLoad.length > 0) log(`预加载字体: ${fontsToLoad.join(', ')}`);
             await fm.ensureFontsLoaded(fontsToLoad);
             log('字体全部预加载就绪');
+        }
+        if (window.ReelsOverlay && typeof window.ReelsOverlay.primeIntroAssets === 'function') {
+            await window.ReelsOverlay.primeIntroAssets();
         }
 
         // 3. 初始化 Canvas

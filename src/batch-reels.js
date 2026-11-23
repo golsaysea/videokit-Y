@@ -1251,6 +1251,14 @@ function _initReelsModule() {
         if (decorPanelRoot && typeof window.ReelsDecorPanel === 'function') {
             _reelsState.decorPanel = new window.ReelsDecorPanel(decorPanelRoot, _reelsState.overlayProxy, _reelsState.overlayPanel);
         }
+        const stickerPanelRoot = document.getElementById('reels-sticker-panel-root');
+        if (stickerPanelRoot && typeof window.ReelsStickerPanel === 'function') {
+            _reelsState.stickerPanel = new window.ReelsStickerPanel(stickerPanelRoot, _reelsState.overlayProxy, _reelsState.overlayPanel);
+        }
+        const introPanelRoot = document.getElementById('reels-intro-panel-root');
+        if (introPanelRoot && typeof window.ReelsIntroPanel === 'function') {
+            _reelsState.introPanel = new window.ReelsIntroPanel(introPanelRoot, _reelsState.overlayProxy, _reelsState.overlayPanel);
+        }
     }
 
     reelsUpdatePreview();
@@ -1780,10 +1788,79 @@ async function _initReelsExportDefaults() {
     }
 }
 
+function reelsTogglePreviewFullscreen(forceState = null) {
+    const v2 = typeof window !== 'undefined' ? window.ReelsPreviewV2 : null;
+    if (v2?.isOpen?.() && typeof v2.toggleFullscreen === 'function') {
+        return v2.toggleFullscreen(forceState);
+    }
+    const previewCol = document.getElementById('reels-col-preview');
+    const btn = document.getElementById('reels-preview-fullscreen-btn');
+    if (!previewCol) return false;
+    const isNowFull = Boolean(document.fullscreenElement === previewCol || previewCol.classList.contains('vk-preview-fullscreen'));
+    const next = forceState !== null ? Boolean(forceState) : !isNowFull;
+    if (next) {
+        previewCol.classList.add('vk-preview-fullscreen');
+        const canNativeFs = typeof navigator === 'undefined' || !navigator.userActivation || navigator.userActivation.isActive;
+        if (canNativeFs && typeof previewCol.requestFullscreen === 'function' && document.fullscreenElement !== previewCol) {
+            try {
+                const p = previewCol.requestFullscreen();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+        }
+    } else {
+        previewCol.classList.remove('vk-preview-fullscreen');
+        if (document.fullscreenElement === previewCol && typeof document.exitFullscreen === 'function') {
+            try {
+                const p = document.exitFullscreen();
+                if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch (_) {}
+        }
+    }
+    if (btn) {
+        btn.textContent = next ? '✕ 退出全屏' : '⛶ 全屏';
+        btn.style.background = next ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.06)';
+        btn.style.borderColor = next ? '#f59e0b' : 'rgba(148,163,184,0.35)';
+    }
+    requestAnimationFrame(() => {
+        if (typeof reelsPreviewZoom === 'function') reelsPreviewZoom('fit');
+        if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview(true);
+    });
+    return next;
+}
+window.reelsTogglePreviewFullscreen = reelsTogglePreviewFullscreen;
+
 function _bindReelsHotkeys() {
     if (_reelsHotkeyBound) return;
     _reelsHotkeyBound = true;
+    document.addEventListener('fullscreenchange', () => {
+        const previewCol = document.getElementById('reels-col-preview');
+        const btn = document.getElementById('reels-preview-fullscreen-btn');
+        if (previewCol && document.fullscreenElement !== previewCol && previewCol.classList.contains('vk-preview-fullscreen') && btn) {
+            const active = previewCol.classList.contains('vk-preview-fullscreen');
+            btn.textContent = active ? '✕ 退出全屏' : '⛶ 全屏';
+        }
+        requestAnimationFrame(() => {
+            if (typeof reelsPreviewZoom === 'function' && !window.ReelsPreviewV2?.isOpen?.()) reelsPreviewZoom('fit');
+        });
+    });
+
     document.addEventListener('keydown', (e) => {
+        const modCtrl = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
+        if (modCtrl && (e.key === 'f' || e.key === 'F')) {
+            if (!_isReelsPanelActive()) return;
+            if (e.defaultPrevented) return;
+            e.preventDefault();
+            reelsTogglePreviewFullscreen();
+            return;
+        }
+        if (e.key === 'Escape' && !window.ReelsPreviewV2?.isOpen?.()) {
+            const previewCol = document.getElementById('reels-col-preview');
+            if (previewCol && (document.fullscreenElement === previewCol || previewCol.classList.contains('vk-preview-fullscreen'))) {
+                e.preventDefault();
+                reelsTogglePreviewFullscreen(false);
+                return;
+            }
+        }
         if (e.code !== 'Space') return;
         const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
         if (tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) return;
@@ -1992,8 +2069,8 @@ function _ovOnMouseDown(e) {
     let hit = null;
     for (let i = overlays.length - 1; i >= 0; i--) {
         const ov = overlays[i];
-        // 点缀与颗粒层(decor)固定作为中间装饰层，不拦截字幕或普通覆层的画布点击/拖拽
-        if (!ov || ov.disabled || ov.type === 'decor') continue;
+        // 点缀与颗粒层(decor)和开场效果层(intro_countdown)固定不拦截普通覆层/小图标的画布点击与拖拽
+        if (!ov || ov.disabled || ov.type === 'decor' || ov.type === 'intro_countdown' || ov.is_intro_countdown) continue;
         const bounds = _ovGetBounds(ov);
         if (mx >= bounds.x && mx <= bounds.x + bounds.w && my >= bounds.y && my <= bounds.y + bounds.h) {
             hit = ov;
@@ -2009,8 +2086,10 @@ function _ovOnMouseDown(e) {
             origX: hit.x, origY: hit.y, origW: hit.w, origH: hit.h || hit._renderedH || 100,
             handle: null, // move mode
         };
-        // Sync with overlay panel & decor panel
-        if (_reelsState.overlayPanel) {
+        // Sync with overlay panel, sticker panel & decor panel
+        if (hit.type === 'sticker' && _reelsState.stickerPanel && typeof _reelsState.stickerPanel.selectSticker === 'function') {
+            _reelsState.stickerPanel.selectSticker(hit);
+        } else if (_reelsState.overlayPanel) {
             _reelsState.overlayPanel.selectOverlay(hit);
         }
         if (hit.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncPhoneCtaUI === 'function') {
@@ -2059,7 +2138,14 @@ function _ovOnMouseMove(e) {
     }
 
     // Sync panel
-    if (_reelsState.overlayPanel && _reelsState.overlayPanel._selectedOv?.id === ov.id) {
+    if (ov.type === 'sticker') {
+        if (_reelsState.stickerPanel && typeof _reelsState.stickerPanel._syncFromStickerOverlay === 'function') {
+            _reelsState.stickerPanel._syncFromStickerOverlay(ov);
+        }
+        if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
+            window.reelsSyncChristmasIconAdjustUI(ov);
+        }
+    } else if (_reelsState.overlayPanel && _reelsState.overlayPanel._selectedOv?.id === ov.id) {
         _reelsState.overlayPanel._syncFromOverlay(ov);
     }
     if (ov.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncPhoneCtaUI === 'function') {
@@ -2073,7 +2159,9 @@ function _ovOnMouseUp(e) {
         const proxy = _reelsState.overlayProxy;
         const ov = (proxy?.overlayMgr?.overlays || []).find(o => o.id === _reelsState.overlayDrag.ovId);
         _syncCurrentOverlayEditorToSelectedTask();
-        if (ov && _reelsState.overlayPanel && typeof _reelsState.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
+        if (ov?.type === 'sticker' && _reelsState.stickerPanel && typeof _reelsState.stickerPanel._syncStickerStackToScopeTasks === 'function') {
+            _reelsState.stickerPanel._syncStickerStackToScopeTasks({ structuralChange: false });
+        } else if (ov && _reelsState.overlayPanel && typeof _reelsState.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
             _reelsState.overlayPanel._syncOverlayStyleToScopeTasks(ov);
         }
         if (ov && ov.is_phone_cta && _reelsState.decorPanel && typeof _reelsState.decorPanel._syncDecorStackToScopeTasks === 'function') {
@@ -4259,13 +4347,18 @@ window.reelsAddChristmasStickerIcon = function(kind = 'jingle_bell', options = {
         ov._loopPreviewImmediate = true;
     }
 
+    const stickerPanel = _reelsState?.stickerPanel;
+    if (stickerPanel) {
+        if (typeof stickerPanel._ensureStickerMasterEnabled === 'function') stickerPanel._ensureStickerMasterEnabled();
+        if (typeof stickerPanel.selectSticker === 'function') stickerPanel.selectSticker(ov);
+        else if (typeof stickerPanel.refresh === 'function') stickerPanel.refresh();
+    }
     const panel = _reelsState?.overlayPanel;
     if (panel) {
-        if (typeof panel.selectOverlay === 'function') panel.selectOverlay(ov);
-        else if (typeof panel._refreshList === 'function') panel._refreshList();
+        if (typeof panel._refreshList === 'function') panel._refreshList();
     }
     if (typeof window._syncOverlayStackToScopeTasks === 'function') {
-        window._syncOverlayStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
+        window._syncOverlayStackToScopeTasks({ source: options.fromSubtitle ? 'subtitle' : 'sticker', structuralChange: true, immediate: true });
     } else if (panel && typeof panel._syncAllOverlaysToScopeTasks === 'function') {
         panel._syncAllOverlaysToScopeTasks();
     }
@@ -4277,10 +4370,19 @@ window.reelsAddChristmasStickerIcon = function(kind = 'jingle_bell', options = {
 };
 
 window._syncOverlayStackToScopeTasks = function(options = {}) {
+    const src = options.source || 'sticker';
+    const stickerPanel = _reelsState?.stickerPanel;
+    if (src === 'sticker' && stickerPanel && typeof stickerPanel._syncStickerStackToScopeTasks === 'function') {
+        stickerPanel._syncStickerStackToScopeTasks({
+            structuralChange: options.structuralChange !== false,
+            immediate: options.immediate !== false,
+        });
+        return;
+    }
     const panel = _reelsState?.overlayPanel;
     if (panel && typeof panel._syncStickerStackToScopeTasks === 'function') {
         panel._syncStickerStackToScopeTasks({
-            source: options.source || 'subtitle',
+            source: src,
             structuralChange: options.structuralChange !== false,
             immediate: options.immediate !== false,
             scopeOverride: options.scopeOverride || null,
@@ -4666,7 +4768,10 @@ window.reelsInitChristmasIconPickers = function() {
                 if (typeof panel._refreshList === 'function') panel._refreshList();
             }
             if (typeof window._syncOverlayStackToScopeTasks === 'function') {
-                window._syncOverlayStackToScopeTasks({ source: 'subtitle', structuralChange: true, immediate: true });
+                window._syncOverlayStackToScopeTasks({ source: 'sticker', structuralChange: true, immediate: true });
+            }
+            if (_reelsState?.stickerPanel && typeof _reelsState.stickerPanel.refresh === 'function') {
+                _reelsState.stickerPanel.refresh();
             }
             if (typeof _saveCurrentTaskToStore === 'function') _saveCurrentTaskToStore();
             if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
@@ -5057,6 +5162,8 @@ function _reelsUpdatePreviewInternal() {
     const showSubtitle = !subtitleToggle || subtitleToggle.checked;
     const showOverlay = _isReelsOverlayToggleEnabled();
     const showDecor = _isReelsDecorToggleEnabled();
+    const showSticker = _isReelsStickerToggleEnabled();
+    const showIntro = _isReelsIntroToggleEnabled();
     const rangeToggle = document.getElementById('reels-show-subtitle-range');
     const showSubtitleRange = !rangeToggle || rangeToggle.checked;
     const isMediaPlaying = _isPreviewActuallyPlaying(_getPreviewMasterElement(), hookVideo, _reelsState._bgmAudioEl);
@@ -5076,7 +5183,7 @@ function _reelsUpdatePreviewInternal() {
     }
 
     const _introDelay = (!inCoverEditMode && !_inHookPhase && !_inCoverPhase)
-        ? _getTaskIntroDelaySec(_selectedTask, { showOverlay, showDecor })
+        ? _getTaskIntroDelaySec(_selectedTask, { showOverlay, showDecor, showIntro })
         : 0;
     const _inIntroLeadIn = _introDelay > 0 && cycleTime < _introDelay;
     const bodyCycleTime = _introDelay > 0 ? (cycleTime - _introDelay) : cycleTime;
@@ -5149,11 +5256,12 @@ function _reelsUpdatePreviewInternal() {
     } else if (window.ReelsOverlay && _selectedTask) {
         // Cover edit mode OR Normal mode > Main Phase -> Render overlayMgr or task overlays + insertClips
         const ovMgr = _reelsState.overlayProxy ? _reelsState.overlayProxy.overlayMgr : null;
-        // 使用与时间线、导出完全相同的合成栈。点缀层(decor)由 showDecor 独立控制，普通覆层由 showOverlay 控制。
-        const allEnabledOverlays = _getTaskRenderOverlays(_selectedTask, { forExport: false, showOverlay, showDecor });
+        // 使用与时间线、导出完全相同的合成栈。各独立开关：普通覆层(showOverlay) / 点缀与颗粒(showDecor) / 小图标(showSticker) / 开场效果(showIntro)。
+        const allEnabledOverlays = _getTaskRenderOverlays(_selectedTask, { forExport: false, showOverlay, showDecor, showSticker, showIntro });
         const overlays = allEnabledOverlays.filter(ov => {
             if (!ov) return false;
-            const isMiddle = Boolean(ov._insertClip || ov.type === 'decor');
+            const isIntroUnderSubtitle = Boolean((ov.is_intro_countdown || ov.type === 'intro_countdown') && ov.intro_delay_body === false);
+            const isMiddle = Boolean(ov._insertClip || ov.type === 'decor' || isIntroUnderSubtitle);
             if (passMode === 'middle') return isMiddle;
             if (passMode === 'overlay') return !isMiddle;
             return true;
@@ -5256,7 +5364,7 @@ function _reelsUpdatePreviewInternal() {
             }
         }
         // ── 选中框 + 拖拽手柄 ──
-        if (ovMgr && (showOverlay || showDecor) && passMode !== 'middle') {
+        if (ovMgr && (showOverlay || showDecor || showSticker || showIntro) && passMode !== 'middle') {
             _drawOverlaySelectionUI(ctx, w, h);
         }
     }
@@ -5284,7 +5392,7 @@ function _reelsUpdatePreviewInternal() {
     }
 
     const _introSuppressesBodySub = (!inCoverEditMode && !_inHookPhase && !_inCoverPhase)
-        ? Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(_selectedTask?.overlays, cycleTime))
+        ? Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(_selectedTask?.overlays, cycleTime, { showOverlay, showDecor, showIntro }))
         : false;
     if (activeSegment && showSubtitle && !_introSuppressesBodySub) {
         const segsForCtx = (typeof _selectedTask !== 'undefined' && _selectedTask && _selectedTask.segments)
@@ -5342,6 +5450,7 @@ function _reelsUpdatePreviewInternal() {
         const btn = document.getElementById('reels-preview-play');
         const isPlaying = _isPreviewMediaPlaying(audio) || _isPreviewMediaPlaying(video) || _reelsState.mockPlaying;
         if (isPlaying) {
+            _reelsState._introMainTriggered = false;
             if (audio && !audio.paused) audio.pause();
             if (audio) audio.currentTime = 0;
             if (video) video.currentTime = 0;
@@ -5387,24 +5496,36 @@ function _reelsUpdatePreviewInternal() {
     }
 }
 
-function _isReelsOverlayToggleEnabled() {
-    const v1Toggle = document.getElementById('reels-overlay-toggle');
+function _readReelsLayerToggle(v1Id, v2Role, panelMasterId) {
+    const v1Toggle = document.getElementById(v1Id);
     if (v1Toggle) return v1Toggle.checked !== false;
-    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="overlays"]');
+    const v2Toggle = document.querySelector(`#reels-preview-v2-root [data-role="${v2Role}"]`);
     if (v2Toggle) return v2Toggle.checked !== false;
+    if (panelMasterId) {
+        const panelMaster = document.getElementById(panelMasterId);
+        if (panelMaster) return panelMaster.checked !== false;
+    }
     return true;
 }
 
+function _isReelsOverlayToggleEnabled() {
+    return _readReelsLayerToggle('reels-overlay-toggle', 'overlays', '');
+}
+
 function _isReelsDecorToggleEnabled() {
-    const v1Toggle = document.getElementById('reels-decor-toggle');
-    if (v1Toggle) return v1Toggle.checked !== false;
-    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="decor"]');
-    if (v2Toggle) return v2Toggle.checked !== false;
-    const rdpMaster = document.getElementById('rdp-master-enable');
-    if (rdpMaster) return rdpMaster.checked !== false;
-    return true;
+    return _readReelsLayerToggle('reels-decor-toggle', 'decor', 'rdp-master-enable');
 }
 window._isReelsDecorToggleEnabled = _isReelsDecorToggleEnabled;
+
+function _isReelsStickerToggleEnabled() {
+    return _readReelsLayerToggle('reels-sticker-toggle', 'stickers', 'rsp-master-enable');
+}
+window._isReelsStickerToggleEnabled = _isReelsStickerToggleEnabled;
+
+function _isReelsIntroToggleEnabled() {
+    return _readReelsLayerToggle('reels-intro-toggle', 'intro', 'rip-master-enable');
+}
+window._isReelsIntroToggleEnabled = _isReelsIntroToggleEnabled;
 
 function _requestReelsPreviewV2Render() {
     if (!window.ReelsPreviewV2) return;
@@ -5412,6 +5533,35 @@ function _requestReelsPreviewV2Render() {
         window.ReelsPreviewV2.requestRender();
     } else if (typeof window.ReelsPreviewV2.render === 'function') {
         window.ReelsPreviewV2.render();
+    }
+}
+
+function _syncReelsFeatureToggle(checkbox, {
+    v1Id, v2Role, panelProp, masterId, offToast,
+}) {
+    const checked = checkbox ? Boolean(checkbox.checked) : true;
+    const v1Toggle = document.getElementById(v1Id);
+    if (v1Toggle && v1Toggle !== checkbox) v1Toggle.checked = checked;
+    const v2Toggle = document.querySelector(`#reels-preview-v2-root [data-role="${v2Role}"]`);
+    if (v2Toggle && v2Toggle !== checkbox) v2Toggle.checked = checked;
+    const panel = panelProp ? _reelsState?.[panelProp] : null;
+    if (panel && typeof panel._syncMasterEnableUI === 'function') {
+        panel._syncMasterEnableUI(checked);
+    } else if (masterId) {
+        const master = document.getElementById(masterId);
+        if (master && master !== checkbox) master.checked = checked;
+    }
+    if (v1Id === 'reels-intro-toggle' && typeof _updateTimelineForTask === 'function') {
+        try {
+            const task = _getSelectedTask();
+            if (task) _updateTimelineForTask(task);
+        } catch (_) {}
+    }
+    reelsUpdatePreview();
+    _requestReelsPreviewV2Render();
+    if (checkbox && !checked && offToast) {
+        if (typeof showToast === 'function') showToast(offToast, 'warning');
+        else alert(offToast);
     }
 }
 
@@ -5431,49 +5581,48 @@ function reelsOnSubtitleToggleChange(checkbox) {
 window.reelsOnSubtitleToggleChange = reelsOnSubtitleToggleChange;
 
 function reelsOnOverlayToggleChange(checkbox) {
-    const v1Toggle = document.getElementById('reels-overlay-toggle');
-    if (v1Toggle && checkbox && v1Toggle !== checkbox) {
-        v1Toggle.checked = checkbox.checked;
-    }
-    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="overlays"]');
-    if (v2Toggle && checkbox && v2Toggle !== checkbox) {
-        v2Toggle.checked = checkbox.checked;
-    }
-    reelsUpdatePreview();
-    _requestReelsPreviewV2Render();
-    if (checkbox && !checkbox.checked) {
-        const message = '已关闭覆层：预览不显示普通覆层，导出的视频也不会带普通覆层（不影响点缀与颗粒层）。';
-        if (typeof showToast === 'function') showToast(message, 'warning');
-        else alert(message);
-    }
+    _syncReelsFeatureToggle(checkbox, {
+        v1Id: 'reels-overlay-toggle',
+        v2Role: 'overlays',
+        panelProp: null,
+        masterId: '',
+        offToast: '已关闭覆层：预览不显示普通覆层，导出的视频也不会带普通覆层（不影响点缀、小图标与开场效果）。',
+    });
 }
 window.reelsOnOverlayToggleChange = reelsOnOverlayToggleChange;
 
 function reelsOnDecorToggleChange(checkbox) {
-    const checked = checkbox ? Boolean(checkbox.checked) : true;
-    const v1Toggle = document.getElementById('reels-decor-toggle');
-    if (v1Toggle && v1Toggle !== checkbox) {
-        v1Toggle.checked = checked;
-    }
-    const v2Toggle = document.querySelector('#reels-preview-v2-root [data-role="decor"]');
-    if (v2Toggle && v2Toggle !== checkbox) {
-        v2Toggle.checked = checked;
-    }
-    if (_reelsState.decorPanel && typeof _reelsState.decorPanel._syncMasterEnableUI === 'function') {
-        _reelsState.decorPanel._syncMasterEnableUI(checked);
-    } else {
-        const rdpMaster = document.getElementById('rdp-master-enable');
-        if (rdpMaster && rdpMaster !== checkbox) rdpMaster.checked = checked;
-    }
-    reelsUpdatePreview();
-    _requestReelsPreviewV2Render();
-    if (checkbox && !checked) {
-        const message = '已关闭点缀与颗粒：预览不显示点缀层，导出的视频也不会带点缀层。';
-        if (typeof showToast === 'function') showToast(message, 'warning');
-        else alert(message);
-    }
+    _syncReelsFeatureToggle(checkbox, {
+        v1Id: 'reels-decor-toggle',
+        v2Role: 'decor',
+        panelProp: 'decorPanel',
+        masterId: 'rdp-master-enable',
+        offToast: '已关闭点缀与颗粒：预览不显示点缀层，导出的视频也不会带点缀层。',
+    });
 }
 window.reelsOnDecorToggleChange = reelsOnDecorToggleChange;
+
+function reelsOnStickerToggleChange(checkbox) {
+    _syncReelsFeatureToggle(checkbox, {
+        v1Id: 'reels-sticker-toggle',
+        v2Role: 'stickers',
+        panelProp: 'stickerPanel',
+        masterId: 'rsp-master-enable',
+        offToast: '已关闭画面小图标：预览不显示小图标，导出的视频也不会带小图标。',
+    });
+}
+window.reelsOnStickerToggleChange = reelsOnStickerToggleChange;
+
+function reelsOnIntroToggleChange(checkbox) {
+    _syncReelsFeatureToggle(checkbox, {
+        v1Id: 'reels-intro-toggle',
+        v2Role: 'intro',
+        panelProp: 'introPanel',
+        masterId: 'rip-master-enable',
+        offToast: '已关闭开场效果：预览与导出均不播放开场并恢复 0s 正文同步。',
+    });
+}
+window.reelsOnIntroToggleChange = reelsOnIntroToggleChange;
 
 function _drawSubtitlePreviewRange(ctx, style, canvasW, canvasH) {
     if (!ctx || !style) return;
@@ -8207,11 +8356,12 @@ function _getTaskIntroDelaySec(task, customOptions = {}) {
     if (!task || typeof window === 'undefined' || !window.ReelsOverlay?.getIntroDelaySec) return 0;
     const showOverlay = customOptions.showOverlay !== undefined ? customOptions.showOverlay : _isReelsOverlayToggleEnabled();
     const showDecor = customOptions.showDecor !== undefined ? customOptions.showDecor : _isReelsDecorToggleEnabled();
+    const showIntro = customOptions.showIntro !== undefined ? customOptions.showIntro : _isReelsIntroToggleEnabled();
     const isCurrent = task === _getSelectedTask();
     const ovs = (isCurrent && _reelsState.overlayProxy?.overlayMgr?.overlays)
         ? _reelsState.overlayProxy.overlayMgr.overlays
         : (task.overlays || []);
-    return window.ReelsOverlay.getIntroDelaySec(ovs, { showOverlay, showDecor });
+    return window.ReelsOverlay.getIntroDelaySec(ovs, { showOverlay, showDecor, showIntro });
 }
 
 function _applyPreviewLoopMode() {
@@ -10948,6 +11098,12 @@ function reelsClearTasks() {
     if (_reelsState.decorPanel && typeof _reelsState.decorPanel.refresh === 'function') {
         _reelsState.decorPanel.refresh();
     }
+    if (_reelsState.stickerPanel && typeof _reelsState.stickerPanel.refresh === 'function') {
+        _reelsState.stickerPanel.refresh();
+    }
+    if (_reelsState.introPanel && typeof _reelsState.introPanel.refresh === 'function') {
+        _reelsState.introPanel.refresh();
+    }
 
     // Clear video/audio preview
     _reelsState._previewBgImage = null;
@@ -11666,6 +11822,12 @@ function reelsSelectTask(idx, options = {}) {
         if (_reelsState.decorPanel && typeof _reelsState.decorPanel.refresh === 'function') {
             _reelsState.decorPanel.refresh();
         }
+        if (_reelsState.stickerPanel && typeof _reelsState.stickerPanel.refresh === 'function') {
+            _reelsState.stickerPanel.refresh();
+        }
+        if (_reelsState.introPanel && typeof _reelsState.introPanel.refresh === 'function') {
+            _reelsState.introPanel.refresh();
+        }
         if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
             window.reelsSyncChristmasIconAdjustUI();
         }
@@ -12327,6 +12489,7 @@ function reelsTogglePlay() {
         // 覆层视频也要暂停
         const cvEl = document.getElementById('reels-preview-contentvideo');
         if (cvEl && !cvEl.paused) cvEl.pause();
+        _reelsState._introMainTriggered = false;
         _reelsState.mockPlaying = false;
         _reelsState.mockPausedTime = savedTime;
         if (hookVideo) hookVideo.pause();
@@ -12357,6 +12520,9 @@ function reelsTogglePlay() {
     const inHookPhase = hookDur > 0 && curT >= coverDur && curT < (coverDur + hookDur);
     const inIntroLeadPhase = !inCoverPhase && !inHookPhase && introDelay > 0 && curT < (coverDur + hookDur + introDelay);
 
+    if (inCoverPhase || (hasHook && inHookPhase) || inIntroLeadPhase) {
+        _reelsState._introMainTriggered = false;
+    }
     if (inCoverPhase) {
         if (hasHook && hookVideo) hookVideo.pause();
         _reelsState.mockPlaying = true;
@@ -12476,6 +12642,7 @@ function _syncHookPhaseTransition() {
 
         // 从 Cover/Hook 进入开场留白阶段：先开启背景与 BGM 连播
         if (inIntroLeadPhase) {
+            _reelsState._introMainTriggered = false;
             const video = document.getElementById('reels-preview-video');
             const bgmAudio = _reelsState._bgmAudioEl;
             const previewBg = _resolvePreviewBackgroundPath(task);
@@ -12489,69 +12656,78 @@ function _syncHookPhaseTransition() {
                 bgmAudio.play().catch(() => { });
             }
         }
-        
+
         // 进入 正片朗读 阶段
         if (inMainPhase) {
             if (hookVideo && !hookVideo.paused) hookVideo.pause();
 
-            _reelsState.mockPlaying = false;
             _reelsState.hookPhase = false;
             _reelsState.coverPhase = false;
 
             const audio = document.getElementById('reels-preview-audio');
-        const video = document.getElementById('reels-preview-video');
-        const fadeVideo = _reelsState.previewFadeVideo;
-        const hasAudio = _hasTaskVoiceAudio(task, audio);
-        const previewBg = _resolvePreviewBackgroundPath(task);
-        const hasVideo = !!(task && !previewBg.isMulti && previewBg.path && !_isImagePath(previewBg.path) && video && video.src && !(task.contentVideoDirectBg && task.contentVideoPath));
+            const video = document.getElementById('reels-preview-video');
+            const fadeVideo = _reelsState.previewFadeVideo;
+            const hasAudio = _hasTaskVoiceAudio(task, audio);
+            const previewBg = _resolvePreviewBackgroundPath(task);
+            const hasVideo = !!(task && !previewBg.isMulti && previewBg.path && !_isImagePath(previewBg.path) && video && video.src && !(task.contentVideoDirectBg && task.contentVideoPath));
 
-        const hookTransition = task.hookTransition || 'none';
-        const transDur = hookTransition !== 'none' ? (task.hookTransDuration || 0.5) : 0;
+            const hookTransition = task.hookTransition || 'none';
+            const transDur = hookTransition !== 'none' ? (task.hookTransDuration || 0.5) : 0;
 
-        if (hasAudio && audio) {
-            // 有转场时，正片从转场重叠量开始（与 FFmpeg acrossfade 一致）；若经过了开场留白，则正片人声从 0s 开始
-            const voiceDur = ((task && task.audioPath) ? _getAudioDuration(task) : _getVideoDuration(task)) || 0;
-            audio.currentTime = (introDelay <= 0 && transDur > 0) ? Math.min(transDur, voiceDur) : 0;
-            const aDurScale = _getEffectiveTaskVoiceDurScale(task);
-            audio.playbackRate = (aDurScale !== 100) ? (100 / aDurScale) : 1.0;
-            audio.preservesPitch = true;
-            audio.play().catch(() => { });
-        }
-        if (hasVideo && video) {
-            const bDurScale = task.bgDurScale || 100;
-            video.playbackRate = (bDurScale !== 100) ? (100 / bDurScale) : 1.0;
-            if (introDelay <= 0) {
-                video.currentTime = 0;
+            if (!_reelsState._introMainTriggered) {
+                _reelsState._introMainTriggered = true;
+                _applyPreviewLoopMode();
+                _applyPreviewAudioMix();
+                if (hasAudio && audio) {
+                    const voiceDur = ((task && task.audioPath) ? _getAudioDuration(task) : _getVideoDuration(task)) || 0;
+                    const aDurScale = _getEffectiveTaskVoiceDurScale(task);
+                    const targetAudio = (introDelay <= 0 && transDur > 0)
+                        ? Math.min(transDur, voiceDur)
+                        : Math.max(0, (curT - mainOffset - introDelay) / ((aDurScale || 100) / 100));
+                    try { audio.currentTime = voiceDur > 0 ? Math.min(targetAudio, voiceDur) : targetAudio; } catch (_) {}
+                    audio.playbackRate = (aDurScale !== 100) ? (100 / aDurScale) : 1.0;
+                    audio.preservesPitch = true;
+                    audio.play().catch(() => { });
+                }
+                if (hasVideo && video) {
+                    const bDurScale = task.bgDurScale || 100;
+                    video.playbackRate = (bDurScale !== 100) ? (100 / bDurScale) : 1.0;
+                    if (introDelay <= 0) {
+                        video.currentTime = 0;
+                    }
+                    if (video.paused) video.play().catch(() => { });
+                    if (fadeVideo && task && task.audioPath && fadeVideo.paused) {
+                        fadeVideo.playbackRate = video.playbackRate;
+                        fadeVideo.play().catch(() => { });
+                    }
+                }
+            } else if (hasAudio && audio && audio.paused) {
+                audio.play().catch(() => { });
             }
-            if (video.paused) video.play().catch(() => { });
-            if (fadeVideo && task && task.audioPath && fadeVideo.paused) {
-                fadeVideo.playbackRate = video.playbackRate;
-                fadeVideo.play().catch(() => { });
+
+            // 覆层视频作为 master 时也要启动播放
+            const cvEl = document.getElementById('reels-preview-contentvideo');
+            if (cvEl && cvEl.src && cvEl.paused) {
+                if (introDelay <= 0) cvEl.currentTime = 0;
+                cvEl.play().catch(() => { });
             }
-        }
 
-        // 覆层视频作为 master 时也要启动播放
-        const cvEl = document.getElementById('reels-preview-contentvideo');
-        if (cvEl && cvEl.src && cvEl.paused) {
-            if (introDelay <= 0) cvEl.currentTime = 0;
-            cvEl.play().catch(() => { });
-        }
+            // 仅在人声已实际开始播放时（或本就没有音视频主时钟时）才交出 mock 时钟，防止 async audio.play() 未就绪前 curT 跳回 0
+            const hasCvMaster = !!(cvEl && cvEl.src && !cvEl.muted);
+            const realClockActive = (hasAudio && _isPreviewMediaPlaying(audio))
+                || (!hasAudio && hasVideo && _isPreviewMediaPlaying(video))
+                || (!hasAudio && !hasVideo && hasCvMaster && _isPreviewMediaPlaying(cvEl));
+            if (realClockActive) {
+                _reelsState.mockPlaying = false;
+                _reelsState.mockPausedTime = curT;
+            }
 
-        // 没有主媒体时，继续使用 mock 时钟
-        const hasCvMaster = !!(cvEl && cvEl.src && !cvEl.muted);
-        if (!hasAudio && !hasVideo && !hasCvMaster) {
-            _reelsState.mockPlaying = true;
-            // mockStartTime 不需要重设，因为总时间是连续的
-        }
-
-        // 启动 BGM
-        const bgmAudio = _reelsState._bgmAudioEl;
-        if (bgmAudio && bgmAudio.src && bgmAudio.paused && task && _getEffectiveBgmPath(task, _reelsState.selectedIdx)) {
-            bgmAudio.currentTime = bgmAudio.duration > 0 ? _getTaskBgmStart(task) % bgmAudio.duration : _getTaskBgmStart(task);
-            bgmAudio.play().catch(() => { });
-        }
-
-        console.log(`[Preview] ${introDelay > 0 ? 'Intro countdown' : 'Hook'} ended, starting main reading`);
+            // 启动 BGM
+            const bgmAudio = _reelsState._bgmAudioEl;
+            if (bgmAudio && bgmAudio.src && bgmAudio.paused && task && _getEffectiveBgmPath(task, _reelsState.selectedIdx)) {
+                bgmAudio.currentTime = bgmAudio.duration > 0 ? _getTaskBgmStart(task) % bgmAudio.duration : _getTaskBgmStart(task);
+                bgmAudio.play().catch(() => { });
+            }
         }
     }
 }
@@ -16669,7 +16845,11 @@ async function _reelsStartExportImpl(options = {}) {
                 // ═══ V3 并行影子窗口检测 ═══
                 const cpuCores = navigator.hardwareConcurrency || 4;
                 const parallelConcurrency = Math.min(3, Math.max(1, Math.floor(cpuCores / 2)));
-                const introDelaySec = _getTaskIntroDelaySec(task, { showOverlay, showDecor: _isReelsDecorToggleEnabled() });
+                const introDelaySec = _getTaskIntroDelaySec(task, {
+                    showOverlay,
+                    showDecor: _isReelsDecorToggleEnabled(),
+                    showIntro: _isReelsIntroToggleEnabled(),
+                });
                 let estimatedDuration = 0;
                 try {
                     let maxFlipperDuration = 0;
@@ -17671,6 +17851,12 @@ function applyRestoredProject(result) {
     if (_reelsState.decorPanel && typeof _reelsState.decorPanel.refresh === 'function') {
         _reelsState.decorPanel.refresh();
     }
+    if (_reelsState.stickerPanel && typeof _reelsState.stickerPanel.refresh === 'function') {
+        _reelsState.stickerPanel.refresh();
+    }
+    if (_reelsState.introPanel && typeof _reelsState.introPanel.refresh === 'function') {
+        _reelsState.introPanel.refresh();
+    }
     _reelsState._coverEditMode = false;
     _reelsState.selectedIdx = -1; // 标记为无选中，防止 reelsSelectTask 回写
 
@@ -18528,6 +18714,12 @@ function _getTaskRenderOverlays(task, customOptions = {}) {
     const showDecor = customOptions.showDecor !== undefined
         ? customOptions.showDecor
         : _isReelsDecorToggleEnabled();
+    const showSticker = customOptions.showSticker !== undefined
+        ? customOptions.showSticker
+        : _isReelsStickerToggleEnabled();
+    const showIntro = customOptions.showIntro !== undefined
+        ? customOptions.showIntro
+        : _isReelsIntroToggleEnabled();
     const options = {
         width: _reelsState?.targetWidth || 1080,
         height: _reelsState?.targetHeight || 1920,
@@ -18537,7 +18729,9 @@ function _getTaskRenderOverlays(task, customOptions = {}) {
     const filterByToggle = (ov) => {
         if (!ov) return false;
         if (ov._insertClip) return true;
-        if (ov.is_phone_cta || ov.is_intro_countdown || ov.type === 'intro_countdown') return !ov.disabled && Boolean(showDecor || showOverlay);
+        if (ov.is_intro_countdown || ov.type === 'intro_countdown') return !ov.disabled && Boolean(showIntro);
+        if (ov.type === 'sticker') return !ov.disabled && Boolean(showSticker);
+        if (ov.is_phone_cta) return !ov.disabled && Boolean(showDecor || showOverlay);
         if (ov.type === 'decor') return Boolean(showDecor);
         return Boolean(showOverlay);
     };

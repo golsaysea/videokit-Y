@@ -66,6 +66,8 @@
         recoveryAttempts: 0,
         recoveryInProgress: false,
         wasDocumentHidden: false,
+        isFullscreenFallback: false,
+        _wasIntroRestricted: null,
     };
     const watermarkImageCache = new Map();
     const REVERB_PRESETS = {
@@ -206,6 +208,35 @@
                 font-size: 13px;
             }
             .rpv2-icon-btn:hover { background: rgba(255,255,255,0.09); }
+            .rpv2-icon-btn.is-active {
+                background: rgba(245,158,11,0.25);
+                border-color: #f59e0b;
+                color: #fde68a;
+            }
+            .rpv2-icon-btn[data-action="fullscreen"] {
+                width: auto;
+                min-width: 28px;
+                padding: 0 7px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            #${PREVIEW_ID}.is-fullscreen,
+            #${PREVIEW_ID}:fullscreen {
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                max-width: none !important;
+                max-height: none !important;
+                z-index: 99990 !important;
+                margin: 0 !important;
+                background: #05070b;
+            }
+            #${PREVIEW_ID}.is-fullscreen .rpv2-window,
+            #${PREVIEW_ID}:fullscreen .rpv2-window {
+                width: 100%;
+                height: 100%;
+            }
             .rpv2-pill {
                 font-size: 10px;
                 color: #8fb4ff;
@@ -308,14 +339,17 @@
                     <input class="rpv2-seek" data-role="seek" type="range" min="0" max="1000" value="0" step="1">
                     <label class="rpv2-check" title="循环播放"><input data-role="loop" type="checkbox" checked>循环</label>
                     <label class="rpv2-check" title="预览与导出字幕总开关：关闭后，导出的视频也不会带字幕"><input data-role="subs" type="checkbox" checked>字幕(关闭=导出不带)</label>
-                    <label class="rpv2-check" title="预览与导出覆层总开关：关闭后，导出的视频也不会带普通覆层（不影响点缀与颗粒）"><input data-role="overlays" type="checkbox" checked>覆层(关闭=导出不带)</label>
+                    <label class="rpv2-check" title="预览与导出覆层总开关：关闭后，导出的视频也不会带普通覆层（不影响点缀、小图标与开场）"><input data-role="overlays" type="checkbox" checked>覆层(关闭=导出不带)</label>
                     <label class="rpv2-check" title="预览与导出点缀/颗粒总开关：勾选时预览并导出点缀层；关闭后不预览且导出的视频也不带点缀层"><input data-role="decor" type="checkbox" checked>点缀(关闭=导出不带)</label>
+                    <label class="rpv2-check" title="预览与导出画面小图标总开关：独立控制 40 款小图标贴纸，不受覆层开关影响"><input data-role="stickers" type="checkbox" checked>小图标</label>
+                    <label class="rpv2-check" title="预览与导出开场效果总开关：独立控制视频开场效果，不受覆层/点缀开关影响"><input data-role="intro" type="checkbox" checked>开场</label>
                     <button class="rpv2-icon-btn" data-action="fit" title="适应窗口">适</button>
                     <button class="rpv2-icon-btn" data-action="zoom-out" title="缩小">−</button>
                     <span class="rpv2-zoom-label" data-role="zoom-label">100%</span>
                     <button class="rpv2-icon-btn" data-action="zoom-in" title="放大">+</button>
                     <button class="rpv2-icon-btn" data-action="zoom-reset" title="1:1">1:1</button>
                     <button class="rpv2-icon-btn" data-action="refresh" title="重新加载当前任务">↻</button>
+                    <button class="rpv2-icon-btn" data-action="fullscreen" title="全屏观看预览 (快捷键 Ctrl+F)">⛶ 全屏</button>
                 </div>
             </div>
         `;
@@ -336,6 +370,7 @@
         state.renderer = window.ReelsCanvasRenderer ? new window.ReelsCanvasRenderer(state.canvas) : null;
 
         root.querySelector('[data-action="refresh"]').addEventListener('click', () => recoverMedia('manual-refresh', true));
+        root.querySelector('[data-action="fullscreen"]').addEventListener('click', () => toggleFullscreen());
         root.querySelector('[data-action="fit"]').addEventListener('click', () => fitStage(true));
         root.querySelector('[data-action="zoom-in"]').addEventListener('click', () => zoomView(1.25));
         root.querySelector('[data-action="zoom-out"]').addEventListener('click', () => zoomView(0.8));
@@ -345,6 +380,8 @@
             ['subs', 'reels-subtitle-toggle', 'reelsOnSubtitleToggleChange'],
             ['overlays', 'reels-overlay-toggle', 'reelsOnOverlayToggleChange'],
             ['decor', 'reels-decor-toggle', 'reelsOnDecorToggleChange'],
+            ['stickers', 'reels-sticker-toggle', 'reelsOnStickerToggleChange'],
+            ['intro', 'reels-intro-toggle', 'reelsOnIntroToggleChange'],
         ]) {
             const toggleEl = root.querySelector(`[data-role="${role}"]`);
             const exportToggle = document.getElementById(exportId);
@@ -417,9 +454,37 @@
             if (!document.hidden) scheduleMediaRecovery('window-focus', false, 120);
         });
 
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && state.isFullscreenFallback && !state.root?.classList.contains('is-fullscreen')) {
+                state.isFullscreenFallback = false;
+            }
+            if (state.root && document.fullscreenElement !== state.root && !state.isFullscreenFallback) {
+                state.root.classList.remove('is-fullscreen');
+            }
+            updateFullscreenButton();
+            requestAnimationFrame(() => fitStage(false));
+        });
+
         document.addEventListener('keydown', (e) => {
             if (!state.isOpen) return;
-            if (e.key === 'Escape') close();
+            const modCtrl = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey;
+            if (modCtrl && (e.key === 'f' || e.key === 'F')) {
+                if (e.defaultPrevented) return;
+                const visibleInLayout = Boolean(state.root && (state.root.offsetParent !== null || isFullscreen()));
+                if (!visibleInLayout) return;
+                e.preventDefault();
+                e.stopPropagation();
+                toggleFullscreen();
+                return;
+            }
+            if (e.key === 'Escape') {
+                if (isFullscreen()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleFullscreen(false);
+                }
+                return;
+            }
             if (e.key === ' ' && !isEditable(e.target)) {
                 e.preventDefault();
                 togglePlay();
@@ -462,6 +527,7 @@
     }
 
     function close() {
+        if (isFullscreen()) toggleFullscreen(false);
         state.isOpen = false;
         state.root?.classList.remove('open');
         setLegacyVisible(true);
@@ -777,11 +843,12 @@
             if (pt && pt.x >= 0 && pt.x <= canvasW && pt.y >= 0 && pt.y <= canvasH) {
                 const overlays = getActiveOverlaysForHitTest();
                 const rs = window._reelsState;
+                const evalT = getCurrentTime();
                 const selId = rs?.overlaySelectedId;
                 if (selId) {
                     const selOv = overlays.find(o => o && o.id === selId && !o.disabled);
-                    if (selOv) {
-                        const b = getOverlayBounds(selOv, state.currentTime, canvasW, canvasH);
+                    if (selOv && selOv.type !== 'decor' && selOv.type !== 'intro_countdown' && !selOv.is_intro_countdown) {
+                        const b = getOverlayBounds(selOv, evalT, canvasW, canvasH);
                         const handle = hitTestOverlayHandle(pt.x, pt.y, b, canvasW);
                         if (handle) {
                             state.ovDrag = {
@@ -805,9 +872,9 @@
                 let hitOv = null;
                 for (let i = overlays.length - 1; i >= 0; i--) {
                     const ov = overlays[i];
-                    // 点缀与颗粒层(decor)固定作为中间装饰层，不拦截字幕或普通覆层的画布点击/拖拽
-                    if (!ov || ov.disabled || ov.type === 'decor') continue;
-                    const b = getOverlayBounds(ov, state.currentTime, canvasW, canvasH);
+                    // 点缀(decor)与全屏开场(intro_countdown)不拦截画布上的小图标、字幕或普通覆层点击/拖拽
+                    if (!ov || ov.disabled || ov.type === 'decor' || ov.type === 'intro_countdown' || ov.is_intro_countdown) continue;
+                    const b = getOverlayBounds(ov, evalT, canvasW, canvasH);
                     if (pt.x >= b.x && pt.x <= b.x + b.w && pt.y >= b.y && pt.y <= b.y + b.h) {
                         hitOv = ov;
                         break;
@@ -816,11 +883,22 @@
                 if (hitOv) {
                     if (rs) {
                         rs.overlaySelectedId = hitOv.id;
-                        if (rs.overlayPanel && typeof rs.overlayPanel.selectOverlay === 'function') {
+                        if (hitOv.type === 'sticker') {
+                            if (rs.stickerPanel && typeof rs.stickerPanel.selectSticker === 'function') {
+                                rs.stickerPanel.selectSticker(hitOv);
+                            }
+                            if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
+                                window.reelsSyncChristmasIconAdjustUI(hitOv);
+                            }
+                        } else if (hitOv.is_phone_cta) {
+                            if (rs.decorPanel && typeof rs.decorPanel._syncPhoneCtaUI === 'function') {
+                                rs.decorPanel._syncPhoneCtaUI(hitOv);
+                            }
+                        } else if (rs.overlayPanel && typeof rs.overlayPanel.selectOverlay === 'function') {
                             rs.overlayPanel.selectOverlay(hitOv);
                         }
                     }
-                    const b = getOverlayBounds(hitOv, state.currentTime, canvasW, canvasH);
+                    const b = getOverlayBounds(hitOv, evalT, canvasW, canvasH);
                     state.ovDrag = {
                         ov: hitOv,
                         handle: null,
@@ -833,7 +911,7 @@
                         origBgW: Number(hitOv.bg_width) || 0,
                         origBgH: Number(hitOv.bg_height) || 0,
                     };
-                    renderCurrentFrame();
+                    render();
                     e.preventDefault();
                     e.stopPropagation();
                     return;
@@ -889,10 +967,17 @@
                     if (ov.auto_center_v) ov.auto_center_v = false;
                 }
                 const rs = window._reelsState;
-                if (rs?.overlayPanel && rs.overlayPanel._selectedOv?.id === ov.id) {
+                if (ov.type === 'sticker') {
+                    if (rs?.stickerPanel && typeof rs.stickerPanel._syncPropsFromSticker === 'function') {
+                        rs.stickerPanel._syncPropsFromSticker(ov);
+                    }
+                    if (typeof window.reelsSyncChristmasIconAdjustUI === 'function') {
+                        window.reelsSyncChristmasIconAdjustUI(ov);
+                    }
+                } else if (rs?.overlayPanel && rs.overlayPanel._selectedOv?.id === ov.id) {
                     rs.overlayPanel._syncFromOverlay(ov);
                 }
-                renderCurrentFrame();
+                render();
                 return;
             }
             if (!state.panning) {
@@ -905,8 +990,8 @@
                     if (pt && selId) {
                         const overlays = getActiveOverlaysForHitTest();
                         const selOv = overlays.find(o => o && o.id === selId && !o.disabled);
-                        if (selOv) {
-                            const b = getOverlayBounds(selOv, state.currentTime, state.canvas.width || 1080, state.canvas.height || 1920);
+                        if (selOv && selOv.type !== 'decor' && selOv.type !== 'intro_countdown' && !selOv.is_intro_countdown) {
+                            const b = getOverlayBounds(selOv, getCurrentTime(), state.canvas.width || 1080, state.canvas.height || 1920);
                             const h = hitTestOverlayHandle(pt.x, pt.y, b, state.canvas.width || 1080);
                             const cursorMap = {
                                 tl: 'nwse-resize', br: 'nwse-resize',
@@ -935,10 +1020,12 @@
                 if (typeof window._syncCurrentOverlayEditorToSelectedTask === 'function') {
                     window._syncCurrentOverlayEditorToSelectedTask();
                 }
-                if (ov && rs?.overlayPanel && typeof rs.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
+                if (ov?.type === 'sticker' && rs?.overlayPanel && typeof rs.overlayPanel._syncStickerStackToScopeTasks === 'function') {
+                    rs.overlayPanel._syncStickerStackToScopeTasks({ source: 'sticker', structuralChange: false, immediate: true });
+                } else if (ov && rs?.overlayPanel && typeof rs.overlayPanel._syncOverlayStyleToScopeTasks === 'function') {
                     rs.overlayPanel._syncOverlayStyleToScopeTasks(ov);
                 }
-                renderCurrentFrame();
+                render();
                 return;
             }
             if (!state.panning) return;
@@ -1004,6 +1091,7 @@
         const sig = audioPath;
         if (!force && sig === state.audioSig) return;
         state.audioSig = sig;
+        state._wasIntroRestricted = null;
         state.audio.pause();
         state.audio.removeAttribute('src');
         if (audioPath) {
@@ -1119,12 +1207,14 @@
     function playMedia() {
         const task = getTask();
         syncLoopFlags();
-        applyAudioVolumes(task);
+        const nowTime = state.isPlaying ? getCurrentTime() : (state.pausedAt || 0);
+        const phase = getPhaseInfo(nowTime, task);
+        applyAudioVolumes(task, phase);
         applyPlaybackRates(task);
         if (state.audioCtx && state.audioCtx.state === 'suspended') {
             state.audioCtx.resume().catch(() => {});
         }
-        syncPhasePlayback(getPhaseInfo(state.pausedAt || 0, task), task);
+        syncPhasePlayback(phase, task);
     }
 
     function pauseMedia() {
@@ -1151,6 +1241,7 @@
     function onSeekInput(e) {
         const dur = computeDuration();
         const next = dur > 0 ? (parseFloat(e.target.value || '0') / 1000) * dur : 0;
+        state._wasIntroRestricted = null;
         state.pausedAt = next;
         state.startedAt = performance.now() / 1000 - next;
         const token = ++state.seekFrameToken;
@@ -1272,22 +1363,46 @@
         }
     }
 
-    function syncMediaWhilePlaying(time) {
+    function syncMediaWhilePlaying(time, precomputedPhase = null) {
         if (!state.isPlaying) return;
         const task = getTask();
-        const phase = getPhaseInfo(time, task);
+        const phase = precomputedPhase || getPhaseInfo(time, task);
         const mainTime = phase.mainTime;
+        const bodyTime = phase.bodyTime != null ? phase.bodyTime : mainTime;
         const bgDur = mediaDuration(state.bgVideo);
+        const audioDur = mediaDuration(state.audio);
         const bgmDur = mediaDuration(state.bgmAudio);
         const contentDur = mediaDuration(state.contentVideo);
         const isMultiBg = isMultiBackgroundTask(task);
+        const introRestricted = Boolean(phase.inCover || phase.inHook || phase.inIntroLead);
+        const exitedRestricted = state._wasIntroRestricted === true && !introRestricted;
+        const bgAsVoice = usesBgAsVoice(task);
         const hasAudioClock = !!(state.audio.src && !state.audio.paused);
         const bgIsClock = !isMultiBg && !hasAudioClock && state.bgVideo.src && !state.bgVideo.paused;
         const contentIsClock = !hasAudioClock && !bgIsClock && state.contentVideo.src && !state.contentVideo.paused;
+        if (!introRestricted && state.audio.src && !task?.muteVoice) {
+            const targetVoice = clamp(
+                bodyTime / getAudioDurationScale(task),
+                0,
+                audioDur > 0 ? Math.max(0, audioDur - 0.02) : 99999
+            );
+            if (exitedRestricted) {
+                if (!state.audio.seeking && Math.abs((state.audio.currentTime || 0) - targetVoice) > 0.04) {
+                    try { state.audio.currentTime = targetVoice; } catch (_) {}
+                }
+            } else if (audioDur > 0 && targetVoice < audioDur - 0.05) {
+                setMediaTime(state.audio, targetVoice, 0);
+            }
+        }
         if (!isMultiBg && state.bgVideo.src && bgDur > 0) {
-            const bgTime = mainTime / getBgDurationScale(task);
+            const bgSourceTime = (bgAsVoice && phase.introDelay > 0) ? bodyTime : mainTime;
+            const bgTime = bgSourceTime / getBgDurationScale(task);
             const target = positiveModulo(bgTime, bgDur);
-            setMediaTime(state.bgVideo, target, bgDur);
+            if (exitedRestricted && bgAsVoice && !state.bgVideo.seeking && Math.abs((state.bgVideo.currentTime || 0) - target) > 0.04) {
+                try { state.bgVideo.currentTime = target; } catch (_) {}
+            } else {
+                setMediaTime(state.bgVideo, target, bgDur);
+            }
         }
         if (state.bgmAudio.src && bgmDur > 0) {
             const bgmStart = Math.max(0, numberOr(task && task.bgmStart, 0));
@@ -1300,6 +1415,7 @@
             setMediaTime(state.contentVideo, trimStart + positiveModulo(mainTime, usableDur), usableDur);
         }
         syncPhasePlayback(phase, task);
+        state._wasIntroRestricted = introRestricted;
     }
 
     function syncPhasePlayback(phase, task) {
@@ -1335,11 +1451,16 @@
         }
         if (phase && phase.inIntroLead) {
             if (state.audio && !state.audio.paused) state.audio.pause();
-            if (state.audio && state.audio.src) {
+            if (state.audio && state.audio.src && !state.audio.seeking && Math.abs(state.audio.currentTime || 0) > 0.05) {
                 try { state.audio.currentTime = 0; } catch (_) {}
             }
-        } else if (state.audio.src && task && task.audioPath && state.audio.paused) {
-            state.audio.play().catch(() => {});
+        } else if (state.audio && state.audio.src && !task?.muteVoice) {
+            const audioDur = mediaDuration(state.audio);
+            const bodyTime = phase ? (phase.bodyTime != null ? phase.bodyTime : phase.mainTime) : 0;
+            const targetVoice = bodyTime / getAudioDurationScale(task);
+            if ((!audioDur || targetVoice < audioDur - 0.05) && state.audio.paused) {
+                state.audio.play().catch(() => {});
+            }
         }
         if (state.bgVideo.src && state.bgVideo.paused) state.bgVideo.play().catch(() => {});
         if (state.bgFadeVideo.src && state.bgFadeVideo.paused) state.bgFadeVideo.play().catch(() => {});
@@ -1367,20 +1488,21 @@
         const w = state.canvas.width;
         const h = state.canvas.height;
         const empty = state.root?.querySelector('[data-role="empty"]');
-        const t = getCurrentTime();
+        let t = getCurrentTime();
         const dur = computeDuration();
         state.duration = dur;
-        applyAudioVolumes(task);
-        applyPlaybackRates(task);
 
         // seek 目标帧尚未解码时保持 Canvas 上一帧，避免清屏后短暂出现黑色。
         if (state.seekFrameLock && isSeekFramePending()) {
+            applyAudioVolumes(task, getPhaseInfo(t, task));
+            applyPlaybackRates(task);
             updateTimeUI(state.seekFrameLock.target, dur);
             return;
         }
         if (state.seekFrameLock) state.seekFrameLock = null;
 
         if (!task) {
+            applyAudioVolumes(null, null);
             ctx.clearRect(0, 0, w, h);
             ctx.fillStyle = '#05070b';
             ctx.fillRect(0, 0, w, h);
@@ -1394,6 +1516,8 @@
             if (isLoopEnabled()) {
                 state.startedAt = performance.now() / 1000;
                 state.pausedAt = 0;
+                t = 0;
+                state._wasIntroRestricted = null;
                 syncMediaToTime(0);
             } else {
                 state.pausedAt = dur;
@@ -1403,8 +1527,10 @@
             }
         }
 
-        syncMediaWhilePlaying(t);
         const phase = getPhaseInfo(t, task);
+        applyAudioVolumes(task, phase);
+        applyPlaybackRates(task);
+        syncMediaWhilePlaying(t, phase);
         const drawTime = phase.mainTime;
         const bodyTime = phase.bodyTime != null ? phase.bodyTime : drawTime;
         const overlayTime = phase.inCover ? phase.time : drawTime;
@@ -1784,7 +1910,8 @@
             // This is an editing guide, not subtitle content. Keep it visible
             // through subtitle gaps (and cover/hook phases) whenever enabled.
             drawSubtitleRange(ctx, style, w, h);
-            const introSuppressesBody = Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(getLiveOverlays(task), phase.mainTime));
+            const showIntro = state.root?.querySelector('[data-role="intro"]')?.checked !== false;
+            const introSuppressesBody = Boolean(window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(getLiveOverlays(task), phase.mainTime, { showIntro }));
             if (!show || phase.inCover || phase.inHook || phase.inIntroLead || introSuppressesBody) return;
             const hasKineticBackdrop = style.anim_in_type === 'kinetic_glow_stack' &&
                 typeof state.renderer.renderKineticGlowBackdrop === 'function';
@@ -1826,9 +1953,11 @@
     function drawOverlays(ctx, task, time, w, h, phase = getPhaseInfo(getCurrentTime(), task), passMode = 'all') {
         const showOverlay = state.root?.querySelector('[data-role="overlays"]')?.checked !== false;
         const showDecor = state.root?.querySelector('[data-role="decor"]')?.checked !== false;
+        const showSticker = state.root?.querySelector('[data-role="stickers"]')?.checked !== false;
+        const showIntro = state.root?.querySelector('[data-role="intro"]')?.checked !== false;
         if (!window.ReelsOverlay || !task) return;
-        // 插入轨不是用户创建的“覆层”；点缀与颗粒(decor)有自己独立的开关(showDecor)，
-        // 关闭普通覆层预览(showOverlay=false)绝不会隐藏点缀与颗粒层。
+        // 各自独立开关控制：小图标(sticker)、开场效果(intro_countdown)、点缀(decor+cta)
+        // 与普通覆层(showOverlay)完全互不串扰。
         const inserts = !phase.inCover && !phase.inHook
             ? getInsertTrackOverlays(task, w, h)
             : [];
@@ -1838,13 +1967,16 @@
         const filterByToggle = (ov) => {
             if (!ov) return false;
             if (ov._insertClip) return true;
-            if (ov.is_phone_cta || ov.is_intro_countdown || ov.type === 'intro_countdown') return !ov.disabled && Boolean(showDecor || showOverlay);
-            if (ov.type === 'decor') return showDecor;
-            return showOverlay;
+            if (ov.is_intro_countdown || ov.type === 'intro_countdown') return !ov.disabled && Boolean(showIntro);
+            if (ov.type === 'sticker') return !ov.disabled && Boolean(showSticker);
+            if (ov.is_phone_cta) return !ov.disabled && Boolean(showDecor);
+            if (ov.type === 'decor') return Boolean(showDecor);
+            return Boolean(showOverlay);
         };
         const filterByPass = (ov) => {
             if (!ov) return false;
-            const isMiddle = Boolean(ov._insertClip || ov.type === 'decor');
+            const isIntroUnderSubtitle = Boolean((ov.is_intro_countdown || ov.type === 'intro_countdown') && ov.intro_delay_body === false);
+            const isMiddle = Boolean(ov._insertClip || ov.type === 'decor' || isIntroUnderSubtitle);
             if (passMode === 'middle') return isMiddle;
             if (passMode === 'overlay') return !isMiddle;
             return true;
@@ -1940,7 +2072,7 @@
         const selectedId = window._reelsState && window._reelsState.overlaySelectedId;
         if (!selectedId || !Array.isArray(overlays)) return;
         const ov = overlays.find(item => item && item.id === selectedId);
-        if (!ov || ov.disabled) return;
+        if (!ov || ov.disabled || ov.type === 'decor' || ov.type === 'intro_countdown' || ov.is_intro_countdown) return;
         const bounds = getOverlayBounds(ov, time, w, h);
         if (!bounds) return;
         const handle = Math.max(8, Math.min(14, w / 90));
@@ -2325,6 +2457,51 @@
         }
     }
 
+    function isFullscreen() {
+        if (!state.root) return false;
+        return Boolean(
+            document.fullscreenElement === state.root
+            || state.root.classList.contains('is-fullscreen')
+        );
+    }
+
+    function updateFullscreenButton() {
+        const btn = state.root?.querySelector('[data-action="fullscreen"]');
+        if (!btn) return;
+        const active = isFullscreen();
+        btn.classList.toggle('is-active', active);
+        btn.textContent = active ? '✕ 退出全屏' : '⛶ 全屏';
+        btn.title = active ? '退出全屏预览 (Esc / Ctrl+F)' : '全屏观看预览 (快捷键 Ctrl+F)';
+    }
+
+    function toggleFullscreen(forceState = null) {
+        if (!state.isOpen || !state.root) return false;
+        const next = forceState !== null ? Boolean(forceState) : !isFullscreen();
+        if (next) {
+            state.isFullscreenFallback = true;
+            state.root.classList.add('is-fullscreen');
+            const canNativeFs = typeof navigator === 'undefined' || !navigator.userActivation || navigator.userActivation.isActive;
+            if (canNativeFs && typeof state.root.requestFullscreen === 'function' && document.fullscreenElement !== state.root) {
+                try {
+                    const p = state.root.requestFullscreen();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (_) {}
+            }
+        } else {
+            state.isFullscreenFallback = false;
+            state.root.classList.remove('is-fullscreen');
+            if (document.fullscreenElement === state.root && typeof document.exitFullscreen === 'function') {
+                try {
+                    const p = document.exitFullscreen();
+                    if (p && typeof p.catch === 'function') p.catch(() => {});
+                } catch (_) {}
+            }
+        }
+        updateFullscreenButton();
+        requestAnimationFrame(() => fitStage(false));
+        return next;
+    }
+
     function updatePlayButton() {
         const btn = state.root?.querySelector('[data-action="play"]');
         if (btn) btn.textContent = state.isPlaying ? 'Ⅱ' : '▶';
@@ -2339,9 +2516,10 @@
 
     function syncLoopFlags() {
         const loop = isLoopEnabled();
+        const introDelay = getIntroDelayDuration(getTask());
         state.bgVideo.loop = true;
         state.bgFadeVideo.loop = true;
-        state.audio.loop = loop;
+        state.audio.loop = loop && !(introDelay > 0);
         state.bgmAudio.loop = true;
         state.contentVideo.loop = true;
         state.hookVideo.loop = false;
@@ -2792,9 +2970,8 @@
 
     function getIntroDelayDuration(task) {
         if (!task || !window.ReelsOverlay?.getIntroDelaySec) return 0;
-        const showOverlay = state.root?.querySelector('[data-role="overlays"]')?.checked !== false;
-        const showDecor = state.root?.querySelector('[data-role="decor"]')?.checked !== false;
-        return window.ReelsOverlay.getIntroDelaySec(getLiveOverlays(task), { showOverlay, showDecor });
+        const showIntro = state.root?.querySelector('[data-role="intro"]')?.checked !== false;
+        return window.ReelsOverlay.getIntroDelaySec(getLiveOverlays(task), { showIntro });
     }
 
     function getTimelineOffset(task) {
@@ -2837,11 +3014,14 @@
         return task.bgmPath || '';
     }
 
-    function applyAudioVolumes(task) {
+    function applyAudioVolumes(task, phase = null) {
         const routed = setupAudioGraph(task);
-        const voicePct = effectiveVoiceVolume(task);
+        const introMuteVoice = Boolean(phase && (phase.inCover || phase.inHook || phase.inIntroLead));
+        const voicePct = introMuteVoice ? 0 : effectiveVoiceVolume(task);
         const bgAsVoice = usesBgAsVoice(task);
-        const bgPct = bgAsVoice ? resolvedVoicedBgVolume(task) : effectiveBgVolume(task);
+        const bgPct = bgAsVoice
+            ? (introMuteVoice ? 0 : resolvedVoicedBgVolume(task))
+            : effectiveBgVolume(task);
         const bgFadePct = bgAsVoice ? 0 : bgPct;
         const bgmPct = effectiveBgmVolume(task);
         const contentPct = numberOr(task && task.contentVideoVolume, 100);
@@ -3307,6 +3487,11 @@
             ? { width: state.canvas.width, height: state.canvas.height }
             : null,
         togglePlay,
+        play: () => { if (!state.isPlaying) togglePlay(); },
+        pause: () => { if (state.isPlaying) togglePlay(); },
+        isPlaying: () => Boolean(state.isPlaying),
+        toggleFullscreen,
+        isFullscreen,
         // 任务切换时不能复用上一任务的 pausedAt。若用户正在播放，保持播放状态，
         // 但让新任务从自己的 0:00 开始。
         resetForTaskSwitch: (options = {}) => {
@@ -3319,6 +3504,7 @@
             pauseMedia();
             state.isPlaying = false;
             state.pausedAt = 0;
+            state._wasIntroRestricted = null;
             state.startedAt = performance.now() / 1000;
             state.seekFrameLock = null;
             loadCurrentTask(true);
@@ -3335,6 +3521,7 @@
         seek: (time) => {
             if (!state.isOpen) return;
             const duration = computeDuration();
+            state._wasIntroRestricted = null;
             state.pausedAt = clamp(numberOr(time, 0), 0, duration || Number.MAX_SAFE_INTEGER);
             if (state.isPlaying) state.startedAt = performance.now() / 1000 - state.pausedAt;
             syncMediaToTime(state.pausedAt);

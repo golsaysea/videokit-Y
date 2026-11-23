@@ -551,6 +551,9 @@ async function reelsWysiwygExport(params) {
         await fm.ensureFontsLoaded(fontsToLoad);
         log('字体全部预加载就绪');
     }
+    if (window.ReelsOverlay && typeof window.ReelsOverlay.primeIntroAssets === 'function') {
+        await window.ReelsOverlay.primeIntroAssets();
+    }
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
@@ -1107,8 +1110,9 @@ async function reelsWysiwygExport(params) {
     const sortedOvs = (taskOverlays && taskOverlays.length > 0)
         ? taskOverlays.filter(ov => ov && !ov.disabled).slice().sort((a, b) => (Number(a.z_index) || 0) - (Number(b.z_index) || 0))
         : [];
-    const middleOvs = sortedOvs.filter(ov => Boolean(ov._insertClip || ov.type === 'decor'));
-    const regularOvs = sortedOvs.filter(ov => !ov._insertClip && ov.type !== 'decor');
+    const _isMiddleOv = (ov) => Boolean(ov && (ov._insertClip || ov.type === 'decor' || ((ov.is_intro_countdown || ov.type === 'intro_countdown') && ov.intro_delay_body === false)));
+    const middleOvs = sortedOvs.filter(_isMiddleOv);
+    const regularOvs = sortedOvs.filter(ov => !_isMiddleOv(ov));
     if (showSubtitle && segments && segments.length > 0) {
         renderer.setContextSegments(segments, originalScript);
     }

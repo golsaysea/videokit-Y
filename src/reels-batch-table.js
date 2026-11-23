@@ -21173,7 +21173,7 @@ function _serializeBatchValue(value, seen = new WeakSet()) {
     return out;
 }
 
-const _VALID_TASK_OVERLAY_TYPES = new Set(['text', 'textcard', 'scroll', 'image', 'video', 'solid_mask', 'decor', 'pip']);
+const _VALID_TASK_OVERLAY_TYPES = new Set(['text', 'textcard', 'scroll', 'image', 'video', 'solid_mask', 'decor', 'pip', 'sticker', 'intro_countdown']);
 function _isValidTaskOverlayObj(ov) {
     return Boolean(
         ov &&

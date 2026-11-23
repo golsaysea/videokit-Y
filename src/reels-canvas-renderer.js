@@ -8405,9 +8405,10 @@ class ReelsCanvasRenderer {
         const overallAlpha = Math.min(segIn, segOut);
         const groupIntro = clamp01((currentTime - words[groupStart].start) / 0.12);
 
-        if (groupStart > 0 && groupIntro < 1) {
+        const kineticDimVal = Number(s.kinetic_background_dim ?? 0.68);
+        if (groupStart > 0 && groupIntro < 1 && kineticDimVal > 0.001) {
             ctx.save();
-            ctx.fillStyle = `rgba(0,0,0,${(1 - groupIntro) * 0.72})`;
+            ctx.fillStyle = `rgba(0,0,0,${(1 - groupIntro) * 0.72 * Math.min(1, kineticDimVal / 0.68)})`;
             ctx.fillRect(0, 0, videoW, videoH);
             ctx.restore();
         }

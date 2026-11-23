@@ -2813,6 +2813,7 @@ async function parallelExport(opts, mainWindow) {
         textDirection: path.join(scriptBase, 'reels-text-direction.js'),
         animEngine: path.join(scriptBase, 'reels-anim-engine.js'),
         richText: path.join(scriptBase, 'reels-rich-text.js'),
+        introAssets: path.join(scriptBase, 'reels-intro-assets.js'),
         overlay: path.join(scriptBase, 'reels-overlay.js'),
         canvasRenderer: path.join(scriptBase, 'reels-canvas-renderer.js'),
         fontMetadata: path.join(scriptBase, 'fonts-metadata.js'),

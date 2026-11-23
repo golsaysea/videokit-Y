@@ -3139,10 +3139,69 @@ body.theme-light .rdp-cta-card {
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
 }
 
+.rdp-intro-cat-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 2px;
+}
+
+.rdp-intro-cat-chip {
+    padding: 3px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    background: rgba(15, 23, 42, 0.55);
+    color: #e2e8f0;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.14s ease;
+}
+
+.rdp-intro-cat-chip:hover {
+    border-color: #fbbf24;
+    color: #fef3c7;
+}
+
+.rdp-intro-cat-chip.is-active {
+    background: linear-gradient(135deg, rgba(217, 119, 6, 0.45), rgba(180, 83, 9, 0.6));
+    border-color: #fde047;
+    color: #fef9c3;
+    font-weight: 700;
+}
+
+body.theme-light .rdp-intro-cat-chip {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #334155;
+}
+
+body.theme-light .rdp-intro-cat-chip.is-active {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #d97706;
+    color: #78350f;
+}
+
 .rdp-intro-preset-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px;
+    max-height: 230px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+#reels-col-preview.vk-preview-fullscreen,
+#reels-col-preview:fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    z-index: 99990 !important;
+    background: #05070b !important;
+    margin: 0 !important;
 }
 
 .rdp-intro-preset-btn {

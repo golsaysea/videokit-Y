@@ -5095,12 +5095,14 @@
               <div id="reels-col-subtitle" class="reels-column" style="width:320px; min-width:200px; overflow:hidden; padding:0; display:flex; flex-direction:column;">
 
                 <!-- Inspector Tab 栏 -->
-                <div class="inspector-tabs" style="display:flex; gap:0; flex-shrink:0; background:var(--bg-titlebar); border-bottom:1px solid var(--border-color);">
-                  <button class="inspector-tab active" data-tab="subtitle" onclick="reelsInspectorSwitch('subtitle',this)" style="flex:1; padding:8px 0; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid var(--accent);">T 字幕</button>
-                  <button class="inspector-tab" data-tab="overlay" onclick="reelsInspectorSwitch('overlay',this)" style="flex:1; padding:8px 0; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;">🖼️ 覆层</button>
-                  <button class="inspector-tab" data-tab="decor" onclick="reelsInspectorSwitch('decor',this)" style="flex:1; padding:8px 0; border:none; background:transparent; color:#fde68a; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent;" title="独立调节 30 款点缀、黑色氛围模板、飘浮粒子、电影颗粒与圣诞装饰">✨ 点缀与颗粒</button>
-                  <button class="inspector-tab" data-tab="watermark" onclick="reelsInspectorSwitch('watermark',this)" style="flex:1; padding:8px 0; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;">🔒 水印</button>
-                  <button class="inspector-tab" data-tab="background" onclick="reelsInspectorSwitch('background',this)" style="flex:1; padding:8px 0; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent;">🌫️ 背景与内容视频</button>
+                <div class="inspector-tabs" style="display:flex; flex-wrap:wrap; gap:2px 4px; padding:2px 4px 0; flex-shrink:0; background:var(--bg-titlebar); border-bottom:1px solid var(--border-color);">
+                  <button class="inspector-tab active" data-tab="subtitle" onclick="reelsInspectorSwitch('subtitle',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid var(--accent); white-space:nowrap;">T 字幕</button>
+                  <button class="inspector-tab" data-tab="overlay" onclick="reelsInspectorSwitch('overlay',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🖼️ 覆层</button>
+                  <button class="inspector-tab" data-tab="decor" onclick="reelsInspectorSwitch('decor',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:#fde68a; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;" title="独立调节 30 款点缀、黑色氛围模板、飘浮粒子、电影颗粒与圣诞装饰">✨ 点缀与颗粒</button>
+                  <button class="inspector-tab" data-tab="sticker" onclick="reelsInspectorSwitch('sticker',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:#86efac; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;" title="独立调节 40 款节日/圣诞画面小图标、持续动效、显示时段与跨页同步">🎄 小图标</button>
+                  <button class="inspector-tab" data-tab="intro" onclick="reelsInspectorSwitch('intro',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:#fcd34d; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;" title="独立调节光环倒计时、爆款白黄斜体与红色幕布拉开开场效果">🎬 开场效果</button>
+                  <button class="inspector-tab" data-tab="watermark" onclick="reelsInspectorSwitch('watermark',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🔒 水印</button>
+                  <button class="inspector-tab" data-tab="background" onclick="reelsInspectorSwitch('background',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🌫️ 背景与内容视频</button>
                 </div>
 
                 <!-- Tab: 字幕样式 -->
@@ -5148,10 +5150,10 @@
                     <!-- 🎄 圣诞快速入口（无需折叠展开，直接可见） -->
                     <div style="margin-top:7px; padding-top:7px; border-top:1px dashed rgba(250,204,21,0.3); display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
                       <span style="font-size:11px; font-weight:700; color:#fde68a;">🎄 圣诞/红雀快配:</span>
-                      <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; background:linear-gradient(135deg,#15803d,#dc2626); color:#fff; border:1px solid #fde68a; font-weight:700;" onclick="var sec=document.getElementById('reels-xmas-icons-accordion'); if(sec){var p=sec.closest('details:not(#reels-xmas-icons-accordion)'); if(p)p.open=true; sec.open=true; sec.scrollIntoView({behavior:'smooth',block:'center'});} window.reelsAddChristmasStickerIcon && window.reelsAddChristmasStickerIcon('jingle_bell');" title="立即在画面上方居中放入圣诞/红雀小图标，并在 T字幕 内展开40款图标与位置/大小滑块">+ 🎄 放画面小图标(40款)</button>
+                      <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; background:linear-gradient(135deg,#15803d,#dc2626); color:#fff; border:1px solid #fde68a; font-weight:700;" onclick="var btn=document.querySelector('.inspector-tab[data-tab=\'sticker\']'); if(typeof reelsInspectorSwitch==='function') reelsInspectorSwitch('sticker', btn); window.reelsAddChristmasStickerIcon && window.reelsAddChristmasStickerIcon('jingle_bell');" title="立即在画面上方居中放入圣诞/红雀小图标，并切到独立「🎄 小图标」标签页管理">+ 🎄 放画面小图标(40款)</button>
                       <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; background:#8b2e20; color:#fef2f2; border:1px solid #fca5a5; font-weight:700;" onclick="window.reelsSetSpeechWritingTip && window.reelsSetSpeechWritingTip('cardinal_feather', true);" title="开启红雀红褐色羽毛跟读小图标（支持逐词/逐字/逐句出字）">🪶 红雀红褐羽毛+出字</button>
                       <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; background:#129E4D; color:#fff; border:1px solid #86EFAC; font-weight:700;" onclick="window.reelsApplyChristmasComboPreset && window.reelsApplyChristmasComboPreset('xmas_combo_tree_bells')" title="在画面上方添加金色双铃铛并同步切换翡翠绿胶囊圣诞字幕（图1同款）">🔔 树顶铃铛+翡翠绿字幕</button>
-                      <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; border-color:rgba(250,204,21,0.45); color:#fde68a;" onclick="var sec=document.getElementById('reels-xmas-icons-accordion'); if(sec){var p=sec.closest('details:not(#reels-xmas-icons-accordion)'); if(p)p.open=true; sec.open=true; sec.scrollIntoView({behavior:'smooth',block:'center'});}">✨ 打开40款图标+下方调节</button>
+                      <button type="button" class="btn btn-secondary" style="font-size:11px; padding:3px 8px; border-color:rgba(134,239,172,0.5); color:#86efac;" onclick="var btn=document.querySelector('.inspector-tab[data-tab=\'sticker\']'); if(typeof reelsInspectorSwitch==='function') reelsInspectorSwitch('sticker', btn);">↗ 独立小图标标签页</button>
                     </div>
                   </div>
 
@@ -6762,6 +6764,16 @@
                   <div id="reels-decor-panel-root"></div>
                 </div>
 
+                <!-- Tab: 小图标 (独立专属面板: 40款圣诞/节日图标 + 动效 + 时段 + 跨页同步) -->
+                <div id="inspector-tab-sticker" style="display:none; flex:1; overflow-y:scroll; scrollbar-gutter: stable; padding:10px;">
+                  <div id="reels-sticker-panel-root"></div>
+                </div>
+
+                <!-- Tab: 开场效果 (独立专属面板: 光环倒计时 / 白黄斜体 / 红幕布拉开) -->
+                <div id="inspector-tab-intro" style="display:none; flex:1; overflow-y:scroll; scrollbar-gutter: stable; padding:10px;">
+                  <div id="reels-intro-panel-root"></div>
+                </div>
+
                 <!-- Tab: 水印 -->
                 <div id="inspector-tab-watermark" style="display:none; flex:1; overflow-y:scroll; scrollbar-gutter: stable; padding:10px;">
                   <h3 class="section-title">🔒 AI 水印</h3>
@@ -7438,10 +7450,26 @@
                       </label>
                       <label
                         style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;margin-left:2px;"
+                        title="预览与导出画面小图标总开关：独立控制圣诞/节日小图标，不影响普通覆层与点缀">
+                        <input type="checkbox" id="reels-sticker-toggle" checked onchange="reelsOnStickerToggleChange(this)"
+                          style="accent-color:#22c55e;"> 小图标（关闭=导出不带）
+                      </label>
+                      <label
+                        style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;margin-left:2px;"
+                        title="预览与导出视频开场效果总开关：独立控制开场光环/白黄钩子/红幕拉开">
+                        <input type="checkbox" id="reels-intro-toggle" checked onchange="reelsOnIntroToggleChange(this)"
+                          style="accent-color:#f59e0b;"> 开场（关闭=导出不带）
+                      </label>
+                      <label
+                        style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;margin-left:2px;"
                         title="循环播放预览（关闭后仅播放一次）">
                         <input type="checkbox" id="reels-preview-loop" checked onchange="reelsOnPreviewLoopModeChange()"
                           style="accent-color:var(--accent-color);"> 循环
                       </label>
+                      <button id="reels-preview-fullscreen-btn" type="button" onclick="reelsTogglePreviewFullscreen()"
+                        title="全屏观看预览 (快捷键 Ctrl+F)"
+                        style="padding:1px 7px; font-size:10.5px; background:rgba(255,255,255,0.06); border:1px solid rgba(148,163,184,0.35);
+                        border-radius:4px; color:var(--text-color); cursor:pointer; white-space:nowrap; margin-left:2px; font-weight:600;">⛶ 全屏</button>
                       <button id="reels-cv-pos-toggle" title="内容视频位置调整"
                         style="display:none; padding:1px 6px; font-size:10px; background:rgba(100,160,255,0.1); border:1px solid rgba(100,160,255,0.3);
                         border-radius:4px; color:#8af; cursor:pointer; white-space:nowrap; margin-left:2px; transition:all 0.15s;"
@@ -7499,7 +7527,7 @@
           <script>
           function reelsInspectorSwitch(tab, btn) {
             // 切换 Tab 内容可见性
-            var tabs = ['subtitle', 'overlay', 'decor', 'watermark', 'background'];
+            var tabs = ['subtitle', 'overlay', 'decor', 'sticker', 'intro', 'watermark', 'background'];
             for (var i = 0; i < tabs.length; i++) {
               var el = document.getElementById('inspector-tab-' + tabs[i]);
               if (el) el.style.display = tabs[i] === tab ? '' : 'none';
@@ -7514,6 +7542,12 @@
             }
             if (tab === 'decor' && window._reelsState && window._reelsState.decorPanel && typeof window._reelsState.decorPanel.refresh === 'function') {
               window._reelsState.decorPanel.refresh();
+            }
+            if (tab === 'sticker' && window._reelsState && window._reelsState.stickerPanel && typeof window._reelsState.stickerPanel.refresh === 'function') {
+              window._reelsState.stickerPanel.refresh();
+            }
+            if (tab === 'intro' && window._reelsState && window._reelsState.introPanel && typeof window._reelsState.introPanel.refresh === 'function') {
+              window._reelsState.introPanel.refresh();
             }
             if (typeof window.reelsUpdatePreview === 'function') {
               window.reelsUpdatePreview();
@@ -8341,7 +8375,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.10-beta</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.14-beta</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"
@@ -8996,6 +9030,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-font-manager.js"></script>
   <script src="reels-project.js"></script>
   <script src="reels-templates.js"></script>
+  <script src="reels-intro-assets.js"></script>
   <script src="reels-overlay.js"></script>
   <script src="reels-preset-thumb.js"></script>
   <script src="reels-audio-spectrum.js"></script>

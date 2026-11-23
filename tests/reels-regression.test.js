@@ -10884,8 +10884,9 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
     const RO = ovSandbox.window.ReelsOverlay;
     assert.ok(RO, 'ReelsOverlay must be exposed');
     assert.equal(Object.keys(RO.INTRO_RING_THEMES).length, 5, '5 intro ring color themes should exist');
-    assert.equal(Object.keys(RO.INTRO_CURTAIN_THEMES).length, 4, '4 intro curtain velvet themes should exist');
-    assert.equal(Object.keys(RO.INTRO_COUNTDOWN_PRESETS).length, 8, '8 intro countdown/opening presets should exist');
+    assert.ok(Object.keys(RO.INTRO_CURTAIN_THEMES).length >= 18, 'At least 18 intro reveal palette themes should exist');
+    const visibleIntroPresets = Object.values(RO.INTRO_COUNTDOWN_PRESETS).filter(p => p && !p.hiddenFromIntroPicker);
+    assert.ok(visibleIntroPresets.length >= 50, 'At least 50 visible North American intro presets should exist');
 
     // Date calculation matches cp-01 sample: Nov 18 -> Dec 25 = 37 days; supports dots, slashes & Chinese month/day formats
     assert.equal(RO.computeIntroDaysRemaining('12-25', 0, new Date(2026, 10, 18)), 37);
@@ -10913,6 +10914,7 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
         const drawnTexts = [];
         const arcCalls = [];
         const rectCalls = [];
+        let fillCalls = 0;
         const mockGrad = { addColorStop() {} };
         const mockCtx = {
             globalAlpha: 1,
@@ -10940,7 +10942,7 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
             rect() {},
             roundRect() {},
             clip() {},
-            fill() {},
+            fill() { fillCalls++; },
             stroke() {},
             fillRect(rx, ry, rw, rh) { rectCalls.push({ x: rx, y: ry, w: rw, h: rh }); },
             strokeRect() {},
@@ -10961,8 +10963,10 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
         assert.equal(saves, restores, `drawOverlay at t=0 paused for ${presetId} must balance save/restore`);
         if (presetOv.intro_layout === 'kinetic_stack') {
             assert.ok(drawnTexts.length >= 2, `Paused snapshot for ${presetId} must draw kinetic stacked intro words`);
-        } else if (presetOv.intro_layout === 'curtain_reveal') {
-            assert.ok(rectCalls.length >= 2, `Paused snapshot for ${presetId} must draw left & right velvet curtain panels`);
+        } else if (['curtain_reveal', 'blinds_reveal', 'doors_reveal', 'gift_scroll_reveal', 'black_reveal', 'flag_reveal'].includes(presetOv.intro_layout)) {
+            assert.ok(rectCalls.length >= 1, `Paused snapshot for ${presetId} must draw reveal panels/slats/doors/black/flag`);
+        } else if (['frost_wipe', 'iris_spotlight', 'eagle_ink_reveal', 'cardinal_reveal', 'paper_reveal'].includes(presetOv.intro_layout)) {
+            assert.ok(fillCalls >= 1 || rectCalls.length >= 1, `Paused snapshot for ${presetId} must draw mask/ink/paper overlay`);
         } else {
             assert.ok(arcCalls.length >= 2, `Paused snapshot for ${presetId} must draw base ring and sweep arc`);
         }
@@ -12469,3 +12473,446 @@ test('Facebook Reel 29521209597533436 crimson velvet curtain reveal intro (curta
     assert.equal(secStyles['#rdp-intro-ring-section'].style.display, 'none');
     assert.equal(secStyles['#rdp-intro-shared-layout-section'].style.display, 'none');
 });
+
+test('Serialization preserves sticker and intro_countdown, paused deselected sticker renders at t=0, and showIntro toggles isolate intro from overlay/decor', () => {
+    // 1) _serializeTasks retains both sticker and intro_countdown
+    const btSandbox = loadBrowserScript('src/reels-batch-table.js', {
+        window: { innerHeight: 900, _reelsState: null, addEventListener() {}, removeEventListener() {} },
+        document: {
+            head: { appendChild() {} },
+            body: { appendChild() {}, querySelectorAll: () => [] },
+            createElement: () => ({ style: {}, classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [], addEventListener() {} }),
+            getElementById: () => null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {},
+        },
+        requestAnimationFrame: () => 0,
+        setTimeout: () => 0,
+        clearTimeout: () => {},
+    });
+    const serialized = JSON.parse(vm.runInContext(`(() => {
+        const list = _serializeTasks([{
+            id: 't1',
+            baseName: 'Task1',
+            overlays: [
+                { id: 'ov_s1', type: 'sticker', sticker_kind: 'jingle_bell', x: 400, y: 200, w: 250, h: 250, start: 0, end: 9999 },
+                { id: 'ov_i1', type: 'intro_countdown', is_intro_countdown: true, intro_layout: 'curtain_reveal', intro_style: 'curtain_red_reveal', start: 0, end: 2.2 },
+                { id: 'ov_bad', type: 'unknown_legacy_bogus' },
+            ],
+        }]);
+        return JSON.stringify(list);
+    })()`, btSandbox));
+    assert.deepEqual(serialized[0].overlays.map(o => o.type), ['sticker', 'intro_countdown']);
+
+    // 2) Deselected sticker with anim_in_type: 'elastic_pop' renders visible at t=0 when _previewPlaying is false, even if stale _reelsState.playing is true
+    const drawOps = [];
+    const mockCtx = {
+        save() { drawOps.push({ op: 'save' }); },
+        restore() { drawOps.push({ op: 'restore' }); },
+        translate() {},
+        rotate() {},
+        scale(sx, sy) { drawOps.push({ op: 'scale', sx, sy }); },
+        fillRect() { drawOps.push({ op: 'fillRect' }); },
+        beginPath() {},
+        closePath() {},
+        moveTo() {},
+        lineTo() {},
+        arc() {},
+        fill() { drawOps.push({ op: 'fill' }); },
+        stroke() { drawOps.push({ op: 'stroke' }); },
+        measureText: (t) => ({ width: String(t || '').length * 14 }),
+        fillText() {},
+        strokeText() {},
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+        font: '24px Arial',
+        globalAlpha: 1,
+        textAlign: 'center',
+        textBaseline: 'middle',
+    };
+    const roSandbox = loadBrowserScript('src/reels-anim-engine.js', {
+        window: {
+            _reelsState: { playing: true },
+            drawHolidayStickerIcon: (ctx) => {
+                drawOps.push({ op: 'holidaySticker', alpha: ctx.globalAlpha });
+                return true;
+            },
+        },
+        performance: { now: () => 5000 },
+    });
+    loadBrowserScript('src/reels-overlay.js', roSandbox);
+    const RO = roSandbox.window.ReelsOverlay;
+    const stickerOv = RO.createStickerOverlay({
+        sticker_kind: 'jingle_bell',
+        anim_in_type: 'elastic_pop',
+        anim_in_duration: 0.45,
+        cta_loop_anim: 'sway_bell',
+    });
+    RO.drawOverlay(mockCtx, { ...stickerOv, _selected: false, _previewPlaying: false }, 0, 1080, 1920);
+    const drawnAtPause = drawOps.find(o => o.op === 'holidaySticker');
+    assert.ok(drawnAtPause, 'Deselected paused sticker must still draw at t=0');
+    assert.ok(drawnAtPause.alpha > 0.8, 'Paused sticker alpha must settle visibly near 1');
+    const tinyScale = drawOps.find(o => o.op === 'scale' && Math.abs(o.sx) < 0.25);
+    assert.equal(tinyScale, undefined, 'Paused sticker must not shrink to micro elastic_pop start scale');
+
+    // 3) showIntro option independently enables/disables intro overlays even when showOverlay & showDecor are false
+    const curtainOv = RO.createIntroCountdownOverlay({ intro_style: 'curtain_red_reveal' });
+    assert.equal(curtainOv.end, 2.2);
+    const hookOv = RO.createIntroCountdownOverlay({ intro_style: 'fb_yellow_stack_hook' });
+    assert.equal(hookOv.end, 4.0);
+    assert.ok(RO.getActiveIntroCountdownOverlay([curtainOv], { showIntro: true, showDecor: false, showOverlay: false }));
+    assert.equal(RO.getActiveIntroCountdownOverlay([curtainOv], { showIntro: false, showDecor: true, showOverlay: true }), null);
+    assert.equal(RO.getIntroDelaySec([curtainOv], { showIntro: true, showDecor: false, showOverlay: false }), 2.2);
+    assert.equal(RO.getIntroDelaySec([curtainOv], { showIntro: false, showDecor: true, showOverlay: true }), 0);
+});
+
+test('Standalone ReelsIntroPanel, ReelsStickerPanel, and ReelsDecorPanel stay decoupled and wire V2 preview & HTML tabs cleanly', () => {
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const batchSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const v2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
+    for (const marker of [
+        'data-tab="sticker"', 'data-tab="intro"',
+        'id="reels-sticker-panel-root"', 'id="reels-intro-panel-root"',
+        'id="reels-sticker-toggle"', 'id="reels-intro-toggle"',
+        "'sticker', 'intro'",
+    ]) {
+        assert.ok(htmlSrc.includes(marker), `src/index.html missing standalone tab/toggle marker: ${marker}`);
+    }
+    assert.ok(batchSrc.includes('new window.ReelsStickerPanel(') && batchSrc.includes('new window.ReelsIntroPanel('));
+    assert.ok(batchSrc.includes('reelsOnStickerToggleChange') && batchSrc.includes('reelsOnIntroToggleChange'));
+    assert.ok(v2Src.includes('data-role="stickers"') && v2Src.includes('data-role="intro"'));
+    assert.ok(v2Src.includes('play:') && v2Src.includes('pause:') && v2Src.includes('isPlaying:'));
+    assert.ok(!v2Src.includes('renderCurrentFrame('), 'V2 must not call nonexistent renderCurrentFrame()');
+
+    // Load ReelsOverlay + ReelsOverlayPanel + ReelsIntroPanel + ReelsStickerPanel + ReelsDecorPanel in VM
+    const roSandbox = loadBrowserScript('src/reels-anim-engine.js', { window: {} });
+    loadBrowserScript('src/reels-overlay.js', roSandbox);
+    const RO = roSandbox.window.ReelsOverlay;
+
+    const makeEl = (tag = 'div') => {
+        const el = {
+            tagName: tag.toUpperCase(),
+            type: '',
+            id: '',
+            value: '',
+            checked: false,
+            disabled: false,
+            dataset: {},
+            style: {},
+            children: [],
+            listeners: {},
+            classList: {
+                _set: new Set(),
+                add(c) { this._set.add(c); },
+                remove(c) { this._set.delete(c); },
+                toggle(c, f) { if (f === undefined) { if (this._set.has(c)) this._set.delete(c); else this._set.add(c); } else if (f) this._set.add(c); else this._set.delete(c); },
+                contains(c) { return this._set.has(c); },
+            },
+            addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); },
+            dispatchEvent(ev) { (this.listeners[ev.type] || []).forEach(fn => fn.call(this, ev)); },
+            click() { this.dispatchEvent({ type: 'click', preventDefault() {}, stopPropagation() {} }); },
+            appendChild(c) { this.children.push(c); c.parentElement = this; return c; },
+            setAttribute() {},
+            removeAttribute() {},
+            getContext() { return null; },
+            closest() { return null; },
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            _innerHTML: '',
+        };
+        return el;
+    };
+
+    const parseContainerSelectors = (rootEl, html) => {
+        // Minimal querySelector/querySelectorAll scanner over rendered HTML ids & key classes
+        const idMap = new Map();
+        const presetBtns = [];
+        const idMatches = [...html.matchAll(/id="([^"]+)"/g)];
+        for (const m of idMatches) {
+            const id = m[1];
+            const tagChunk = html.slice(Math.max(0, m.index - 80), m.index + m[0].length + 120);
+            const node = makeEl(tagChunk.includes('<select') ? 'SELECT' : 'INPUT');
+            node.id = id;
+            node.checked = tagChunk.includes('checked');
+            const valM = tagChunk.match(/value="([^"]*)"/);
+            if (valM) node.value = valM[1];
+            if (id.endsWith('-style-scope')) node.value = 'folder';
+            idMap.set(id, node);
+        }
+        for (const pm of html.matchAll(/class="rdp-intro-preset-btn"[^>]*data-intro-preset="([^"]+)"/g)) {
+            const b = makeEl('BUTTON');
+            b.dataset.introPreset = pm[1];
+            presetBtns.push(b);
+        }
+        rootEl.idMap = idMap;
+        rootEl.querySelector = (sel) => {
+            if (sel && sel.startsWith('#')) return idMap.get(sel.slice(1)) || null;
+            return null;
+        };
+        rootEl.querySelectorAll = (sel) => {
+            if (sel === '.rdp-intro-preset-btn') return presetBtns;
+            return [];
+        };
+    };
+
+    const task1 = { id: 't1', _batchTabId: 'tabA', _folderQueueId: 'tabA', overlays: [] };
+    const task2 = { id: 't2', _batchTabId: 'tabA', _folderQueueId: 'tabA', overlays: [RO.createDecorOverlay({ decor_style: 'dark_floating_dust' })] };
+    task1.overlays.push(RO.createDecorOverlay({ decor_style: 'dark_floating_dust' }));
+    const v2Calls = [];
+    const docById = {
+        'reels-intro-panel-root': { id: 'reels-intro-panel-root' },
+        'reels-intro-toggle': { checked: true },
+        'reels-sticker-toggle': { checked: true },
+        'reels-decor-toggle': { checked: true },
+    };
+    const sandbox = loadBrowserScript('src/reels-overlay-panel.js', {
+        window: {
+            ReelsOverlay: RO,
+            HOLIDAY_ICON_CATALOG: [{ id: 'jingle_bell', emoji: '🔔', label: '铃铛', category: '圣诞经典' }],
+            HOLIDAY_ICON_MAP: { jingle_bell: { id: 'jingle_bell', emoji: '🔔', label: '铃铛', category: '圣诞经典' } },
+            XMAS_ICON_SUBTITLE_COMBOS: [],
+            ReelsPreviewV2: {
+                isOpen: () => true,
+                reload: () => v2Calls.push('reload'),
+                seek: (s) => v2Calls.push(['seek', s]),
+                play: () => v2Calls.push('play'),
+                isPlaying: () => false,
+                render: () => v2Calls.push('render'),
+            },
+            _reelsState: { tasks: [task1, task2], selectedIdx: 0 },
+        },
+        document: {
+            head: { appendChild() {} },
+            body: { appendChild() {}, querySelectorAll: () => [] },
+            createElement: (tag) => makeEl(tag),
+            getElementById: (id) => docById[id] || null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+            addEventListener() {},
+        },
+        performance: { now: () => 1000 },
+        requestAnimationFrame: () => 0,
+        setTimeout: (fn) => { if (typeof fn === 'function') fn(); return 0; },
+        clearTimeout: () => {},
+    });
+    sandbox.window._reelsState.tasks = [task1, task2];
+
+    const mgr = {
+        overlays: task1.overlays,
+        addOverlay(o) { this.overlays.push(o); },
+        removeOverlay(id) {
+            const idx = this.overlays.findIndex(o => o.id === id);
+            if (idx >= 0) this.overlays.splice(idx, 1);
+        },
+    };
+    const vc = {
+        overlayMgr: mgr,
+        addOverlay: (o) => mgr.addOverlay(o),
+        removeOverlay: (id) => mgr.removeOverlay(id),
+        getCanvasSize: () => ({ w: 1080, h: 1920 }),
+        render() {},
+        onOverlayChange() {},
+    };
+
+    const introRoot = makeEl('div');
+    let introHtml = '';
+    Object.defineProperty(introRoot, 'innerHTML', {
+        get() { return introHtml; },
+        set(v) { introHtml = String(v); parseContainerSelectors(introRoot, introHtml); },
+    });
+    const introPanel = new sandbox.window.ReelsIntroPanel(introRoot, vc, null);
+    sandbox.window._reelsState.introPanel = introPanel;
+
+    const stickerRoot = makeEl('div');
+    let stickerHtml = '';
+    Object.defineProperty(stickerRoot, 'innerHTML', {
+        get() { return stickerHtml; },
+        set(v) { stickerHtml = String(v); parseContainerSelectors(stickerRoot, stickerHtml); },
+    });
+    const stickerPanel = new sandbox.window.ReelsStickerPanel(stickerRoot, vc, null);
+    sandbox.window._reelsState.stickerPanel = stickerPanel;
+
+    const decorRoot = makeEl('div');
+    let decorHtml = '';
+    Object.defineProperty(decorRoot, 'innerHTML', {
+        get() { return decorHtml; },
+        set(v) { decorHtml = String(v); parseContainerSelectors(decorRoot, decorHtml); },
+    });
+    new sandbox.window.ReelsDecorPanel(decorRoot, vc, null);
+
+    // Decor panel must NOT duplicate #rdp-intro-card when #reels-intro-panel-root exists
+    assert.ok(!decorHtml.includes('id="rdp-intro-card"'), 'DecorPanel must omit #rdp-intro-card when standalone IntroPanel root exists');
+
+    // 1) IntroPanel applies curtain_red_reveal with 2.2s preserved, syncs to task2, leaves decor untouched, and triggers V2 play
+    const introOv = introPanel.applyIntroPreset('curtain_red_reveal');
+    assert.ok(introOv);
+    assert.equal(introOv.end, 2.2, 'curtain_red_reveal must preserve 2.2s preset end time');
+    assert.ok(task2.overlays.some(o => o.type === 'intro_countdown' && o.intro_style === 'curtain_red_reveal'), 'IntroPanel must sync intro_countdown to scoped task2');
+    assert.equal(task2.overlays.filter(o => o.type === 'decor').length, 1, 'IntroPanel must leave existing decor intact on task2');
+    assert.ok(v2Calls.some(c => Array.isArray(c) && c[0] === 'seek' && c[1] === 0) && v2Calls.includes('play'), 'Intro preview must seek(0) and play on open V2 preview');
+
+    // 2) StickerPanel adds sticker across task1 & task2 without altering intro_countdown or decor
+    const stkOv = stickerPanel.addOrApplySticker('jingle_bell');
+    assert.ok(stkOv);
+    assert.ok(task1.overlays.some(o => o.type === 'sticker' && o.sticker_kind === 'jingle_bell'));
+    assert.ok(task2.overlays.some(o => o.type === 'sticker' && o.sticker_kind === 'jingle_bell'), 'StickerPanel must sync sticker to scoped task2');
+    assert.ok(task2.overlays.some(o => o.type === 'intro_countdown'), 'StickerPanel sync must preserve task2 intro_countdown');
+    assert.equal(task2.overlays.filter(o => o.type === 'decor').length, 1, 'StickerPanel sync must preserve task2 decor');
+
+    // 3) ReelsOverlayPanel._refreshList must behaviorally exclude decor, sticker, and intro_countdown
+    const opSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const refreshMatch = opSrc.match(/_refreshList\s*\(\)\s*\{([\s\S]*?)^\s{4}\}/m);
+    assert.ok(refreshMatch, '_refreshList must exist in ReelsOverlayPanel');
+    assert.ok(refreshMatch[1].includes("!== 'decor'") && refreshMatch[1].includes("!== 'sticker'") && refreshMatch[1].includes("!ov.is_intro_countdown"), 'Overlay list must exclude decor, sticker, and intro_countdown');
+    assert.ok(!v2Calls.includes('reload'), 'Intro preset preview must NOT call destructive v2.reload()');
+    assert.ok(!introHtml.includes('data-intro-preset="fb_yellow_stack_hook"'), 'fb_yellow_stack_hook (text animation) must stay hidden from IntroPanel picker');
+    const renderedPresetBtns = [...introHtml.matchAll(/class="rdp-intro-preset-btn"[^>]*data-intro-preset="([^"]+)"/g)];
+    assert.ok(renderedPresetBtns.length >= 50, `Expected >= 50 visible intro presets in UI picker, got ${renderedPresetBtns.length}`);
+});
+
+test('FB yellow italic word-stack moves to T-subtitle sub-252 with transparent backdrop and >=50 North American openers render safely', () => {
+    const presetSandbox = loadBrowserScript('src/reels-presets-init.js', { window: {} });
+    const presets = presetSandbox.window.REELS_BUILTIN_PRESETS;
+    const sub252Name = '⚡ 爆款白黄斜体逐词堆叠 (FB同款出字)';
+    const sub252 = presets[sub252Name];
+    assert.ok(sub252, 'sub-252 FB white-yellow italic stack preset must exist in T-subtitle presets');
+    assert.equal(sub252.anim_in_type, 'kinetic_glow_stack');
+    assert.equal(sub252.italic, true);
+    assert.equal(sub252.color_text, '#FFFFFF');
+    assert.equal(sub252.color_high, '#FFE600');
+    assert.equal(sub252.kinetic_background_dim, 0);
+
+    const rendererSrc = fs.readFileSync(path.join(ROOT, 'src/reels-canvas-renderer.js'), 'utf8');
+    assert.ok(rendererSrc.includes('kineticDimVal > 0.001'), 'Canvas renderer must skip group dark flash when kinetic_background_dim is 0');
+
+    const roSandbox = loadBrowserScript('src/reels-anim-engine.js', { window: {} });
+    loadBrowserScript('src/reels-overlay.js', roSandbox);
+    const RO = roSandbox.window.ReelsOverlay;
+
+    assert.equal(RO.INTRO_COUNTDOWN_PRESETS.fb_yellow_stack_hook.hiddenFromIntroPicker, true);
+    const visiblePresets = Object.values(RO.INTRO_COUNTDOWN_PRESETS).filter(p => p && !p.hiddenFromIntroPicker);
+    assert.ok(visiblePresets.length >= 88, `Expected >= 88 visible NA opening presets (incl. flag_reveal, cardinal_reveal & Morandi/watercolor paper_reveal), got ${visiblePresets.length}`);
+    assert.ok(Object.keys(RO.INTRO_REVEAL_THEMES).length >= 25, 'Expected >= 25 reveal palette themes (incl. Morandi & watercolor)');
+
+    const assetsBundle = require('../src/reels-intro-assets.js');
+    assert.ok(
+        assetsBundle.door_barn && assetsBundle.door_royal && assetsBundle.door_chapel &&
+        assetsBundle.eagle_cutout && assetsBundle.cardinal_cutout &&
+        assetsBundle.flag_usa && assetsBundle.flag_canada &&
+        assetsBundle.paper_parchment && assetsBundle.paper_newspaper,
+        'Studio WebP door, eagle, cardinal, US/Canada flags, parchment, and newspaper assets must all exist'
+    );
+
+    const eagleSlash = RO.createIntroCountdownOverlay({ intro_style: 'eagle_ink_slash' });
+    assert.equal(eagleSlash.intro_layout, 'eagle_ink_reveal');
+    assert.equal(eagleSlash.intro_curtain_style, 'diagonal_slash');
+    const eagleZero = RO.createIntroCountdownOverlay({ intro_style: 'eagle_ink_zero' });
+    assert.equal(eagleZero.intro_delay_body, false);
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'doors_navy_executive' }).intro_curtain_style, 'executive_double');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'flag_usa_wave' }).intro_layout, 'flag_reveal');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'flag_canada_maple' }).intro_curtain_style, 'flag_canada_sweep');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'cardinal_snow_pine' }).intro_layout, 'cardinal_reveal');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'cardinal_zero_start' }).intro_delay_body, false);
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'paper_parchment_turn' }).intro_layout, 'paper_reveal');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'paper_parchment_zero' }).intro_delay_body, false);
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'paper_newspaper_flip' }).intro_curtain_style, 'newspaper_page_turn');
+
+    const sub253 = presets['🌸 爆款白粉立体逐词堆叠 (FB祈祷同款)'];
+    assert.ok(sub253, 'sub-253 FB white-pink italic/stack preset must exist in T-subtitle presets');
+    assert.equal(sub253.color_high, '#FF5D8F');
+    assert.equal(sub253.anim_in_type, 'kinetic_glow_stack');
+
+    const blackSlitOv = RO.createIntroCountdownOverlay({ intro_style: 'black_slit_fb' });
+    assert.equal(blackSlitOv.intro_layout, 'black_reveal');
+    assert.equal(blackSlitOv.intro_curtain_style, 'vertical_split');
+    assert.equal(blackSlitOv.intro_delay_body, false, 'FB 1170616 black_slit_fb allows 0s captions above black background');
+    assert.equal(RO.getIntroDelaySec([blackSlitOv]), 0);
+    assert.equal(RO.isIntroSuppressingBodySubtitles([blackSlitOv], 0.5), false);
+
+    const revealSamples = [
+        'curtain_sheer_white',
+        'blinds_plantation_white',
+        'doors_xmas_wreath',
+        'frost_canadian_thaw',
+        'iris_film_321_leader',
+        'iris_camera_shutter',
+        'gift_canadian_plaid',
+        'scroll_parchment_unroll',
+        'black_slit_fb',
+        'black_fade_in',
+        'black_letterbox_open',
+        'black_spotlight_wake',
+        'black_film_flash',
+        'black_blinds_matte',
+        'eagle_ink_slash',
+        'eagle_wings_split',
+        'eagle_morning_grace',
+        'doors_navy_executive',
+        'doors_french_black_glass',
+        'flag_usa_wave',
+        'flag_usa_part',
+        'flag_canada_maple',
+        'cardinal_snow_pine',
+        'cardinal_gold_angel',
+        'cardinal_ink_slash',
+        'cardinal_dawn_split',
+        'paper_parchment_turn',
+        'paper_newspaper_flip',
+        'paper_newspaper_tear',
+        'paper_linen_minimal',
+        'paper_frosted_glass',
+        'watercolor_morandi_sage',
+        'watercolor_dusty_rose',
+        'watercolor_oatmeal_zero',
+    ];
+    for (const presetId of revealSamples) {
+        const ov = RO.createIntroCountdownOverlay({
+            intro_style: presetId,
+            intro_color1: '#123456',
+            intro_color2: '#ABCDEF',
+        });
+        assert.ok(ov.intro_layout, `${presetId} must set intro_layout`);
+        for (const t of [0, 0.4, 1.0, ov.end - 0.1]) {
+            let saveDepth = 0;
+            const fills = [];
+            const ops = [];
+            const makeGrad = () => ({ addColorStop() {} });
+            const ctx = {
+                save() { saveDepth++; },
+                restore() { saveDepth--; },
+                beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, arc() {}, rect() {},
+                clip() {}, fillRect() {}, strokeRect() {}, fill() { fills.push(this.fillStyle); }, stroke() {}, fillText() {},
+                translate() {}, rotate() {}, scale() {},
+                createLinearGradient: makeGrad,
+                createRadialGradient: makeGrad,
+                measureText: (txt) => ({ width: String(txt || '').length * 14 }),
+                set fillStyle(v) { this._fs = v; },
+                get fillStyle() { return this._fs; },
+                set globalCompositeOperation(v) { ops.push(v); this._gco = v; },
+                get globalCompositeOperation() { return this._gco || 'source-over'; },
+            };
+            RO.drawOverlay(ctx, ov, t, 1080, 1920, { isPaused: t === 0 });
+            assert.equal(saveDepth, 0, `${presetId} @ t=${t} unbalanced save/restore: ${saveDepth}`);
+            assert.ok(!ops.includes('destination-out'), `${presetId} must never use destination-out over video canvas`);
+        }
+    }
+});
+
+test('Preview V2 and V1 implement post-intro voice sync fixes and Ctrl+F fullscreen toggle', () => {
+    const v2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
+    const batchSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const htmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+
+    assert.ok(!/function _previewIntroCountdownTarget[\s\S]{0,400}v2\.reload\s*\(/.test(panelSrc), '_previewIntroCountdownTarget must not call v2.reload()');
+    assert.ok(v2Src.includes('state.audio.loop = loop && !(introDelay > 0)'), 'V2 syncLoopFlags must avoid looping audio mid-timeline when introDelay > 0');
+    assert.ok(v2Src.includes('_wasIntroRestricted'), 'V2 must track intro-to-body boundary transition');
+    assert.ok(v2Src.includes('const nowTime = state.isPlaying ? getCurrentTime() : (state.pausedAt || 0)'), 'V2 playMedia must evaluate current playback time, not stale pausedAt');
+    assert.ok(v2Src.includes('data-action="fullscreen"') && v2Src.includes('toggleFullscreen') && v2Src.includes('isFullscreen'));
+    assert.ok(v2Src.includes("e.key === 'f' || e.key === 'F'"), 'V2 must bind Ctrl+F fullscreen toggle');
+
+    assert.ok(htmlSrc.includes('id="reels-preview-fullscreen-btn"'), 'V1 preview toolbar must expose fullscreen button');
+    assert.ok(batchSrc.includes('reelsTogglePreviewFullscreen') && batchSrc.includes('_introMainTriggered'), 'V1 preview must implement fullscreen and atomic intro->main audio handoff');
+});
+
