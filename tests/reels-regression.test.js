@@ -13012,3 +13012,149 @@ test('Scroll body solid block background syncs 4-way feathering with text and ex
     assert.doesNotThrow(() => ReelsOverlay.drawOverlay(mainCtx, negOv, 2.0, 1080, 1920));
 });
 
+test('Timeline editor ignores source_audio for gap warnings, prevents header badge overlap, and PreviewV2/BatchTable wire VO excess cleanup', () => {
+    const timelineSrc = fs.readFileSync(path.join(ROOT, 'src/reels-timeline-editor.js'), 'utf8');
+    const previewV2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
+    const batchReelsSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    const batchTableSrc = fs.readFileSync(path.join(ROOT, 'src/reels-batch-table.js'), 'utf8');
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+
+    const drawnTexts = [];
+    const baseCtx = {
+        font: '11px sans-serif',
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        globalAlpha: 1,
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+        measureText(t) { return { width: String(t || '').length * 7 }; },
+        fillText(text, x, y) { drawnTexts.push({ text: String(text || ''), x, y }); },
+    };
+    const mockCtx = new Proxy(baseCtx, {
+        get(target, prop) {
+            if (prop in target) return target[prop];
+            return () => {};
+        },
+    });
+    const mockCanvas = {
+        width: 900,
+        height: 240,
+        style: {},
+        clientWidth: 900,
+        clientHeight: 240,
+        focus() {},
+        getContext() { return mockCtx; },
+        getBoundingClientRect() { return { left: 0, top: 0, width: 900, height: 240 }; },
+        addEventListener() {},
+        parentElement: null,
+    };
+    const mockContainer = {
+        style: {},
+        clientWidth: 900,
+        clientHeight: 240,
+        getBoundingClientRect() { return { left: 0, top: 0, width: 900, height: 240 }; },
+        appendChild() {},
+    };
+
+    const sandbox = {
+        console,
+        Math,
+        Number,
+        String,
+        Array,
+        Object,
+        Set,
+        Map,
+        JSON,
+        ResizeObserver: class { observe() {} disconnect() {} },
+        document: {
+            head: { appendChild() {} },
+            body: { appendChild() {} },
+            getElementById: () => null,
+            createElement: (tag) => (tag === 'canvas' ? mockCanvas : { style: {}, className: '', appendChild() {}, addEventListener() {} }),
+            addEventListener() {},
+            removeEventListener() {},
+        },
+        window: { devicePixelRatio: 1, innerWidth: 1200, innerHeight: 800, addEventListener() {}, removeEventListener() {} },
+        navigator: { userAgent: 'node-test' },
+        requestAnimationFrame: () => 0,
+        cancelAnimationFrame: () => {},
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(timelineSrc + '\nthis.ReelsTimelineEditor = ReelsTimelineEditor;', sandbox);
+
+    const editor = new sandbox.ReelsTimelineEditor(mockContainer);
+    editor._canvasW = 900;
+    editor._canvasH = 240;
+    editor._duration = 109.4;
+    editor._pxPerSec = 6;
+    const bgTrack = {
+        type: 'video',
+        name: '背景视频（循环）',
+        role: 'background',
+        domain: 'visual',
+        visible: true,
+        clips: [{ start: 0, end: 28.2, name: '222.mov #1', _timelineRole: 'background' }],
+    };
+    const sourceAudioTrack = {
+        type: 'audio',
+        name: '原声（绑定背景）',
+        role: 'source_audio',
+        domain: 'audio',
+        visible: true,
+        clips: [{ start: 0, end: 28.2, name: '222.mov #1', _timelineRole: 'source_audio' }],
+    };
+    const insertTrack = {
+        type: 'video',
+        name: '插入素材',
+        role: 'insert_video',
+        domain: 'visual',
+        visible: true,
+        clips: [{ start: 2, end: 5, name: 'cut.mp4', _timelineRole: 'insert_video' }],
+    };
+    const voiceTrack = {
+        type: 'audio',
+        name: '人声 MP3',
+        role: 'voice',
+        domain: 'audio',
+        visible: true,
+        clips: [{ start: 0, end: 109.4, name: 'long_vo.mp3', _timelineRole: 'voice' }],
+    };
+    editor._tracks = [insertTrack, bgTrack, sourceAudioTrack, voiceTrack];
+
+    assert.equal(editor._isVisualBackgroundTrack(bgTrack), true, 'Video background track must be treated as visual background');
+    assert.equal(editor._isVisualBackgroundTrack(sourceAudioTrack), false, '原声（绑定背景） must NOT be flagged as missing video background');
+    assert.equal(editor._isVisualBackgroundTrack(insertTrack), false, 'Insert track must NOT be flagged as missing background');
+    assert.equal(editor._isVisualBackgroundTrack(voiceTrack), false, 'Voice MP3 track must NOT be flagged as missing background');
+
+    editor.onTrackOrderChange = () => {};
+    editor._render();
+
+    const gapLabels = drawnTexts.filter(d => d.text.includes('画面不足'));
+    const headerWarnLabels = drawnTexts.filter(d => d.text.includes('缺81.2s'));
+    assert.equal(gapLabels.length, 1, 'Only visual background track (not 原声（绑定背景）) should render 画面不足 warning');
+    assert.equal(headerWarnLabels.length, 1, 'Only visual background track header should render ⚠️缺81.2s badge');
+    const bgTitleDraw = drawnTexts.find(d => d.y === headerWarnLabels[0].y && d.x === 10);
+    assert.ok(bgTitleDraw && headerWarnLabels[0].x - (headerWarnLabels[0].text.length * 7) > 34, 'Header warning badge must leave non-overlapping room for track label');
+
+    // Hit test on gap: visual background row hits gap; 原声（绑定背景） row returns null
+    const gapX = 192 + 50 * editor._pxPerSec;
+    const bgRowY = 26 + 39 + 10;
+    const sourceAudioRowY = 26 + (39 * 2) + 4 + 10;
+    assert.ok(editor._hitTestGap(gapX, bgRowY), 'Clicking gap on visual background track must hit gap');
+    assert.equal(editor._hitTestGap(gapX, sourceAudioRowY), null, 'Clicking past clip on 原声（绑定背景） must not hit background video gap');
+    editor.destroy();
+
+    // Verify PreviewV2 metadata caching + timeline resync + VO excess cleanup wiring
+    assert.ok(previewV2Src.includes('rs._mediaDurations[activeTask.audioPath] = media.duration'), 'PreviewV2 must cache single audio duration into _reelsState._mediaDurations');
+    assert.ok(previewV2Src.includes('window.reelsSyncTimelineFromPreview?.(activeTask, state.duration)'), 'PreviewV2 loadedmetadata must resync timeline segments/tracks');
+    assert.ok(batchReelsSrc.includes('function reelsClearTaskExcessDuration('), 'batch-reels must expose reelsClearTaskExcessDuration');
+    assert.ok(batchReelsSrc.includes('window._clearReelsTaskLingeringVo = function('), 'batch-reels must share _clearReelsTaskLingeringVo helper');
+    assert.ok(indexHtmlSrc.includes('id="reels-timeline-trim-excess-btn"'), 'index.html must expose quick trim/clear excess VO button next to fill-gap');
+    assert.ok(batchTableSrc.includes('rbt-clear-lingering-vo-btn'), 'Batch align result modal must provide one-click lingering VO cleanup when alignSource === video');
+});
+
+

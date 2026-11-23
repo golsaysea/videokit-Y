@@ -7493,7 +7493,8 @@
                 <span>🎬 时间线</span>
                 <span style="font-size:10px;color:var(--text-muted);font-weight:normal;margin-left:8px;">框选 / Shift连选 / Ctrl(Cmd)点选 · 拖动所选片段可整体移动</span>
                 <span onclick="event.stopPropagation()" style="display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:10px;color:var(--text-muted);font-weight:normal;">
-                  <button type="button" onclick="event.stopPropagation();if(window._reelsState&&window._reelsState.timelineEditor&&window._reelsState.timelineEditor.onFillGap){window._reelsState.timelineEditor.onFillGap();}" title="自动补充背景循环画面直到完全覆盖全部音频/字幕时长" style="font-size:10px;padding:2px 7px;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;border-radius:4px;cursor:pointer;margin-right:6px;">🔄 补齐循环</button>
+                  <button type="button" onclick="event.stopPropagation();if(window._reelsState&&window._reelsState.timelineEditor&&window._reelsState.timelineEditor.onFillGap){window._reelsState.timelineEditor.onFillGap();}" title="自动补充背景循环画面直到完全覆盖全部音频/字幕时长" style="font-size:10px;padding:2px 7px;background:rgba(99,102,241,0.2);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;border-radius:4px;cursor:pointer;margin-right:4px;">🔄 补齐循环</button>
+                  <button id="reels-timeline-trim-excess-btn" type="button" onclick="event.stopPropagation();window.reelsClearTaskExcessDuration&&window.reelsClearTaskExcessDuration({fromButton:true});" title="当原视频/字幕只有约30秒，但片长被多余的VO音频或自定义时长拉成1分钟以上时，一键清掉残留VO/定长恢复原片时长" style="font-size:10px;padding:2px 7px;background:rgba(245,158,11,0.18);border:1px solid rgba(251,191,36,0.45);color:#fde68a;border-radius:4px;cursor:pointer;margin-right:6px;">✂️ 清VO/按原片定长</button>
                   <button id="reels-timeline-blade" type="button" onclick="event.stopPropagation();reelsSplitTimelineAtPlayhead();" title="切刀工具：点亮后直接单击片段想切的位置；Esc 退出" style="font-size:10px;padding:2px 7px;background:rgba(239,68,68,.18);border:1px solid rgba(248,113,113,.52);color:#fecaca;border-radius:4px;cursor:pointer;margin-right:6px;">✂️ 切刀</button>
                   <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.14);margin-right:6px;" title="仅在需要往视频中插入B-Roll/表情包等画面素材片段时使用；普通字幕、卡片或常规视频效果无需操作此组功能">
                     <span style="color:#f59e0b;font-size:10px;white-space:nowrap;" title="仅在需要往视频中插入B-Roll/表情包等画面素材片段时使用；普通字幕、卡片或常规视频效果无需操作此组功能">💡 B-Roll插片 (非必用):</span>
@@ -8375,7 +8376,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.16-beta</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.17-beta</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"

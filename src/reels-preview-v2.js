@@ -404,8 +404,20 @@
 
         for (const media of [state.bgVideo, state.bgFadeVideo, state.audio, state.bgmAudio, state.contentVideo, state.hookVideo, state.coverVideo]) {
             media.addEventListener('loadedmetadata', () => {
+                const activeTask = getTask();
+                const rs = window._reelsState;
+                if (rs && media.duration > 0 && Number.isFinite(media.duration)) {
+                    if (!rs._mediaDurations) rs._mediaDurations = {};
+                    if (media === state.audio && activeTask?.audioPath) {
+                        rs._mediaDurations[activeTask.audioPath] = media.duration;
+                    } else if (media === state.bgVideo && !media.dataset.multiPath) {
+                        const bgPath = activeTask?.bgPath || activeTask?.videoPath || '';
+                        if (bgPath) rs._mediaDurations[bgPath] = media.duration;
+                    } else if (media === state.contentVideo && activeTask?.contentVideoPath) {
+                        rs._mediaDurations[activeTask.contentVideoPath] = media.duration;
+                    }
+                }
                 if ((media === state.bgVideo || media === state.bgFadeVideo) && media.dataset.multiPath && media.duration > 0) {
-                    const rs = window._reelsState;
                     if (rs) {
                         if (!rs._multiBgDurations) rs._multiBgDurations = {};
                         rs._multiBgDurations[media.dataset.multiPath] = media.duration;
@@ -413,6 +425,7 @@
                 }
                 state.duration = computeDuration();
                 syncMediaToTime(getCurrentTime());
+                window.reelsSyncTimelineFromPreview?.(activeTask, state.duration);
                 render();
             });
             media.addEventListener('seeked', () => releaseSeekFrameWhenReady());
@@ -1565,8 +1578,12 @@
         const editor = window._reelsState && window._reelsState.timelineEditor;
         if (!editor || typeof editor.setDuration !== 'function') return;
         const timelineDuration = absoluteToTimeline(absoluteDuration, task);
-        if (Math.abs((editor._duration || 0) - timelineDuration) > 0.01) {
-            editor.setDuration(timelineDuration);
+        if (Math.abs((editor._duration || 0) - timelineDuration) > 0.05) {
+            if (typeof window.reelsSyncTimelineFromPreview === 'function') {
+                window.reelsSyncTimelineFromPreview(task, absoluteDuration);
+            } else {
+                editor.setDuration(timelineDuration);
+            }
         }
     }
 

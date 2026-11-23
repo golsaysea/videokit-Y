@@ -780,6 +780,7 @@ function _initReelsModule() {
                 if (status) status.textContent = `🔄 已自动补充背景循环画面至 ${outputDuration.toFixed(1)}s！`;
             }
         };
+        _reelsState.timelineEditor.onClearExcessDuration = (opts = {}) => reelsClearTaskExcessDuration(opts);
         _reelsState.timelineEditor.onClipChange = (trackIdx, clipIdx, clip, editOptions = {}) => {
             const task = _getSelectedTask();
             if (!task) return;
@@ -9453,20 +9454,168 @@ function _updatePreviewTimeUI(currentTime, duration) {
     }
 }
 
+function _inspectTaskExcessDuration(task) {
+    if (!task) return null;
+    const subEnd = Array.isArray(task.segments) && task.segments.length
+        ? Math.max(0, ...task.segments.map(s => Number(s.end) || 0))
+        : 0;
+    const bgDur = _getVideoDuration(task);
+    const cvDur = _getContentVideoDuration(task);
+    const baseNaturalDur = Math.max(bgDur, cvDur, subEnd);
+    const aScale = task.audioDurScale ? (task.audioDurScale / 100) : 1;
+    const scaledAudioDur = _getAudioDuration(task) * aScale;
+    const customDur = parseFloat(task.customDuration) || 0;
+    const staleTaskDur = (baseNaturalDur > 0 && (Number(task.duration) || 0) > baseNaturalDur + 0.5) ? Number(task.duration) : 0;
+    const hasExcessVo = Boolean(task.audioPath) && (
+        (baseNaturalDur > 0 && scaledAudioDur > baseNaturalDur + 1.0)
+        || (subEnd > 0 && scaledAudioDur > subEnd + 1.0)
+        || (_getWorkMode() === 'voiced_bg')
+    );
+    const hasExcessCustom = baseNaturalDur > 0 && customDur > baseNaturalDur + 1.0;
+    if (!hasExcessVo && !hasExcessCustom && !(staleTaskDur > 0)) return null;
+    return {
+        label: hasExcessVo ? '清除残留VO（按原视频/字幕定长）' : '清除多余定长（按原视频/字幕收尾）',
+        hasExcessVo,
+        hasExcessCustom,
+        staleTaskDur,
+        baseNaturalDur,
+        subEnd,
+        bgDur,
+        scaledAudioDur,
+    };
+}
+
+function _clearExcessDurationOnSingleTask(task, options = {}) {
+    if (!task) return false;
+    const info = _inspectTaskExcessDuration(task);
+    const hasVo = Boolean(task.audioPath);
+    if (!options.forceClearVo && !info && !hasVo && !(parseFloat(task.customDuration) > 0)) return false;
+    const clearVo = Boolean(options.forceClearVo ? hasVo : (info ? info.hasExcessVo : hasVo));
+    if (clearVo) {
+        window.ReelsRenderPlan?.resetVoice?.(task);
+        task.audioPath = '';
+        task._voicePathAuthoritative = true;
+        for (const key of ['voicePath', 'voice_path', 'audio_path', 'audio', 'audioSrcUrl', 'audioUrl', 'audioDuration', 'renderedAudioPath']) {
+            delete task[key];
+        }
+        task.audioDurScale = 100;
+    }
+    const baseNaturalDur = info ? info.baseNaturalDur : Math.max(_getVideoDuration(task), _getContentVideoDuration(task), Array.isArray(task.segments) && task.segments.length ? Math.max(0, ...task.segments.map(s => Number(s.end) || 0)) : 0);
+    if (parseFloat(task.customDuration) > 0 && (!baseNaturalDur || parseFloat(task.customDuration) > baseNaturalDur + 0.5)) {
+        task.customDuration = 0;
+    }
+    if ((Number(task.duration) || 0) > baseNaturalDur + 0.5 && baseNaturalDur > 0) {
+        task.duration = baseNaturalDur;
+    }
+    delete task.timelineBackgroundTrim;
+    if (task.timeline?._extra) delete task.timeline._extra.backgroundSegmentKey;
+    return true;
+}
+
+window._clearReelsTaskLingeringVo = function(tasks = []) {
+    let cleared = 0;
+    for (const t of (Array.isArray(tasks) ? tasks : [])) {
+        if (_clearExcessDurationOnSingleTask(t, { forceClearVo: true })) cleared++;
+    }
+    if (cleared > 0) {
+        if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+        if (typeof window._renderBatchTable === 'function') window._renderBatchTable();
+        _renderTaskList?.({ preserveScroll: true });
+        if (_reelsState.selectedIdx >= 0 && typeof reelsSelectTask === 'function') {
+            reelsSelectTask(_reelsState.selectedIdx, { preserveScroll: true });
+        } else {
+            reelsUpdatePreview?.();
+        }
+    }
+    return cleared;
+};
+
+function reelsClearTaskExcessDuration(options = {}) {
+    const task = options.task || _getSelectedTask();
+    if (!task) return null;
+    const info = _inspectTaskExcessDuration(task);
+    if (options.checkOnly) return info;
+
+    const allTasks = Array.isArray(_reelsState.tasks) ? _reelsState.tasks : [];
+    const sameGroupSiblings = allTasks.filter(t => {
+        if (!t || t === task) return false;
+        const sameTab = task._batchTabId ? t._batchTabId === task._batchTabId : true;
+        return sameTab && !!_inspectTaskExcessDuration(t);
+    });
+    let targets = [task];
+    if (options.fromButton && sameGroupSiblings.length > 0 && typeof window.confirm === 'function') {
+        const cleanAll = window.confirm(
+            `当前共有 ${sameGroupSiblings.length + 1} 条任务存在“长于原视频/字幕的多余 VO 或自定义时长”。\n\n` +
+            `• 点【确定】：清理本组全部 ${sameGroupSiblings.length + 1} 条任务的多余 VO/定长\n` +
+            `• 点【取消】：仅清理当前选中的这 1 条任务`
+        );
+        if (cleanAll) targets = [task, ...sameGroupSiblings];
+    }
+
+    let clearedCount = 0;
+    for (const target of targets) {
+        if (_clearExcessDurationOnSingleTask(target)) clearedCount++;
+    }
+    const globalCustomEl = document.getElementById('reels-custom-duration');
+    const globalCustomVal = parseFloat(globalCustomEl?.value || '0') || 0;
+    if (clearedCount === 0 && !(globalCustomVal > 0)) {
+        if (typeof showToast === 'function') showToast('当前任务没有可清理的多余 VO 音频或自定义时长', 'info');
+        return false;
+    }
+    if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+    _renderTaskList?.({ preserveScroll: true });
+    if (typeof window._renderBatchTable === 'function') window._renderBatchTable();
+    if (typeof reelsSelectTask === 'function' && _reelsState.selectedIdx >= 0) {
+        reelsSelectTask(_reelsState.selectedIdx, { preserveScroll: true });
+    } else {
+        _updateTimelineForTask(task);
+        reelsUpdatePreview?.();
+    }
+    const msg = globalCustomVal > 0 && clearedCount === 0
+        ? `⚠️ 检测到导出设置了全局「自定义时长: ${globalCustomVal}s」，请在右侧导出栏将其清零！`
+        : `✂️ 已清理 ${clearedCount} 条任务的多余 VO / 定长限制，片长已恢复匹配原视频与字幕`;
+    const status = document.getElementById('reels-export-status');
+    if (status) status.textContent = msg;
+    if (typeof showToast === 'function') showToast(msg, globalCustomVal > 0 && clearedCount === 0 ? 'warning' : 'success');
+    return true;
+}
+window.reelsClearTaskExcessDuration = reelsClearTaskExcessDuration;
+
+function reelsSyncTimelineFromPreview(task) {
+    if (!task || _reelsState._syncingTimelineFromPreview || task !== _getSelectedTask()) return;
+    _reelsState._syncingTimelineFromPreview = true;
+    try {
+        _updateTimelineForTask(task);
+    } finally {
+        _reelsState._syncingTimelineFromPreview = false;
+    }
+}
+window.reelsSyncTimelineFromPreview = reelsSyncTimelineFromPreview;
+
 function _updateTimelineForTask(task) {
     if (!_reelsState.timelineEditor || !task) return;
     const editor = _reelsState.timelineEditor;
+    const subtitleDuration = Array.isArray(task.segments) && task.segments.length
+        ? Math.max(...task.segments.map(segment => Number(segment.end) || 0))
+        : 0;
+    const introDelayForTimeline = _getTaskIntroDelaySec(task);
+    const aDurScaleForTimeline = task.audioDurScale ? (task.audioDurScale / 100) : 1;
+    const scaledAudioDur = _getAudioDuration(task) * aDurScaleForTimeline;
+    const voiceTimelineDur = scaledAudioDur + (introDelayForTimeline > 0 && scaledAudioDur > 0 ? introDelayForTimeline : 0);
+    const subTimelineDur = subtitleDuration > 0 ? (subtitleDuration + introDelayForTimeline) : 0;
+    const previewV2Open = Boolean(window.ReelsPreviewV2?.isOpen?.());
+    const previewV2TimelineDur = previewV2Open ? Number(window.ReelsPreviewV2.getTimelineDuration?.() || 0) : 0;
     if (window.ReelsRenderPlan) {
-        const subtitleDuration = Array.isArray(task.segments) && task.segments.length
-            ? Math.max(...task.segments.map(segment => Number(segment.end) || 0))
-            : 0;
+        const hasManualBgTrim = Boolean(task.timelineBackgroundTrim) || Boolean(
+            task.timeline?.tracks?.some(tr => (tr.clips || []).some(c => c?._extra?.role === 'background' && c?._extra?.manualTrim === true))
+        );
         // 背景轨必须显示真实的“循环实例”，不能把一段 5 秒背景循环 20 秒
         // 伪装成一个大块。多素材时复用预览的同一分段算法；单素材循环时按
         // 原始媒体时长平铺成 #1/#2/#3…，最后一轮按成片终点截短。
         let backgroundSegments = task.bgMode === 'multi' && typeof _calculatePreviewSegments === 'function'
             ? _calculatePreviewSegments(task)
             : [];
-        if (!backgroundSegments.length) {
+        if (!backgroundSegments.length && !hasManualBgTrim) {
             const resolvedBackground = typeof _resolvePreviewBackgroundPath === 'function'
                 ? _resolvePreviewBackgroundPath(task)
                 : { path: task.bgPath || task.videoPath || '' };
@@ -9478,11 +9627,7 @@ function _updateTimelineForTask(task) {
             const rawBackgroundDuration = isVoicedSingleVideo
                 ? Math.max(_getVideoDuration(task), Number(task.duration) || 0, subtitleDuration)
                 : _getVideoDuration(task);
-            const introDelayForTimeline = _getTaskIntroDelaySec(task);
-            const aDurScaleForTimeline = task.audioDurScale ? (task.audioDurScale / 100) : 1;
-            const voiceTimelineDur = (_getAudioDuration(task) * aDurScaleForTimeline) + (introDelayForTimeline > 0 && _getAudioDuration(task) > 0 ? introDelayForTimeline : 0);
-            const subTimelineDur = subtitleDuration > 0 ? (subtitleDuration + introDelayForTimeline) : 0;
-            const outputDuration = Math.max(subTimelineDur, voiceTimelineDur, _getContentVideoDuration(task) + introDelayForTimeline, Number(task.duration) || 0, task.customDuration ? Number(task.customDuration) + introDelayForTimeline : 0, rawBackgroundDuration || 0, introDelayForTimeline, 1);
+            const outputDuration = Math.max(subTimelineDur, voiceTimelineDur, _getContentVideoDuration(task) + introDelayForTimeline, Number(task.duration) || 0, task.customDuration ? Number(task.customDuration) + introDelayForTimeline : 0, rawBackgroundDuration || 0, previewV2TimelineDur, introDelayForTimeline, 1);
             if (backgroundPath) {
                 const loopDuration = rawBackgroundDuration > 0.05 ? rawBackgroundDuration : outputDuration;
                 for (let start = 0, index = 0; start < outputDuration - 0.001; start += loopDuration, index++) {
@@ -9499,11 +9644,10 @@ function _updateTimelineForTask(task) {
                 }
             }
         }
-        const introDelayOpt = _getTaskIntroDelaySec(task);
         const tracks = window.ReelsRenderPlan.getEditorTracks(task, {
             // 媒体元数据还没读到时，字幕末尾仍能给出可靠的整片长度，避免
             // 主视频/人声在时间线中退化为 0 秒的细竖条。
-            duration: Math.max((_getAudioDuration(task) > 0 ? _getAudioDuration(task) + introDelayOpt : 0), _getVideoDuration(task), _getContentVideoDuration(task) + introDelayOpt, Number(task.duration) || 0, (subtitleDuration > 0 ? subtitleDuration + introDelayOpt : 0), task.customDuration ? Number(task.customDuration) + introDelayOpt : 0, introDelayOpt, 1),
+            duration: Math.max(voiceTimelineDur, _getVideoDuration(task), _getContentVideoDuration(task) + introDelayForTimeline, Number(task.duration) || 0, subTimelineDur, task.customDuration ? Number(task.customDuration) + introDelayForTimeline : 0, previewV2TimelineDur, introDelayForTimeline, 1),
             width: _reelsState.targetWidth || 1080,
             height: _reelsState.targetHeight || 1920,
             backgroundSegments,
@@ -9516,20 +9660,18 @@ function _updateTimelineForTask(task) {
         else editor.loadSubtitleTrack([]);
     }
 
-    const aDur = _getAudioDuration(task);
+    const aDur = scaledAudioDur;
     const vDur = _getVideoDuration(task);
     const cvDur = _getContentVideoDuration(task);
-    const subDur = task.segments && task.segments.length > 0
-        ? (task.segments[task.segments.length - 1].end || 0)
-        : 0;
+    const subDur = subtitleDuration;
     let contentDur = Math.max(aDur, vDur, cvDur, Number(task.duration) || 0, subDur, 1);
     if (task.customDuration && task.customDuration > 0) {
         contentDur = Math.max(contentDur, task.customDuration);
     }
     // V2 与时间线使用相同的时长来源：它已包含配音/背景变速、多背景、
     // 自定义时长和动态覆层等规则；时间线仍显示主内容时长（不含封面/Hook 偏移）。
-    const totalDur = window.ReelsPreviewV2?.isOpen?.()
-        ? window.ReelsPreviewV2.getTimelineDuration()
+    const totalDur = previewV2Open && previewV2TimelineDur > 0
+        ? previewV2TimelineDur
         : contentDur;
     const taskKey = task.id || task.fileName || task.audioPath || task.bgPath || '';
     const isNewTimelineTask = editor._timelineTaskKey !== taskKey;

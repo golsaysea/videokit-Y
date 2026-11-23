@@ -18598,7 +18598,7 @@ function _batchAlignRecognitionDiffHtml(recognizedText, references = []) {
     return html + esc(text.slice(cursor)) + (gaps.get(words.length) || []).join('');
 }
 
-function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, footer }) {
+function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, footer, lingeringVoTasks = [] }) {
     return new Promise((resolve) => {
         const modal = document.createElement('div');
         modal.style.cssText = 'position:fixed;inset:0;z-index:1000000;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:24px;';
@@ -18665,6 +18665,16 @@ function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, foot
             ? `<div style="margin-top:14px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:13px;white-space:pre-wrap;">${esc((failDetails || []).join('\n'))}</div>`
             : '';
 
+        const validLingeringVoTasks = (Array.isArray(lingeringVoTasks) ? lingeringVoTasks : []).filter(t => t && t.audioPath);
+        const lingeringVoBanner = validLingeringVoTasks.length > 0 ? `
+            <div id="rbt-lingering-vo-banner" style="margin-bottom:14px;padding:11px 14px;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;color:#78350f;font-size:12px;line-height:1.55;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:240px;">
+                    <b>⚠️ 检测到 ${validLingeringVoTasks.length} 个任务仍留有「人声-音频文件 (VO)」：</b><br>
+                    您刚才使用的是<b>【背景视频对齐】</b>，但如果表格 VO 列里还挂着更长的音频，成片会被 VO 拉长并导致末尾红色画面不足。
+                </div>
+                <button type="button" id="rbt-clear-lingering-vo-btn" style="border:none;background:#d97706;color:#fff;border-radius:7px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">🧹 一键清空这 ${validLingeringVoTasks.length} 行的残留 VO</button>
+            </div>` : '';
+
         box.innerHTML = `
             <div style="padding:16px 20px;border-bottom:1px solid #d8dde6;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
                 <div>
@@ -18681,6 +18691,7 @@ function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, foot
                     识别文案中不同的单词用黄色底色标出；〔缺：…〕表示该位置漏词，仅为核对提示，不改写文案。缺少识别文案时标为缺失。
                     此报告用于核查，不会自动覆盖文案或改变已确认的对齐结果。
                 </div>
+                ${lingeringVoBanner}
                 ${phaseSummary}
                 ${(rows || []).length ? `
                     <table style="width:100%;border-collapse:collapse;table-layout:fixed;background:white;border:1px solid #d8dde6;border-radius:8px;overflow:hidden;">
@@ -18705,6 +18716,28 @@ function _showBatchAlignResultModal({ title, sourceInfo, rows, failDetails, foot
 
         modal.appendChild(box);
         document.body.appendChild(modal);
+        const clearVoBtn = modal.querySelector('#rbt-clear-lingering-vo-btn');
+        if (clearVoBtn) {
+            clearVoBtn.addEventListener('click', () => {
+                let cleared = 0;
+                if (typeof window._clearReelsTaskLingeringVo === 'function') {
+                    cleared = window._clearReelsTaskLingeringVo(validLingeringVoTasks);
+                } else {
+                    for (const t of validLingeringVoTasks) {
+                        if (!t || !t.audioPath) continue;
+                        window.ReelsRenderPlan?.resetVoice?.(t);
+                        t.audioPath = '';
+                        t._voicePathAuthoritative = true;
+                        cleared++;
+                    }
+                    _renderBatchTable();
+                    if (typeof _renderTaskList === 'function') _renderTaskList({ preserveScroll: true });
+                }
+                clearVoBtn.disabled = true;
+                clearVoBtn.style.background = '#15803d';
+                clearVoBtn.textContent = `✅ 已清空 ${cleared} 行残留 VO`;
+            });
+        }
         modal.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', () => {
             modal.remove();
             resolve();
@@ -19759,6 +19792,9 @@ async function _batchAlignAllTasks(overrideForce = false) {
     if (silent) {
         return { ok, fail, total: tasksToAlign.length, failDetails, rows: tripleReportRows };
     }
+    const lingeringVoTasks = alignSource === 'video'
+        ? tasksToAlign.filter(t => t && t.aligned && t.audioPath)
+        : [];
     if (tripleReportRows.length > 0 || fail > 0) {
         await _showBatchAlignResultModal({
             title: fail > 0 ? `对齐完成 ${ok}/${tasksToAlign.length}，失败 ${fail}` : `✅ 字幕对齐完成 ${ok} 个任务`,
@@ -19766,6 +19802,7 @@ async function _batchAlignAllTasks(overrideForce = false) {
             rows: tripleReportRows,
             failDetails: fail > 0 ? failDetails.slice(0, 10) : [],
             footer: 'SRT 文件已自动保存到音频文件所在目录',
+            lingeringVoTasks,
         });
     } else {
         alert(`✅ 字幕对齐完成 ${ok} 个任务${sourceInfo}\nSRT 文件已自动保存到音频文件所在目录`);
@@ -20035,11 +20072,15 @@ async function _batchAlignWithMultipleKeys(opts = {}) {
             : `✅ 并发对齐完成（${ok} 个）`;
         setTimeout(() => { if (progressEl) progressEl.textContent = ''; }, 8000);
     }
+    const lingeringVoTasks = alignSource === 'video'
+        ? targetIndices.map(idx => state.tasks[idx]).filter(t => t && t.aligned && t.audioPath)
+        : [];
     await _showBatchAlignResultModal({
         title: `并发对齐完成：成功 ${ok}/${targetIndices.length}，失败 ${fail}`,
         sourceInfo: `已按 ${workerCount} 路并发处理，并核对三份文案`,
         rows: reportRows, failDetails: failures,
         footer: 'SRT 文件已自动保存到音频文件所在目录',
+        lingeringVoTasks,
     });
 }
 

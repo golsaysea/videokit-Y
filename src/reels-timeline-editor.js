@@ -17,7 +17,7 @@
 // ═══════════════════════════════════════════════
 
 const TL_TRACK_HEIGHT = 38;
-const TL_HEADER_W = 140;
+const TL_HEADER_W = 192;
 const TL_RULER_H = 26;
 const TL_HANDLE_W = 6;
 const TL_MIN_CLIP_W = 4;
@@ -641,10 +641,9 @@ class ReelsTimelineEditor {
                 this._drawClip(ctx, track, ti, ci, y);
             }
 
-            // 检查主背景画面覆盖范围，若末尾存在空白缺口（黑屏风险），绘制醒目的红色警示区域（插入素材/覆层轨不需要填满全片，不触发警示）
-            const isInsertOrOverlay = (track.name && (track.name.includes('插入') || track.name.includes('覆层') || track.name.includes('画中画'))) || track.role === 'insert_video' || track.clips?.some(c => c._timelineRole === 'insert_video');
-            const isBackgroundTrack = !isInsertOrOverlay && (track.name?.includes('背景') || (track.type === 'video' && !track.name?.includes('插入')));
-            if (isBackgroundTrack && track.clips.length > 0) {
+            // 检查主背景画面覆盖范围，若末尾存在空白缺口（黑屏风险），仅对视觉背景轨绘制红色警示区域
+            // （原声/音频/插入素材/内容视频/覆层轨均不触发画面不足警示）
+            if (this._isVisualBackgroundTrack(track) && track.clips.length > 0) {
                 const maxEnd = Math.max(0, ...track.clips.map(c => c.end || 0));
                 if (this._duration > maxEnd + 0.1) {
                     const gapStartPx = TL_HEADER_W + maxEnd * this._pxPerSec - this._scrollX;
@@ -763,18 +762,20 @@ class ReelsTimelineEditor {
             });
             rightBadgeOffset = eyeX - 66;
         }
-        const isInsert = track.role === 'insert_video' || (track.name && track.name.includes('插入')) || track.clips?.some(c => c._timelineRole === 'insert_video');
-        const isBg = !isInsert && (track.role === 'background' || (track.name && track.name.includes('背景')) || (track.type === 'video' && !track.name?.includes('插入')));
-        if (isBg && track.clips && track.clips.length > 0) {
+        if (this._isVisualBackgroundTrack(track) && track.clips && track.clips.length > 0) {
             const maxEnd = Math.max(0, ...track.clips.map(c => c.end || 0));
             if (this._duration > maxEnd + 0.1) {
                 const missingSec = (this._duration - maxEnd).toFixed(1);
-                ctx.fillStyle = '#ef4444';
+                const warnLabel = `⚠️缺${missingSec}s`;
                 ctx.font = 'bold 9px system-ui, sans-serif';
-                ctx.textAlign = 'right';
-                ctx.textBaseline = 'alphabetic';
-                ctx.fillText(`⚠️缺${missingSec}s`, rightBadgeOffset, y + TL_TRACK_HEIGHT / 2 + 4);
-                rightBadgeOffset -= 45;
+                const warnW = Math.ceil(ctx.measureText(warnLabel).width) + 8;
+                if (rightBadgeOffset - warnW >= 34) {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'alphabetic';
+                    ctx.fillText(warnLabel, rightBadgeOffset, y + TL_TRACK_HEIGHT / 2 + 4);
+                    rightBadgeOffset -= warnW;
+                }
             }
         }
 
@@ -1934,12 +1935,33 @@ class ReelsTimelineEditor {
         return null;
     }
 
+    _isVisualBackgroundTrack(track) {
+        if (!track) return false;
+        if (track.type === 'audio' || track.type === 'bgm' || track.type === 'subs' || track.domain === 'audio') {
+            return false;
+        }
+        const role = track.role || '';
+        if (role === 'source_audio' || role === 'voice' || role === 'bgm' || role === 'insert_video' || role === 'content_video' || role === 'overlay') {
+            return false;
+        }
+        const name = String(track.name || '');
+        if (name.includes('插入') || name.includes('覆层') || name.includes('画中画') || name.includes('内容视频') || name.includes('原声') || name.includes('人声') || name.includes('配乐')) {
+            return false;
+        }
+        if (Array.isArray(track.clips) && track.clips.some(c => {
+            const cr = c?._timelineRole || '';
+            return cr === 'insert_video' || cr === 'content_video' || cr === 'source_audio' || cr === 'voice' || cr === 'bgm' || cr === 'overlay';
+        })) {
+            return false;
+        }
+        return role === 'background' || track.type === 'video' || name.includes('背景');
+    }
+
     _hitTestGap(mx, my) {
         let y = TL_RULER_H - this._scrollY;
         for (let ti = 0; ti < this._tracks.length; ti++) {
             const track = this._tracks[ti];
-            const isBackgroundTrack = track.type === 'video' || (track.name && track.name.includes('背景'));
-            if (isBackgroundTrack && track.clips && track.clips.length > 0) {
+            if (this._isVisualBackgroundTrack(track) && track.clips && track.clips.length > 0) {
                 if (my >= y && my < y + TL_TRACK_HEIGHT) {
                     const maxEnd = Math.max(0, ...track.clips.map(c => c.end || 0));
                     if (this._duration > maxEnd + 0.1) {
@@ -2008,6 +2030,15 @@ class ReelsTimelineEditor {
                 shortcut: 'Auto-Fill',
                 action: () => { if (this.onFillGap) this.onFillGap(); },
             },
+            ...(typeof this.onClearExcessDuration === 'function' ? (() => {
+                const excess = this.onClearExcessDuration({ checkOnly: true });
+                if (!excess) return [];
+                return [{
+                    icon: '✂️',
+                    text: excess.label || '清残留VO/按原视频定长',
+                    action: () => { this.onClearExcessDuration({ checkOnly: false }); },
+                }];
+            })() : []),
             {
                 icon: '⏮️',
                 text: '磁吸对齐到 0.0s 开头',
