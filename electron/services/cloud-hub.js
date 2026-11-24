@@ -347,9 +347,15 @@ function parseGoogleDriveEmbeddedFolderHtml(html) {
         const block = chunks[i];
         const idMatch = block.match(/^\s*[^>]*\bid="entry-([a-zA-Z0-9_-]{10,})"/i);
         const hrefMatch = block.match(/<a[^>]+href="([^"]+)"/i);
+        const titleAttrMatch = block.match(/<a[^>]+(?:title|aria-label)="([^"]+)"/i) || block.match(/^\s*[^>]*\btitle="([^"]+)"/i);
         const titleMatch = block.match(/<div[^>]+class="[^"]*flip-entry-title[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
         const modMatch = block.match(/<div[^>]+class="[^"]*flip-entry-last-modified[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-        pushEntry(hrefMatch ? hrefMatch[1] : '', titleMatch ? titleMatch[1] : '', modMatch ? modMatch[1] : '', idMatch ? idMatch[1] : '');
+        const rawTitleText = String(titleMatch ? titleMatch[1] : '').replace(/<[^>]+>/g, '').trim();
+        const attrTitle = titleAttrMatch ? titleAttrMatch[1].trim() : '';
+        const chosenTitle = (!rawTitleText || (attrTitle && /\.(?:vktpl|json)$/i.test(attrTitle) && !/\.(?:vktpl|json)$/i.test(rawTitleText)))
+            ? (attrTitle || rawTitleText)
+            : rawTitleText;
+        pushEntry(hrefMatch ? hrefMatch[1] : '', chosenTitle, modMatch ? modMatch[1] : '', idMatch ? idMatch[1] : '');
     }
 
     if (files.length === 0 && folders.length === 0) {
@@ -357,6 +363,15 @@ function parseGoogleDriveEmbeddedFolderHtml(html) {
         let match;
         while ((match = anchorRe.exec(src)) !== null) {
             pushEntry(match[1], match[2], '', '');
+        }
+    }
+
+    if (files.length === 0 && folders.length === 0) {
+        // Fallback for modern Drive folder markup with data-id attributes and project filenames nearby
+        const dataIdRe = /data-id="([a-zA-Z0-9_-]{15,})"[\s\S]{0,400}?(?:aria-label|title|data-tooltip)="([^"]+\.(?:reels-project\.json|json|vktpl))"/gi;
+        let dm;
+        while ((dm = dataIdRe.exec(src)) !== null) {
+            pushEntry(`https://drive.google.com/file/d/${dm[1]}/view`, dm[2], '', dm[1]);
         }
     }
 
@@ -376,13 +391,13 @@ function isEditableProjectFilename(name) {
     const trimmed = String(name || '').trim();
     if (!trimmed) return false;
     if (IGNORED_CLOUD_JSON_FILES.has(trimmed.toLowerCase())) return false;
-    return /\.(?:reels-project\.)?json$/i.test(trimmed);
+    return /\.(?:(?:reels-project\.)?json|vktpl)$/i.test(trimmed);
 }
 
 function cleanProjectTitleFromFilename(name) {
     return String(name || '').trim()
         .replace(/\.reels-project\.json$/i, '')
-        .replace(/\.json$/i, '')
+        .replace(/\.(?:json|vktpl)$/i, '')
         .trim() || '云端工程';
 }
 
@@ -631,20 +646,50 @@ async function syncFromCloudHub(input = {}) {
         throw new Error('请先填写 Cloudflare 总配置链接');
     }
 
-    const reqUrl = buildHubRequestUrl(hubUrl, saved.access_token);
-    const text = await fetchTextWithDriveBypass(reqUrl, buildHubHeaders(saved.access_token));
-    let remote;
-    try {
-        remote = JSON.parse(text);
-    } catch (_) {
-        throw new Error('云端返回的内容不是有效的 JSON 格式，请检查链接是否正确');
+    let payload;
+    if (extractGoogleDriveFolderId(hubUrl) || extractGoogleDocId(hubUrl)) {
+        _assertSafeHttpUrl(hubUrl, { allowPrivateHttp: false, label: 'Cloudflare 总配置链接' });
+        payload = { google_drive_url: hubUrl };
+    } else {
+        const reqUrl = buildHubRequestUrl(hubUrl, saved.access_token);
+        const text = await fetchTextWithDriveBypass(reqUrl, buildHubHeaders(saved.access_token));
+        let remote;
+        try {
+            remote = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
+        } catch (_) {
+            throw new Error('云端返回的内容不是有效的 JSON 格式，请检查链接是否正确');
+        }
+        if (remote && remote.ok === false && remote.error) {
+            throw new Error(remote.error);
+        }
+        const unwrapped = (remote && typeof remote.data === 'object' && !Array.isArray(remote.data))
+            ? remote.data
+            : remote;
+        // If user pasted a single VideoKit project JSON / .vktpl URL directly into hub_url, surface it as a daily_project
+        const looksLikeHubConfig = Boolean(
+            unwrapped && typeof unwrapped === 'object' && (
+                unwrapped.groq_keys !== undefined || unwrapped.gladia_keys !== undefined || unwrapped.deepgram_keys !== undefined
+                || unwrapped.gemini_keys !== undefined || unwrapped.elevenlabs_keys !== undefined
+                || unwrapped.daily_projects !== undefined || unwrapped.projects !== undefined || unwrapped.dailyProjects !== undefined
+                || unwrapped.google_drive_url || unwrapped.drive_url || unwrapped.project_url || unwrapped.gdrive_url
+                || unwrapped.folder_url || unwrapped.google_url || unwrapped.providers
+            )
+        );
+        if (!looksLikeHubConfig && unwrapped && typeof unwrapped === 'object'
+            && (Array.isArray(unwrapped.tabs) || Array.isArray(unwrapped.tasks) || unwrapped.projectData || Array.isArray(unwrapped.templates))) {
+            payload = {
+                daily_projects: [{
+                    id: 'dp_direct_hub',
+                    date: new Date().toISOString().slice(0, 10),
+                    title: String(unwrapped.name || '云端直连工程').trim(),
+                    url: hubUrl,
+                    note: '来自总控直连工程 JSON',
+                }],
+            };
+        } else {
+            payload = unwrapped;
+        }
     }
-    if (remote && remote.ok === false && remote.error) {
-        throw new Error(remote.error);
-    }
-    const payload = (remote && typeof remote.data === 'object' && !Array.isArray(remote.data))
-        ? remote.data
-        : remote;
 
     const mode = saved.sync_mode === 'overwrite' ? 'overwrite' : 'merge';
     const mergeList = (localList, remoteList, hasRemoteField) => {
@@ -751,7 +796,7 @@ async function syncFromCloudHub(input = {}) {
                 );
                 expandedProjects.push(...resolvedSingle);
                 if (resolvedSingle.length === 0 && extractGoogleDriveFolderId(singleGoogleUrl)) {
-                    folderWarning = '已在云盘打开该谷歌文件夹，但暂未发现 .json / .reels-project.json 工程文件';
+                    folderWarning = '已在云盘打开该谷歌文件夹，但暂未发现 .json / .reels-project.json / .vktpl 工程文件';
                 }
             } catch (err) {
                 folderWarning = folderWarning || (err?.message || String(err));
@@ -1179,6 +1224,116 @@ function splitFlatTasksIntoTabs(rawTasks, options = {}) {
     return tabs;
 }
 
+function normalizeDownloadedProjectData(rawProject, fallbackTitle = '云端工程', localMaterialRoot = '') {
+    if (!rawProject || typeof rawProject !== 'object') {
+        throw new Error('工程 JSON 数据无效');
+    }
+
+    // Handle videokit-template-collection (.vktpl multi-template bundle)
+    if (Array.isArray(rawProject.templates) && rawProject.templates.length > 0 && !Array.isArray(rawProject.tabs) && !Array.isArray(rawProject.tasks)) {
+        const tabs = [];
+        let firstStyle = null;
+        let firstExportOpts = null;
+        let firstWatermarks = null;
+        rawProject.templates.forEach((entry, idx) => {
+            if (!entry || typeof entry !== 'object') return;
+            const inner = (entry.projectData && typeof entry.projectData === 'object') ? entry.projectData : entry;
+            if (!firstStyle && inner.style) firstStyle = inner.style;
+            if (!firstExportOpts && inner.exportOpts) firstExportOpts = inner.exportOpts;
+            if (!firstWatermarks && Array.isArray(inner.watermarks)) firstWatermarks = inner.watermarks;
+            if (Array.isArray(inner.tabs) && inner.tabs.length > 0) {
+                for (const t of inner.tabs) {
+                    if (!t || typeof t !== 'object') continue;
+                    tabs.push({
+                        ...t,
+                        id: t.id || `tab_cloud_${Date.now().toString(36)}_${tabs.length + 1}`,
+                        name: String(t.name || entry.name || `${fallbackTitle}_${idx + 1}`).trim(),
+                        hidden: false,
+                        tasks: Array.isArray(t.tasks) ? t.tasks : [],
+                    });
+                }
+            } else if (Array.isArray(inner.tasks)) {
+                tabs.push({
+                    id: `tab_cloud_${Date.now().toString(36)}_${tabs.length + 1}`,
+                    name: String(entry.name || `${fallbackTitle}_${idx + 1}`).trim(),
+                    hidden: false,
+                    materialDir: localMaterialRoot || '',
+                    tasks: inner.tasks,
+                });
+            }
+        });
+        if (tabs.length > 0) {
+            return {
+                version: '2.0',
+                timestamp: new Date().toISOString(),
+                ...(firstStyle ? { style: firstStyle } : {}),
+                ...(firstExportOpts ? { exportOpts: firstExportOpts } : {}),
+                ...(firstWatermarks ? { watermarks: firstWatermarks } : {}),
+                activeTabId: tabs[0].id,
+                tabs,
+            };
+        }
+    }
+
+    // Unwrap API envelope (`{ data: ... }`) or template/liveProject wrapper (`{ name, projectData: ... }`)
+    let unwrapped = rawProject;
+    if (!Array.isArray(unwrapped.tabs) && !Array.isArray(unwrapped.tasks)) {
+        if (unwrapped.projectData && typeof unwrapped.projectData === 'object') {
+            unwrapped = {
+                ...unwrapped.projectData,
+                name: unwrapped.name || unwrapped.projectData.name || fallbackTitle,
+                ...(Array.isArray(unwrapped.watermarks) && !Array.isArray(unwrapped.projectData.watermarks)
+                    ? { watermarks: unwrapped.watermarks }
+                    : {}),
+            };
+        } else if (unwrapped.data && typeof unwrapped.data === 'object' && !Array.isArray(unwrapped.data)) {
+            unwrapped = unwrapped.data;
+        }
+    }
+
+    if (Array.isArray(unwrapped.tabs)) {
+        const normalizedTabs = unwrapped.tabs
+            .filter(t => t && typeof t === 'object')
+            .map((t, idx) => ({
+                ...t,
+                id: t.id || `tab_cloud_${Date.now().toString(36)}_${idx + 1}`,
+                name: String(t.name || unwrapped.name || fallbackTitle || `标签${idx + 1}`).trim(),
+                hidden: false,
+                tasks: Array.isArray(t.tasks) ? t.tasks : [],
+            }));
+        if (normalizedTabs.length > 0) {
+            return {
+                ...unwrapped,
+                version: '2.0',
+                activeTabId: unwrapped.activeTabId || normalizedTabs[0].id,
+                tabs: normalizedTabs,
+            };
+        }
+    }
+
+    if (Array.isArray(unwrapped.tasks)) {
+        const topStyle = (unwrapped.style && typeof unwrapped.style === 'object') ? unwrapped.style : null;
+        const splitTabs = splitFlatTasksIntoTabs(unwrapped.tasks, {
+            fallbackName: fallbackTitle || unwrapped.name || '云端工程',
+            materialDir: localMaterialRoot || '',
+            topStyle,
+        });
+        return {
+            version: '2.0',
+            timestamp: new Date().toISOString(),
+            ...(topStyle ? { style: topStyle } : {}),
+            ...(unwrapped.exportOpts && typeof unwrapped.exportOpts === 'object' ? { exportOpts: unwrapped.exportOpts } : {}),
+            ...(Array.isArray(unwrapped.watermarks) ? { watermarks: unwrapped.watermarks } : {}),
+            ...(unwrapped.collapsedTabGroups && typeof unwrapped.collapsedTabGroups === 'object'
+                ? { collapsedTabGroups: unwrapped.collapsedTabGroups } : {}),
+            activeTabId: splitTabs[0]?.id || '',
+            tabs: splitTabs.map(t => ({ ...t, hidden: false })),
+        };
+    }
+
+    throw new Error('工程 JSON 缺少 tabs 或 tasks 列表');
+}
+
 /**
  * Downloads a VideoKit project JSON from Google Drive (file or folder), Google Doc, or any URL,
  * validates it, and optionally relinks media paths using local_material_root.
@@ -1193,7 +1348,7 @@ async function downloadCloudProject(input = {}) {
     if (extractGoogleDriveFolderId(targetUrl)) {
         const folderProjects = await fetchGoogleDriveFolderProjects(targetUrl);
         if (folderProjects.length === 0) {
-            throw new Error('该 Google Drive 文件夹里暂无可编辑的 .json / .reels-project.json 工程文件（请确认已在网盘放入软件保存的工程文件）');
+            throw new Error('该 Google Drive 文件夹里暂无可编辑的 .json / .reels-project.json / .vktpl 工程文件（请确认已在网盘放入软件保存的工程文件）');
         }
         if (folderProjects.length > 1) {
             saveCloudHubSettings({ single_google_drive_url: targetUrl, daily_projects: folderProjects });
@@ -1230,37 +1385,18 @@ async function downloadCloudProject(input = {}) {
     const localMaterialRoot = String(input.local_material_root ?? currentSettings.local_material_root ?? '').trim();
 
     const text = await fetchTextWithDriveBypass(targetUrl, buildHubHeaders(currentSettings.access_token));
-    let projectData;
+    let parsedRaw;
     try {
-        projectData = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
+        parsedRaw = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
     } catch (_) {
         throw new Error('下载的文件不是有效的工程 JSON（请确认 Google Drive 文件权限已设为“知道链接的任何人可查看”）');
     }
 
-    // Normalize single-project (.reels-project.json) or flat packaged task list into v2.0 multi-tab format
-    if (!Array.isArray(projectData.tabs)) {
-        if (Array.isArray(projectData.tasks)) {
-            const topStyle = (projectData.style && typeof projectData.style === 'object') ? projectData.style : null;
-            const splitTabs = splitFlatTasksIntoTabs(projectData.tasks, {
-                fallbackName: resolvedTitle || projectData.name || '云端工程',
-                materialDir: localMaterialRoot || '',
-                topStyle,
-            });
-            projectData = {
-                version: '2.0',
-                timestamp: new Date().toISOString(),
-                ...(topStyle ? { style: topStyle } : {}),
-                ...(projectData.exportOpts && typeof projectData.exportOpts === 'object' ? { exportOpts: projectData.exportOpts } : {}),
-                ...(Array.isArray(projectData.watermarks) ? { watermarks: projectData.watermarks } : {}),
-                ...(projectData.collapsedTabGroups && typeof projectData.collapsedTabGroups === 'object'
-                    ? { collapsedTabGroups: projectData.collapsedTabGroups } : {}),
-                activeTabId: splitTabs[0]?.id || '',
-                tabs: splitTabs,
-            };
-        } else {
-            throw new Error('工程 JSON 缺少 tabs 或 tasks 列表');
-        }
-    }
+    const projectData = normalizeDownloadedProjectData(
+        parsedRaw,
+        resolvedTitle || parsedRaw?.name || '云端工程',
+        localMaterialRoot
+    );
 
     const relinkStats = relinkProjectMediaPaths(projectData, localMaterialRoot);
     const totalTasks = (projectData.tabs || []).reduce((sum, t) => sum + ((t && Array.isArray(t.tasks)) ? t.tasks.length : 0), 0);
@@ -1316,6 +1452,8 @@ module.exports = {
     pushToCloudHub,
     downloadCloudProject,
     splitFlatTasksIntoTabs,
+    normalizeDownloadedProjectData,
+    isEditableProjectFilename,
     relinkProjectMediaPaths,
     getWorkerTemplateCode,
 };

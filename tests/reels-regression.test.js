@@ -13157,4 +13157,556 @@ test('Timeline editor ignores source_audio for gap warnings, prevents header bad
     assert.ok(batchTableSrc.includes('rbt-clear-lingering-vo-btn'), 'Batch align result modal must provide one-click lingering VO cleanup when alignSource === video');
 });
 
+test('Cloud Hub unwraps .vktpl/folder links, syncs cloud projects into workspace + liveProjectStore + shared manager, and shows pending items in Current Tabs Manager', async () => {
+    const cloudHubService = require('../electron/services/cloud-hub');
+
+    assert.equal(cloudHubService.isEditableProjectFilename('2026-11-24_工程.json'), true);
+    assert.equal(cloudHubService.isEditableProjectFilename('2026-11-24_模板.vktpl'), true);
+    assert.equal(cloudHubService.isEditableProjectFilename('readme.txt'), false);
+
+    const parsedDriveFlip = cloudHubService.parseGoogleDriveEmbeddedFolderHtml(`
+        <div class="flip-entry" id="entry-1AbCdEfGhIjKlMnOp">
+            <a href="https://drive.google.com/file/d/1AbCdEfGhIjKlMnOp/view?usp=drive_link" title="1124_每日分享.vktpl">
+                <div class="flip-entry-title">1124_每日分享</div>
+            </a>
+        </div>
+    `);
+    assert.equal(parsedDriveFlip.files.length, 1);
+    assert.equal(parsedDriveFlip.files[0].id, '1AbCdEfGhIjKlMnOp');
+    assert.equal(parsedDriveFlip.files[0].name, '1124_每日分享.vktpl');
+
+    const parsedDriveModern = cloudHubService.parseGoogleDriveEmbeddedFolderHtml(`
+        <div data-id="1ZyXwVuTsRqPoNmLkQr" aria-label="backup_proj.json"></div>
+    `);
+    assert.equal(parsedDriveModern.files.length, 1);
+    assert.equal(parsedDriveModern.files[0].id, '1ZyXwVuTsRqPoNmLkQr');
+    assert.equal(parsedDriveModern.files[0].name, 'backup_proj.json');
+
+    const collectionNorm = cloudHubService.normalizeDownloadedProjectData({
+        type: 'videokit-template-collection',
+        templates: [{
+            name: '云端模板合集工程',
+            projectData: {
+                version: '2.0',
+                tasks: [{ id: 't_col_1', videoPath: 'C:/media/a.mp4', baseName: 'clipA' }],
+            },
+        }],
+    }, '默认名');
+    assert.equal(collectionNorm.tabs.length, 1);
+    assert.equal(collectionNorm.tabs[0].name, '云端模板合集工程');
+    assert.equal(collectionNorm.tabs[0].hidden, false);
+    assert.equal(collectionNorm.tabs[0].tasks.length, 1);
+
+    const vktplNorm = cloudHubService.normalizeDownloadedProjectData({
+        version: 1,
+        name: '单工程VKTPL',
+        projectData: {
+            version: '2.0',
+            tabs: [{ id: 'tab_h', name: '后台云端工程', hidden: true }],
+        },
+    }, 'fallback');
+    assert.equal(vktplNorm.tabs.length, 1);
+    assert.equal(vktplNorm.tabs[0].name, '后台云端工程');
+    assert.equal(vktplNorm.tabs[0].hidden, false);
+    assert.deepEqual(vktplNorm.tabs[0].tasks, []);
+
+    const makeEl = (tag = 'div') => {
+        const listeners = {};
+        const el = {
+            tagName: String(tag).toUpperCase(),
+            id: '',
+            className: '',
+            classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+            style: {},
+            dataset: {},
+            children: [],
+            value: '',
+            textContent: '',
+            checked: false,
+            disabled: false,
+            selectionStart: 0,
+            isConnected: true,
+            _innerHTML: '',
+            appendChild(c) { this.children.push(c); return c; },
+            remove() { this.isConnected = false; },
+            addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+            setSelectionRange() {},
+            focus() {},
+            closest() { return null; },
+            querySelector(sel) { return this.querySelectorAll(sel)[0] || null; },
+            querySelectorAll(sel) {
+                const res = [];
+                const wantId = sel.startsWith('#') ? sel.slice(1) : '';
+                const wantCls = sel.startsWith('.') ? sel.slice(1) : '';
+                const visit = (node) => {
+                    if (!node || typeof node !== 'object') return;
+                    if (wantId && node.id === wantId) res.push(node);
+                    if (wantCls && String(node.className || '').split(/\s+/).includes(wantCls)) res.push(node);
+                    for (const ch of (node.children || [])) visit(ch);
+                };
+                visit(this);
+                if (res.length === 0 && this._innerHTML) {
+                    const mId = wantId && this._innerHTML.includes(`id="${wantId}"`);
+                    const mCls = wantCls && this._innerHTML.includes(wantCls);
+                    if (mId || mCls) res.push(makeEl('button'));
+                }
+                return res;
+            },
+            click() {
+                for (const fn of (listeners.click || [])) fn({ target: this, stopPropagation() {} });
+                if (typeof this.onclick === 'function') this.onclick({ target: this, stopPropagation() {} });
+            },
+        };
+        Object.defineProperty(el, 'innerHTML', {
+            get() { return this._innerHTML; },
+            set(v) { this._innerHTML = String(v || ''); },
+        });
+        return el;
+    };
+
+    const bodyEl = makeEl('body');
+    const store = new Map();
+    const savedSharedCalls = [];
+    const liveFolders = [];
+    const liveProjects = [];
+    let openedPanel = '';
+    const vktplDiskJson = JSON.stringify({
+        type: 'videokit-template-collection',
+        templates: [{
+            name: '本地加载VKTPL工程',
+            projectData: { version: '2.0', tasks: [{ id: 'ext_1', videoPath: 'D:/v.mp4', baseName: 'extClip' }] },
+        }],
+    });
+
+    const apiCalls = [];
+    const sandbox = {
+        console,
+        Math,
+        Date,
+        JSON,
+        Set,
+        Map,
+        Array,
+        Object,
+        String,
+        Number,
+        Boolean,
+        RegExp,
+        Error,
+        Promise,
+        setTimeout,
+        clearTimeout,
+        API_BASE: 'http://127.0.0.1:0/api',
+        localStorage: {
+            getItem: (k) => store.get(k) || null,
+            setItem: (k, v) => store.set(k, String(v)),
+            removeItem: (k) => store.delete(k),
+        },
+        document: {
+            body: bodyEl,
+            head: makeEl('head'),
+            createElement: (tag) => makeEl(tag),
+            getElementById: (id) => {
+                if (bodyEl.id === id) return bodyEl;
+                return bodyEl.querySelector(`#${id}`);
+            },
+            addEventListener() {},
+        },
+        confirm: () => true,
+        alert: () => {},
+        showToast: () => {},
+        openPanelByName: (name) => { openedPanel = name; },
+        reelsSelectTask: () => {},
+        reelsUpdatePreview: () => {},
+        apiFetch: async (url, init = {}) => {
+            apiCalls.push(url);
+            const body = init.body ? JSON.parse(init.body) : {};
+            if (url.endsWith('/live-projects/folders/list')) {
+                return { ok: true, json: async () => ({ folders: liveFolders, assignments: {} }) };
+            }
+            if (url.endsWith('/live-projects/folders/create')) {
+                const folder = { id: `fld_${liveFolders.length + 1}`, name: body.name, parentId: body.parentId || '' };
+                liveFolders.push(folder);
+                return { ok: true, json: async () => ({ success: true, folder }) };
+            }
+            if (url.endsWith('/live-projects/list')) {
+                return { ok: true, json: async () => liveProjects };
+            }
+            if (url.endsWith('/live-projects/save')) {
+                const id = body.id || `lp_${liveProjects.length + 1}`;
+                const idx = liveProjects.findIndex(x => x.id === id);
+                const rec = { id, name: body.name, folderId: body.folderId || '', thumbnail: body.thumbnail || '', projectData: body.projectData };
+                if (idx >= 0) liveProjects[idx] = rec; else liveProjects.push(rec);
+                return { ok: true, json: async () => ({ success: true, id }) };
+            }
+            if (url === 'settings/cloud-hub') {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        hub_url: 'https://example.workers.dev',
+                        daily_projects: [
+                            { id: 'dp_folder', date: '2026-11-24', title: '谷歌云盘目录', url: 'https://drive.google.com/drive/folders/folderXYZ' },
+                            { id: 'dp_pending', date: '2026-11-23', title: '未拉取工程', url: 'https://drive.google.com/file/d/pendingABC/view' },
+                        ],
+                    }),
+                };
+            }
+            if (url === 'settings/cloud-hub/sync') {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        status: 'success',
+                        settings: {
+                            hub_url: 'https://example.workers.dev',
+                            daily_projects: [
+                                { id: 'dp_folder', date: '2026-11-24', title: '谷歌云盘目录', url: 'https://drive.google.com/drive/folders/folderXYZ' },
+                                { id: 'dp_pending', date: '2026-11-23', title: '未拉取工程', url: 'https://drive.google.com/file/d/pendingABC/view' },
+                            ],
+                        },
+                    }),
+                };
+            }
+            if (url === 'settings/cloud-hub/download-project') {
+                if (String(body.url).includes('folderXYZ')) {
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            status: 'folder_listed',
+                            projects: [{ id: 'sub1', date: '2026-11-24', title: '子工程A', url: 'https://drive.google.com/file/d/subFile123/view' }],
+                        }),
+                    };
+                }
+                const isPending = String(body.url).includes('pendingABC');
+                const projTitle = isPending ? '待拉取工程B' : '子工程A';
+                return {
+                    ok: true,
+                    json: async () => ({
+                        status: 'success',
+                        saved_path: `C:/Projects/2026-11-24_${projTitle}.json`,
+                        project: {
+                            version: '2.0',
+                            tabs: [{ id: isPending ? 't2' : 't1', name: projTitle, hidden: true, tasks: [{ id: isPending ? 's2' : 's1', videoPath: 'D:/bg.mp4', baseName: isPending ? 'pendingClip' : 'subClip' }] }],
+                        },
+                    }),
+                };
+            }
+            return { ok: false, json: async () => ({}) };
+        },
+        window: {
+            addEventListener() {},
+            location: { hash: '' },
+            _reelsState: { tasks: [], globalSubtitleStyle: {}, exportOpts: {}, watermarks: [] },
+            _reelsLibraryThumbCache: {},
+            ReelsProject: {
+                collectProjectData: (opts) => ({
+                    version: '2.0',
+                    tasks: opts.tasks || [],
+                    style: opts.style || {},
+                    exportOpts: opts.exportOpts || {},
+                    watermarks: opts.watermarks || [],
+                }),
+            },
+            reelsCaptureProjectThumbnailFromData: async () => 'data:image/jpeg;base64,SYNTH_THUMB',
+            openLibraryItemPreview: () => {},
+            electronAPI: {
+                getDefaultProjectDir: () => 'C:/Projects',
+                saveSharedProjectFile: (fileName, jsonStr, dir) => { savedSharedCalls.push({ fileName, jsonStr, dir }); return true; },
+                readFileText: async () => vktplDiskJson,
+            },
+        },
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    const batchTableCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-batch-table.js'), 'utf8');
+    vm.runInContext(batchTableCode, sandbox);
+
+    // 1. Empty-task detector must recognize videoPath / bgClipPool / scroll_title / cover
+    assert.equal(vm.runInContext(`_isBatchTaskCompletelyEmpty({ videoPath: 'D:/a.mp4' })`, sandbox), false);
+    assert.equal(vm.runInContext(`_isBatchTaskCompletelyEmpty({ bgClipPool: ['D:/b.mp4'] })`, sandbox), false);
+    assert.equal(vm.runInContext(`_isBatchTaskCompletelyEmpty({ scroll_title: 'Title' })`, sandbox), false);
+    assert.equal(vm.runInContext(`_isBatchTaskCompletelyEmpty({ cover: { title: 'C' } })`, sandbox), false);
+    assert.equal(vm.runInContext(`_isBatchTaskCompletelyEmpty({ id: 'e1', baseName: '空白' })`, sandbox), true);
+
+    // 2. Sync Cloud folder -> recursively expands folder_listed, saves into workspace (hidden=false), liveProjectStore folder ('☁️ 云端同步工程'), and shared project manager
+    const syncRes = await vm.runInContext(`window.reelsBatchSyncCloudProjectsToLibrary({ syncFirst: true })`, sandbox);
+    assert.equal(syncRes.downloaded, 2, 'Both expanded sub-project and direct daily project should sync');
+    assert.ok(liveFolders.some(f => f.name === '☁️ 云端同步工程'), 'Cloud live-projects folder must be auto-created');
+    assert.equal(liveProjects.length, 2, 'All synced cloud projects must appear in liveProjectStore');
+    assert.equal(liveProjects[0].thumbnail, 'data:image/jpeg;base64,SYNTH_THUMB');
+    assert.ok(savedSharedCalls.length >= 2, 'Shared project JSON copies must be written for 📦 工程管理');
+    assert.equal(vm.runInContext(`_batchTableState.tabs.some(t => t.name === '子工程A' && t.hidden === false && !!t.libraryTemplateId)`, sandbox), true);
+
+    // 3. _showProjectManagerModal shows refresh cloud button + preview button
+    vm.runInContext(`window.openBatchProjectManager()`, sandbox);
+    await new Promise(r => setTimeout(r, 20));
+    const pmEl = bodyEl.querySelector('#rbt-project-manager-modal');
+    assert.ok(pmEl, 'Current tab manager modal must mount');
+    assert.ok(pmEl.innerHTML.includes('pm-sync-cloud-btn'), 'Current tab manager must expose ☁️ 刷新云端工程');
+    assert.ok(pmEl.innerHTML.includes('pm-preview-btn'), 'Synced project tabs must render 👁️ 预览 button in Current Tabs Manager');
+
+    // 4. _extLoadProject loads .vktpl template-collection cleanly into workspace tabs
+    const loadedOk = await vm.runInContext(`window._extLoadProject('C:/Projects/sample.vktpl')`, sandbox);
+    assert.equal(loadedOk, true);
+    assert.equal(openedPanel, 'batch-reels');
+    assert.equal(vm.runInContext(`_batchTableState.tabs.some(t => t.name === '本地加载VKTPL工程' && t.tasks.length === 1 && !t.hidden)`, sandbox), true);
+});
+
+test('Live Project Library (工程项目) supports preview button, cloud sync button, offscreen cover repair, and non-destructive 9:16 preview modal', async () => {
+    const templatesCode = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-templates.js'), 'utf8');
+    const makeNode = (tag = 'div') => {
+        const listeners = {};
+        const attrStubs = new Map();
+        const node = {
+            tagName: String(tag).toUpperCase(),
+            id: '',
+            className: '',
+            classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+            style: {},
+            dataset: {},
+            children: [],
+            value: '',
+            textContent: '',
+            max: '10',
+            width: 1080,
+            height: 1920,
+            isConnected: true,
+            _html: '',
+            appendChild(c) { this.children.push(c); return c; },
+            remove() { this.isConnected = false; },
+            setAttribute(k, v) { if (k === 'id') this.id = v; },
+            getAttribute(k) { return k === 'id' ? this.id : ''; },
+            removeAttribute() {},
+            matches() { return false; },
+            focus() {},
+            closest() { return null; },
+            addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+            getContext(kind) {
+                if (kind === '2d') {
+                    return {
+                        fillStyle: '',
+                        strokeStyle: '',
+                        font: '',
+                        globalAlpha: 1,
+                        fillRect() {},
+                        clearRect() {},
+                        save() {},
+                        restore() {},
+                        drawImage() {},
+                        fillText() {},
+                        strokeText() {},
+                        beginPath() {},
+                        closePath() {},
+                        arc() {},
+                        fill() {},
+                        stroke() {},
+                        createLinearGradient: () => ({ addColorStop() {} }),
+                        createRadialGradient: () => ({ addColorStop() {} }),
+                        measureText: (s) => ({ width: String(s || '').length * 20 }),
+                        getImageData: (x = 0, y = 0, sw = 4, sh = 4) => {
+                            const len = Math.max(4, (Number(sw) || 1) * (Number(sh) || 1) * 4);
+                            const data = new Uint8ClampedArray(len);
+                            const seed = (Math.abs(Math.floor(x)) * 13 + Math.abs(Math.floor(y)) * 29 + 37) % 256;
+                            for (let i = 0; i < len; i += 4) {
+                                data[i] = (seed + i * 17) % 256;
+                                data[i + 1] = (seed + i * 31 + 40) % 256;
+                                data[i + 2] = (seed + i * 53 + 90) % 256;
+                                data[i + 3] = 255;
+                            }
+                            return { data };
+                        },
+                    };
+                }
+                return null;
+            },
+            toDataURL: () => 'data:image/jpeg;base64,' + 'REPAIRED_LIVE_COVER_'.repeat(6),
+            querySelector(sel) { return this.querySelectorAll(sel)[0] || null; },
+            querySelectorAll(sel) {
+                const res = [];
+                const wantId = sel.startsWith('#') ? sel.slice(1) : '';
+                const wantCls = sel.startsWith('.') ? sel.slice(1) : '';
+                const attrMatch = sel.match(/^\[([a-zA-Z0-9_-]+)="([^"]*)"\]$/);
+                const visit = (n) => {
+                    if (!n || typeof n !== 'object') return;
+                    if (wantId && n.id === wantId) res.push(n);
+                    if (wantCls && String(n.className || '').split(/\s+/).includes(wantCls)) res.push(n);
+                    if (attrMatch && n.dataset && n.dataset[attrMatch[1]] === attrMatch[2]) res.push(n);
+                    for (const c of (n.children || [])) visit(c);
+                };
+                visit(this);
+                if (res.length === 0 && this._html) {
+                    const matched = (wantId && this._html.includes(`id="${wantId}"`))
+                        || (wantCls && this._html.includes(wantCls))
+                        || (attrMatch && this._html.includes(`${attrMatch[1]}="${attrMatch[2]}"`));
+                    if (matched) {
+                        let stub = attrStubs.get(sel);
+                        if (!stub) {
+                            stub = makeNode(wantId.includes('canvas') ? 'canvas' : 'div');
+                            stub.id = wantId || '';
+                            attrStubs.set(sel, stub);
+                        }
+                        res.push(stub);
+                    }
+                }
+                return res;
+            },
+            click() { for (const fn of (listeners.click || [])) fn({ target: this, stopPropagation() {} }); },
+        };
+        Object.defineProperty(node, 'innerHTML', {
+            get() { return this._html; },
+            set(v) { this._html = String(v || ''); },
+        });
+        return node;
+    };
+
+    const bodyEl = makeNode('body');
+    const headEl = makeNode('head');
+    const liveItems = [
+        {
+            id: 'lp_1',
+            name: '测试云端同步工程',
+            thumbnail: '',
+            taskCount: 1,
+            updatedAt: new Date().toISOString(),
+        },
+    ];
+    const thumbSavedCalls = [];
+    let renderSubtitleCalled = 0;
+    let drawOverlayCalled = 0;
+
+    const sandbox = {
+        console,
+        Math,
+        Date,
+        JSON,
+        Set,
+        Map,
+        Array,
+        Object,
+        String,
+        Number,
+        Boolean,
+        Promise,
+        setTimeout,
+        clearTimeout,
+        innerWidth: 1280,
+        innerHeight: 800,
+        ResizeObserver: class { observe() {} disconnect() {} },
+        AbortController: typeof AbortController !== 'undefined' ? AbortController : class { constructor() { this.signal = {}; } abort() {} },
+        requestAnimationFrame: () => 1,
+        cancelAnimationFrame: () => {},
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+        API_BASE: 'http://127.0.0.1:0/api',
+        apiFetch: async (url, init = {}) => {
+            const body = init.body ? JSON.parse(init.body) : {};
+            if (url.endsWith('/live-projects/folders/list')) {
+                return { ok: true, json: async () => ({ folders: [], assignments: {} }) };
+            }
+            if (url.endsWith('/live-projects/list')) {
+                return { ok: true, json: async () => liveItems };
+            }
+            if (url.endsWith('/live-projects/get')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        id: 'lp_1',
+                        name: '测试云端同步工程',
+                        thumbnail: liveItems[0].thumbnail,
+                        projectData: {
+                            version: '2.0',
+                            style: { fontsize: 64 },
+                            tasks: [{
+                                id: 'task_p1',
+                                baseName: 'previewClip',
+                                segments: [{ start: 0, end: 4, text: 'Grace and peace' }],
+                                overlays: [{ type: 'text', text: 'Banner', enabled: true }],
+                            }],
+                        },
+                    }),
+                };
+            }
+            if (url.endsWith('/live-projects/thumbnail')) {
+                thumbSavedCalls.push(body);
+                liveItems[0].thumbnail = body.thumbnail;
+                return { ok: true, json: async () => ({ success: true }) };
+            }
+            return { ok: true, json: async () => ({}) };
+        },
+        document: {
+            body: bodyEl,
+            head: headEl,
+            createElement: (tag) => makeNode(tag),
+            getElementById: (id) => {
+                for (const c of [...headEl.children, ...bodyEl.children]) {
+                    if (c.id === id) return c;
+                }
+                return null;
+            },
+            addEventListener() {},
+            removeEventListener() {},
+        },
+        showToast: () => {},
+        confirm: () => true,
+        alert: () => {},
+        ReelsProject: {
+            restoreProjectData: (pd) => ({
+                tasks: JSON.parse(JSON.stringify(pd.tasks || [])),
+                style: pd.style || {},
+                watermarks: pd.watermarks || [],
+            }),
+        },
+        ReelsCanvasRenderer: class {
+            constructor() {}
+            renderSubtitle() { renderSubtitleCalled++; }
+        },
+        window: {
+            addEventListener() {},
+            location: { hash: '' },
+            _reelsState: { tasks: [{ id: 'workspace_untouched' }] },
+            _reelsLibraryThumbCache: {},
+            ReelsOverlay: {
+                drawOverlay() { drawOverlayCalled++; },
+            },
+        },
+    };
+    sandbox.window.ReelsProject = sandbox.ReelsProject;
+    sandbox.window.ReelsCanvasRenderer = sandbox.ReelsCanvasRenderer;
+    sandbox.ReelsOverlay = sandbox.window.ReelsOverlay;
+    sandbox.window.window = sandbox.window;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(templatesCode, sandbox);
+
+    // 1. openProjectLibrary renders header repair + cloud-sync controls and card preview button
+    await vm.runInContext(`window.openProjectLibrary({ preserveRoot: true })`, sandbox);
+    await new Promise(r => setTimeout(r, 60));
+    const libModal = bodyEl.children.find(c => c.id === 'live-project-library-modal');
+    assert.ok(libModal, 'Live Project Library modal must mount');
+    assert.ok(libModal._html.includes('id="lpl-repair-thumbnails-btn"'), 'Live Project Library must expose cover repair button');
+    assert.ok(libModal._html.includes('id="lpl-sync-cloud-btn"'), 'Live Project Library must expose cloud sync button');
+    const gridEl = libModal.querySelector('[data-role="grid-container"]');
+    assert.ok(gridEl && gridEl._html.includes('tpl-card-preview-btn'), 'Live Project cards must expose 👁️ 预览 button');
+
+    // 2. Explicit cover repair renders non-blank offscreen cover and persists via /api/live-projects/thumbnail
+    await vm.runInContext(`window.repairDuplicateTemplateThumbnails('liveProject')`, sandbox);
+    assert.ok(thumbSavedCalls.length >= 1, 'Missing live project cover should be repaired automatically');
+    assert.ok(String(thumbSavedCalls[0].thumbnail).startsWith('data:image/jpeg;base64,REPAIRED_LIVE_COVER_'));
+
+    // 3. openLibraryItemPreview opens 9:16 preview modal without mutating active workspace tasks
+    await vm.runInContext(`window.openLibraryItemPreview('liveProject', 'lp_1')`, sandbox);
+    const prevModal = bodyEl.children.find(c => c.id === 'vk-lib-item-preview-modal');
+    assert.ok(prevModal, 'Library item 9:16 preview modal must mount for liveProject');
+    assert.ok(prevModal._html.includes('id="vklp-canvas"'));
+    assert.ok(prevModal._html.includes('id="vklp-set-thumb"'));
+    assert.ok(prevModal._html.includes('id="vklp-open-edit"'));
+    assert.ok(renderSubtitleCalled >= 1, 'Preview renderer must render project subtitles');
+    assert.ok(drawOverlayCalled >= 1, 'Preview renderer must render project overlays');
+    assert.equal(
+        sandbox.window._reelsState.tasks[0].id,
+        'workspace_untouched',
+        'Opening effect preview must NOT overwrite active workspace tasks'
+    );
+});
+
+
 

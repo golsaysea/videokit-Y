@@ -320,6 +320,8 @@ function _openLibraryModal(mode, onSelectCallback = null, opts = {}) {
         <button id="lpl-new-blank-btn" data-act="new-blank-tab" style="padding:5px 12px;font-size:11px;font-weight:700;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;border:none;border-radius:8px;cursor:pointer;" title="在当前文件夹新建空白工程标签并立即实时保存">📄 新建空白标签</button>
         <button id="tpl-apply-folder-btn" data-act="apply-folder" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(99,102,241,0.22);color:#e0e7ff;border:1px solid rgba(129,140,248,0.42);border-radius:8px;cursor:pointer;" title="打开本文件夹直属全部实时工程到工作区">📂 打开本文件夹</button>
         <button id="lpl-capture-workspace-btn" data-act="archive-workspace" style="padding:5px 12px;font-size:11px;font-weight:600;background:rgba(245,158,11,0.16);color:#fde68a;border:1px solid rgba(245,158,11,0.36);border-radius:8px;cursor:pointer;" title="把当前工作区未归类标签实时收录到此文件夹">💾 纳入当前工作区</button>
+        <button id="lpl-repair-thumbnails-btn" data-act="repair-thumbs" style="padding:5px 11px;font-size:11px;font-weight:600;background:rgba(14,165,233,0.15);color:#7dd3fc;border:1px solid rgba(14,165,233,0.35);border-radius:8px;cursor:pointer;" title="为缺失封面或重复封面的工程自动渲染效果预览图">📸 生成/修复封面</button>
+        <button id="lpl-sync-cloud-btn" data-act="sync-cloud-projects" style="padding:5px 11px;font-size:11px;font-weight:600;background:rgba(56,189,248,0.16);color:#bae6fd;border:1px solid rgba(56,189,248,0.38);border-radius:8px;cursor:pointer;" title="从云端中控同步每日工程到此工程库中预览与编辑">☁️ 同步云端工程</button>
         <button id="lpl-import-from-tpl-btn" data-act="import-from-templates" style="padding:5px 11px;font-size:11px;font-weight:600;background:rgba(16,185,129,0.16);color:#6ee7b7;border:1px solid rgba(16,185,129,0.34);border-radius:8px;cursor:pointer;" title="从封存模板库复制文件夹或工程过来（不影响原封存模板）">📥 从模板库导入</button>
         <button id="lpl-import-file-btn" data-act="import" style="padding:5px 10px;font-size:11px;font-weight:600;background:rgba(255,255,255,0.06);color:#cbd5e1;border:1px solid rgba(255,255,255,0.14);border-radius:8px;cursor:pointer;">📂 导入文件</button>
         <span data-role="current-label" style="max-width:190px;font-size:10px;color:#6ee7b7;white-space:normal;overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.45;min-height:2.9em;"></span>
@@ -416,7 +418,8 @@ function _openLibraryModal(mode, onSelectCallback = null, opts = {}) {
         else if (act === 'new-blank-tab') await _createBlankLiveProjectDialog(st);
         else if (act === 'save-template') await saveCurrentAsTemplate();
         else if (act === 'update-template') await updateCurrentTemplate();
-        else if (act === 'repair-thumbs') await repairDuplicateTemplateThumbnails();
+        else if (act === 'repair-thumbs') await repairDuplicateTemplateThumbnails(st);
+        else if (act === 'sync-cloud-projects') await _syncCloudHubIntoProjectLibrary(st);
         else if (act === 'import') await _importLibraryFiles(st);
         else if (act === 'export-all') await _exportAllTemplates();
         else if (act === 'select-all') _selectAllLibraryItems(st);
@@ -1028,13 +1031,15 @@ async function _refreshLibraryView(st) {
                 <div class="tpl-actions" style="position:absolute;top:8px;right:8px;left:8px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;opacity:0;transition:opacity 0.2s;background:rgba(0,0,0,0.7);padding:6px;border-radius:8px;">
                     <button data-action="pick" ${isDisabledPick ? 'disabled' : ''} style="padding:4px 12px;font-size:12px;font-weight:600;background:${isDisabledPick ? 'rgba(120,120,130,0.35)' : 'linear-gradient(135deg,#7c5cff,#a855f7)'};color:${isDisabledPick ? '#999' : '#fff'};border:none;border-radius:6px;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};">${isDisabledPick ? '已添加' : '✅ 选用此模板'}</button>
                 </div>
-            ` : '';
+            ` : `
+                <button type="button" class="tpl-card-preview-btn" data-id="${safeId}" title="实时预览此${st.cfg.itemNoun}效果（不影响当前工作区）">👁️ 预览</button>
+            `;
 
             html += `
-                <div class="tpl-card" draggable="true" title="单击多选 · 双击${st.mode === 'template' ? '载入模板副本' : '打开并实时编辑'} · 右键菜单" data-id="${safeId}" data-name="${safeName}" data-disabled-pick="${isDisabledPick ? 'true' : 'false'}" style="background:rgba(255,255,255,${isDisabledPick ? '0.018' : '0.03'});border:1px solid ${isDisabledPick ? 'rgba(120,120,130,0.28)' : 'rgba(255,255,255,0.06)'};border-radius:12px;overflow:hidden;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};transition:all 0.2s;position:relative;${isDisabledPick ? 'opacity:0.58;' : ''}"
+                <div class="tpl-card" draggable="true" title="单击多选 · 双击${st.mode === 'template' ? '载入模板副本' : '打开并实时编辑'} · 右键菜单 / 点右下角预览效果" data-id="${safeId}" data-name="${safeName}" data-disabled-pick="${isDisabledPick ? 'true' : 'false'}" style="background:rgba(255,255,255,${isDisabledPick ? '0.018' : '0.03'});border:1px solid ${isDisabledPick ? 'rgba(120,120,130,0.28)' : 'rgba(255,255,255,0.06)'};border-radius:12px;overflow:hidden;cursor:${isDisabledPick ? 'not-allowed' : 'pointer'};transition:all 0.2s;position:relative;${isDisabledPick ? 'opacity:0.58;' : ''}"
                      onmouseenter="this.style.borderColor='rgba(99,102,241,0.4)';this.style.transform='translateY(-2px)'"
                      onmouseleave="this.style.borderColor='rgba(255,255,255,0.06)';this.style.transform='none'">
-                    <div class="tpl-template-cover" style="width:100%;aspect-ratio:9/16;background:#0a0a1a;overflow:hidden;">${thumbHtml}</div>
+                    <div class="tpl-template-cover" style="position:relative;width:100%;aspect-ratio:9/16;background:#0a0a1a;overflow:hidden;">${thumbHtml}${!isPicker ? actionsHtml : ''}</div>
                     ${!isPicker ? `<button type="button" class="tpl-card-check" data-id="${safeId}" title="勾选/取消多选" aria-label="多选"></button>` : ''}
                     ${isWorkspaceActive ? '<div style="position:absolute;right:8px;top:8px;z-index:3;background:rgba(16,185,129,0.92);color:#041e13;font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;">实时同步中</div>' : ''}
                     ${isDisabledPick ? '<div style="position:absolute;left:8px;top:8px;background:rgba(16,185,129,0.9);color:#06150f;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;">已添加</div>' : ''}
@@ -1046,7 +1051,7 @@ async function _refreshLibraryView(st) {
                             ${folderPathBadge}
                         </div>
                     </div>
-                    ${actionsHtml}
+                    ${isPicker ? actionsHtml : ''}
                 </div>
             `;
         }
@@ -1095,6 +1100,11 @@ async function _refreshLibraryView(st) {
                         ctrlKey: event.ctrlKey,
                         metaKey: event.metaKey,
                     });
+                });
+                card.querySelector('.tpl-card-preview-btn')?.addEventListener('click', event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    _openLibraryItemPreviewModal(st, card.dataset.id || '');
                 });
             }
 
@@ -1587,6 +1597,294 @@ function _templateQueueIdentityFromTasks(tasks) {
     return '';
 }
 
+function _isCanvasBlankSampled(canvas) {
+    try {
+        const ctx = canvas?.getContext?.('2d');
+        if (!ctx || !canvas.width || !canvas.height) return true;
+        const w = canvas.width, h = canvas.height;
+        const stepX = Math.max(1, Math.floor(w / 10));
+        const stepY = Math.max(1, Math.floor(h / 10));
+        let first = null;
+        for (let y = Math.floor(stepY / 2); y < h; y += stepY) {
+            for (let x = Math.floor(stepX / 2); x < w; x += stepX) {
+                const px = ctx.getImageData(x, y, 1, 1).data;
+                if (px[3] === 0 && !first) continue;
+                const sig = `${px[0] >> 3},${px[1] >> 3},${px[2] >> 3},${px[3] >> 3}`;
+                if (!first) first = sig;
+                else if (sig !== first) return false;
+            }
+        }
+        return !first || first === '0,0,0,31' || first === '0,0,0,0';
+    } catch (_) {
+        return false;
+    }
+}
+
+function _resolveLibraryMediaUrl(rawPath) {
+    const s = String(rawPath || '').trim();
+    if (!s) return '';
+    if (/^(local-media:|file:|blob:|data:|https?:)/i.test(s)) return s;
+    if (typeof window !== 'undefined' && typeof window.electronAPI?.toFileUrl === 'function') {
+        try { return window.electronAPI.toFileUrl(s) || s; } catch (_) {}
+    }
+    return s;
+}
+
+function _pickTaskBackgroundPath(task) {
+    if (!task || typeof task !== 'object') return '';
+    if (task.cover?.enabled && task.cover?.bgPath) return task.cover.bgPath;
+    if (task.bgPath) return task.bgPath;
+    if (task.videoPath) return task.videoPath;
+    if (Array.isArray(task.bgClipPool) && task.bgClipPool.length) return String(task.bgClipPool[0] || '');
+    if (Array.isArray(task.bgSegments) && task.bgSegments[0]?.path) return task.bgSegments[0].path;
+    if (task.contentVideoPath) return task.contentVideoPath;
+    if (task.hookFile) return task.hookFile;
+    return '';
+}
+
+function _computeTaskPreviewDuration(task) {
+    if (!task || typeof task !== 'object') return 6;
+    let dur = 0;
+    const dNum = Number(task.duration);
+    if (Number.isFinite(dNum) && dNum > 0.2) dur = dNum;
+    if (Array.isArray(task.segments) && task.segments.length) {
+        const lastEnd = task.segments.reduce((mx, s) => Math.max(mx, Number(s?.end) || 0), 0);
+        if (lastEnd > dur) dur = lastEnd;
+    }
+    if (Array.isArray(task.overlays) && task.overlays.length) {
+        const ovEnd = task.overlays.reduce((mx, o) => Math.max(mx, Number(o?.end) || 0), 0);
+        if (ovEnd > dur && ovEnd < 600) dur = Math.max(dur, ovEnd);
+    }
+    return Math.max(3, Math.min(300, dur || 6));
+}
+
+function _pickRepresentativeTaskTime(task, dur) {
+    if (!task || typeof task !== 'object') return 1.0;
+    if (Array.isArray(task.segments) && task.segments.length) {
+        const firstSeg = task.segments.find(s => String(s?.edited_text || s?.text || '').trim()) || task.segments[0];
+        if (firstSeg) {
+            const s = Number(firstSeg.start) || 0;
+            const e = Number(firstSeg.end) || (s + 2);
+            return Math.min(Math.max(0.25, s + (e - s) * 0.45), Math.max(0.4, dur - 0.1));
+        }
+    }
+    return Math.min(1.2, Math.max(0.4, dur * 0.3));
+}
+
+function _loadPreviewMediaElement(mediaPath, timeSec = 0.8, timeoutMs = 1500) {
+    return new Promise((resolve) => {
+        if (!mediaPath || typeof document === 'undefined' || typeof document.createElement !== 'function') {
+            resolve({ element: null, kind: 'none', missing: !!mediaPath });
+            return;
+        }
+        try {
+            if (typeof window.reelsGetBackgroundPoster === 'function') {
+                const cached = window.reelsGetBackgroundPoster(mediaPath);
+                if (cached && cached.complete && (cached.naturalWidth || cached.width) > 0) {
+                    resolve({ element: cached, kind: 'image', missing: false });
+                    return;
+                }
+            }
+        } catch (_) {}
+
+        const url = _resolveLibraryMediaUrl(mediaPath);
+        if (!url) {
+            resolve({ element: null, kind: 'none', missing: true });
+            return;
+        }
+        const isVideo = /\.(mp4|mov|mkv|avi|wmv|flv|webm)(?:[?#]|$)/i.test(mediaPath);
+        let settled = false;
+        const done = (res) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(res);
+        };
+        const timer = setTimeout(() => done({ element: null, kind: isVideo ? 'video' : 'image', missing: true }), timeoutMs);
+
+        if (!isVideo) {
+            const img = typeof Image === 'function' ? new Image() : document.createElement('img');
+            img.crossOrigin = 'anonymous';
+            img.onload = () => done({ element: img, kind: 'image', missing: false });
+            img.onerror = () => done({ element: null, kind: 'image', missing: true });
+            img.src = url;
+            return;
+        }
+
+        const video = document.createElement('video');
+        if (!video || typeof video.addEventListener !== 'function') {
+            done({ element: null, kind: 'video', missing: true });
+            return;
+        }
+        video.muted = true;
+        video.playsInline = true;
+        video.crossOrigin = 'anonymous';
+        video.preload = 'auto';
+        const trySeekAndFinish = () => {
+            const target = Math.max(0.05, Math.min(timeSec, (Number.isFinite(video.duration) && video.duration > 0.2) ? video.duration - 0.05 : timeSec));
+            if (Math.abs((video.currentTime || 0) - target) > 0.08 && Number.isFinite(video.duration) && video.duration > 0.1) {
+                const onSeeked = () => {
+                    video.removeEventListener('seeked', onSeeked);
+                    done({ element: video, kind: 'video', missing: false });
+                };
+                video.addEventListener('seeked', onSeeked, { once: true });
+                try { video.currentTime = target; } catch (_) { done({ element: video, kind: 'video', missing: false }); }
+            } else {
+                done({ element: video, kind: 'video', missing: false });
+            }
+        };
+        video.addEventListener('loadeddata', trySeekAndFinish, { once: true });
+        video.addEventListener('error', () => done({ element: null, kind: 'video', missing: true }), { once: true });
+        video.src = url;
+    });
+}
+
+function _drawCoverMediaToCanvas(ctx, mediaEl, targetW, targetH, bgScalePct = 100, bgXPct = 0, bgYPct = 0) {
+    const sw = mediaEl?.videoWidth || mediaEl?.naturalWidth || mediaEl?.width || 0;
+    const sh = mediaEl?.videoHeight || mediaEl?.naturalHeight || mediaEl?.height || 0;
+    if (!sw || !sh) return false;
+    const baseScale = Math.max(targetW / sw, targetH / sh);
+    const mult = Math.max(0.1, (Number(bgScalePct) || 100) / 100);
+    const dw = sw * baseScale * mult;
+    const dh = sh * baseScale * mult;
+    const dx = (targetW - dw) / 2 + (Number(bgXPct) || 0) / 100 * targetW;
+    const dy = (targetH - dh) / 2 + (Number(bgYPct) || 0) / 100 * targetH;
+    ctx.drawImage(mediaEl, dx, dy, dw, dh);
+    return true;
+}
+
+function _renderProjectTaskFrameToCanvas(canvas, task, projectMeta = {}, timeSec = 1.0, mediaInfo = null, rendererRef = null) {
+    if (!canvas) return false;
+    const ctx = canvas.getContext?.('2d');
+    if (!ctx) return false;
+    const w = canvas.width || 1080;
+    const h = canvas.height || 1920;
+
+    ctx.clearRect(0, 0, w, h);
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.55, '#131b31');
+    grad.addColorStop(1, '#080c17');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    if (mediaInfo?.element) {
+        try {
+            _drawCoverMediaToCanvas(ctx, mediaInfo.element, w, h, task?.bgScale ?? 100, task?.bgX ?? 0, task?.bgY ?? 0);
+        } catch (_) {}
+    }
+
+    const baseStyle = {
+        ...(projectMeta?.style || {}),
+        ...(task?.style || {}),
+        ...(task?.subtitleStyle || {}),
+    };
+    const style = typeof getWritingVisualStyle === 'function' ? getWritingVisualStyle(baseStyle) : baseStyle;
+
+    const renderer = rendererRef || (typeof ReelsCanvasRenderer === 'function' ? new ReelsCanvasRenderer(canvas) : null);
+    if (renderer) {
+        try { renderer.renderAmbientLightingBase?.(style, w, h); } catch (_) {}
+    }
+
+    const rawOverlays = Array.isArray(task?.overlays) ? task.overlays : [];
+    const activeOverlays = rawOverlays
+        .filter(o => o && !o.disabled)
+        .slice()
+        .sort((a, b) => (Number(a.z_index) || 0) - (Number(b.z_index) || 0));
+
+    const drawOverlayPass = (passMode) => {
+        if (typeof ReelsOverlay === 'undefined' || typeof ReelsOverlay.drawOverlay !== 'function') return;
+        for (const ov of activeOverlays) {
+            const isIntroUnderSub = Boolean((ov.is_intro_countdown || ov.type === 'intro_countdown') && ov.intro_delay_body === false);
+            const isMiddle = Boolean(ov._insertClip || ov.type === 'decor' || isIntroUnderSub);
+            if (passMode === 'middle' && !isMiddle) continue;
+            if (passMode === 'overlay' && isMiddle) continue;
+            const ovCopy = {
+                ...ov,
+                _exporting: true,
+                _allOverlays: activeOverlays,
+                _previewPlaying: false,
+                ...(ov.type === 'scroll' || ov.type === 'intro_countdown' || ov.is_intro_countdown
+                    ? { _taskSegments: task?.segments || null }
+                    : {}),
+            };
+            try {
+                ReelsOverlay.drawOverlay(ctx, ovCopy, timeSec, w, h);
+            } catch (_) {}
+        }
+    };
+
+    drawOverlayPass('middle');
+    const overlayAbove = Boolean(projectMeta?.exportOpts?.overlayAboveSubtitle ?? projectMeta?.exportOpts?.overlay_above_subtitle);
+    if (!overlayAbove) drawOverlayPass('overlay');
+
+    const segs = Array.isArray(task?.segments) ? task.segments : [];
+    let activeSeg = segs.find(s => s && timeSec >= (Number(s.start) || 0) && timeSec <= (Number(s.end) || 0));
+    if (!activeSeg && segs.length > 0) {
+        activeSeg = segs.find(s => String(s?.edited_text || s?.text || '').trim()) || segs[0];
+    }
+    if (!activeSeg && task) {
+        const fallbackTxt = String(task.ttsText || task.txtContent || task.aiScript || '').split(/\r?\n/).find(l => l.trim()) || '';
+        if (fallbackTxt.trim()) activeSeg = { start: 0, end: 4, text: fallbackTxt.trim() };
+    }
+
+    if (renderer && activeSeg) {
+        try {
+            renderer.setContextSegments?.(segs.length ? segs : [activeSeg], task?.ttsText || task?.aiScript || '');
+            const hasKinetic = style.anim_in_type === 'kinetic_glow_stack' && typeof renderer.renderKineticGlowBackdrop === 'function';
+            if (hasKinetic) renderer.renderKineticGlowBackdrop(style, w, h);
+            const segStart = Number(activeSeg.start) || 0;
+            const segEnd = Math.max(segStart + 0.1, Number(activeSeg.end) || (segStart + 2.5));
+            const subTime = Math.max(segStart, Math.min(segEnd - 0.02, timeSec || (segStart + (segEnd - segStart) * 0.45)));
+            renderer.renderSubtitle(style, activeSeg, subTime, w, h, false, hasKinetic);
+        } catch (_) {}
+    }
+
+    if (overlayAbove) drawOverlayPass('overlay');
+    return true;
+}
+
+async function _captureProjectThumbnailOffscreen(projectData, fallbackThumbnail = '') {
+    if (typeof document === 'undefined' || typeof document.createElement !== 'function') return fallbackThumbnail;
+    const tasks = Array.isArray(projectData?.tasks) ? projectData.tasks : [];
+    if (!tasks.length) return fallbackThumbnail;
+    if (typeof ReelsCanvasRenderer !== 'function' && typeof ReelsOverlay === 'undefined') return fallbackThumbnail;
+
+    try {
+        const task0 = tasks[0];
+        const dur = _computeTaskPreviewDuration(task0);
+        const repTime = _pickRepresentativeTaskTime(task0, dur);
+        const bgPath = _pickTaskBackgroundPath(task0);
+        const mediaInfo = await _loadPreviewMediaElement(bgPath, repTime, 1200);
+
+        const stageCanvas = document.createElement('canvas');
+        stageCanvas.width = 1080;
+        stageCanvas.height = 1920;
+        const ok = _renderProjectTaskFrameToCanvas(stageCanvas, task0, {
+            style: projectData?.style || {},
+            exportOpts: projectData?.exportOpts || {},
+            watermarks: projectData?.watermarks || [],
+        }, repTime, mediaInfo);
+
+        if (mediaInfo?.kind === 'video' && mediaInfo.element) {
+            try { mediaInfo.element.pause?.(); mediaInfo.element.removeAttribute?.('src'); mediaInfo.element.load?.(); } catch (_) {}
+        }
+        if (!ok || !stageCanvas.getContext) return fallbackThumbnail;
+
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = 270;
+        thumbCanvas.height = 480;
+        const tCtx = thumbCanvas.getContext('2d');
+        tCtx?.drawImage?.(stageCanvas, 0, 0, 270, 480);
+        if (_isCanvasBlankSampled(thumbCanvas)) return fallbackThumbnail;
+        const url = thumbCanvas.toDataURL('image/jpeg', 0.72);
+        return url && url.length > 100 ? url : fallbackThumbnail;
+    } catch (err) {
+        console.warn('[Template] 离屏封面渲染失败:', err);
+        return fallbackThumbnail;
+    }
+}
+
 function _captureVisibleTemplateThumbnail() {
     let thumbnail = '';
     try {
@@ -1599,7 +1897,9 @@ function _captureVisibleTemplateThumbnail() {
             thumbCanvas.height = 480;
             const ctx = thumbCanvas.getContext('2d');
             ctx.drawImage(canvas, 0, 0, 270, 480);
-            thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.65);
+            if (!_isCanvasBlankSampled(thumbCanvas)) {
+                thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.65);
+            }
         }
     } catch (e) {
         console.warn('[Template] 截图失败:', e);
@@ -1608,9 +1908,18 @@ function _captureVisibleTemplateThumbnail() {
 }
 window._captureVisibleTemplateThumbnail = _captureVisibleTemplateThumbnail;
 
-async function _captureTemplateThumbnailForTasks(tasks, fallbackThumbnail = '') {
+async function _captureTemplateThumbnailForTasks(tasks, fallbackThumbnail = '', projectMeta = null) {
+    if (!Array.isArray(tasks) || tasks.length === 0) return fallbackThumbnail;
+    const offscreenThumb = await _captureProjectThumbnailOffscreen({
+        tasks,
+        style: projectMeta?.style || window._reelsState?.globalSubtitleStyle || {},
+        exportOpts: projectMeta?.exportOpts || window._reelsState?.exportOpts || {},
+        watermarks: projectMeta?.watermarks || window._reelsState?.watermarks || [],
+    }, '');
+    if (offscreenThumb) return offscreenThumb;
+
     const state = window._reelsState;
-    if (!state || !Array.isArray(tasks) || tasks.length === 0) return fallbackThumbnail;
+    if (!state) return fallbackThumbnail;
     const originalTasks = state.tasks;
     const originalSelectedIdx = state.selectedIdx;
     tasks = JSON.parse(JSON.stringify(tasks));
@@ -1641,12 +1950,43 @@ async function _captureTemplateThumbnailForTasks(tasks, fallbackThumbnail = '') 
     }
 }
 window.captureTemplateThumbnailForTasks = _captureTemplateThumbnailForTasks;
+window.reelsCaptureProjectThumbnailFromData = _captureProjectThumbnailOffscreen;
 
-async function _repairTemplateThumbnailsByIds(templateIds, options = {}) {
-    const st = _getLibState('template');
-    const ids = [...new Set((templateIds || []).filter(Boolean))];
+function _updateCardThumbnailInDom(st, id, thumbnail) {
+    if (!id || !thumbnail) return;
+    if (typeof window !== 'undefined') {
+        window._reelsLibraryThumbCache = window._reelsLibraryThumbCache || {};
+        window._reelsLibraryThumbCache[id] = thumbnail;
+    }
+    const modal = document.getElementById(st.cfg.modalId);
+    if (!modal) return;
+    for (const list of [modal._allSummaries, modal._visibleSummaries]) {
+        const hit = list?.find?.(t => String(t?.id) === String(id));
+        if (hit) hit.thumbnail = thumbnail;
+    }
+    const cards = Array.from(modal.querySelectorAll('.tpl-card') || []);
+    const card = cards.find(c => String(c.dataset?.id) === String(id));
+    const cover = card?.querySelector?.('.tpl-template-cover');
+    if (cover) {
+        let img = cover.querySelector('img');
+        if (!img) {
+            const previewBtn = cover.querySelector('.tpl-card-preview-btn');
+            cover.innerHTML = `<img draggable="false" src="${_tplEscapeHtml(thumbnail)}" style="width:100%;height:100%;object-fit:cover;" />`;
+            if (previewBtn) cover.appendChild(previewBtn);
+        } else {
+            img.src = thumbnail;
+        }
+    }
+}
+
+async function _repairTemplateThumbnailsByIds(itemIds, options = {}) {
+    const mode = options.mode === 'liveProject' ? 'liveProject' : 'template';
+    const st = _getLibState(mode);
+    const ids = [...new Set((itemIds || []).filter(Boolean))];
     if (!ids.length) return { repaired: 0, failed: 0 };
-    const button = document.getElementById('tpl-repair-thumbnails-btn');
+    const btnId = mode === 'liveProject' ? 'lpl-repair-thumbnails-btn' : 'tpl-repair-thumbnails-btn';
+    const defaultBtnText = mode === 'liveProject' ? '📸 生成/修复封面' : '📸 修复重复封面';
+    const button = document.getElementById(btnId);
     const originalText = button?.textContent || '';
     if (button) button.disabled = true;
     let repaired = 0, failed = 0;
@@ -1656,8 +1996,8 @@ async function _repairTemplateThumbnailsByIds(templateIds, options = {}) {
             try {
                 const tpl = await _libApiRequest(st, 'get', { id: ids[i] });
                 const tasks = JSON.parse(JSON.stringify(tpl?.projectData?.tasks || []));
-                if (!tasks.length) throw new Error('模板没有任务');
-                const thumbnail = await _captureTemplateThumbnailForTasks(tasks, tpl.thumbnail || '');
+                if (!tasks.length) throw new Error(`${st.cfg.itemNoun}没有任务`);
+                const thumbnail = await _captureTemplateThumbnailForTasks(tasks, '', tpl?.projectData || null);
                 if (!thumbnail) throw new Error('未能生成截图');
                 await _libApiRequest(st, 'thumbnail', {
                     id: tpl.id,
@@ -1666,49 +2006,314 @@ async function _repairTemplateThumbnailsByIds(templateIds, options = {}) {
                     tags: tpl.tags || [],
                     thumbnail,
                 });
+                _updateCardThumbnailInDom(st, tpl.id, thumbnail);
                 repaired++;
             } catch (error) {
                 failed++;
-                console.warn(`[Template] 修复模板封面失败 ${ids[i]}:`, error);
+                console.warn(`[${st.cfg.itemNoun}] 修复封面失败 ${ids[i]}:`, error);
             }
         }
     } finally {
         if (button) {
             button.disabled = false;
-            button.textContent = originalText || '📸 修复重复封面';
+            button.textContent = originalText || defaultBtnText;
         }
         if (document.getElementById(st.cfg.modalId)) _refreshLibraryView(st);
     }
     if (!options.silent) {
-        showToast?.(`已重新生成 ${repaired} 张模板封面${failed ? `，${failed} 张失败` : ''}`, failed ? 'warning' : 'success', 6000);
+        showToast?.(`已生成/更新 ${repaired} 张${st.cfg.itemNoun}封面${failed ? `，${failed} 张失败` : ''}`, failed ? 'warning' : 'success', 6000);
     }
     return { repaired, failed };
 }
 
-async function repairDuplicateTemplateThumbnails() {
-    const st = _getLibState('template');
+async function repairDuplicateTemplateThumbnails(stOrMode = 'template') {
+    const mode = typeof stOrMode === 'string' ? stOrMode : (stOrMode?.mode || 'template');
+    const st = _getLibState(mode);
     try {
-        const templates = await _libApiRequest(st, 'list') || [];
+        const items = await _libApiRequest(st, 'list') || [];
         const byThumbnail = new Map();
-        templates.forEach(tpl => {
-            const key = String(tpl.thumbnail || '');
-            if (!key) return;
+        const missingIds = [];
+        items.forEach(item => {
+            const key = String(item.thumbnail || '');
+            if (!key) {
+                if ((Number(item.taskCount) || 0) > 0) missingIds.push(item.id);
+                return;
+            }
             if (!byThumbnail.has(key)) byThumbnail.set(key, []);
-            byThumbnail.get(key).push(tpl.id);
+            byThumbnail.get(key).push(item.id);
         });
         const duplicateIds = [...byThumbnail.values()].filter(group => group.length > 1).flat();
-        if (!duplicateIds.length) {
-            showToast?.('没有检测到重复模板封面', 'info');
+        const targetIds = [...new Set([...missingIds, ...duplicateIds])];
+        if (!targetIds.length) {
+            showToast?.(`所有${st.cfg.itemNoun}封面均已完整且无重复`, 'info');
             return;
         }
-        if (!confirm(`检测到 ${duplicateIds.length} 个模板共用了重复封面。\n\n是否逐模板重新生成独立截图？`)) return;
-        await _repairTemplateThumbnailsByIds(duplicateIds);
+        const desc = [
+            missingIds.length ? `${missingIds.length} 个缺少封面` : '',
+            duplicateIds.length ? `${duplicateIds.length} 个共用重复封面` : '',
+        ].filter(Boolean).join('、');
+        if (!confirm(`检测到 ${desc}。\n\n是否逐${st.cfg.itemNoun}自动渲染生成效果封面？`)) return;
+        await _repairTemplateThumbnailsByIds(targetIds, { mode });
     } catch (error) {
-        showToast?.(`修复模板封面失败：${error.message}`, 'error');
+        showToast?.(`修复${st.cfg.itemNoun}封面失败：${error.message}`, 'error');
     }
 }
 window.repairDuplicateTemplateThumbnails = repairDuplicateTemplateThumbnails;
 window._repairTemplateThumbnailsByIds = _repairTemplateThumbnailsByIds;
+
+async function _openLibraryItemPreviewModal(st, itemId) {
+    if (!itemId) return;
+    document.getElementById('vk-lib-item-preview-modal')?.remove();
+
+    let tplData = null;
+    try {
+        tplData = await _libApiRequest(st, 'get', { id: itemId });
+    } catch (err) {
+        showToast?.(`读取${st.cfg.itemNoun}详情失败: ${err.message}`, 'error');
+        return;
+    }
+    const pData = tplData?.projectData || {};
+    const restored = (typeof ReelsProject !== 'undefined' && ReelsProject.applyProjectData)
+        ? ReelsProject.applyProjectData(pData)
+        : { tasks: pData.tasks || [], style: pData.style || {}, exportOpts: pData.exportOpts || {}, watermarks: pData.watermarks || [] };
+    const tasks = Array.isArray(restored.tasks) ? restored.tasks : [];
+
+    const ov = document.createElement('div');
+    ov.id = 'vk-lib-item-preview-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:400500;background:rgba(4,7,18,0.86);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    let taskIdx = 0;
+    let curTime = 0.8;
+    let duration = 6;
+    let isPlaying = false;
+    let speed = 1;
+    let rafId = 0;
+    let lastTs = 0;
+    let activeMedia = { element: null, kind: 'none', missing: false, path: '' };
+    let renderer = null;
+    let disposed = false;
+
+    const cleanupMedia = () => {
+        if (activeMedia?.kind === 'video' && activeMedia.element) {
+            try { activeMedia.element.pause?.(); activeMedia.element.removeAttribute?.('src'); activeMedia.element.load?.(); } catch (_) {}
+        }
+        activeMedia = { element: null, kind: 'none', missing: false, path: '' };
+    };
+    const closePreview = () => {
+        disposed = true;
+        cancelAnimationFrame(rafId);
+        cleanupMedia();
+        document.removeEventListener('keydown', onKeyDown, true);
+        ov.remove();
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePreview(); } };
+    document.addEventListener('keydown', onKeyDown, true);
+
+    ov.innerHTML = `
+        <div style="background:#0f172a;border:1px solid rgba(56,189,248,0.42);border-radius:16px;padding:16px 20px;width:min(640px,96vw);max-height:94vh;display:flex;flex-direction:column;gap:12px;color:#e2e8f0;box-shadow:0 28px 72px rgba(0,0,0,0.88);">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                <div style="min-width:0;">
+                    <div style="font-size:15px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 ${_tplEscapeHtml(st.cfg.itemNoun)}效果预览 — ${_tplEscapeHtml(tplData?.name || '未命名')}</div>
+                    <div id="vklp-subinfo" style="font-size:11px;color:#94a3b8;margin-top:2px;"></div>
+                </div>
+                <button type="button" id="vklp-close" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>
+            </div>
+
+            <div style="display:flex;justify-content:center;align-items:center;gap:12px;background:#070b14;border:1px solid rgba(148,163,184,0.16);border-radius:12px;padding:12px;position:relative;">
+                ${tasks.length > 0 ? `<canvas id="vklp-canvas" width="1080" height="1920" style="height:min(54vh,480px);width:auto;aspect-ratio:9/16;border-radius:10px;background:#0a0f1d;box-shadow:0 12px 32px rgba(0,0,0,0.7);"></canvas>` : `<div style="padding:70px 20px;color:#94a3b8;font-size:13px;">📄 该空白${st.cfg.itemNoun}当前暂无任务（打开后可立即添加素材并编辑）</div>`}
+                <div id="vklp-media-warn" style="display:none;position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.88);border:1px solid rgba(251,191,36,0.45);color:#fde68a;font-size:11px;padding:4px 10px;border-radius:999px;white-space:nowrap;"></div>
+            </div>
+
+            ${tasks.length > 0 ? `
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(15,23,42,0.8);border:1px solid rgba(148,163,184,0.18);border-radius:8px;padding:8px 10px;">
+                    <button type="button" id="vklp-play" style="padding:5px 12px;font-size:11.5px;font-weight:700;border-radius:6px;border:1px solid #38bdf8;background:rgba(14,165,233,0.22);color:#bae6fd;cursor:pointer;">▶ 播放</button>
+                    <input type="range" id="vklp-scrub" min="0" max="6" step="0.05" value="0.8" style="flex:1;min-width:120px;">
+                    <span id="vklp-time" style="font-size:11px;color:#cbd5e1;font-family:monospace;min-width:86px;text-align:right;">0.8s / 6.0s</span>
+                    <select id="vklp-speed" style="padding:3px 6px;background:#090d16;border:1px solid #334155;border-radius:6px;color:#f8fafc;font-size:11px;">
+                        <option value="0.5">0.5x</option>
+                        <option value="1" selected>1.0x</option>
+                        <option value="1.5">1.5x</option>
+                    </select>
+                </div>
+                ${tasks.length > 1 ? `
+                    <div style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:12px;">
+                        <button type="button" id="vklp-prev-task" style="padding:4px 10px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;">◀ 上一条</button>
+                        <span id="vklp-task-label" style="color:#a5b4fc;font-weight:600;"></span>
+                        <button type="button" id="vklp-next-task" style="padding:4px 10px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;">下一条 ▶</button>
+                    </div>
+                ` : ''}
+            ` : ''}
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:4px;border-top:1px solid rgba(148,163,184,0.16);">
+                <div style="display:flex;gap:8px;">
+                    ${tasks.length > 0 ? `<button type="button" id="vklp-set-thumb" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(14,165,233,0.45);background:rgba(14,165,233,0.16);color:#7dd3fc;cursor:pointer;">📸 将当前帧设为封面</button>` : ''}
+                    ${st.mode === 'template' ? `<button type="button" id="vklp-new-win" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(167,139,250,0.45);background:rgba(139,92,246,0.16);color:#ddd6fe;cursor:pointer;">🪟 在新窗口打开</button>` : ''}
+                </div>
+                <div style="display:flex;gap:8px;margin-left:auto;">
+                    <button type="button" id="vklp-close-btn" style="padding:6px 14px;font-size:12px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;">关闭</button>
+                    <button type="button" id="vklp-open-edit" style="padding:6px 16px;font-size:12px;font-weight:700;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;">${st.mode === 'liveProject' ? '⚡ 打开并编辑此工程' : '📂 载入模板副本'}</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(ov);
+    ov.querySelector('#vklp-close')?.addEventListener('click', closePreview);
+    ov.querySelector('#vklp-close-btn')?.addEventListener('click', closePreview);
+    ov.addEventListener('click', (e) => { if (e.target === ov) closePreview(); });
+
+    const canvas = ov.querySelector('#vklp-canvas');
+    if (canvas && typeof ReelsCanvasRenderer === 'function') renderer = new ReelsCanvasRenderer(canvas);
+
+    const drawFrameNow = () => {
+        if (disposed || !canvas || !tasks.length) return;
+        const task = tasks[taskIdx];
+        if (!task) return;
+        if (activeMedia?.kind === 'video' && activeMedia.element && Number.isFinite(activeMedia.element.duration) && activeMedia.element.duration > 0.1) {
+            const targetT = curTime % activeMedia.element.duration;
+            if (!isPlaying && Math.abs((activeMedia.element.currentTime || 0) - targetT) > 0.08) {
+                try { activeMedia.element.currentTime = targetT; } catch (_) {}
+            }
+        }
+        _renderProjectTaskFrameToCanvas(canvas, task, restored, curTime, activeMedia, renderer);
+        const scrub = ov.querySelector('#vklp-scrub');
+        const tLabel = ov.querySelector('#vklp-time');
+        if (scrub) scrub.value = String(Math.min(duration, curTime));
+        if (tLabel) tLabel.textContent = `${curTime.toFixed(1)}s / ${duration.toFixed(1)}s`;
+    };
+
+    const loadTaskIntoStage = async (newIdx) => {
+        if (!tasks.length) return;
+        taskIdx = ((newIdx % tasks.length) + tasks.length) % tasks.length;
+        const task = tasks[taskIdx];
+        duration = _computeTaskPreviewDuration(task);
+        curTime = _pickRepresentativeTaskTime(task, duration);
+
+        const scrub = ov.querySelector('#vklp-scrub');
+        if (scrub) { scrub.max = String(duration); scrub.value = String(curTime); }
+        const subInfo = ov.querySelector('#vklp-subinfo');
+        if (subInfo) {
+            const ovCount = Array.isArray(task.overlays) ? task.overlays.filter(o => o && !o.disabled).length : 0;
+            const segCount = Array.isArray(task.segments) ? task.segments.length : 0;
+            subInfo.textContent = `共 ${tasks.length} 条任务 · 字幕 ${segCount} 段 · 覆层/特效 ${ovCount} 层 · 时长 ${duration.toFixed(1)}s`;
+        }
+        const taskLabel = ov.querySelector('#vklp-task-label');
+        if (taskLabel) {
+            const tTitle = task.exportName || task.baseName || task.name || `任务 ${taskIdx + 1}`;
+            taskLabel.textContent = `第 ${taskIdx + 1} / ${tasks.length} 条：${tTitle}`;
+        }
+
+        const bgPath = _pickTaskBackgroundPath(task);
+        cleanupMedia();
+        activeMedia = await _loadPreviewMediaElement(bgPath, curTime, 1600);
+        activeMedia.path = bgPath;
+        const warnEl = ov.querySelector('#vklp-media-warn');
+        if (warnEl) {
+            if (bgPath && activeMedia.missing) {
+                warnEl.style.display = 'block';
+                warnEl.textContent = '⚠️ 本地背景素材暂未找到（已按原样渲染全部字幕、覆层与特效）';
+            } else {
+                warnEl.style.display = 'none';
+            }
+        }
+        drawFrameNow();
+    };
+
+    const tick = (ts) => {
+        if (disposed || !isPlaying) return;
+        if (!lastTs) lastTs = ts;
+        const dt = Math.min(0.1, (ts - lastTs) / 1000) * speed;
+        lastTs = ts;
+        curTime += dt;
+        if (curTime > duration) {
+            curTime = 0;
+            if (activeMedia?.kind === 'video' && activeMedia.element) {
+                try { activeMedia.element.currentTime = 0; } catch (_) {}
+            }
+        }
+        drawFrameNow();
+        rafId = requestAnimationFrame(tick);
+    };
+
+    ov.querySelector('#vklp-play')?.addEventListener('click', () => {
+        const playBtn = ov.querySelector('#vklp-play');
+        isPlaying = !isPlaying;
+        if (playBtn) playBtn.textContent = isPlaying ? '⏸ 暂停' : '▶ 播放';
+        if (isPlaying) {
+            if (activeMedia?.kind === 'video' && activeMedia.element) {
+                try { activeMedia.element.playbackRate = speed; activeMedia.element.play?.().catch?.(() => {}); } catch (_) {}
+            }
+            lastTs = 0;
+            rafId = requestAnimationFrame(tick);
+        } else {
+            cancelAnimationFrame(rafId);
+            if (activeMedia?.kind === 'video' && activeMedia.element) {
+                try { activeMedia.element.pause?.(); } catch (_) {}
+            }
+        }
+    });
+    ov.querySelector('#vklp-scrub')?.addEventListener('input', (e) => {
+        curTime = parseFloat(e.target.value) || 0;
+        drawFrameNow();
+    });
+    ov.querySelector('#vklp-speed')?.addEventListener('change', (e) => {
+        speed = parseFloat(e.target.value) || 1;
+        if (activeMedia?.kind === 'video' && activeMedia.element) {
+            try { activeMedia.element.playbackRate = speed; } catch (_) {}
+        }
+    });
+    ov.querySelector('#vklp-prev-task')?.addEventListener('click', () => loadTaskIntoStage(taskIdx - 1));
+    ov.querySelector('#vklp-next-task')?.addEventListener('click', () => loadTaskIntoStage(taskIdx + 1));
+
+    ov.querySelector('#vklp-set-thumb')?.addEventListener('click', async () => {
+        if (!canvas) return;
+        try {
+            const thumbCanvas = document.createElement('canvas');
+            thumbCanvas.width = 270;
+            thumbCanvas.height = 480;
+            thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, 270, 480);
+            const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.72);
+            await _libApiRequest(st, 'thumbnail', {
+                id: tplData.id, name: tplData.name, description: tplData.description || '', tags: tplData.tags || [], thumbnail,
+            });
+            _updateCardThumbnailInDom(st, tplData.id, thumbnail);
+            showToast?.(`📸 已将当前预览画面设为「${tplData.name}」封面`, 'success');
+        } catch (err) {
+            showToast?.(`设置封面失败: ${err.message}`, 'error');
+        }
+    });
+    ov.querySelector('#vklp-new-win')?.addEventListener('click', () => {
+        closePreview();
+        _openTemplateInWindow(tplData.id, tplData.name || '');
+    });
+    ov.querySelector('#vklp-open-edit')?.addEventListener('click', async () => {
+        closePreview();
+        if (st.mode === 'liveProject') {
+            await _applyLiveProjectIdsToWorkspace(st, [itemId], { folderId: st.folderId });
+        } else {
+            await _loadTemplateInCurrentWindow(itemId);
+        }
+    });
+
+    if (tasks.length > 0) await loadTaskIntoStage(0);
+}
+window.openLibraryItemPreview = (mode, itemId) => _openLibraryItemPreviewModal(_getLibState(mode), itemId);
+
+async function _syncCloudHubIntoProjectLibrary(st) {
+    if (typeof window.reelsBatchSyncCloudProjectsToLibrary === 'function') {
+        const res = await window.reelsBatchSyncCloudProjectsToLibrary({ openFolderInLibrary: true });
+        if (res?.targetFolderId && st.mode === 'liveProject') {
+            st.folderId = res.targetFolderId;
+        }
+        await _refreshLibraryView(st);
+        return res;
+    }
+    if (typeof window.openCloudHubDialog === 'function') {
+        window.openCloudHubDialog();
+    } else {
+        showToast?.('云端同步模块尚未就绪', 'warning');
+    }
+    return null;
+}
 
 function _captureCurrentTemplatePayload(name) {
     const thumbnail = _captureVisibleTemplateThumbnail();
@@ -2488,22 +3093,24 @@ async function _importLibraryFiles(st) {
                 if (st.mode === 'liveProject' && extracted.mode === 'multi-tab' && extracted.items.length > 1) {
                     const res = await _archiveGroupsToLibrary(extracted.items, {
                         folderMode: 'new-folder', folderName: fileBaseName, parentFolderId: st.folderId || '',
-                        splitByGroup: true, bindWorkspace: false, captureThumbnails: false, syncPresetAssets: false,
+                        splitByGroup: true, bindWorkspace: false, captureThumbnails: true, syncPresetAssets: false,
                         style: extracted.style, exportOpts: extracted.exportOpts, watermarks: extracted.watermarks, backgroundLibrary: extracted.backgroundLibrary,
                     });
                     imported += res.savedResults.length;
                     st.folderId = res.rootFolderId;
                 } else {
                     for (const tpl of extracted.items) {
+                        const pData = tpl.projectData || ReelsProject.collectProjectData({
+                            tasks: tpl.tasks || [], backgroundLibrary: extracted.backgroundLibrary || [], style: extracted.style || {}, exportOpts: extracted.exportOpts || {}, watermarks: extracted.watermarks || [], selectedIdx: 0,
+                        });
+                        const autoThumb = tpl.thumbnail || (pData?.tasks?.length ? await _captureProjectThumbnailOffscreen(pData, '') : '');
                         const res = await _libApiRequest(st, 'save', {
                             name: tpl.name || fileBaseName,
                             description: tpl.description || '',
-                            thumbnail: tpl.thumbnail || '',
+                            thumbnail: autoThumb || '',
                             tags: tpl.tags || [],
                             folderId: st.folderId || '',
-                            projectData: tpl.projectData || ReelsProject.collectProjectData({
-                                tasks: tpl.tasks || [], backgroundLibrary: extracted.backgroundLibrary || [], style: extracted.style || {}, exportOpts: extracted.exportOpts || {}, watermarks: extracted.watermarks || [], selectedIdx: 0,
-                            }),
+                            projectData: pData,
                         });
                         if (res?.success || res?.id) imported++;
                     }
@@ -3154,9 +3761,11 @@ function _showItemContextMenu(st, event, card) {
     const activeIds = selectedIds.length ? selectedIds : [id];
 
     const items = st.mode === 'template' ? [
+        ['🎬 预览效果', () => _openLibraryItemPreviewModal(st, id)],
         ['📂 载入副本到工作区（不修改原模板）', () => _loadTemplateInCurrentWindow(id)],
         ['📥 追加副本到当前工作区', () => _loadTemplateInCurrentWindow(id, { append: true })],
         ['🪟 在新窗口打开', () => _openTemplateInWindow(id, name)],
+        ['📸 刷新此模板封面', () => _repairTemplateThumbnailsByIds(activeIds, { mode: 'template' })],
         ['📤 另存一份到「🗂️ 工程项目」', async () => {
             const res = await _libApiRequest(_getLibState('liveProject'), 'import-from-templates', { templateIds: activeIds, copyAllFolders: false });
             showToast?.(`✅ 已复制 ${res.importedCount || 1} 份到实时工程项目`, 'success');
@@ -3175,9 +3784,11 @@ function _showItemContextMenu(st, event, card) {
             ? [`🗑️ 批量删除所选 ${activeIds.length} 个模板`, () => _batchDeleteLibrarySelection(st)]
             : ['🗑️ 删除模板', () => _deleteLibraryItem(st, id, name)],
     ] : [
+        ['🎬 预览效果', () => _openLibraryItemPreviewModal(st, id)],
         ['⚡ 打开并编辑此工程', () => _applyLiveProjectIdsToWorkspace(st, [id], { folderId: st.folderId })],
         ['📥 追加打开到当前工作区', () => _applyLiveProjectIdsToWorkspace(st, [id], { folderId: st.folderId, loadMode: 'append' })],
         ...(activeIds.length > 1 ? [[`✅ 打开所选 ${activeIds.length} 个工程`, () => _applySelectedLiveProjects(st)]] : []),
+        ['📸 刷新此工程封面', () => _repairTemplateThumbnailsByIds(activeIds, { mode: 'liveProject' })],
         ['📄 同级新建空白标签', () => _createBlankLiveProjectDialog(st, st.folderId)],
         ['📑 复制一份新工程', async () => {
             const src = await _libApiRequest(st, 'get', { id });
@@ -3337,6 +3948,9 @@ function _initLibraryWindowSizing(st, modal) {
         .vk-multi-select-on .tpl-card-check{border-color:rgba(110,231,183,0.9);box-shadow:0 0 0 2px rgba(16,185,129,0.28);}
         .tpl-card.tpl-selected .tpl-card-check,.tpl-folder-card.tpl-selected .tpl-card-check{background:#6366f1;border-color:#c7d2fe;}
         .tpl-folder-card.tpl-selected{background:rgba(99,102,241,0.14)!important;}
+        .tpl-card-preview-btn{position:absolute;right:8px;bottom:8px;z-index:4;padding:4px 9px;border-radius:999px;border:1px solid rgba(56,189,248,0.65);background:rgba(15,23,42,0.86);color:#e0f2fe;font-size:11px;font-weight:700;cursor:pointer;opacity:0;transition:opacity .15s,transform .12s,background .15s;box-shadow:0 3px 10px rgba(0,0,0,0.5);backdrop-filter:blur(4px);}
+        .tpl-card:hover .tpl-card-preview-btn,.tpl-card:focus-within .tpl-card-preview-btn{opacity:1;}
+        .tpl-card-preview-btn:hover{transform:scale(1.06);background:rgba(2,132,199,0.92);color:#fff;}
         `;
         document.head.appendChild(style);
     }
