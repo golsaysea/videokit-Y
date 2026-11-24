@@ -7995,7 +7995,7 @@
       </section>
 
       <!-- ==================== 🧩 双层拼接独立工作台 ==================== -->
-      <section id="dual-composite-panel" class="panel" style="height: 100%; margin: 0; overflow: hidden;"></section>
+      <section id="dual-composite-panel" class="panel" style="margin: 0; overflow: hidden;"></section>
 
       <!-- ==================== 设置面板 ==================== -->
       <section id="settings-panel" class="panel">
@@ -9063,6 +9063,21 @@ THE HOLY	This is no coincidence...</div>
 
     #batch-reels-panel .reels-bottom-dock details {
       margin: 0;
+    }
+
+    /* 双层拼接独立页自适应剩余视口高度，避免底部播放栏被裁切 */
+    .content:has(> #dual-composite-panel.active) {
+      display: flex !important;
+      flex-direction: column !important;
+      overflow: hidden !important;
+    }
+
+    #dual-composite-panel.active {
+      display: flex !important;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+      width: 100%;
     }
   </style>
 

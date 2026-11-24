@@ -926,9 +926,9 @@
         ).join('');
 
         panel.innerHTML = `
-            <div style="display:flex;height:100%;width:100%;overflow:hidden;background:var(--bg-primary,#090d16);color:#e2e8f0;">
+            <div style="display:flex;flex:1 1 auto;min-height:0;height:100%;width:100%;overflow:hidden;background:var(--bg-primary,#090d16);color:#e2e8f0;">
                 <!-- 左栏：批量配对列表 -->
-                <aside style="width:310px;min-width:280px;display:flex;flex-direction:column;border-right:1px solid var(--border-color);background:var(--bg-secondary,#0f172a);">
+                <aside style="width:310px;min-width:280px;min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--border-color);background:var(--bg-secondary,#0f172a);">
                     <div style="padding:10px 12px;border-bottom:1px solid var(--border-color);display:flex;flex-direction:column;gap:8px;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
                             <span style="font-size:14px;font-weight:800;color:#f8fafc;">🧩 双层拼接队列</span>
@@ -983,7 +983,7 @@
                 </main>
 
                 <!-- 右栏：遮罩、羽化、混合模式与变换参数 -->
-                <aside style="width:360px;min-width:320px;overflow-y:auto;padding:12px 14px;border-left:1px solid var(--border-color);background:var(--bg-secondary,#0f172a);display:flex;flex-direction:column;gap:12px;">
+                <aside style="width:360px;min-width:320px;min-height:0;overflow-y:auto;padding:12px 14px;border-left:1px solid var(--border-color);background:var(--bg-secondary,#0f172a);display:flex;flex-direction:column;gap:12px;">
                     <div>
                         <div style="font-size:12.5px;font-weight:800;color:#fbbf24;margin-bottom:6px;">⚡ 一键溶图版式预设</div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">${presetsHtml}</div>
