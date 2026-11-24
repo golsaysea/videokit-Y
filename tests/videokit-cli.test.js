@@ -547,11 +547,11 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
         resolveBuiltinPreset,
     } = require('../src/reels-presets-init.js');
 
-    // 1. All 286 subtitle/scroll preset IDs + 35 overlay preset IDs + 428 scroll style IDs (sc-01..sc-214 & scroll-01..scroll-214) must resolve
+    // 1. All 287 subtitle/scroll preset IDs + 35 overlay preset IDs + 428 scroll style IDs (sc-01..sc-214 & scroll-01..scroll-214) must resolve
     const subIds = Object.keys(REELS_PRESET_ID_MAP);
     const ovIds = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
     const scIds = Object.keys(REELS_SCROLL_PRESET_ID_MAP);
-    assert.equal(subIds.length, 286, 'Expected 286 subtitle/scroll preset IDs (including sub-252, sub-253)');
+    assert.equal(subIds.length, 287, 'Expected 287 subtitle/scroll preset IDs (including sub-252, sub-253, sub-254)');
     assert.equal(ovIds.length, 35, 'Expected 35 overlay preset IDs');
     assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 214, 'Expected all 214 builtin scroll style presets');
     assert.equal(scIds.length, 428, 'Expected all 428 scroll style ID mappings (sc-01..sc-214 & scroll-01..scroll-214)');
@@ -828,10 +828,10 @@ test('A25: Canva bridge SSRF protection, preset catalog, async job queue, tokeni
     assert.ok(segs[0].end > 0 && segs[0].end <= segs[1].start + 0.001);
     assert.equal(segs[1].end, 8);
 
-    // 3. Preset catalog reflects restored 214 scroll styles + 253 subtitles + Cardinal feather cursor + sentence reveal
+    // 3. Preset catalog reflects restored 214 scroll styles + 254 subtitles + Cardinal feather cursor + sentence reveal
     const catalog = buildCanvaPresetCatalog();
     assert.equal(catalog.scrolls.length, 214, 'Canva catalog must expose all 214 restored sc-* presets');
-    assert.equal(catalog.subtitles.length, 253, 'Canva catalog must expose all 253 sub-* presets');
+    assert.equal(catalog.subtitles.length, 254, 'Canva catalog must expose all 254 sub-* presets');
     assert.equal(catalog.overlays.length, 35, 'Canva catalog must expose all 35 ov-* presets');
     assert.ok(catalog.cursorIcons.some(c => c.id === 'cardinal_feather'), 'Canva catalog must include cardinal_feather');
     assert.ok(catalog.revealTypes.some(r => r.id === 'sentence'), 'Canva catalog must include sentence reveal option');

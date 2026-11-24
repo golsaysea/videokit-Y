@@ -750,6 +750,15 @@ async function routeAPI(endpoint, data, progressSender = null, sender = null) {
         case 'settings/cloud-hub/download-project':
             return await cloudHubService.downloadCloudProject(data);
 
+        case 'settings/cloud-hub/local-list':
+            return cloudHubService.loadLocalCloudProjectsRegistry(data || {});
+
+        case 'settings/cloud-hub/local-get':
+            return cloudHubService.readLocalCloudProject(data || {});
+
+        case 'settings/cloud-hub/clear-local':
+            return cloudHubService.clearLocalCloudProjectCache(data || {});
+
         case 'settings/cloud-hub/worker-code':
             return {
                 code: cloudHubService.getWorkerTemplateCode(data.variant),

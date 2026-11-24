@@ -4898,6 +4898,9 @@
                 <button class="btn btn-secondary"
                   style="font-size:11px;padding:4px 8px;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;font-weight:600;border:none;"
                   onclick="typeof window.openCloudHubDialog === 'function' ? window.openCloudHubDialog() : alert('云端中控模块加载中...')" title="Cloudflare 远程 API Key 池同步 + Google Drive 每日工程(日期贴)一键下载加载">☁️ 云端中控 · 日期贴</button>
+                <button class="btn btn-secondary" id="reels-cloud-project-manager-btn"
+                  style="font-size:11px;padding:4px 8px;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;font-weight:600;border:none;"
+                  onclick="typeof window.openCloudProjectManager === 'function' ? window.openCloudProjectManager() : alert('云端工程管理模块加载中...')" title="按日期浏览云端工程、按需单独下载到本地文件夹并预览（未点击不占本地内存），支持重置恢复云端原版与清理缓存">☁️ 云端工程管理</button>
                 <button class="btn btn-secondary" id="reels-project-manager-btn"
                   style="font-size:11px;padding:4px 8px;background:rgba(139,92,246,0.22);color:#ddd6fe;font-weight:600;border:1px solid rgba(167,139,250,0.45);"
                   onclick="typeof window.openBatchProjectManager === 'function' ? window.openBatchProjectManager() : alert('工程管理模块加载中...')" title="当前标签显隐管理：勾选哪些已载入标签在前台打开，不用的留在后台保存">📑 当前标签</button>
@@ -5003,8 +5006,8 @@
 
                     <!-- 选项 -->
                     <div style="padding:4px 12px;font-size:10px;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">选项</div>
-                    <input type="file" id="reels-font-upload" class="hidden-file-input" accept=".ttf,.otf,.woff,.woff2">
-                    <div class="reels-dropdown-item" onclick="document.getElementById('reels-font-upload').click()">🔤 上传字体</div>
+                    <input type="file" id="reels-font-upload" class="hidden-file-input" accept=".ttf,.otf,.woff,.woff2,.ttc,.zip" multiple>
+                    <div class="reels-dropdown-item" onclick="document.getElementById('reels-font-upload').click()">🔤 导入自用字体/扩展包 (.ttf/.zip)</div>
                     <label class="reels-dropdown-item" style="display:flex;align-items:center;gap:6px;cursor:pointer;">
                       <input type="checkbox" id="reels-karaoke-hl" checked style="accent-color:var(--accent);"
                         onchange="var h=document.getElementById('reels-highlight-enabled'); if(h)h.checked=this.checked; reelsUpdatePreview()"> 🎤 卡拉OK高亮
@@ -5170,7 +5173,7 @@
                           <option value="Arial">Arial</option>
                         </select>
                         <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 10px; flex:0 0 auto;"
-                          onclick="reelsUploadFont()" title="上传自定义字体文件 (.ttf/.otf/.woff)">📁 上传</button>
+                          onclick="reelsUploadFont()" title="导入个人字体扩展包或单个字体 (.ttf/.otf/.woff/.woff2/.ttc/.zip，重装升级自动保留)">📁 扩展字体</button>
                       </div>
 
                       <label style="margin:0;">字号:</label>

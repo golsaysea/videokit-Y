@@ -2076,17 +2076,35 @@ async function repairDuplicateTemplateThumbnails(stOrMode = 'template') {
 window.repairDuplicateTemplateThumbnails = repairDuplicateTemplateThumbnails;
 window._repairTemplateThumbnailsByIds = _repairTemplateThumbnailsByIds;
 
-async function _openLibraryItemPreviewModal(st, itemId) {
-    if (!itemId) return;
+async function _openLibraryItemPreviewModal(st, itemIdOrOpts) {
+    if (!itemIdOrOpts) return;
+    const isDirect = typeof itemIdOrOpts === 'object' && itemIdOrOpts !== null && !Array.isArray(itemIdOrOpts);
+    const itemId = isDirect ? String(itemIdOrOpts.id || '') : String(itemIdOrOpts);
     document.getElementById('vk-lib-item-preview-modal')?.remove();
 
     let tplData = null;
-    try {
-        tplData = await _libApiRequest(st, 'get', { id: itemId });
-    } catch (err) {
-        showToast?.(`读取${st.cfg.itemNoun}详情失败: ${err.message}`, 'error');
-        return;
+    if (isDirect) {
+        tplData = {
+            id: itemId || `preview_${Date.now()}`,
+            name: itemIdOrOpts.name || '未命名工程',
+            description: itemIdOrOpts.description || '',
+            tags: Array.isArray(itemIdOrOpts.tags) ? itemIdOrOpts.tags : [],
+            projectData: itemIdOrOpts.projectData || {},
+            thumbnail: itemIdOrOpts.thumbnail || '',
+        };
+    } else {
+        try {
+            tplData = await _libApiRequest(st, 'get', { id: itemId });
+        } catch (err) {
+            showToast?.(`读取${st.cfg.itemNoun}详情失败: ${err.message}`, 'error');
+            return;
+        }
     }
+    const itemNoun = (isDirect && itemIdOrOpts.noun) ? itemIdOrOpts.noun : (st?.cfg?.itemNoun || '工程');
+    const canSetThumb = !isDirect || typeof itemIdOrOpts.onSetThumb === 'function';
+    const openLabel = (isDirect && itemIdOrOpts.openLabel)
+        ? itemIdOrOpts.openLabel
+        : (st?.mode === 'liveProject' ? '⚡ 打开并编辑此工程' : '📂 载入模板副本');
     const pData = tplData?.projectData || {};
     const restored = (typeof ReelsProject !== 'undefined' && ReelsProject.applyProjectData)
         ? ReelsProject.applyProjectData(pData)
@@ -2128,14 +2146,14 @@ async function _openLibraryItemPreviewModal(st, itemId) {
         <div style="background:#0f172a;border:1px solid rgba(56,189,248,0.42);border-radius:16px;padding:16px 20px;width:min(640px,96vw);max-height:94vh;display:flex;flex-direction:column;gap:12px;color:#e2e8f0;box-shadow:0 28px 72px rgba(0,0,0,0.88);">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
                 <div style="min-width:0;">
-                    <div style="font-size:15px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 ${_tplEscapeHtml(st.cfg.itemNoun)}效果预览 — ${_tplEscapeHtml(tplData?.name || '未命名')}</div>
+                    <div style="font-size:15px;font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">🎬 ${_tplEscapeHtml(itemNoun)}效果预览 — ${_tplEscapeHtml(tplData?.name || '未命名')}</div>
                     <div id="vklp-subinfo" style="font-size:11px;color:#94a3b8;margin-top:2px;"></div>
                 </div>
                 <button type="button" id="vklp-close" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>
             </div>
 
             <div style="display:flex;justify-content:center;align-items:center;gap:12px;background:#070b14;border:1px solid rgba(148,163,184,0.16);border-radius:12px;padding:12px;position:relative;">
-                ${tasks.length > 0 ? `<canvas id="vklp-canvas" width="1080" height="1920" style="height:min(54vh,480px);width:auto;aspect-ratio:9/16;border-radius:10px;background:#0a0f1d;box-shadow:0 12px 32px rgba(0,0,0,0.7);"></canvas>` : `<div style="padding:70px 20px;color:#94a3b8;font-size:13px;">📄 该空白${st.cfg.itemNoun}当前暂无任务（打开后可立即添加素材并编辑）</div>`}
+                ${tasks.length > 0 ? `<canvas id="vklp-canvas" width="1080" height="1920" style="height:min(54vh,480px);width:auto;aspect-ratio:9/16;border-radius:10px;background:#0a0f1d;box-shadow:0 12px 32px rgba(0,0,0,0.7);"></canvas>` : `<div style="padding:70px 20px;color:#94a3b8;font-size:13px;">📄 该空白${_tplEscapeHtml(itemNoun)}当前暂无任务（打开后可立即添加素材并编辑）</div>`}
                 <div id="vklp-media-warn" style="display:none;position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(15,23,42,0.88);border:1px solid rgba(251,191,36,0.45);color:#fde68a;font-size:11px;padding:4px 10px;border-radius:999px;white-space:nowrap;"></div>
             </div>
 
@@ -2161,12 +2179,12 @@ async function _openLibraryItemPreviewModal(st, itemId) {
 
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-top:4px;border-top:1px solid rgba(148,163,184,0.16);">
                 <div style="display:flex;gap:8px;">
-                    ${tasks.length > 0 ? `<button type="button" id="vklp-set-thumb" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(14,165,233,0.45);background:rgba(14,165,233,0.16);color:#7dd3fc;cursor:pointer;">📸 将当前帧设为封面</button>` : ''}
-                    ${st.mode === 'template' ? `<button type="button" id="vklp-new-win" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(167,139,250,0.45);background:rgba(139,92,246,0.16);color:#ddd6fe;cursor:pointer;">🪟 在新窗口打开</button>` : ''}
+                    ${tasks.length > 0 && canSetThumb ? `<button type="button" id="vklp-set-thumb" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(14,165,233,0.45);background:rgba(14,165,233,0.16);color:#7dd3fc;cursor:pointer;">📸 将当前帧设为封面</button>` : ''}
+                    ${!isDirect && st?.mode === 'template' ? `<button type="button" id="vklp-new-win" style="padding:6px 12px;font-size:12px;font-weight:600;border-radius:7px;border:1px solid rgba(167,139,250,0.45);background:rgba(139,92,246,0.16);color:#ddd6fe;cursor:pointer;">🪟 在新窗口打开</button>` : ''}
                 </div>
                 <div style="display:flex;gap:8px;margin-left:auto;">
                     <button type="button" id="vklp-close-btn" style="padding:6px 14px;font-size:12px;border-radius:7px;border:1px solid #334155;background:#1e293b;color:#cbd5e1;cursor:pointer;">关闭</button>
-                    <button type="button" id="vklp-open-edit" style="padding:6px 16px;font-size:12px;font-weight:700;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;">${st.mode === 'liveProject' ? '⚡ 打开并编辑此工程' : '📂 载入模板副本'}</button>
+                    <button type="button" id="vklp-open-edit" style="padding:6px 16px;font-size:12px;font-weight:700;border-radius:7px;border:none;background:linear-gradient(135deg,#10b981,#059669);color:#fff;cursor:pointer;">${_tplEscapeHtml(openLabel)}</button>
                 </div>
             </div>
         </div>
@@ -2287,10 +2305,14 @@ async function _openLibraryItemPreviewModal(st, itemId) {
             thumbCanvas.height = 480;
             thumbCanvas.getContext('2d').drawImage(canvas, 0, 0, 270, 480);
             const thumbnail = thumbCanvas.toDataURL('image/jpeg', 0.72);
-            await _libApiRequest(st, 'thumbnail', {
-                id: tplData.id, name: tplData.name, description: tplData.description || '', tags: tplData.tags || [], thumbnail,
-            });
-            _updateCardThumbnailInDom(st, tplData.id, thumbnail);
+            if (isDirect && typeof itemIdOrOpts.onSetThumb === 'function') {
+                await itemIdOrOpts.onSetThumb(thumbnail);
+            } else {
+                await _libApiRequest(st, 'thumbnail', {
+                    id: tplData.id, name: tplData.name, description: tplData.description || '', tags: tplData.tags || [], thumbnail,
+                });
+                _updateCardThumbnailInDom(st, tplData.id, thumbnail);
+            }
             showToast?.(`📸 已将当前预览画面设为「${tplData.name}」封面`, 'success');
         } catch (err) {
             showToast?.(`设置封面失败: ${err.message}`, 'error');
@@ -2302,7 +2324,9 @@ async function _openLibraryItemPreviewModal(st, itemId) {
     });
     ov.querySelector('#vklp-open-edit')?.addEventListener('click', async () => {
         closePreview();
-        if (st.mode === 'liveProject') {
+        if (isDirect && typeof itemIdOrOpts.onOpenWorkspace === 'function') {
+            await itemIdOrOpts.onOpenWorkspace(tplData);
+        } else if (st?.mode === 'liveProject') {
             await _applyLiveProjectIdsToWorkspace(st, [itemId], { folderId: st.folderId });
         } else {
             await _loadTemplateInCurrentWindow(itemId);
@@ -2311,7 +2335,7 @@ async function _openLibraryItemPreviewModal(st, itemId) {
 
     if (tasks.length > 0) await loadTaskIntoStage(0);
 }
-window.openLibraryItemPreview = (mode, itemId) => _openLibraryItemPreviewModal(_getLibState(mode), itemId);
+window.openLibraryItemPreview = (mode, itemIdOrOpts) => _openLibraryItemPreviewModal(_getLibState(mode || 'liveProject'), itemIdOrOpts);
 
 async function _syncCloudHubIntoProjectLibrary(st) {
     if (typeof window.reelsBatchSyncCloudProjectsToLibrary === 'function') {

@@ -22781,12 +22781,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => { reelsRefreshLibraryThumbCache(); }, 300);
     }
 
-    // 启动时静默检查 Cloudflare 云端中控配置（若开启启动自动同步则拉取最新 API Key 与每日工程列表）
+    // 启动时静默检查 Cloudflare 云端中控配置（轻量 Key/日期贴列表默认开启；完整工程自动缓存默认关闭，仅勾选后自动下载最新日期到云端库）
     setTimeout(async () => {
         try {
             const resp = await apiFetch('settings/cloud-hub');
             if (!resp.ok) return;
-            const cfg = await resp.json();
+            let cfg = await resp.json();
             if (cfg && cfg.hub_url && cfg.auto_sync_on_startup !== false) {
                 const syncResp = await apiFetch('settings/cloud-hub/sync', {
                     method: 'POST',
@@ -22795,6 +22795,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
                 const syncData = await syncResp.json().catch(() => ({}));
                 if (syncData && syncData.status === 'success') {
+                    if (syncData.settings) cfg = { ...cfg, ...syncData.settings };
                     const st = syncData.stats || {};
                     const totalKeys = (st.groq || 0) + (st.gladia || 0) + (st.deepgram || 0) + (st.gemini || 0) + (st.elevenlabs || 0);
                     console.log(`[CloudHub] 启动自动同步完成: Keys=${totalKeys}, 日期贴=${st.daily_projects || 0}`);
@@ -22805,6 +22806,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         showToast(`☁️ 云端已同步：${totalKeys} 个 API Key · ${st.daily_projects || 0} 个每日工程`, 'info', 3500);
                     }
                 }
+            }
+            if (cfg && cfg.auto_sync_projects_on_startup === true && typeof window.reelsAutoSyncLatestCloudProjectToLibrary === 'function') {
+                window.reelsAutoSyncLatestCloudProjectToLibrary(cfg).catch(err => {
+                    console.warn('[CloudHub] Startup project auto-sync skipped:', err?.message || err);
+                });
             }
         } catch (err) {
             console.warn('[CloudHub] Startup auto-sync skipped:', err?.message || err);
@@ -24795,7 +24801,9 @@ window.openCloudHubDialog = async function() {
         has_access_token: false,
         sync_mode: 'merge',
         auto_sync_on_startup: true,
+        auto_sync_projects_on_startup: false,
         local_material_root: '',
+        single_google_drive_url: '',
         last_sync_at: '',
         last_sync_summary: null,
         daily_projects: [],
@@ -24919,7 +24927,11 @@ window.openCloudHubDialog = async function() {
                         </label>
                         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;cursor:pointer;">
                             <input type="checkbox" id="ch-auto-sync" ${cfg.auto_sync_on_startup !== false ? 'checked' : ''} style="accent-color:#0ea5e9;">
-                            <span>软件启动时自动从云端静默同步</span>
+                            <span>软件启动时自动同步 Key 与日期列表</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7dd3fc;cursor:pointer;" title="默认关闭以节省内存与硬盘：勾选后，每次启动软件会自动把「最新日期」的云端工程下载缓存到独立云端库，不会自动打开到当前工作区">
+                            <input type="checkbox" id="ch-auto-sync-projects" ${cfg.auto_sync_projects_on_startup === true ? 'checked' : ''} style="accent-color:#10b981;">
+                            <span>启动时自动缓存最新日期工程到本地（默认关闭，仅入库不占工作区内存）</span>
                         </label>
                     </div>
 
@@ -25007,6 +25019,7 @@ window.openCloudHubDialog = async function() {
             <div style="padding:10px 20px;background:#090d16;border-top:1px solid rgba(148,163,184,0.15);display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:#94a3b8;">
                 <span id="ch-footer-msg" style="flex:1;min-width:0;">💡 提示：把工程 .json/.vktpl（可连同素材子目录）上传到 Google Drive 并设为「知道链接的任何人可查看」，下载时会自动下载同步云盘音视频/字幕并写入「当前标签」与「🗂️ 工程项目」。</span>
                 <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                    <button type="button" id="ch-open-cloud-mgr-btn" style="padding:5px 12px;font-size:12px;font-weight:600;background:rgba(2,132,199,0.22);border:1px solid rgba(56,189,248,0.5);color:#bae6fd;border-radius:6px;cursor:pointer;">☁️ 打开云端工程管理</button>
                     <button type="button" id="ch-goto-live-lib-btn" style="padding:5px 12px;font-size:12px;font-weight:600;background:rgba(139,92,246,0.18);border:1px solid rgba(167,139,250,0.45);color:#ddd6fe;border-radius:6px;cursor:pointer;">🗂️ 去工程项目查看</button>
                     <button type="button" id="ch-goto-workspace-btn" style="padding:5px 14px;font-size:12px;font-weight:600;background:rgba(14,165,233,0.18);border:1px solid rgba(56,189,248,0.45);color:#7dd3fc;border-radius:6px;cursor:pointer;">📂 立即查看已加载工程</button>
                     <button type="button" id="ch-footer-close-btn" style="padding:5px 16px;font-size:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:6px;cursor:pointer;">关闭</button>
@@ -25042,7 +25055,9 @@ window.openCloudHubDialog = async function() {
         access_token: modal.querySelector('#ch-access-token')?.value?.trim() || '',
         sync_mode: modal.querySelector('#ch-sync-mode')?.value || 'merge',
         auto_sync_on_startup: !!modal.querySelector('#ch-auto-sync')?.checked,
+        auto_sync_projects_on_startup: !!modal.querySelector('#ch-auto-sync-projects')?.checked,
         local_material_root: modal.querySelector('#ch-local-mat-root')?.value?.trim() || '',
+        single_google_drive_url: modal.querySelector('#ch-quick-drive-url')?.value?.trim() || cfg.single_google_drive_url || '',
         daily_projects: cfg.daily_projects || [],
     });
 
@@ -25230,6 +25245,11 @@ window.openCloudHubDialog = async function() {
     const closeModal = () => modal.remove();
     modal.querySelector('#ch-close-btn')?.addEventListener('click', closeModal);
     modal.querySelector('#ch-footer-close-btn')?.addEventListener('click', closeModal);
+    modal.querySelector('#ch-open-cloud-mgr-btn')?.addEventListener('click', async () => {
+        try { await saveCurrentSettings(); } catch (_) {}
+        closeModal();
+        window.openCloudProjectManager?.();
+    });
     modal.querySelector('#ch-goto-live-lib-btn')?.addEventListener('click', async () => {
         const folderId = lastCloudFolderId || await _ensureCloudLiveProjectsFolderId();
         closeModal();
@@ -25477,6 +25497,581 @@ window.openCloudHubDialog = async function() {
                 : `✅ 已添加日期贴「${dateVal} ${titleVal}」到本地列表！`,
             '#4ade80'
         );
+    });
+};
+
+function _formatCloudCacheBytes(bytes = 0) {
+    const num = Number(bytes) || 0;
+    if (num < 1024) return `${num} B`;
+    if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+    if (num < 1024 * 1024 * 1024) return `${(num / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(num / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/** Sync downloaded cloud JSON purely into the live-project library folder without mutating active workspace tabs. */
+async function _syncRawCloudProjectToLibraryOnly(rawProject, fallbackName = '云端每日工程', cloudMeta = {}) {
+    if (!rawProject || typeof rawProject !== 'object') return { synced: 0, folderId: '' };
+    const cleanName = String(fallbackName || rawProject.name || '云端每日工程').trim() || '云端每日工程';
+    const data = _normalizeImportedProjectPayload(rawProject, cleanName);
+    if (!data || !Array.isArray(data.tabs) || data.tabs.length === 0) {
+        return { synced: 0, folderId: '' };
+    }
+    const tempTabs = _buildImportedTabObjects(data.tabs, cleanName, 'cloud', {
+        defaultWatermarks: data.watermarks,
+        loadMode: 'append',
+    });
+    const cloudKey = String(cloudMeta.cloudKey || '').trim();
+    const cloudUrl = String(cloudMeta.cloudUrl || '').trim();
+    tempTabs.forEach(tab => {
+        if (!tab) return;
+        if (cloudKey && !tab.cloudKey) tab.cloudKey = cloudKey;
+        if (cloudUrl && !tab.cloudUrl) tab.cloudUrl = cloudUrl;
+    });
+    return await _syncCloudTabsToProjectLibrary(tempTabs, data);
+}
+
+/** Find matching synced local registry entry for a cloud project entry by key, URL, or date/title. */
+function _matchCloudEntryToLocalRegistry(entry = {}, localItems = []) {
+    if (!Array.isArray(localItems) || localItems.length === 0) return null;
+    const rawUrl = String(entry.url || entry.drive_url || '').trim();
+    const resolvedUrl = String(entry.resolved_url || '').trim();
+    const sourceKey = rawUrl ? _extractCloudSourceKey(rawUrl) : '';
+    const entryKey = String(entry.key || entry.local_key || '').trim();
+    return localItems.find(loc => {
+        if (!loc) return false;
+        if (entryKey && loc.key === entryKey) return true;
+        if (rawUrl && (loc.url === rawUrl || loc.resolved_url === rawUrl)) return true;
+        if (resolvedUrl && (loc.url === resolvedUrl || loc.resolved_url === resolvedUrl)) return true;
+        if (sourceKey && loc.url && _extractCloudSourceKey(loc.url) === sourceKey) return true;
+        if (sourceKey && loc.resolved_url && _extractCloudSourceKey(loc.resolved_url) === sourceKey) return true;
+        return false;
+    }) || null;
+}
+
+/** Expand a single folder/doc cloud link into individual downloadable project items without mutating local cache. */
+async function _expandCloudFolderUrlIfNeeded(rawUrl, fallbackCfg = {}) {
+    try {
+        const resp = await apiFetch('settings/cloud-hub/download-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: rawUrl,
+                persist_local: false,
+                skip_media_download: true,
+                local_material_root: fallbackCfg.local_material_root || '',
+            }),
+        });
+        const data = await resp?.json?.().catch(() => null);
+        if (data?.status === 'folder_listed' && Array.isArray(data.projects)) {
+            return data.projects;
+        }
+    } catch (_) {}
+    return [];
+}
+
+/** Remove any matching items from the isolated cloud live-projects folder after clearing local cache. */
+async function _removeCloudProjectFromLiveLibrary(entry = {}) {
+    if (typeof apiFetch !== 'function') return 0;
+    try {
+        const cloudFolderId = await _ensureCloudLiveProjectsFolderId();
+        const listResp = await apiFetch(`${API_BASE}/live-projects/list`);
+        if (!listResp?.ok) return 0;
+        const listData = await listResp.json().catch(() => ({}));
+        const foldersData = listData?.folders || {};
+        const assignments = foldersData?.assignments || {};
+        const items = Array.isArray(listData?.items) ? listData.items : [];
+        const rawUrl = String(entry.url || entry.resolved_url || '').trim();
+        const sourceKey = rawUrl ? _extractCloudSourceKey(rawUrl) : '';
+        const candidateNames = new Set(
+            [entry.title, [entry.date, entry.title].filter(Boolean).join('_')]
+                .map(s => String(s || '').trim().toLowerCase())
+                .filter(Boolean)
+        );
+        let removed = 0;
+        for (const it of items) {
+            if (!it?.id) continue;
+            if (cloudFolderId && String(assignments[it.id] || '') !== cloudFolderId) continue;
+            const nameHit = candidateNames.has(String(it.name || '').trim().toLowerCase());
+            const meta = it.cloudMeta || {};
+            const metaHit = (sourceKey && meta.cloudKey === sourceKey) || (rawUrl && meta.cloudUrl === rawUrl);
+            if (!metaHit && !nameHit && !entry.remove_all_in_cloud_folder) continue;
+            const delResp = await apiFetch(`${API_BASE}/live-projects/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: it.id }),
+            });
+            if (delResp?.ok) removed++;
+        }
+        if (removed > 0 && typeof window.reelsRefreshTemplateLibraryIfOpen === 'function') {
+            window.reelsRefreshTemplateLibraryIfOpen('liveProject');
+        }
+        return removed;
+    } catch (_) {
+        return 0;
+    }
+}
+
+/**
+ * Startup opt-in auto-sync: ONLY downloads the newest date's cloud project(s) not yet cached locally,
+ * storing them into the isolated local cloud folder (`cloud_materials/projects` + live-project library)
+ * without loading into active workspace memory (`_batchTableState.tabs`).
+ */
+window.reelsAutoSyncLatestCloudProjectToLibrary = async function(cfgOverride = null) {
+    if (typeof apiFetch !== 'function') return { skipped: true, reason: 'no_api' };
+    let cfg = cfgOverride && typeof cfgOverride === 'object' ? { ...cfgOverride } : null;
+    if (!cfg) {
+        try {
+            const resp = await apiFetch('settings/cloud-hub');
+            if (resp?.ok) cfg = await resp.json().catch(() => null);
+        } catch (_) {}
+    }
+    if (!cfg || cfg.auto_sync_projects_on_startup !== true) {
+        return { skipped: true, reason: 'disabled' };
+    }
+
+    let entries = Array.isArray(cfg.daily_projects) ? [...cfg.daily_projects] : [];
+    if (entries.length === 0 && cfg.single_google_drive_url) {
+        entries = await _expandCloudFolderUrlIfNeeded(cfg.single_google_drive_url, cfg);
+    }
+    if (entries.length === 0) {
+        return { skipped: true, reason: 'empty_cloud_list', downloaded: 0 };
+    }
+
+    const sorted = [...entries].sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
+    const newestDate = String(sorted[0]?.date || '').trim();
+    const newestCandidates = newestDate
+        ? sorted.filter(it => String(it?.date || '').trim() === newestDate)
+        : [sorted[0]];
+
+    let localItems = [];
+    try {
+        const regResp = await apiFetch('settings/cloud-hub/local-list');
+        if (regResp?.ok) {
+            const reg = await regResp.json().catch(() => null);
+            if (Array.isArray(reg?.items)) localItems = reg.items;
+        }
+    } catch (_) {}
+
+    let downloaded = 0;
+    let skipped = 0;
+    let failed = 0;
+    const matRoot = cfg.local_material_root || _getActiveTab()?.materialDir || _batchTableState.projectDir || '';
+
+    for (const entry of newestCandidates) {
+        const rawUrl = String(entry?.url || entry?.drive_url || '').trim();
+        if (!rawUrl) continue;
+        if (_matchCloudEntryToLocalRegistry(entry, localItems)) {
+            skipped++;
+            continue;
+        }
+        try {
+            const dlResp = await apiFetch('settings/cloud-hub/download-project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url: rawUrl,
+                    parent_folder_url: entry.parent_folder_url || cfg.single_google_drive_url || '',
+                    title: entry.title || '',
+                    date: entry.date || '',
+                    local_material_root: matRoot,
+                    persist_local: true,
+                }),
+            });
+            const dlData = await dlResp?.json?.().catch(() => null);
+            if (dlResp?.ok && dlData?.status === 'success' && dlData.project) {
+                const label = [entry.date, entry.title].filter(Boolean).join('_') || entry.title || '云端每日工程';
+                await _syncRawCloudProjectToLibraryOnly(dlData.project, label, {
+                    cloudKey: _extractCloudSourceKey(rawUrl),
+                    cloudUrl: rawUrl,
+                });
+                downloaded++;
+            } else {
+                failed++;
+            }
+        } catch (_) {
+            failed++;
+        }
+    }
+
+    if (downloaded > 0 && typeof showToast === 'function') {
+        showToast(`☁️ 启动自动同步：已将最新（${newestDate || '本期'}）云端工程缓存到「☁️ 云端工程管理」（未占用工作区内存）`, 'success', 4500);
+    }
+    return { ok: true, latestDate: newestDate, downloaded, skipped, failed };
+};
+
+/** Open dedicated Cloud Project Manager modal (`☁️ 云端工程管理`). */
+window.openCloudProjectManager = async function() {
+    document.getElementById('rbt-cloud-proj-mgr-modal')?.remove();
+
+    let cfg = { hub_url: '', single_google_drive_url: '', local_material_root: '', auto_sync_projects_on_startup: false, daily_projects: [] };
+    let localRegistry = { items: [], total_bytes: 0, json_bytes: 0, media_bytes: 0 };
+
+    const reloadData = async () => {
+        const [cfgRes, regRes] = await Promise.allSettled([
+            apiFetch('settings/cloud-hub').then(r => (r.ok ? r.json() : null)),
+            apiFetch('settings/cloud-hub/local-list').then(r => (r.ok ? r.json() : null)),
+        ]);
+        if (cfgRes.status === 'fulfilled' && cfgRes.value) cfg = { ...cfg, ...cfgRes.value };
+        if (regRes.status === 'fulfilled' && regRes.value) localRegistry = { ...localRegistry, ...regRes.value };
+    };
+    await reloadData();
+
+    const modal = document.createElement('div');
+    modal.id = 'rbt-cloud-proj-mgr-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(2,6,23,0.82);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:18px;';
+
+    modal.innerHTML = `
+        <div style="width:min(940px,96vw);max-height:90vh;background:#0f172a;border:1px solid rgba(56,189,248,0.4);border-radius:14px;box-shadow:0 28px 72px rgba(0,0,0,0.85);display:flex;flex-direction:column;overflow:hidden;color:#e2e8f0;">
+            <div style="padding:14px 20px;background:linear-gradient(135deg,#082f49,#0f172a);border-bottom:1px solid rgba(56,189,248,0.22);display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div>
+                    <div style="font-size:16px;font-weight:800;color:#f8fafc;display:flex;align-items:center;gap:8px;">
+                        <span>☁️ 云端工程管理</span>
+                        <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(14,165,233,0.2);border:1px solid rgba(56,189,248,0.45);color:#7dd3fc;">按需本地缓存 · 未点击不占内存</span>
+                    </div>
+                    <div id="cpm-summary-line" style="font-size:11.5px;color:#94a3b8;margin-top:3px;">正在读取云端与本地缓存状态...</div>
+                </div>
+                <button type="button" id="cpm-close-x" style="background:none;border:none;color:#94a3b8;font-size:22px;cursor:pointer;padding:2px 6px;">✕</button>
+            </div>
+
+            <div style="padding:10px 20px;background:rgba(15,23,42,0.92);border-bottom:1px solid rgba(148,163,184,0.14);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd5e1;cursor:pointer;" title="开启后，每次打开软件自动下载「最新日期」且本地还没有的云端工程到本地缓存，但不自动加入当前工作区，绝不覆盖本地修改">
+                    <input type="checkbox" id="cpm-auto-sync-toggle" ${cfg.auto_sync_projects_on_startup === true ? 'checked' : ''} style="accent-color:#10b981;">
+                    <span>启动时自动缓存最新日期工程（默认关闭，仅入库不占工作区内存）</span>
+                </label>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    <button type="button" id="cpm-open-hub-btn" style="padding:5px 10px;font-size:11.5px;background:rgba(51,65,85,0.65);border:1px solid #475569;color:#e2e8f0;border-radius:6px;cursor:pointer;">⚙️ 云端中控设置</button>
+                    <button type="button" id="cpm-refresh-btn" style="padding:5px 12px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0284c7,#2563eb);border:1px solid #38bdf8;color:#fff;border-radius:6px;cursor:pointer;">🔄 刷新云端列表</button>
+                    <button type="button" id="cpm-clear-all-btn" style="padding:5px 10px;font-size:11.5px;background:rgba(239,68,68,0.14);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;border-radius:6px;cursor:pointer;">🧹 清理全部本地缓存</button>
+                </div>
+            </div>
+
+            <div id="cpm-list" style="flex:1;overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:10px;"></div>
+
+            <div style="padding:10px 20px;background:#090d16;border-top:1px solid rgba(148,163,184,0.16);display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;color:#94a3b8;">
+                <span id="cpm-footer-status">💡 提示：点击「⬇️ 下载到本地」可单独缓存该项目（含关联云盘素材）并支持预览；点「⚡ 打开编辑」才会加载进工作区标签页。</span>
+                <button type="button" id="cpm-close-btn" style="padding:5px 16px;font-size:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:#e2e8f0;border-radius:6px;cursor:pointer;">关闭</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const setStatus = (msg, color = '#94a3b8') => {
+        const el = modal.querySelector('#cpm-footer-status');
+        if (el) { el.style.color = color; el.textContent = msg; }
+    };
+
+    const buildMergedEntries = () => {
+        const remote = Array.isArray(cfg.daily_projects) ? cfg.daily_projects : [];
+        const localItems = Array.isArray(localRegistry.items) ? localRegistry.items : [];
+        const matchedLocalKeys = new Set();
+        const rows = remote.map((rem, idx) => {
+            const loc = _matchCloudEntryToLocalRegistry(rem, localItems);
+            if (loc?.key) matchedLocalKeys.add(loc.key);
+            return { rowId: `rem_${idx}`, remote: rem, local: loc, date: rem.date || loc?.date || '', title: rem.title || loc?.title || '云端工程', url: rem.url || rem.drive_url || '' };
+        });
+        for (const loc of localItems) {
+            if (!loc || matchedLocalKeys.has(loc.key)) continue;
+            rows.push({ rowId: `loc_${loc.key}`, remote: null, local: loc, date: loc.date || '', title: loc.title || '本地已缓存云端工程', url: loc.url || loc.resolved_url || '' });
+        }
+        return rows.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    };
+
+    const renderList = () => {
+        const rows = buildMergedEntries();
+        const localItems = Array.isArray(localRegistry.items) ? localRegistry.items : [];
+        const summaryEl = modal.querySelector('#cpm-summary-line');
+        if (summaryEl) {
+            summaryEl.textContent = `云端日期工程 ${rows.length} 个 · 已缓存到本地 ${localItems.length} 个 · 本地缓存占用 ${_formatCloudCacheBytes(localRegistry.total_bytes || 0)}（JSON ${_formatCloudCacheBytes(localRegistry.json_bytes || 0)} + 素材 ${_formatCloudCacheBytes(localRegistry.media_bytes || 0)}）`;
+        }
+        const listEl = modal.querySelector('#cpm-list');
+        if (!listEl) return;
+        if (rows.length === 0) {
+            listEl.innerHTML = `<div style="padding:48px 20px;text-align:center;color:#94a3b8;border:1px dashed rgba(148,163,184,0.28);border-radius:10px;background:rgba(15,23,42,0.5);">暂无云端工程列表。请先点击上方「⚙️ 云端中控设置」填写 Cloudflare 地址或 Google Drive 文件夹链接，或点击「🔄 刷新云端列表」。</div>`;
+            return;
+        }
+        listEl.innerHTML = rows.map((row, idx) => {
+            const loc = row.local;
+            const rem = row.remote;
+            const isSynced = Boolean(loc && loc.local_json_path);
+            const openCheck = _findExistingTabsForCloudEntry({ ...(rem || {}), ...(loc || {}), url: row.url });
+            const isOpenInWorkspace = openCheck.matchedTabs.length > 0;
+            const note = String(rem?.note || '').trim();
+            const statsText = isSynced
+                ? `${loc.tabs_count || 1} 标签 · ${loc.tasks_count || 0} 条任务 · JSON ${_formatCloudCacheBytes(loc.json_size_bytes || 0)}${loc.missing_media > 0 ? ` · ⚠️ 缺 ${loc.missing_media} 个素材` : ' · ✅ 素材就绪'}`
+                : (note || '仅保存在云端列表，尚未下载到本地，不占内存与硬盘空间');
+            const badgeHtml = isOpenInWorkspace
+                ? `<span style="padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;background:rgba(16,185,129,0.18);border:1px solid rgba(52,211,153,0.45);color:#6ee7b7;">🟢 工作区已打开</span>`
+                : isSynced
+                    ? `<span style="padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;background:rgba(14,165,233,0.18);border:1px solid rgba(56,189,248,0.45);color:#7dd3fc;">✅ 已同步到本地</span>`
+                    : `<span style="padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;background:rgba(100,116,139,0.2);border:1px solid rgba(148,163,184,0.35);color:#cbd5e1;">☁️ 仅云端（0 内存）</span>`;
+            const actionsHtml = isSynced ? `
+                <button type="button" class="cpm-act-preview" data-idx="${idx}" style="padding:5px 10px;font-size:11.5px;font-weight:600;background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.45);color:#7dd3fc;border-radius:6px;cursor:pointer;">👁️ 预览效果</button>
+                <button type="button" class="cpm-act-open" data-idx="${idx}" style="padding:5px 11px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#10b981,#059669);border:1px solid #34d399;color:#fff;border-radius:6px;cursor:pointer;">⚡ 打开编辑</button>
+                <button type="button" class="cpm-act-reset" data-idx="${idx}" ${row.url ? '' : 'disabled'} title="从云端重新拉取最新原版工程并覆盖本地（已缓存的音视频素材自动复用）" style="padding:5px 10px;font-size:11.5px;background:rgba(245,158,11,0.16);border:1px solid rgba(251,191,36,0.45);color:#fde68a;border-radius:6px;cursor:pointer;">🔄 重置云端原版</button>
+                <button type="button" class="cpm-act-clear" data-idx="${idx}" title="删除该工程的本地缓存 JSON 与孤立缓存素材，释放本地空间" style="padding:5px 9px;font-size:11.5px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:6px;cursor:pointer;">🧹 清理缓存</button>
+            ` : `
+                <button type="button" class="cpm-act-download" data-idx="${idx}" style="padding:6px 14px;font-size:11.5px;font-weight:700;background:linear-gradient(135deg,#0ea5e9,#2563eb);border:1px solid #38bdf8;color:#fff;border-radius:6px;cursor:pointer;">⬇️ 下载到本地</button>
+            `;
+            return `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 14px;background:rgba(30,41,59,0.58);border:1px solid ${isSynced ? 'rgba(56,189,248,0.35)' : 'rgba(148,163,184,0.18)'};border-radius:10px;">
+                    <div style="min-width:240px;flex:1;">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span style="padding:2px 7px;border-radius:5px;font-size:11px;font-weight:700;background:rgba(245,158,11,0.18);border:1px solid rgba(251,191,36,0.4);color:#fde68a;font-family:monospace;">${_escHtml(row.date || '无日期')}</span>
+                            <span style="font-size:13.5px;font-weight:700;color:#f8fafc;">${_escHtml(row.title)}</span>
+                            ${badgeHtml}
+                        </div>
+                        <div style="font-size:11px;color:#94a3b8;margin-top:5px;">${_escHtml(statsText)}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${actionsHtml}</div>
+                </div>
+            `;
+        }).join('');
+
+        const getRow = (btn) => rows[parseInt(btn.dataset.idx, 10)];
+
+        listEl.querySelectorAll('.cpm-act-download').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = getRow(btn);
+                if (!row) return;
+                const orig = btn.textContent;
+                btn.disabled = true; btn.textContent = '⏳ 下载中...';
+                setStatus(`⏳ 正在从云端下载「${row.title}」及关联素材到本地云端缓存（不会自动占工作区内存）...`, '#38bdf8');
+                try {
+                    const matRoot = cfg.local_material_root || _getActiveTab()?.materialDir || _batchTableState.projectDir || '';
+                    const dlResp = await apiFetch('settings/cloud-hub/download-project', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            url: row.url,
+                            parent_folder_url: row.remote?.parent_folder_url || cfg.single_google_drive_url || '',
+                            title: row.title,
+                            date: row.date,
+                            local_material_root: matRoot,
+                            persist_local: true,
+                        }),
+                    });
+                    const dlData = await dlResp.json().catch(() => null);
+                    if (!dlResp.ok || !dlData?.project) throw new Error(dlData?.error || dlData?.detail || '下载失败');
+                    const label = [row.date, row.title].filter(Boolean).join('_') || row.title;
+                    await _syncRawCloudProjectToLibraryOnly(dlData.project, label, {
+                        cloudKey: _extractCloudSourceKey(row.url),
+                        cloudUrl: row.url,
+                    });
+                    await reloadData();
+                    renderList();
+                    setStatus(`✅ 「${row.title}」已同步到本地缓存与云端工程库！可随时点击「👁️ 预览效果」或「⚡ 打开编辑」。`, '#4ade80');
+                } catch (err) {
+                    btn.disabled = false; btn.textContent = orig;
+                    setStatus(`❌ 下载失败: ${err.message || err}`, '#f87171');
+                }
+            });
+        });
+
+        listEl.querySelectorAll('.cpm-act-preview').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = getRow(btn);
+                if (!row?.local) return;
+                setStatus(`⏳ 正在加载「${row.title}」9:16 本地预览...`, '#38bdf8');
+                try {
+                    const res = await apiFetch('settings/cloud-hub/local-get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: row.local.key, url: row.url }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data?.projectData) throw new Error(data?.error || '读取本地工程失败');
+                    window.openLibraryItemPreview?.('liveProject', {
+                        id: row.local.key,
+                        name: row.title,
+                        noun: '云端工程',
+                        projectData: data.projectData,
+                        openLabel: '⚡ 打开到工作区编辑',
+                        onOpenWorkspace: async () => {
+                            const label = [row.date, row.title].filter(Boolean).join('_') || row.title;
+                            await _applyDownloadedCloudProjectToBatchTable(data.projectData, row.local.local_json_path, 'append', label, {
+                                cloudKey: _extractCloudSourceKey(row.url),
+                                cloudUrl: row.url,
+                                duplicateStrategy: 'replace',
+                            });
+                            const openAfter = _findExistingTabsForCloudEntry({ ...(row.remote || {}), ...(row.local || {}), url: row.url });
+                            modal.remove();
+                            if (openAfter.matchedTabs.length > 0) _openCloudTabsImmediately(openAfter.matchedTabs);
+                        },
+                    });
+                    setStatus(`✅ 已打开「${row.title}」9:16 效果预览（未加入当前工作区标签，不占工作区内存）。`, '#4ade80');
+                } catch (err) {
+                    setStatus(`❌ 预览失败: ${err.message || err}`, '#f87171');
+                }
+            });
+        });
+
+        listEl.querySelectorAll('.cpm-act-open').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = getRow(btn);
+                if (!row?.local) return;
+                btn.disabled = true; btn.textContent = '⏳ 加载中...';
+                try {
+                    const res = await apiFetch('settings/cloud-hub/local-get', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: row.local.key, url: row.url }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data?.projectData) throw new Error(data?.error || '读取本地工程失败');
+                    const label = [row.date, row.title].filter(Boolean).join('_') || row.title;
+                    await _applyDownloadedCloudProjectToBatchTable(data.projectData, row.local.local_json_path, 'append', label, {
+                        cloudKey: _extractCloudSourceKey(row.url),
+                        cloudUrl: row.url,
+                        duplicateStrategy: 'replace',
+                    });
+                    const openAfter = _findExistingTabsForCloudEntry({ ...(row.remote || {}), ...(row.local || {}), url: row.url });
+                    modal.remove();
+                    if (openAfter.matchedTabs.length > 0) _openCloudTabsImmediately(openAfter.matchedTabs);
+                    if (typeof showToast === 'function') showToast(`⚡ 已将云端工程「${row.title}」打开到当前工作区`, 'success');
+                } catch (err) {
+                    btn.disabled = false; btn.textContent = '⚡ 打开编辑';
+                    setStatus(`❌ 打开失败: ${err.message || err}`, '#f87171');
+                }
+            });
+        });
+
+        listEl.querySelectorAll('.cpm-act-reset').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = getRow(btn);
+                if (!row?.url) return;
+                if (!confirm(`确定要从云端重新拉取「${row.title}」原版并覆盖本地副本吗？\n（您在本地对该工程的改动将被云端原版覆盖；已缓存的音视频素材会自动复用）`)) return;
+                const orig = btn.textContent;
+                btn.disabled = true; btn.textContent = '⏳ 重置中...';
+                setStatus(`⏳ 正在从云端重新拉取「${row.title}」原版并覆盖本地工程...`, '#fbbf24');
+                try {
+                    const matRoot = cfg.local_material_root || _getActiveTab()?.materialDir || _batchTableState.projectDir || '';
+                    const dlResp = await apiFetch('settings/cloud-hub/download-project', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            key: row.local?.key || '',
+                            url: row.url,
+                            parent_folder_url: row.remote?.parent_folder_url || row.local?.parent_folder_url || cfg.single_google_drive_url || '',
+                            title: row.title,
+                            date: row.date,
+                            local_material_root: matRoot,
+                            persist_local: true,
+                            force_reset: true,
+                        }),
+                    });
+                    const dlData = await dlResp.json().catch(() => null);
+                    if (!dlResp.ok || !dlData?.project) throw new Error(dlData?.error || dlData?.detail || '重置失败');
+                    const label = [row.date, row.title].filter(Boolean).join('_') || row.title;
+                    await _syncRawCloudProjectToLibraryOnly(dlData.project, label, {
+                        cloudKey: _extractCloudSourceKey(row.url),
+                        cloudUrl: row.url,
+                    });
+                    const alreadyOpen = _findExistingTabsForCloudEntry({ ...(row.remote || {}), ...(row.local || {}), url: row.url });
+                    if (alreadyOpen.matchedTabs.length > 0) {
+                        await _applyDownloadedCloudProjectToBatchTable(dlData.project, dlData.saved_path, 'append', label, {
+                            cloudKey: _extractCloudSourceKey(row.url),
+                            cloudUrl: row.url,
+                            duplicateStrategy: 'replace',
+                        });
+                    }
+                    await reloadData();
+                    renderList();
+                    setStatus(`✅ 「${row.title}」已重置恢复为云端原版！`, '#4ade80');
+                } catch (err) {
+                    btn.disabled = false; btn.textContent = orig;
+                    setStatus(`❌ 重置失败: ${err.message || err}`, '#f87171');
+                }
+            });
+        });
+
+        listEl.querySelectorAll('.cpm-act-clear').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const row = getRow(btn);
+                if (!row?.local) return;
+                if (!confirm(`确定清理「${row.title}」的本地缓存工程文件及未共享缓存素材吗？\n清理后可随时重新从云端下载。`)) return;
+                try {
+                    await apiFetch('settings/cloud-hub/clear-local', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: row.local.key, url: row.url, delete_media: true }),
+                    });
+                    await _removeCloudProjectFromLiveLibrary({ date: row.date, title: row.title, url: row.url });
+                    await reloadData();
+                    renderList();
+                    setStatus(`🧹 已清理「${row.title}」本地缓存，重新变为仅云端状态（0 本地占用）。`, '#fbbf24');
+                } catch (err) {
+                    setStatus(`❌ 清理失败: ${err.message || err}`, '#f87171');
+                }
+            });
+        });
+    };
+
+    renderList();
+
+    modal.querySelector('#cpm-close-x')?.addEventListener('click', () => modal.remove());
+    modal.querySelector('#cpm-close-btn')?.addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+    modal.querySelector('#cpm-open-hub-btn')?.addEventListener('click', () => {
+        modal.remove();
+        window.openCloudHubDialog?.();
+    });
+    modal.querySelector('#cpm-auto-sync-toggle')?.addEventListener('change', async (e) => {
+        const nextVal = !!e.target.checked;
+        try {
+            const resp = await apiFetch('settings/cloud-hub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auto_sync_projects_on_startup: nextVal }),
+            });
+            if (resp.ok) {
+                cfg.auto_sync_projects_on_startup = nextVal;
+                setStatus(
+                    nextVal ? '✅ 已开启：下次启动软件将自动下载最新日期云端工程到本地缓存' : '⏸️ 已关闭启动自动下载，将保持纯手动按需缓存',
+                    nextVal ? '#4ade80' : '#94a3b8'
+                );
+            }
+        } catch (err) {
+            setStatus(`❌ 更新设置失败: ${err.message}`, '#f87171');
+        }
+    });
+    modal.querySelector('#cpm-refresh-btn')?.addEventListener('click', async () => {
+        const btn = modal.querySelector('#cpm-refresh-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ 刷新中...'; }
+        setStatus('⏳ 正在拉取最新云端工程日期列表...', '#38bdf8');
+        try {
+            if (cfg.hub_url) {
+                await apiFetch('settings/cloud-hub/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sync_mode: cfg.sync_mode || 'merge' }),
+                });
+            } else if (cfg.single_google_drive_url) {
+                await _expandCloudFolderUrlIfNeeded(cfg.single_google_drive_url, cfg);
+            }
+            await reloadData();
+            renderList();
+            setStatus('✅ 云端工程列表已刷新！', '#4ade80');
+        } catch (err) {
+            setStatus(`❌ 刷新失败: ${err.message || err}`, '#f87171');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '🔄 刷新云端列表'; }
+        }
+    });
+    modal.querySelector('#cpm-clear-all-btn')?.addEventListener('click', async () => {
+        if (!confirm('确定清空全部已下载到本地的云端工程 JSON 与缓存音视频素材吗？\n当前已在工作区打开编辑中的标签不会被关闭。')) return;
+        try {
+            await apiFetch('settings/cloud-hub/clear-local', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear_all: true, delete_media: true }),
+            });
+            await _removeCloudProjectFromLiveLibrary({ remove_all_in_cloud_folder: true });
+            await reloadData();
+            renderList();
+            setStatus('🧹 已清空全部本地云端工程及素材缓存！', '#fbbf24');
+        } catch (err) {
+            setStatus(`❌ 清空失败: ${err.message || err}`, '#f87171');
+        }
     });
 };
 

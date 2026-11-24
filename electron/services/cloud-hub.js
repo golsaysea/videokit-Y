@@ -129,6 +129,7 @@ function loadCloudHubSettings() {
         has_token: Boolean(accessToken),
         sync_mode: raw.sync_mode === 'overwrite' ? 'overwrite' : 'merge',
         auto_sync_on_startup: raw.auto_sync_on_startup !== false,
+        auto_sync_projects_on_startup: raw.auto_sync_projects_on_startup === true,
         local_material_root: String(raw.local_material_root || '').trim(),
         single_google_drive_url: String(raw.single_google_drive_url || '').trim(),
         last_sync_at: raw.last_sync_at || null,
@@ -143,6 +144,9 @@ function saveCloudHubSettings(input = {}) {
     const accessToken = input.access_token !== undefined ? String(input.access_token || '').trim() : current.access_token;
     const syncMode = (input.sync_mode || current.sync_mode) === 'overwrite' ? 'overwrite' : 'merge';
     const autoSync = input.auto_sync_on_startup !== undefined ? Boolean(input.auto_sync_on_startup) : current.auto_sync_on_startup;
+    const autoSyncProjects = input.auto_sync_projects_on_startup !== undefined
+        ? Boolean(input.auto_sync_projects_on_startup)
+        : Boolean(current.auto_sync_projects_on_startup);
     const localMaterialRoot = input.local_material_root !== undefined
         ? String(input.local_material_root || '').trim()
         : current.local_material_root;
@@ -160,6 +164,7 @@ function saveCloudHubSettings(input = {}) {
         ...secretObj,
         sync_mode: syncMode,
         auto_sync_on_startup: autoSync,
+        auto_sync_projects_on_startup: autoSyncProjects,
         local_material_root: localMaterialRoot,
         single_google_drive_url: singleGoogleDriveUrl,
         last_sync_at: input.last_sync_at !== undefined ? input.last_sync_at : current.last_sync_at,
@@ -989,6 +994,305 @@ function getCloudMaterialRootDir() {
     return dir;
 }
 
+function getCloudProjectsCacheDir() {
+    const dir = path.join(getCloudMaterialRootDir(), 'projects');
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    return dir;
+}
+
+function getCloudProjectsRegistryPath() {
+    return path.join(settings.getBackendDir(), 'cloud_projects_registry.json');
+}
+
+function computeCloudProjectKey(entryOrUrl) {
+    if (typeof entryOrUrl === 'string') {
+        const rawUrl = entryOrUrl.trim();
+        const gId = extractGoogleDriveFileId(rawUrl);
+        if (gId) return `gdrive_${gId}`;
+        const fId = extractGoogleDriveFolderId(rawUrl);
+        if (fId) return `gfolder_${fId}`;
+        return `url_${Buffer.from(rawUrl).toString('base64url').slice(0, 48)}`;
+    }
+    const obj = (entryOrUrl && typeof entryOrUrl === 'object') ? entryOrUrl : {};
+    if (obj.key && typeof obj.key === 'string' && obj.key.trim()) {
+        return obj.key.trim().replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+    }
+    const rawUrl = String(obj.url || obj.drive_url || obj.resolved_url || '').trim();
+    if (rawUrl) {
+        const gId = extractGoogleDriveFileId(rawUrl);
+        if (gId) return `gdrive_${gId}`;
+        const fId = extractGoogleDriveFolderId(rawUrl);
+        if (fId) return `gfolder_${fId}`;
+        return `url_${Buffer.from(rawUrl).toString('base64url').slice(0, 48)}`;
+    }
+    const meta = `${String(obj.date || '').trim()}_${String(obj.title || '').trim()}`;
+    return `meta_${Buffer.from(meta || 'cloud').toString('base64url').slice(0, 48)}`;
+}
+
+function _sumDirSizeBytes(dirPath, depth = 0) {
+    if (!dirPath || depth > 6) return 0;
+    let total = 0;
+    try {
+        if (!fs.existsSync(dirPath)) return 0;
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const ent of entries) {
+            const full = path.join(dirPath, ent.name);
+            try {
+                if (ent.isSymbolicLink()) continue;
+                if (ent.isDirectory()) {
+                    total += _sumDirSizeBytes(full, depth + 1);
+                } else if (ent.isFile()) {
+                    total += fs.statSync(full).size || 0;
+                }
+            } catch (_) {}
+        }
+    } catch (_) {}
+    return total;
+}
+
+function _safeWriteJsonAtomic(filePath, obj) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(obj, null, 2), 'utf8');
+    fs.renameSync(tmpPath, filePath);
+}
+
+function _isStrictlyInsideDir(targetPath, parentDir) {
+    const resolvedTarget = path.resolve(String(targetPath || ''));
+    const resolvedParent = path.resolve(String(parentDir || ''));
+    return resolvedTarget !== resolvedParent && resolvedTarget.startsWith(resolvedParent + path.sep);
+}
+
+function persistLocalCloudProjectEntry({
+    key,
+    url,
+    resolvedUrl,
+    parentFolderUrl,
+    date,
+    title,
+    projectData,
+    mediaCacheDir,
+    relinkStats,
+    downloadedMediaCount,
+    forceReset,
+} = {}) {
+    const computedKey = computeCloudProjectKey(key || url || resolvedUrl || { date, title });
+    const safeKey = computedKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80) || 'cloud_proj';
+    const projectsDir = getCloudProjectsCacheDir();
+    const localJsonPath = path.join(projectsDir, `${safeKey}.json`);
+    _safeWriteJsonAtomic(localJsonPath, projectData);
+    const jsonSize = fs.existsSync(localJsonPath) ? (fs.statSync(localJsonPath).size || 0) : 0;
+
+    const totalTasks = (projectData?.tabs || []).reduce((sum, t) => sum + (Array.isArray(t?.tasks) ? t.tasks.length : 0), 0);
+    const regPath = getCloudProjectsRegistryPath();
+    const existing = settings.readJSON(regPath) || { version: 1, items: {} };
+    const items = (existing.items && typeof existing.items === 'object' && !Array.isArray(existing.items))
+        ? { ...existing.items }
+        : {};
+
+    const entry = {
+        key: safeKey,
+        url: String(url || resolvedUrl || '').trim(),
+        resolved_url: String(resolvedUrl || url || '').trim(),
+        parent_folder_url: String(parentFolderUrl || '').trim(),
+        date: String(date || extractDateFromText(title || '')).trim(),
+        title: String(title || projectData?.name || '云端工程').trim(),
+        local_json_path: localJsonPath,
+        media_cache_dir: String(mediaCacheDir || '').trim(),
+        tabs_count: Array.isArray(projectData?.tabs) ? projectData.tabs.length : 0,
+        tasks_count: totalTasks,
+        missing_media: Number(relinkStats?.missing || 0),
+        relinked_media: Number(relinkStats?.relinkedCount || 0),
+        downloaded_media: Number(downloadedMediaCount || 0),
+        json_size_bytes: jsonSize,
+        synced_at: new Date().toISOString(),
+        last_action: forceReset ? 'reset_from_cloud' : 'downloaded',
+    };
+    items[safeKey] = entry;
+    settings.writeJSON(regPath, { version: 1, items });
+    return entry;
+}
+
+function loadLocalCloudProjectsRegistry(options = {}) {
+    const regPath = getCloudProjectsRegistryPath();
+    const existing = settings.readJSON(regPath) || { version: 1, items: {} };
+    const rawItems = (existing.items && typeof existing.items === 'object' && !Array.isArray(existing.items))
+        ? existing.items
+        : {};
+    const nextItems = {};
+    const outList = [];
+    let pruned = false;
+
+    for (const [k, entry] of Object.entries(rawItems)) {
+        if (!entry || typeof entry !== 'object') {
+            pruned = true;
+            continue;
+        }
+        const jsonPath = String(entry.local_json_path || '').trim();
+        if (!jsonPath || !fs.existsSync(jsonPath)) {
+            pruned = true;
+            continue;
+        }
+        let jsonSize = Number(entry.json_size_bytes || 0);
+        try {
+            jsonSize = fs.statSync(jsonPath).size || jsonSize;
+        } catch (_) {}
+        const normalized = {
+            ...entry,
+            key: String(entry.key || k),
+            json_size_bytes: jsonSize,
+        };
+        if (options.include_project_data === true) {
+            try {
+                normalized.projectData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            } catch (_) {}
+        }
+        nextItems[normalized.key] = normalized;
+        outList.push(normalized);
+    }
+
+    if (pruned) {
+        try {
+            settings.writeJSON(regPath, { version: 1, items: nextItems });
+        } catch (_) {}
+    }
+
+    outList.sort((a, b) => {
+        const dc = String(b.date || '').localeCompare(String(a.date || ''));
+        if (dc !== 0) return dc;
+        return String(b.synced_at || '').localeCompare(String(a.synced_at || ''));
+    });
+
+    const projectsDir = getCloudProjectsCacheDir();
+    const materialRoot = getCloudMaterialRootDir();
+    const jsonBytes = _sumDirSizeBytes(projectsDir);
+    const totalBytes = _sumDirSizeBytes(materialRoot);
+    const mediaBytes = Math.max(0, totalBytes - jsonBytes);
+
+    return {
+        ok: true,
+        items: outList,
+        by_key: nextItems,
+        cache_root: materialRoot,
+        projects_dir: projectsDir,
+        json_bytes: jsonBytes,
+        media_bytes: mediaBytes,
+        total_bytes: totalBytes,
+    };
+}
+
+function readLocalCloudProject(input = {}) {
+    const reg = loadLocalCloudProjectsRegistry({ include_project_data: false });
+    const directKey = input.key ? String(input.key).trim() : '';
+    const computedKey = computeCloudProjectKey(input.url || input);
+    let entry = (directKey && reg.by_key[directKey]) || reg.by_key[computedKey];
+    if (!entry && input.url) {
+        const normUrl = String(input.url).trim();
+        entry = reg.items.find(it => it.url === normUrl || it.resolved_url === normUrl) || null;
+    }
+    if (!entry || !entry.local_json_path || !fs.existsSync(entry.local_json_path)) {
+        throw new Error('该云端工程尚未下载到本地缓存，请先点击「⬇️ 下载到本地」');
+    }
+    const raw = JSON.parse(fs.readFileSync(entry.local_json_path, 'utf8'));
+    const cfg = loadCloudHubSettings();
+    const localMaterialRoot = String(input.local_material_root ?? cfg.local_material_root ?? '').trim();
+    const relinkStats = relinkProjectMediaPaths(raw, localMaterialRoot, [getCloudMaterialRootDir()]);
+    return {
+        ok: true,
+        entry,
+        project: raw,
+        projectData: raw,
+        relinkStats,
+        relink_stats: relinkStats,
+    };
+}
+
+function clearLocalCloudProjectCache(input = {}) {
+    const regPath = getCloudProjectsRegistryPath();
+    const existing = settings.readJSON(regPath) || { version: 1, items: {} };
+    const items = (existing.items && typeof existing.items === 'object' && !Array.isArray(existing.items))
+        ? { ...existing.items }
+        : {};
+    const projectsDir = getCloudProjectsCacheDir();
+    const materialRoot = getCloudMaterialRootDir();
+    const deleteMedia = input.delete_media !== false;
+
+    let clearedCount = 0;
+    let deletedMediaDirs = 0;
+
+    if (input.clear_all) {
+        try {
+            for (const f of fs.readdirSync(projectsDir)) {
+                const target = path.join(projectsDir, f);
+                if (_isStrictlyInsideDir(target, projectsDir)) {
+                    fs.rmSync(target, { recursive: true, force: true });
+                    clearedCount++;
+                }
+            }
+        } catch (_) {}
+        settings.writeJSON(regPath, { version: 1, items: {} });
+        if (deleteMedia) {
+            try {
+                for (const d of fs.readdirSync(materialRoot)) {
+                    if (d === 'projects') continue;
+                    const target = path.join(materialRoot, d);
+                    if (_isStrictlyInsideDir(target, materialRoot)) {
+                        fs.rmSync(target, { recursive: true, force: true });
+                        deletedMediaDirs++;
+                    }
+                }
+            } catch (_) {}
+        }
+        return {
+            ok: true,
+            cleared_count: Math.max(clearedCount, Object.keys(items).length),
+            deleted_media_dirs: deletedMediaDirs,
+            registry: loadLocalCloudProjectsRegistry(),
+        };
+    }
+
+    const directKey = input.key ? String(input.key).trim() : '';
+    const computedKey = computeCloudProjectKey(input.url || input);
+    let targetKey = (directKey && items[directKey]) ? directKey : (items[computedKey] ? computedKey : '');
+    if (!targetKey && input.url) {
+        const normUrl = String(input.url).trim();
+        const found = Object.values(items).find(it => it && (it.url === normUrl || it.resolved_url === normUrl));
+        if (found) targetKey = found.key;
+    }
+
+    const entry = targetKey ? items[targetKey] : null;
+    if (entry) {
+        if (entry.local_json_path && _isStrictlyInsideDir(entry.local_json_path, projectsDir) && fs.existsSync(entry.local_json_path)) {
+            try {
+                fs.rmSync(entry.local_json_path, { force: true });
+                clearedCount++;
+            } catch (_) {}
+        }
+        const mediaDir = String(entry.media_cache_dir || '').trim();
+        delete items[targetKey];
+        settings.writeJSON(regPath, { version: 1, items });
+
+        if (deleteMedia && mediaDir && _isStrictlyInsideDir(mediaDir, materialRoot) && path.basename(mediaDir) !== 'projects') {
+            const stillReferenced = Object.values(items).some(other =>
+                other && String(other.media_cache_dir || '').trim() === mediaDir
+            );
+            if (!stillReferenced && fs.existsSync(mediaDir)) {
+                try {
+                    fs.rmSync(mediaDir, { recursive: true, force: true });
+                    deletedMediaDirs++;
+                } catch (_) {}
+            }
+        }
+    }
+
+    return {
+        ok: true,
+        cleared_count: clearedCount,
+        deleted_media_dirs: deletedMediaDirs,
+        registry: loadLocalCloudProjectsRegistry(),
+    };
+}
+
 /**
  * Recursively indexes media files by normalized path suffixes and lowercase basename inside
  * localMaterialRoot or extra root specs for automatic cross-machine path relinking.
@@ -1708,12 +2012,41 @@ async function downloadCloudProject(input = {}) {
         }
     }
 
+    let registryEntry = null;
+    if (input.persist_local !== false) {
+        try {
+            const folderMediaDir = sourceFolderUrl && extractGoogleDriveFolderId(sourceFolderUrl)
+                ? path.join(getCloudMaterialRootDir(), extractGoogleDriveFolderId(sourceFolderUrl))
+                : '';
+            registryEntry = persistLocalCloudProjectEntry({
+                key: input.key || computeCloudProjectKey(targetUrl || input.url || { date: resolvedDate, title: resolvedTitle }),
+                url: String(input.url || targetUrl).trim(),
+                resolvedUrl: targetUrl,
+                parentFolderUrl: sourceFolderUrl,
+                date: resolvedDate,
+                title: resolvedTitle || projectData.name || '云端工程',
+                projectData,
+                mediaCacheDir: mediaCacheDir || folderMediaDir,
+                relinkStats,
+                downloadedMediaCount,
+                forceReset: Boolean(input.force_reset),
+            });
+            if (!savedPath && registryEntry?.local_json_path) {
+                savedPath = registryEntry.local_json_path;
+            }
+        } catch (err) {
+            console.warn('[CloudHub] 保存本地云端工程缓存失败:', err?.message || err);
+        }
+    }
+
     return {
         ok: true,
         status: 'success',
         project: projectData,
         projectData,
         saved_path: savedPath,
+        local_key: registryEntry?.key || '',
+        registry_entry: registryEntry,
         tabs_count: projectData.tabs.length,
         tasks_count: totalTasks,
         tabCount: projectData.tabs.length,
@@ -1754,5 +2087,10 @@ module.exports = {
     collectProjectMissingMediaPaths,
     downloadMissingCloudDriveMedia,
     getCloudMaterialRootDir,
+    getCloudProjectsCacheDir,
+    computeCloudProjectKey,
+    loadLocalCloudProjectsRegistry,
+    readLocalCloudProject,
+    clearLocalCloudProjectCache,
     getWorkerTemplateCode,
 };

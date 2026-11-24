@@ -13920,6 +13920,349 @@ test('Cloud Drive media auto-downloader resolves missing mp3/mp4/srt/png assets,
     }
 });
 
+test('Cloud project manager isolated cache, opt-in startup newest-date sync, clear-local & direct preview', async () => {
+    const os = require('os');
+    const vm = require('vm');
+    const settingsMod = require('../electron/services/settings');
+    const origGetBackendDir = settingsMod.getBackendDir;
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vk_cloud_mgr_'));
+    const tempBackend = path.join(tempRoot, 'backend');
+    fs.mkdirSync(tempBackend, { recursive: true });
+    settingsMod.getBackendDir = () => tempBackend;
+
+    const origFetch = global.fetch;
+    try {
+        delete require.cache[require.resolve('../electron/services/cloud-hub')];
+        const cloudHub = require('../electron/services/cloud-hub');
+
+        // 1. auto_sync_projects_on_startup MUST strictly default to false
+        const initialCfg = cloudHub.loadCloudHubSettings();
+        assert.equal(initialCfg.auto_sync_projects_on_startup, false, 'auto_sync_projects_on_startup must default OFF');
+        const toggledOn = cloudHub.saveCloudHubSettings({
+            auto_sync_projects_on_startup: true,
+            daily_projects: [
+                { id: 'old_20', date: '2026-11-20', title: '旧日期工程', url: 'https://drive.google.com/file/d/1OldProjFileId1234567/view' },
+                { id: 'new_24', date: '2026-11-24', title: '最新日期工程', url: 'https://drive.google.com/file/d/1NewProjFileId1234567/view' },
+            ],
+        });
+        assert.equal(toggledOn.auto_sync_projects_on_startup, true);
+        assert.equal(cloudHub.loadCloudHubSettings().daily_projects[0].date, '2026-11-24');
+
+        // Create fake shared media subfolder + exclusive media subfolder to verify orphan-safe cleanup
+        const sharedMediaDir = path.join(cloudHub.getCloudMaterialRootDir(), 'SharedFolderABC');
+        const exclusiveMediaDir = path.join(cloudHub.getCloudMaterialRootDir(), 'ExclusiveFolderXYZ');
+        fs.mkdirSync(sharedMediaDir, { recursive: true });
+        fs.mkdirSync(exclusiveMediaDir, { recursive: true });
+        fs.writeFileSync(path.join(sharedMediaDir, 'clip_shared.mp4'), Buffer.alloc(128, 1));
+        fs.writeFileSync(path.join(exclusiveMediaDir, 'clip_excl.mp4'), Buffer.alloc(128, 2));
+
+        const downloadedFileIds = [];
+        global.fetch = async (url) => {
+            const fid = cloudHub.extractGoogleDriveFileId(url) || '';
+            downloadedFileIds.push(fid);
+            const payload = {
+                version: '2.0',
+                tabs: [{
+                    id: `tab_${fid}`,
+                    name: fid.includes('New') ? '最新云端标签' : '旧云端标签',
+                    tasks: [{ id: `t_${fid}`, baseName: 'clip_1', bgPath: path.join(exclusiveMediaDir, 'clip_excl.mp4') }],
+                }],
+            };
+            return { ok: true, status: 200, headers: new Map([['content-type', 'application/json']]), text: async () => JSON.stringify(payload) };
+        };
+
+        // Direct download of 2026-11-20 saves to cloud_materials/projects & registry
+        const dlOld = await cloudHub.downloadCloudProject({
+            url: 'https://drive.google.com/file/d/1OldProjFileId1234567/view',
+            date: '2026-11-20',
+            title: '旧日期工程',
+            skip_media_download: true,
+        });
+        assert.equal(dlOld.status, 'success');
+        assert.ok(dlOld.local_key && dlOld.saved_path && fs.existsSync(dlOld.saved_path));
+        const reg1 = cloudHub.loadLocalCloudProjectsRegistry();
+        assert.equal(reg1.items.length, 1);
+        assert.ok(reg1.json_bytes > 0 && reg1.total_bytes >= reg1.json_bytes);
+
+        const localRead = cloudHub.readLocalCloudProject({ key: dlOld.local_key });
+        assert.equal(localRead.ok, true);
+        assert.equal(localRead.projectData.tabs[0].name, '旧云端标签');
+
+        // 2. Frontend startup auto-sync & workspace isolation checks
+        const liveFolders = [{ id: 'fld_cloud', name: '☁️ 云端同步工程', parentId: '' }];
+        const liveAssignments = {};
+        const liveProjects = [];
+        const domNodes = [];
+        const sandbox = {
+            console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout,
+            parseInt, parseFloat, isNaN, isFinite, confirm: () => true, alert: () => {}, showToast: () => {},
+            API_BASE: 'http://127.0.0.1:0/api',
+            localStorage: { _m: new Map(), getItem(k) { return this._m.get(k) || null; }, setItem(k, v) { this._m.set(k, String(v)); }, removeItem(k) { this._m.delete(k); } },
+            document: {
+                body: { appendChild(n) { domNodes.push(n); }, querySelector: () => null },
+                head: { appendChild() {} },
+                createElement: (tag) => {
+                    const slots = {
+                        '#cpm-list': { innerHTML: '', querySelectorAll: () => [] },
+                        '#cpm-summary-line': { textContent: '' },
+                        '#cpm-footer-status': { textContent: '', style: {} },
+                    };
+                    const el = {
+                        tagName: tag.toUpperCase(), style: {}, dataset: {}, innerHTML: '', children: [], slots,
+                        appendChild(c) { this.children.push(c); },
+                        addEventListener() {}, remove() {}, querySelectorAll: () => [],
+                        querySelector: (sel) => slots[sel] || null,
+                    };
+                    return el;
+                },
+                getElementById: () => null,
+                addEventListener() {},
+            },
+            reelsSelectTask: () => {}, reelsUpdatePreview: () => {},
+            apiFetch: async (ep, init = {}) => {
+                const body = init.body ? JSON.parse(init.body) : {};
+                if (ep === 'settings/cloud-hub') {
+                    return { ok: true, json: async () => (init.method === 'POST' ? cloudHub.saveCloudHubSettings(body) : cloudHub.loadCloudHubSettings()) };
+                }
+                if (ep === 'settings/cloud-hub/local-list') {
+                    return { ok: true, json: async () => cloudHub.loadLocalCloudProjectsRegistry(body) };
+                }
+                if (ep === 'settings/cloud-hub/local-get') {
+                    return { ok: true, json: async () => cloudHub.readLocalCloudProject(body) };
+                }
+                if (ep === 'settings/cloud-hub/download-project') {
+                    return { ok: true, json: async () => await cloudHub.downloadCloudProject(body) };
+                }
+                if (ep === 'settings/cloud-hub/clear-local') {
+                    return { ok: true, json: async () => cloudHub.clearLocalCloudProjectCache(body) };
+                }
+                if (ep.endsWith('/live-projects/folders/list')) return { ok: true, json: async () => ({ folders: liveFolders, assignments: liveAssignments }) };
+                if (ep.endsWith('/live-projects/list')) return { ok: true, json: async () => liveProjects };
+                if (ep.endsWith('/live-projects/save')) {
+                    const id = body.id || `lp_${liveProjects.length + 1}`;
+                    const rec = { id, name: body.name, folderId: body.folderId || '', thumbnail: body.thumbnail || '', projectData: body.projectData };
+                    const idx = liveProjects.findIndex(x => x.id === id);
+                    if (idx >= 0) liveProjects[idx] = rec; else liveProjects.push(rec);
+                    if (body.folderId) liveAssignments[id] = body.folderId;
+                    return { ok: true, json: async () => ({ success: true, id }) };
+                }
+                if (ep.endsWith('/live-projects/delete')) {
+                    const idx = liveProjects.findIndex(x => x.id === body.id);
+                    if (idx >= 0) liveProjects.splice(idx, 1);
+                    return { ok: true, json: async () => ({ success: true }) };
+                }
+                return { ok: true, json: async () => ({}) };
+            },
+            window: {
+                addEventListener() {}, location: { hash: '' },
+                _reelsState: { tasks: [], globalSubtitleStyle: {}, exportOpts: {}, watermarks: [] },
+                _reelsLibraryThumbCache: {},
+                ReelsProject: { collectProjectData: (opts) => ({ version: '2.0', tasks: opts.tasks || [] }) },
+                reelsCaptureProjectThumbnailFromData: async () => 'data:image/jpeg;base64,THUMB',
+                electronAPI: { toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/') },
+            },
+        };
+        sandbox.window.window = sandbox.window;
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-batch-table.js'), 'utf8'), sandbox);
+
+        // Seed active workspace tab so we prove cloud auto-sync / download NEVER bloats workspace memory
+        vm.runInContext(`_batchTableState.tabs = [{ id: 'tab_active_work', name: '本地工作区', hidden: false, tasks: [{ id: 'local_1' }] }]; _batchTableState.activeTabId = 'tab_active_work';`, sandbox);
+
+        // With flag false -> strictly skips
+        const resOff = await sandbox.window.reelsAutoSyncLatestCloudProjectToLibrary({ auto_sync_projects_on_startup: false, daily_projects: toggledOn.daily_projects });
+        assert.equal(resOff.skipped, true);
+        assert.equal(resOff.reason, 'disabled');
+
+        // Clear local cache first so we test syncing ONLY newest date (2026-11-24) when multiple un-synced dates exist!
+        cloudHub.clearLocalCloudProjectCache({ clear_all: true, delete_media: false });
+        downloadedFileIds.length = 0;
+
+        const resOn = await sandbox.window.reelsAutoSyncLatestCloudProjectToLibrary({
+            auto_sync_projects_on_startup: true,
+            daily_projects: [
+                { id: 'old_20', date: '2026-11-20', title: '旧日期工程', url: 'https://drive.google.com/file/d/1OldProjFileId1234567/view' },
+                { id: 'new_24', date: '2026-11-24', title: '最新日期工程', url: 'https://drive.google.com/file/d/1NewProjFileId1234567/view' },
+            ],
+        });
+        assert.equal(resOn.latestDate, '2026-11-24');
+        assert.equal(resOn.downloaded, 1);
+        assert.deepEqual(downloadedFileIds, ['1NewProjFileId1234567'], 'Startup auto-sync must download ONLY newest date project');
+        assert.equal(vm.runInContext(`_batchTableState.tabs.length`, sandbox), 1, 'Workspace tabs must remain isolated (0 memory bloat)');
+        assert.equal(vm.runInContext(`_batchTableState.tabs[0].id`, sandbox), 'tab_active_work');
+        assert.equal(liveProjects.length, 1, 'Newest cloud project must still be synced into ☁️ 云端同步工程 live library');
+
+        // Second run skips already-cached newest date
+        const resRepeat = await sandbox.window.reelsAutoSyncLatestCloudProjectToLibrary({ auto_sync_projects_on_startup: true, daily_projects: toggledOn.daily_projects });
+        assert.equal(resRepeat.downloaded, 0);
+        assert.equal(resRepeat.skipped, 1);
+
+        // 3. Single-entry clear-local keeps shared media if sibling uses it, and deletes exclusive media when unreferenced
+        const p1 = await cloudHub.downloadCloudProject({ url: 'https://drive.google.com/file/d/1OldProjFileId1234567/view', date: '2026-11-20', title: '旧工程', skip_media_download: true });
+        // Point reg entry to exclusiveMediaDir to verify deletion
+        const regBefore = JSON.parse(fs.readFileSync(path.join(tempBackend, 'cloud_projects_registry.json'), 'utf8'));
+        regBefore.items[p1.local_key].media_cache_dir = exclusiveMediaDir;
+        fs.writeFileSync(path.join(tempBackend, 'cloud_projects_registry.json'), JSON.stringify(regBefore, null, 2));
+        cloudHub.clearLocalCloudProjectCache({ key: p1.local_key, delete_media: true });
+        assert.equal(fs.existsSync(p1.saved_path), false, 'Cleared local project JSON must be deleted');
+        assert.equal(fs.existsSync(exclusiveMediaDir), false, 'Orphaned exclusive media cache dir must be deleted');
+        assert.equal(fs.existsSync(sharedMediaDir), true, 'Unrelated media dir must remain safe');
+        assert.equal(cloudHub.loadLocalCloudProjectsRegistry().items.length, 1, 'Other synced cloud project must stay cached');
+
+        // Verify openCloudProjectManager renders both cloud-only and synced items with zero workspace bloat
+        await sandbox.window.openCloudProjectManager();
+        const mgrModal = domNodes[domNodes.length - 1];
+        const mgrListHtml = mgrModal?.slots?.['#cpm-list']?.innerHTML || '';
+        assert.ok(mgrListHtml.includes('最新日期工程') && mgrListHtml.includes('✅ 已同步到本地') && mgrListHtml.includes('👁️ 预览效果') && mgrListHtml.includes('⚡ 打开编辑') && mgrListHtml.includes('🔄 重置云端原版') && mgrListHtml.includes('🧹 清理缓存'), 'Synced cloud project card must expose preview/open/reset/clear controls');
+        assert.ok(mgrListHtml.includes('旧日期工程') && mgrListHtml.includes('☁️ 仅云端（0 内存）') && mgrListHtml.includes('⬇️ 下载到本地'), 'Unsynced cloud project card must show zero-memory state and download button');
+        assert.equal(vm.runInContext(`_batchTableState.tabs.length`, sandbox), 1, 'Opening Cloud Project Manager must not load cloud tabs into active workspace');
+
+        // 4. Direct object preview modal in reels-templates.js (no /get network call needed)
+        const tplCreated = [];
+        let previewFetchCount = 0;
+        let openWorkspaceCalled = false;
+        const tplSandbox = {
+            console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout,
+            requestAnimationFrame: () => 0,
+            cancelAnimationFrame: () => {},
+            API_BASE: 'http://127.0.0.1:0/api',
+            localStorage: sandbox.localStorage,
+            document: {
+                body: { appendChild(n) { tplCreated.push(n); } },
+                createElement: (tag) => {
+                    const listeners = {};
+                    const el = {
+                        tagName: tag.toUpperCase(), style: {}, dataset: {}, innerHTML: '', children: [],
+                        appendChild(c) { this.children.push(c); },
+                        addEventListener(ev, fn) { (listeners[ev] ||= []).push(fn); },
+                        remove() {},
+                        getContext: () => ({ fillRect() {}, drawImage() {}, save() {}, restore() {} }),
+                        querySelector: (sel) => {
+                            if (sel === '#vklp-open-edit') return { addEventListener: (ev, fn) => { if (ev === 'click') el._onOpenEdit = fn; } };
+                            if (sel === '#vklp-subinfo') return el._subinfo || (el._subinfo = { textContent: '' });
+                            return { addEventListener() {}, style: {}, value: '' };
+                        },
+                        querySelectorAll: () => [],
+                    };
+                    return el;
+                },
+                getElementById: () => null,
+                addEventListener() {}, removeEventListener() {},
+            },
+            apiFetch: async () => { previewFetchCount++; return { ok: true, json: async () => ({}) }; },
+            showToast: () => {},
+            ReelsProject: { applyProjectData: (d) => ({ tasks: d.tasks || [], style: {}, exportOpts: {}, watermarks: [] }) },
+            window: { addEventListener() {}, location: { hash: '' }, electronAPI: { toFileUrl: p => `file:///${p}` } },
+        };
+        tplSandbox.window.window = tplSandbox.window;
+        tplSandbox.globalThis = tplSandbox;
+        vm.createContext(tplSandbox);
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-templates.js'), 'utf8'), tplSandbox);
+        await tplSandbox.window.openLibraryItemPreview('liveProject', {
+            id: 'cloud_preview_1',
+            name: '云端试看工程',
+            noun: '云端工程',
+            openLabel: '⚡ 打开到工作区编辑',
+            projectData: { tasks: [{ baseName: 'clip_demo', segments: [{ start: 0, end: 2, text: 'Hello' }] }] },
+            onOpenWorkspace: async () => { openWorkspaceCalled = true; },
+        });
+        assert.equal(previewFetchCount, 0, 'Direct preview object must NOT issue /live-projects/get fetch');
+        assert.ok(tplCreated.length > 0 && tplCreated[0].innerHTML.includes('云端工程效果预览 — 云端试看工程'));
+        assert.ok(typeof tplCreated[0]._onOpenEdit === 'function');
+        await tplCreated[0]._onOpenEdit();
+        assert.equal(openWorkspaceCalled, true, 'Clicking open button in direct preview must invoke onOpenWorkspace');
+    } finally {
+        settingsMod.getBackendDir = origGetBackendDir;
+        global.fetch = origFetch;
+        try { fs.rmSync(tempRoot, { recursive: true, force: true }); } catch (_) {}
+    }
+});
+
+test('Personal font expansion pack (.zip/multi), Nerko One/DynaPuff, and Marcus preset sub-254', async () => {
+    const vm = require('vm');
+    const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
+    const preloadSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'preload.js'), 'utf8');
+    const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+
+    assert.ok(mainSrc.includes("handleTrusted('import-local-font-pack'") && mainSrc.includes("app.getPath('userData'), 'Fonts'"), 'main.js must persist personal fonts & .zip expansion packs under userData/Fonts');
+    assert.ok(mainSrc.includes('services/safeExtract'), 'main.js must use safeExtract for Zip-Slip-safe font pack extraction');
+    assert.ok(preloadSrc.includes('importLocalFontPack:'), 'preload.js must expose importLocalFontPack');
+    assert.ok(htmlSrc.includes('id="reels-cloud-project-manager-btn"'), 'index.html must add dedicated ☁️ 云端工程管理 toolbar button');
+    assert.ok(htmlSrc.includes('id="reels-font-upload"') && htmlSrc.includes('.zip') && htmlSrc.includes('multiple'), 'index.html font upload input must accept multiple & .zip');
+
+    // Verify Nerko One / DynaPuff + uploadFontPack + personal expansion labeling in ReelsFontManager
+    const fontMgrSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-font-manager.js'), 'utf8');
+    const fmSandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout,
+        FontFace: class { constructor(f, s, d) { this.family = f; } async load() { return this; } },
+        document: { fonts: { add() {}, ready: Promise.resolve(), addEventListener() {} }, querySelectorAll: () => [], getElementById: () => null },
+        window: {
+            addEventListener() {},
+            electronAPI: {
+                toFileUrl: p => `file:///${String(p || '').replace(/\\/g, '/')}`,
+                importLocalFontPack: async () => ({
+                    ok: true,
+                    packName: 'marcus_pack',
+                    fonts: [{ family: 'Cheering Section', weight: '400', style: 'normal', path: 'C:\\Users\\Demo\\AppData\\Roaming\\videokit\\Fonts\\expansion-packs\\marcus_pack\\CheeringSection.ttf', system: false, licenseScope: 'personal', packName: 'marcus_pack' }],
+                }),
+            },
+        },
+        module: { exports: {} },
+    };
+    fmSandbox.window.window = fmSandbox.window;
+    fmSandbox.globalThis = fmSandbox;
+    vm.createContext(fmSandbox);
+    vm.runInContext(fontMgrSrc, fmSandbox);
+
+    const fm = fmSandbox.getFontManager();
+    const googleFonts = fmSandbox.window.GOOGLE_FONTS || fmSandbox.module.exports.GOOGLE_FONTS;
+    assert.ok(googleFonts.includes('Nerko One') && googleFonts.includes('DynaPuff'));
+    const packRes = await fm.uploadFontPack([{ name: 'marcus_pack.zip', arrayBuffer: async () => new Uint8Array([80, 75, 3, 4]).buffer }]);
+    assert.equal(packRes.count, 1);
+    assert.equal(fm.hasFont('Cheering Section'), true);
+    const catalog = fm.getUnifiedFontCatalog();
+    assert.ok(catalog.displayNames['Nerko One'].includes('厚涂手绘马克卡通'));
+    assert.ok(catalog.displayNames['Cheering Section'].includes('自用扩展'));
+
+    // Verify sub-254 preset + dynamic Cheering Section -> Nerko One fallback in ReelsStyleEngine + ReelsPresetsInit
+    const styleSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-style-engine.js'), 'utf8');
+    const presetsSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-presets-init.js'), 'utf8');
+    let mockHasCheeringSection = false;
+    const styleSandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise,
+        localStorage: { _m: new Map(), getItem(k) { return this._m.get(k) || null; }, setItem(k, v) { this._m.set(k, String(v)); }, removeItem(k) { this._m.delete(k); } },
+        document: { fonts: { add() {} }, querySelectorAll: () => [], getElementById: () => null },
+        window: { addEventListener() {}, getFontManager: () => ({ hasFont: (n) => n === 'Cheering Section' ? mockHasCheeringSection : false }) },
+        module: { exports: {} },
+    };
+    styleSandbox.window.window = styleSandbox.window;
+    styleSandbox.globalThis = styleSandbox;
+    vm.createContext(styleSandbox);
+    vm.runInContext(styleSrc, styleSandbox);
+    vm.runInContext(presetsSrc, styleSandbox);
+
+    const resolvedPreset = styleSandbox.resolveBuiltinPreset('sub-254');
+    assert.ok(resolvedPreset && resolvedPreset.name === '🎬 马库斯_黄橙渐变3行逐字弹出');
+
+    const fallbackStyle = styleSandbox.applySubtitlePreset('🎬 马库斯_黄橙渐变3行逐字弹出');
+    assert.equal(fallbackStyle.font_family, 'Nerko One', 'Must fall back cleanly to Nerko One without third-party font installed');
+    assert.equal(fallbackStyle.text_gradient_enabled, true);
+    assert.equal(fallbackStyle.text_gradient_direction, 'horizontal');
+    assert.equal(fallbackStyle.text_gradient_colors, '#FFE030,#FFAA28,#FF721D');
+    assert.equal(fallbackStyle.use_stroke, true);
+    assert.equal(fallbackStyle.color_outline, '#000000');
+    assert.equal(fallbackStyle.border_width, 11);
+    assert.equal(fallbackStyle.highlight_enabled, false);
+    assert.equal(fallbackStyle.wrap_lines, 3);
+    assert.equal(fallbackStyle.max_words_per_segment, 9);
+    assert.equal(fallbackStyle.anim_in_type, 'char_pop_elastic');
+
+    mockHasCheeringSection = true;
+    const expandedStyle = styleSandbox.applySubtitlePreset('🎬 马库斯_黄橙渐变3行逐字弹出');
+    assert.equal(expandedStyle.font_family, 'Cheering Section', 'Must auto-prefer Cheering Section once installed in personal font expansion pack');
+});
+
 
 
 

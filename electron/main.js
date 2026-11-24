@@ -1446,19 +1446,27 @@ async function scanFontsCatalog(options = {}) {
 
         function computeLocalDirSig(dirs) {
             const parts = [];
-            for (const d of dirs) {
-                if (!d || !fs.existsSync(d)) {
-                    parts.push(`${d}:missing`);
-                    continue;
+            const walkSig = (dir, depth = 0) => {
+                if (!dir || !fs.existsSync(dir)) {
+                    parts.push(`${dir}:missing`);
+                    return;
                 }
                 try {
-                    const st = fs.statSync(d);
-                    const entries = fs.readdirSync(d);
-                    parts.push(`${d}:${Math.round(st.mtimeMs)}:${entries.length}:${entries.join(',')}`);
+                    const st = fs.statSync(dir);
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    parts.push(`${dir}:${Math.round(st.mtimeMs)}:${entries.length}:${entries.map(e => e.name).join(',')}`);
+                    if (depth < 2) {
+                        for (const ent of entries) {
+                            if (ent.isDirectory() && !ent.name.startsWith('.')) {
+                                walkSig(path.join(dir, ent.name), depth + 1);
+                            }
+                        }
+                    }
                 } catch (_) {
-                    parts.push(`${d}:err`);
+                    parts.push(`${dir}:err`);
                 }
-            }
+            };
+            for (const d of dirs) walkSig(d, 0);
             return parts.join('|');
         }
 
@@ -1500,6 +1508,8 @@ async function scanFontsCatalog(options = {}) {
                                     weight: resolvedWeight,
                                     style: resolvedStyle,
                                     system: isSystemFont,
+                                    ...(imported.licenseScope ? { licenseScope: imported.licenseScope } : {}),
+                                    ...(imported.packName ? { packName: imported.packName } : {}),
                                 });
                             }
                         } catch { /* skip unreadable dirs */ }
@@ -1520,6 +1530,8 @@ async function scanFontsCatalog(options = {}) {
                             weight: resolvedWeight,
                             style: resolvedStyle,
                             system: isSystemFont,
+                            ...(imported.licenseScope ? { licenseScope: imported.licenseScope } : {}),
+                            ...(imported.packName ? { packName: imported.packName } : {}),
                         });
                     }
                 }
@@ -1529,10 +1541,11 @@ async function scanFontsCatalog(options = {}) {
             return results;
         }
 
+        const userFontsDir = path.join(app.getPath('userData'), 'Fonts');
         const fontsDir = app.isPackaged
             ? path.join(process.resourcesPath, 'assets', 'fonts')
             : path.join(__dirname, '..', 'assets', 'fonts');
-        const localDirs = [path.join(path.dirname(process.execPath),'Fonts'), fontsDir];
+        const localDirs = [userFontsDir, path.join(path.dirname(process.execPath), 'Fonts'), fontsDir];
         if (!app.isPackaged) localDirs.push(path.join(__dirname, '..', 'fonts-local'));
 
         const currentLocalSig = computeLocalDirSig(localDirs);
@@ -2796,25 +2809,160 @@ app.whenReady().then(async () => {
     });
 
     // IPC: 扫描本地字体目录 + 系统字体（缓存系统字体，避免重复扫描 Windows 字体；本地字体目录变化时自动更新）
-    const uploadedFontHashCache=new Map();
-    handleTrusted('import-local-font',async(_event,{fileName,bytes}={})=>{
-        const name=path.basename(String(fileName||'')).replace(/[<>:"/\\|?*]/g,'_');
-        if(!['.ttf','.otf','.woff','.woff2','.ttc','.dfont'].includes(path.extname(name).toLowerCase()))throw Error('不支持的字体格式');
-        const body=Buffer.from(bytes||[]);if(!body.length||body.length>32*1024*1024)throw Error('字体文件为空或超过32MB');
-        const hash=require('crypto').createHash('sha256').update(body).digest('hex').slice(0,16);
-        const dir=path.join(path.dirname(process.execPath),'Fonts');fs.mkdirSync(dir,{recursive:true});
-        const fontExtensions=new Set(['.ttf','.otf','.woff','.woff2','.ttc','.dfont']);
-        const fileHash=file=>{const stat=fs.statSync(file),signature=stat.size+':'+stat.mtimeMs,previous=uploadedFontHashCache.get(file);if(previous?.signature===signature)return previous.hash;const digest=require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0,16);uploadedFontHashCache.set(file,{signature,hash:digest});return digest;};
-        const findExisting=(folder,depth=0)=>{if(depth>8)return null;for(const entry of fs.readdirSync(folder,{withFileTypes:true})){const candidate=path.join(folder,entry.name);if(entry.isDirectory()){const found=findExisting(candidate,depth+1);if(found)return found;}else if(entry.isFile()&&fontExtensions.has(path.extname(entry.name).toLowerCase())){const stat=fs.statSync(candidate);if(stat.size===body.length&&fileHash(candidate)===hash)return candidate;}}return null;};
-        const existing=findExisting(dir);let file=existing||path.join(dir,name);
-        if(!existing&&fs.existsSync(file)&&fileHash(file)!==hash){const parsed=path.parse(name);file=path.join(dir,parsed.name+'-'+hash+parsed.ext);}
-        if(!fs.existsSync(file))fs.writeFileSync(file,body);
-        let savedMetadata={};try{savedMetadata=JSON.parse(fs.readFileSync(path.join(path.dirname(file),'font-metadata.json'),'utf8'))[path.basename(file)]||{};}catch(_){}
-        const details={...require('./services/fontMetadata').readFontMetadata(file),...savedMetadata};
-        const family=details.family||path.parse(name).name.replace(/[-_]/g,' ').trim();
-        const data={family,weight:details.weight||'400',style:'normal',path:file,system:false};
-        const manifest=path.join(path.dirname(file),'font-metadata.json');let metadata={};if(fs.existsSync(manifest))metadata=JSON.parse(fs.readFileSync(manifest,'utf8'));metadata[path.basename(file)]={family,weight:data.weight,style:data.style};const temporary=manifest+'.'+process.pid+'.tmp';fs.writeFileSync(temporary,JSON.stringify(metadata,null,2),'utf8');fs.renameSync(temporary,manifest);
+    const uploadedFontHashCache = new Map();
+    const FONT_EXT_SET = new Set(['.ttf', '.otf', '.woff', '.woff2', '.ttc', '.dfont']);
+
+    const persistPersonalFontBuffer = ({ fileName, bytes, targetSubdir = '', licenseScope = 'personal', packName = '' } = {}) => {
+        const name = path.basename(String(fileName || '')).replace(/[<>:"/\\|?*]/g, '_');
+        if (!FONT_EXT_SET.has(path.extname(name).toLowerCase())) {
+            throw new Error('不支持的字体格式（支持 .ttf/.otf/.woff/.woff2/.ttc/.dfont）');
+        }
+        const body = Buffer.from(bytes || []);
+        if (!body.length || body.length > 32 * 1024 * 1024) {
+            throw new Error('字体文件为空或超过 32MB');
+        }
+        const hash = require('crypto').createHash('sha256').update(body).digest('hex').slice(0, 16);
+        const userFontsRoot = path.join(app.getPath('userData'), 'Fonts');
+        const targetDir = targetSubdir ? path.join(userFontsRoot, targetSubdir) : userFontsRoot;
+        fs.mkdirSync(targetDir, { recursive: true });
+
+        const fileHash = (file) => {
+            const stat = fs.statSync(file);
+            const signature = `${stat.size}:${stat.mtimeMs}`;
+            const previous = uploadedFontHashCache.get(file);
+            if (previous?.signature === signature) return previous.hash;
+            const digest = require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex').slice(0, 16);
+            uploadedFontHashCache.set(file, { signature, hash: digest });
+            return digest;
+        };
+        const findExisting = (folder, depth = 0) => {
+            if (!fs.existsSync(folder) || depth > 8) return null;
+            for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+                const candidate = path.join(folder, entry.name);
+                if (entry.isDirectory()) {
+                    const found = findExisting(candidate, depth + 1);
+                    if (found) return found;
+                } else if (entry.isFile() && FONT_EXT_SET.has(path.extname(entry.name).toLowerCase())) {
+                    const stat = fs.statSync(candidate);
+                    if (stat.size === body.length && fileHash(candidate) === hash) return candidate;
+                }
+            }
+            return null;
+        };
+
+        const existing = findExisting(userFontsRoot);
+        let file = existing || path.join(targetDir, name);
+        if (!existing && fs.existsSync(file) && fileHash(file) !== hash) {
+            const parsed = path.parse(name);
+            file = path.join(targetDir, `${parsed.name}-${hash}${parsed.ext}`);
+        }
+        if (!fs.existsSync(file)) fs.writeFileSync(file, body);
+
+        const manifestDir = path.dirname(file);
+        const manifestPath = path.join(manifestDir, 'font-metadata.json');
+        let metadata = {};
+        try {
+            if (fs.existsSync(manifestPath)) metadata = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) || {};
+        } catch (_) { metadata = {}; }
+        const savedMeta = metadata[path.basename(file)] || {};
+        const details = { ...require('./services/fontMetadata').readFontMetadata(file), ...savedMeta };
+        const family = details.family || path.parse(name).name.replace(/[-_]/g, ' ').trim();
+        const resolvedScope = savedMeta.licenseScope || licenseScope || 'personal';
+        const resolvedPack = savedMeta.packName || packName || '';
+        const data = {
+            family,
+            weight: details.weight || '400',
+            style: details.style || 'normal',
+            path: file,
+            system: false,
+            licenseScope: resolvedScope,
+            ...(resolvedPack ? { packName: resolvedPack } : {}),
+        };
+        metadata[path.basename(file)] = {
+            family,
+            weight: data.weight,
+            style: data.style,
+            licenseScope: resolvedScope,
+            ...(resolvedPack ? { packName: resolvedPack } : {}),
+        };
+        const tmpManifest = `${manifestPath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmpManifest, JSON.stringify(metadata, null, 2), 'utf8');
+        fs.renameSync(tmpManifest, manifestPath);
+        _cachedLocalFonts = null;
+        _cachedLocalFontsSig = '';
         return data;
+    };
+
+    handleTrusted('import-local-font', async (_event, { fileName, bytes, licenseScope, packName } = {}) => {
+        return persistPersonalFontBuffer({
+            fileName,
+            bytes,
+            licenseScope: licenseScope || 'personal',
+            packName: packName || '',
+        });
+    });
+
+    handleTrusted('import-local-font-pack', async (_event, { fileName, bytes } = {}) => {
+        const cleanZipName = path.basename(String(fileName || 'fontpack.zip')).replace(/[<>:"/\\|?*]/g, '_');
+        if (!cleanZipName.toLowerCase().endsWith('.zip')) {
+            throw new Error('仅支持 .zip 格式字体扩展包');
+        }
+        const body = Buffer.from(bytes || []);
+        if (!body.length || body.length > 128 * 1024 * 1024) {
+            throw new Error('字体扩展包为空或超过 128MB');
+        }
+        const packBase = path.parse(cleanZipName).name.replace(/[<>:"/\\|?*.\x00-\x1f]/g, '_').trim() || `pack_${Date.now()}`;
+        const tmpRoot = path.join(app.getPath('userData'), 'tmp');
+        fs.mkdirSync(tmpRoot, { recursive: true });
+        const tmpZip = path.join(tmpRoot, `fontpack_${Date.now()}_${process.pid}.zip`);
+        const extractDir = path.join(tmpRoot, `fontpack_ext_${Date.now()}_${process.pid}`);
+        const imported = [];
+        try {
+            fs.writeFileSync(tmpZip, body);
+            const safeExtract = require('./services/safeExtract');
+            await safeExtract(tmpZip, { dir: extractDir });
+
+            const collectedFiles = [];
+            const walkFonts = (dir, depth = 0) => {
+                if (!fs.existsSync(dir) || depth > 8) return;
+                for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+                    if (ent.name === '__MACOSX' || ent.name.startsWith('.') || ent.isSymbolicLink()) continue;
+                    const full = path.join(dir, ent.name);
+                    if (ent.isDirectory()) {
+                        walkFonts(full, depth + 1);
+                    } else if (ent.isFile() && FONT_EXT_SET.has(path.extname(ent.name).toLowerCase())) {
+                        collectedFiles.push(full);
+                    }
+                }
+            };
+            walkFonts(extractDir, 0);
+            if (collectedFiles.length === 0) {
+                throw new Error('ZIP 压缩包内未找到可用的 .ttf / .otf / .woff / .woff2 / .ttc 字体文件');
+            }
+            const targetSubdir = path.join('expansion-packs', packBase);
+            for (const fPath of collectedFiles.slice(0, 120)) {
+                try {
+                    const fBytes = fs.readFileSync(fPath);
+                    const saved = persistPersonalFontBuffer({
+                        fileName: path.basename(fPath),
+                        bytes: fBytes,
+                        targetSubdir,
+                        licenseScope: 'personal',
+                        packName: packBase,
+                    });
+                    if (saved) imported.push(saved);
+                } catch (_) {}
+            }
+        } finally {
+            try { fs.rmSync(tmpZip, { force: true }); } catch (_) {}
+            try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch (_) {}
+        }
+        return {
+            ok: true,
+            packName: packBase,
+            count: imported.length,
+            fonts: imported,
+        };
     });
     handleTrusted('scan-fonts', async (event, options = {}) => scanFontsCatalog(options));
 

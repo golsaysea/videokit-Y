@@ -6388,6 +6388,24 @@ const REELS_VIRAL_100_CODES = {};
             anim_in_type: 'kinetic_glow_stack', anim_in_duration: 0.16, anim_in_easing: 'ease_out_back',
             anim_out_type: 'none', anim_out_duration: 0,
         })],
+        ['sub-254', '🎬 马库斯_黄橙渐变3行逐字弹出', mk({
+            font_family: 'Nerko One', font_weight: 400, fontsize: 78, bold: false, italic: false,
+            uppercase: false, text_transform: 'none',
+            letter_spacing: 0, word_spacing: 4, line_spacing: 6, text_align: 'center',
+            color_text: '#FFE030,#FF721D', color_high: '#FFE030',
+            text_gradient_enabled: true, text_gradient_colors: '#FFE030,#FFAA28,#FF721D',
+            text_gradient_direction: 'horizontal', text_gradient_scope: 'line',
+            high_gradient_enabled: false,
+            highlight_enabled: false, karaoke_highlight: false, highlight_scale_enabled: false,
+            use_stroke: true, color_outline: '#000000', opacity_outline: 255, border_width: 11,
+            shadow_blur: 6, shadow_offset_x: 0, shadow_offset_y: 5, color_shadow: '#000000', opacity_shadow: 230, shadow: true,
+            use_box: false, dynamic_box: false, use_underline: false,
+            pos_x: 0.5, pos_y: 0.54, wrap_width_percent: 68, wrap_lines: 3,
+            max_words_per_segment: 9, max_words_per_line: 4,
+            anim_in_type: 'char_pop_elastic', anim_in_duration: 0.45, anim_in_easing: 'ease_out_back',
+            char_anim_duration: 0.16, char_anim_stagger: 0.032, char_anim_intensity: 0.35,
+            anim_out_type: 'none', anim_out_duration: 0,
+        })],
     ];
     for (const [code, name, styleObj] of entries) {
         REELS_BUILTIN_PRESETS[name] = styleObj;
@@ -6395,7 +6413,14 @@ const REELS_VIRAL_100_CODES = {};
     }
 })();
 
-if (typeof window !== 'undefined') window.REELS_BUILTIN_PRESETS = REELS_BUILTIN_PRESETS;
+const REELS_PRESET_PREFERRED_FONTS = {
+    '🎬 马库斯_黄橙渐变3行逐字弹出': ['Cheering Section', 'Nerko One'],
+};
+
+if (typeof window !== 'undefined') {
+    window.REELS_BUILTIN_PRESETS = REELS_BUILTIN_PRESETS;
+    window.REELS_PRESET_PREFERRED_FONTS = REELS_PRESET_PREFERRED_FONTS;
+}
 
 const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {
 
@@ -9652,6 +9677,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         REELS_BUILTIN_PRESETS,
+        REELS_PRESET_PREFERRED_FONTS,
         REELS_BUILTIN_OVERLAY_GROUP_PRESETS,
         REELS_BUILTIN_SCROLL_STYLE_PRESETS,
         REELS_PRESET_ID_MAP,

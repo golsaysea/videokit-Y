@@ -101,7 +101,7 @@ const GOOGLE_FONTS = [
     'Climate Crisis', 'Nabla', 'Bagel Fat One', 'Honk',
     'Titan One', 'Luckiest Guy', 'Boogaloo', 'Carter One', 'Paytone One',
     'Calistoga', 'Racing Sans One', 'Black Han Sans', 'Dela Gothic One', 'Bungee Spice',
-    'Chewy', 'Rowdies',
+    'Chewy', 'Rowdies', 'Nerko One', 'DynaPuff',
     'Sigmar One', 'Wendy One', 'Ceviche One', 'Fredericka the Great', 'Rye',
     'Sancreek', 'Smokum', 'Creepster', 'Nosifer', 'Eater',
     'Wallpoet', 'Plaster', 'Megrim', 'Zen Dots',
@@ -169,7 +169,7 @@ const POPULAR_GOOGLE_FONTS = [
     'Marcellus', 'Vidaloka', 'Rozha One', 'Gloock', 'Bellefair',
     'Caudex', 'Mate SC', 'Titan One', 'Luckiest Guy', 'Boogaloo',
     'Carter One', 'Paytone One', 'Calistoga', 'Racing Sans One', 'Black Han Sans',
-    'Dela Gothic One', 'Bungee Spice', 'Chewy', 'Rowdies', 'Parisienne',
+    'Dela Gothic One', 'Bungee Spice', 'Chewy', 'Rowdies', 'Nerko One', 'DynaPuff', 'Parisienne',
     'Italianno', 'Mrs Saint Delafield', 'Petit Formal Script', 'Sriracha', 'Mali',
     'Nanum Pen Script', 'Sedgwick Ave Display', 'Courier Prime', 'Special Elite', 'VT323',
     'DM Mono', 'Noto Serif TC', 'Noto Serif HK', 'Shippori Mincho', 'Yuji Syuku',
@@ -238,7 +238,8 @@ class ReelsFontManager {
         this._registered = false;
         this._registerPromise = null;
         this._allowedFonts = [...BUILTIN_FONTS];
-        this._customFonts = [];   // 用户上传的自定义字体
+        this._customFonts = [];   // 用户上传 / 个人扩展包字体
+        this._personalPackFonts = new Set(); // 个人扩展字体（非内置可商用包）
         this._systemFonts = new Set();   // 系统扫描到的字体
         this._embeddedFonts = new Set(); // 内置 assets/fonts 字体
         this._registeredEmbeddedPaths = new Set();
@@ -323,10 +324,16 @@ class ReelsFontManager {
                         }
                     }
 
-                    // 逐个注册内置字体
+                    // 逐个注册内置字体与个人扩展包字体
                     for (const fontInfo of embeddedFonts) {
                         await this._registerLocalFont(fontInfo);
-                        this._embeddedFonts.add(fontInfo.family);
+                        const isPersonal = fontInfo.licenseScope === 'personal' || String(fontInfo.path || '').includes('expansion-packs');
+                        if (isPersonal) {
+                            this._personalPackFonts.add(fontInfo.family);
+                            if (!this._customFonts.includes(fontInfo.family)) this._customFonts.push(fontInfo.family);
+                        } else {
+                            this._embeddedFonts.add(fontInfo.family);
+                        }
                         if (fontInfo.family && !available.includes(fontInfo.family)) {
                             available.push(fontInfo.family);
                         }
@@ -392,7 +399,15 @@ class ReelsFontManager {
                                 await this._registerLocalFont(fontInfo);
                                 addedLocal = true;
                             }
-                            if (!this._embeddedFonts.has(fontInfo.family)) {
+                            const isPersonal = fontInfo.licenseScope === 'personal' || String(fontInfo.path || '').includes('expansion-packs');
+                            if (isPersonal) {
+                                if (!this._personalPackFonts.has(fontInfo.family)) addedLocal = true;
+                                this._personalPackFonts.add(fontInfo.family);
+                                if (!this._customFonts.includes(fontInfo.family)) {
+                                    this._customFonts.push(fontInfo.family);
+                                    addedLocal = true;
+                                }
+                            } else if (!this._embeddedFonts.has(fontInfo.family)) {
                                 this._embeddedFonts.add(fontInfo.family);
                                 addedLocal = true;
                             }
@@ -897,19 +912,88 @@ class ReelsFontManager {
     }
 
     /**
-     * 用户上传自定义字体文件。
+     * 检查字体是否已存在于系统/内置/Google/个人扩展目录中。
      */
-    async uploadFont(file) {
-        if (!file) return null;
+    hasFont(fontFamily) {
+        const needle = String(fontFamily || '').trim().toLowerCase();
+        if (!needle) return false;
+        const matchSet = (setOrArr) => {
+            if (!setOrArr) return false;
+            for (const f of setOrArr) {
+                if (String(f || '').trim().toLowerCase() === needle) return true;
+            }
+            return false;
+        };
+        if (matchSet(this._customFonts) || matchSet(this._personalPackFonts) || matchSet(this._embeddedFonts) || matchSet(this._systemFonts)) {
+            return true;
+        }
+        return matchSet(this._allowedFonts);
+    }
 
+    /**
+     * 批量导入个人扩展包（支持 .zip 字体压缩包或多选 .ttf/.otf/.woff/.woff2/.ttc）。
+     * 安装到独立持久化用户目录（升级覆盖重装不丢失）。
+     */
+    async uploadFontPack(filesOrList) {
+        const files = !filesOrList
+            ? []
+            : (Array.isArray(filesOrList) || typeof filesOrList.length === 'number')
+                ? Array.from(filesOrList)
+                : [filesOrList];
+        if (!files.length) return { count: 0, families: [], lastFamily: null };
+
+        const importedFamilies = [];
+        for (const file of files) {
+            if (!file) continue;
+            const lowerName = String(file.name || '').toLowerCase();
+            if (lowerName.endsWith('.zip')) {
+                if (window.electronAPI?.importLocalFontPack) {
+                    const buf = await file.arrayBuffer();
+                    const res = await window.electronAPI.importLocalFontPack(file.name, new Uint8Array(buf));
+                    const list = Array.isArray(res?.fonts) ? res.fonts : [];
+                    for (const saved of list) {
+                        if (!saved?.family) continue;
+                        await this._registerLocalFont(saved);
+                        this._personalPackFonts.add(saved.family);
+                        if (!this._customFonts.includes(saved.family)) this._customFonts.push(saved.family);
+                        await Promise.all((this._embeddedFontFaces.get(saved.family) || []).map(face => face.load().catch(() => {})));
+                        if (!importedFamilies.includes(saved.family)) importedFamilies.push(saved.family);
+                    }
+                } else {
+                    console.warn('[FontManager] .zip font pack import requires Electron desktop app.');
+                }
+                continue;
+            }
+            const fam = await this._uploadSingleFontFile(file, { skipRefresh: true });
+            if (fam && !importedFamilies.includes(fam)) importedFamilies.push(fam);
+        }
+
+        if (importedFamilies.length > 0) {
+            this._catalogSignature = this.getAllFonts().join('|');
+            this.refreshAllFontSelects();
+        }
+        return {
+            count: importedFamilies.length,
+            families: importedFamilies,
+            lastFamily: importedFamilies[importedFamilies.length - 1] || null,
+        };
+    }
+
+    async _uploadSingleFontFile(file, { skipRefresh = false } = {}) {
+        if (!file) return null;
         try {
             const buffer = await file.arrayBuffer();
-            if(window.electronAPI?.importLocalFont){
-                const saved=await window.electronAPI.importLocalFont(file.name,new Uint8Array(buffer));
-                await this._registerLocalFont(saved);this._embeddedFonts.add(saved.family);
-                if(!this._customFonts.includes(saved.family))this._customFonts.push(saved.family);
-                await Promise.all((this._embeddedFontFaces.get(saved.family)||[]).map(face=>face.load()));
-                this.refreshAllFontSelects();return saved.family;
+            if (window.electronAPI?.importLocalFont) {
+                const saved = await window.electronAPI.importLocalFont(file.name, new Uint8Array(buffer));
+                await this._registerLocalFont(saved);
+                this._personalPackFonts.add(saved.family);
+                if (!this._customFonts.includes(saved.family)) this._customFonts.push(saved.family);
+                await Promise.all((this._embeddedFontFaces.get(saved.family) || []).map(face => face.load().catch(() => {})));
+                if (!skipRefresh) {
+                    this._catalogSignature = this.getAllFonts().join('|');
+                    this.refreshAllFontSelects();
+                }
+                return saved.family;
             }
 
             // 从文件名推断 family name
@@ -920,6 +1004,7 @@ class ReelsFontManager {
             await fontFace.load();
             document.fonts.add(fontFace);
 
+            this._personalPackFonts.add(familyName);
             if (!this._customFonts.includes(familyName)) {
                 this._customFonts.push(familyName);
             }
@@ -927,15 +1012,29 @@ class ReelsFontManager {
                 this._allowedFonts.push(familyName);
             }
             this._recordVariant(familyName, '100 900', 'normal');
-            this._catalogSignature = this.getAllFonts().join('|');
-            this.refreshAllFontSelects({ [familyName]: familyName });
+            if (!skipRefresh) {
+                this._catalogSignature = this.getAllFonts().join('|');
+                this.refreshAllFontSelects({ [familyName]: familyName });
+            }
 
-            console.log(`[FontManager] Uploaded custom font: ${familyName}`);
+            console.log(`[FontManager] Uploaded personal custom font: ${familyName}`);
             return familyName;
         } catch (err) {
             console.error('[FontManager] Failed to upload font:', err);
             return null;
         }
+    }
+
+    /**
+     * 用户上传自定义字体文件（亦兼容单个 .zip 扩展包）。
+     */
+    async uploadFont(file) {
+        if (!file) return null;
+        if (String(file.name || '').toLowerCase().endsWith('.zip')) {
+            const res = await this.uploadFontPack([file]);
+            return res?.lastFamily || null;
+        }
+        return this._uploadSingleFontFile(file);
     }
 
     /**
@@ -1074,7 +1173,7 @@ class ReelsFontManager {
         if (lower.includes('serif') || ['georgia', 'times new roman', 'lora', 'merriweather', 'garamond', 'baskerville', 'bodoni', 'prata', 'cardo', 'literata', 'cinzel', 'castoro', 'marcellus', 'vidaloka', 'rozha', 'gloock', 'bellefair', 'caudex', 'mate sc', 'cormorant', 'playfair', 'chonburi', 'didone', 'rufina', 'trirong', 'taviraj', 'alike', 'bentham', 'radley', 'fanwood', 'italiana'].some(x => lower.includes(x))) category = 'serif';
         if (lower.includes('mono') || lower.includes('code') || lower.includes('console') || lower.includes('courier') || ['special elite', 'vt323'].some(x => lower.includes(x))) category = 'mono';
         if (lower.includes('script') || lower.includes('hand') || lower.includes('cursive') || ['pacifico', 'lobster', 'caveat', 'kalam', 'satisfy', 'parisienne', 'italianno', 'delafield', 'sriracha', 'mali', 'sedgwick', 'haviland', 'muellerhoff', 'fajardose', 'rochester', 'niconne', 'yesteryear', 'rancho'].some(x => lower.includes(x))) category = 'script';
-        if (['anton', 'bebas', 'display', 'black', 'condensed', 'poster', 'bungee', 'orbitron', 'righteous', 'fatface', 'slab', 'impact', 'titan one', 'luckiest guy', 'boogaloo', 'carter one', 'paytone one', 'calistoga', 'racing sans', 'dela gothic', 'chewy', 'rowdies', 'sigmar one', 'wendy one', 'ceviche one', 'fredericka', 'rye', 'sancreek', 'smokum', 'creepster', 'nosifer', 'eater', 'wallpoet', 'plaster', 'megrim', 'zen dots'].some(x => lower.includes(x))) category = 'display';
+        if (['anton', 'bebas', 'display', 'black', 'condensed', 'poster', 'bungee', 'orbitron', 'righteous', 'fatface', 'slab', 'impact', 'titan one', 'luckiest guy', 'boogaloo', 'carter one', 'paytone one', 'calistoga', 'racing sans', 'dela gothic', 'chewy', 'rowdies', 'nerko one', 'dynapuff', 'sigmar one', 'wendy one', 'ceviche one', 'fredericka', 'rye', 'sancreek', 'smokum', 'creepster', 'nosifer', 'eater', 'wallpoet', 'plaster', 'megrim', 'zen dots'].some(x => lower.includes(x))) category = 'display';
         if (/[\u4e00-\u9fff]/.test(name) || lower.includes('noto sans sc') || lower.includes('noto serif sc') || lower.includes('noto serif tc') || lower.includes('noto serif hk') || lower.includes('shippori mincho') || lower.includes('yuji syuku') || lower.includes('kaiti') || lower.includes('heiti') || lower.includes('song') || lower.includes('wenkai')) category = 'cjk';
 
         const regions = [];
@@ -1134,7 +1233,7 @@ class ReelsFontManager {
      */
     getUnifiedFontCatalog() {
         const fonts = this.getAllFonts();
-        const cacheKey = [fonts.join('|'),this._customFonts.join('|'),[...this._systemFonts].join('|'),[...this._embeddedFonts].join('|')].join('\n');
+        const cacheKey = [fonts.join('|'),this._customFonts.join('|'),[...this._personalPackFonts].join('|'),[...this._systemFonts].join('|'),[...this._embeddedFonts].join('|')].join('\n');
         if (this._unifiedCatalogCache?.key === cacheKey) return this._unifiedCatalogCache.value;
         const displayNames = {
             'Microsoft YaHei': '微软雅黑', '微软雅黑': '微软雅黑',
@@ -1207,6 +1306,8 @@ class ReelsFontManager {
             'Bungee Spice': 'Bungee Spice (立体炽热渐变展示体)',
             'Chewy': 'Chewy (Q弹果冻零食风)',
             'Rowdies': 'Rowdies (粗犷街头展示体)',
+            'Nerko One': 'Nerko One (厚涂手绘马克卡通 · 可商用)',
+            'DynaPuff': 'DynaPuff (Q弹手绘泡泡卡通 · 可商用)',
             'Parisienne': 'Parisienne (法式浪漫连笔手写)',
             'Italianno': 'Italianno (意式贵族纤细书法)',
             'Mrs Saint Delafield': 'Mrs Saint Delafield (古典羽毛笔签名)',
@@ -1308,11 +1409,19 @@ class ReelsFontManager {
         groups.system.sort(popularFirst);
         groups.custom.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
+        for (const f of this._personalPackFonts) {
+            if (!displayNames[f]) {
+                displayNames[f] = `${f} (自用扩展)`;
+            } else if (!displayNames[f].includes('自用扩展')) {
+                displayNames[f] = `${displayNames[f]} (自用扩展)`;
+            }
+        }
+
         const groupDefs = [
             { key: 'system',   label: '💻 系统字体', emoji: '💻' },
             { key: 'google',   label: '🌐 Google 免费 · 热门优先', emoji: '🌐' },
             { key: 'embedded', label: '📦 内置字体', emoji: '📦' },
-            { key: 'custom',   label: '📤 用户上传', emoji: '📤' },
+            { key: 'custom',   label: '📤 个人扩展 / 用户上传', emoji: '📤' },
         ];
 
         const catalog = {

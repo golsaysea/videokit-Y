@@ -2803,33 +2803,51 @@ function reelsSyncWeightToBold() {
     boldEl.checked = Number.isFinite(w) ? w >= 600 : true;
 }
 
+async function _importPersonalFontFiles(files) {
+    if (!files || !files.length) return;
+    if (!window.getFontManager) {
+        alert('字体管理器未加载');
+        return;
+    }
+    const fm = getFontManager();
+    const res = typeof fm.uploadFontPack === 'function'
+        ? await fm.uploadFontPack(files)
+        : (() => { return null; })();
+    const familyName = res?.lastFamily || (await fm.uploadFont(files[0]));
+    const count = res?.count || (familyName ? 1 : 0);
+    if (familyName && count > 0) {
+        _refreshReelsFontSelects(fm, {
+            'reels-font-family': familyName,
+            'rop-font': familyName,
+            'rop-title-font': familyName,
+            'rop-body-font': familyName,
+            'rop-footer-font': familyName,
+            'rop-scroll-font': familyName,
+            'rop-scroll-title-font': familyName,
+        });
+        const select = document.getElementById('reels-font-family');
+        if (select) select.value = familyName;
+        reelsRefreshSubtitleWeightOptions();
+        reelsUpdatePreview();
+        const namesText = Array.isArray(res?.families) && res.families.length > 1
+            ? `${res.families.slice(0, 4).join('、')}${res.families.length > 4 ? ` 等共 ${count} 款` : `（共 ${count} 款）`}`
+            : `"${familyName}"`;
+        const msg = `✅ 已安装个人扩展字体：${namesText}（保存在独立用户目录，升级重装不丢失）`;
+        if (typeof showToast === 'function') showToast(msg, 'success', 4500);
+        else alert(msg);
+        console.log(`[Reels] Custom font pack loaded (${count}):`, res?.families || [familyName]);
+    } else {
+        alert('字体导入失败，请确认 .ttf/.otf/.woff/.woff2/.ttc 或 .zip 扩展包内包含有效字体文件');
+    }
+}
+
 function reelsUploadFont() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.ttf,.otf,.woff,.woff2';
+    input.accept = '.ttf,.otf,.woff,.woff2,.ttc,.zip';
+    input.multiple = true;
     input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const fm = getFontManager();
-        const familyName = await fm.uploadFont(file);
-        if (familyName) {
-            _refreshReelsFontSelects(fm, {
-                'reels-font-family': familyName,
-                'rop-font': familyName,
-                'rop-title-font': familyName,
-                'rop-body-font': familyName,
-                'rop-footer-font': familyName,
-                'rop-scroll-font': familyName,
-                'rop-scroll-title-font': familyName,
-            });
-            const select = document.getElementById('reels-font-family');
-            if (select) select.value = familyName;
-            reelsRefreshSubtitleWeightOptions();
-            reelsUpdatePreview();
-            console.log(`[Reels] Custom font uploaded: ${familyName}`);
-        } else {
-            alert('字体加载失败，请确认文件格式正确');
-        }
+        await _importPersonalFontFiles(e.target.files);
     };
     input.click();
 }
@@ -18551,34 +18569,11 @@ setTimeout(()=>{if(_reelsHistoryStack.length===0)window.reelsSaveHistory?.();},2
 // ═══════════════════════════════════════════════════════
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 字体上传处理
+    // 字体上传处理（支持多选字体与 .zip 个人扩展包）
     const fontInput = document.getElementById('reels-font-upload');
     if (fontInput) {
         fontInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            if (window.getFontManager) {
-                const fm = getFontManager();
-                const familyName = await fm.uploadFont(file);
-                if (familyName) {
-                    _refreshReelsFontSelects(fm, {
-                        'reels-font-family': familyName,
-                        'rop-font': familyName,
-                        'rop-title-font': familyName,
-                        'rop-body-font': familyName,
-                        'rop-footer-font': familyName,
-                        'rop-scroll-font': familyName,
-                        'rop-scroll-title-font': familyName,
-                    });
-                    const familyEl = document.getElementById('reels-font-family');
-                    if (familyEl) familyEl.value = familyName;
-                    reelsRefreshSubtitleWeightOptions();
-                    reelsUpdatePreview();
-                    alert(`字体 "${familyName}" 已加载！`);
-                }
-            } else {
-                alert('字体管理器未加载');
-            }
+            await _importPersonalFontFiles(e.target.files);
             fontInput.value = '';
         });
     }

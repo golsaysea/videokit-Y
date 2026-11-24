@@ -534,6 +534,7 @@ function _getGlobalFontFavorites(){
 }
 contextBridge.exposeInMainWorld('electronAPI', {
     importLocalFont:(fileName,bytes)=>ipcRenderer.invoke('import-local-font',{fileName,bytes}),
+    importLocalFontPack:(fileName,bytes)=>ipcRenderer.invoke('import-local-font-pack',{fileName,bytes}),
     getFontFavorites:()=>_getGlobalFontFavorites(),
     toggleFontFavorite:(family)=>{_getGlobalFontFavorites();const response=ipcRenderer.sendSync('font-favorites:toggle',family);if(!response?.ok)throw Error(response?.error || '字体收藏保存失败');try{localStorage.setItem('fp_favorites',JSON.stringify(response.favorites));}catch(_){}return response.favorites;},
     saveFontFavorites:(values)=>{const response=ipcRenderer.sendSync('font-favorites:set',values);if(!response?.ok)throw Error(response?.error || '字体收藏保存失败');try{localStorage.setItem('fp_favorites',JSON.stringify(response.favorites));}catch(_){}return response.favorites;},

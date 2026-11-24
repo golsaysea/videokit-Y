@@ -5159,10 +5159,33 @@ function setSubtitlePresetGroup(name, group) {
     return _savePresetsToStorage(data);
 }
 
+function _resolvePreferredPresetFont(name, fallbackFont) {
+    const candidates = (typeof window !== 'undefined' && window.REELS_PRESET_PREFERRED_FONTS?.[name])
+        || (name === '🎬 马库斯_黄橙渐变3行逐字弹出' ? ['Cheering Section', 'Nerko One'] : null);
+    if (!Array.isArray(candidates) || candidates.length === 0) return fallbackFont;
+    const fm = (typeof window !== 'undefined' && typeof window.getFontManager === 'function')
+        ? window.getFontManager()
+        : null;
+    if (fm && typeof fm.hasFont === 'function') {
+        for (const candidate of candidates) {
+            if (fm.hasFont(candidate)) return candidate;
+        }
+    }
+    return fallbackFont || candidates[candidates.length - 1];
+}
+
 function applySubtitlePreset(name) {
+    const rawUserData = _loadPresetsFromStorage();
+    const isUserOverridden = Boolean(rawUserData?.presets && Object.prototype.hasOwnProperty.call(rawUserData.presets, name));
     const data = loadSubtitlePresets();
     const presets = data.presets || {};
-    if (name in presets) return mergeStyle(presets[name]);
+    if (name in presets) {
+        const merged = mergeStyle(presets[name]);
+        if (!isUserOverridden) {
+            merged.font_family = _resolvePreferredPresetFont(name, merged.font_family);
+        }
+        return merged;
+    }
     return mergeStyle(data.default);
 }
 
