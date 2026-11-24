@@ -420,6 +420,11 @@ function _openLibraryModal(mode, onSelectCallback = null, opts = {}) {
         else if (act === 'update-template') await updateCurrentTemplate();
         else if (act === 'repair-thumbs') await repairDuplicateTemplateThumbnails(st);
         else if (act === 'sync-cloud-projects') await _syncCloudHubIntoProjectLibrary(st);
+        else if (act === 'goto-cloud-folder') {
+            st.folderId = btn.dataset.folderId || '';
+            _clearLibrarySelection(st);
+            await _refreshLibraryView(st);
+        }
         else if (act === 'import') await _importLibraryFiles(st);
         else if (act === 'export-all') await _exportAllTemplates();
         else if (act === 'select-all') _selectAllLibraryItems(st);
@@ -935,10 +940,20 @@ async function _refreshLibraryView(st) {
         }
         const bcEl = modal.querySelector('[data-role="breadcrumbs"]');
         if (bcEl) {
-            bcEl.innerHTML = folderChain.map((f, idx) => {
+            const chainHtml = folderChain.map((f, idx) => {
                 const isLast = idx === folderChain.length - 1;
                 return `<span style="color:#64748b;">›</span><button class="tpl-breadcrumb-chip ${isLast ? 'is-current' : ''}" data-folder-id="${_tplEscapeHtml(f.id)}" title="${isLast ? '当前文件夹' : '点击进入或拖放到此文件夹'}">${_tplEscapeHtml(f.name)}</button>`;
             }).join('');
+            const cloudFolder = st.mode === 'liveProject'
+                ? (st.folderData.folders || []).find(f => f && String(f.name || '').trim() === '☁️ 云端同步工程')
+                : null;
+            const cloudCount = cloudFolder
+                ? allItems.filter(it => it && st.folderData.assignments?.[it.id] === cloudFolder.id).length
+                : 0;
+            const cloudShortcutHtml = cloudFolder
+                ? `<button type="button" data-act="goto-cloud-folder" data-folder-id="${_tplEscapeHtml(cloudFolder.id)}" style="margin-left:auto;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid ${st.folderId === cloudFolder.id ? '#38bdf8' : 'rgba(56,189,248,0.45)'};background:${st.folderId === cloudFolder.id ? 'rgba(14,165,233,0.28)' : 'rgba(14,165,233,0.12)'};color:#bae6fd;" title="快速切换到云端同步工程目录">☁️ 云端同步工程 (${cloudCount})</button>`
+                : '';
+            bcEl.innerHTML = chainHtml + cloudShortcutHtml;
         }
 
         modal._allSummaries = allItems;

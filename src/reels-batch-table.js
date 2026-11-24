@@ -1783,6 +1783,7 @@ function _showProjectManagerModal(focusTabId = '') {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             url: item.url || item.drive_url || '',
+                            parent_folder_url: item.parent_folder_url || '',
                             title: item.title || '',
                             date: item.date || '',
                             save_dir: _batchTableState.projectDir || '',
@@ -1943,10 +1944,17 @@ function _buildImportedTabObjects(rawTabs, fallbackName = '导入工程', tagPre
             return queueIds.get(old);
         };
         const rawTabName = String(t?.name || '').trim();
-        const tabName = (rawTabs.length === 1 && (!rawTabName || rawTabName === '默认' || rawTabName === '标签1'))
-            ? cleanFallback
-            : (rawTabName || `${cleanFallback}_${tIdx + 1}`);
         const isCloud = tagPrefix === 'cloud';
+        const hasExplicitGroup = Boolean(String(t?.group || '').trim());
+        const shortFallback = cleanFallback.replace(/^\d{4}-\d{2}-\d{2}[_\s-]+/, '').trim() || cleanFallback;
+        const isGenericTabName = /^默认$|^标签\d+$/i.test(rawTabName);
+        let tabName = rawTabName || `${cleanFallback}_${tIdx + 1}`;
+        if (rawTabs.length === 1 && (!rawTabName || isGenericTabName)) {
+            tabName = cleanFallback;
+        } else if (isCloud && options.loadMode !== 'replace' && !hasExplicitGroup && isGenericTabName && shortFallback && !rawTabName.includes(shortFallback)) {
+            tabName = `${shortFallback} · ${rawTabName}`;
+        }
+        const tabGroup = String(t?.group || (isCloud && options.loadMode !== 'replace' && rawTabs.length > 1 && shortFallback ? shortFallback : '')).trim();
         const forceVisible = options.forceVisible !== undefined
             ? !!options.forceVisible
             : (isCloud || (Array.isArray(rawTabs) && rawTabs.every(item => item?.hidden)));
@@ -1961,11 +1969,19 @@ function _buildImportedTabObjects(rawTabs, fallbackName = '导入工程', tagPre
             _ensureTaskId(imported);
             imported._batchTabId = id;
             imported._batchTabName = tabName;
-            if (t?.group) imported._batchTabGroup = String(t.group || '').trim();
+            if (tabGroup) imported._batchTabGroup = tabGroup;
             if (imported._folderQueueId) imported._folderQueueId = remapQueue(imported._folderQueueId);
-            const mediaBg = imported.bgPath || imported.videoPath || '';
+            const mediaBg = imported.bgPath || imported.videoPath || (Array.isArray(imported.bgClipPool) ? imported.bgClipPool.find(Boolean) : '') || '';
             if (mediaBg && window.electronAPI?.toFileUrl) {
                 imported.bgSrcUrl = window.electronAPI.toFileUrl(mediaBg);
+            } else if (!mediaBg) {
+                imported.bgSrcUrl = '';
+            }
+            const mediaAudio = imported.audioPath || imported.voicePath || '';
+            if (mediaAudio && window.electronAPI?.toFileUrl) {
+                imported.audioSrcUrl = window.electronAPI.toFileUrl(mediaAudio);
+            } else if (!mediaAudio) {
+                imported.audioSrcUrl = '';
             }
             return imported;
         });
@@ -1973,7 +1989,7 @@ function _buildImportedTabObjects(rawTabs, fallbackName = '导入工程', tagPre
         return {
             id,
             name: tabName,
-            group: String(t?.group || '').trim(),
+            group: tabGroup,
             hidden: forceVisible ? false : !!t?.hidden,
             cloudKey: String(t?.cloudKey || '').trim(),
             cloudUrl: String(t?.cloudUrl || '').trim(),
@@ -2044,6 +2060,8 @@ function _applyImportedTabsToState(importedTabs, normalizedData, options = {}) {
                     for (const pair of matchedPairs) {
                         if (pair.existingTab) {
                             pair.existingTab.hidden = false;
+                            if (options.cloudKey && !pair.existingTab.cloudKey) pair.existingTab.cloudKey = String(options.cloudKey).trim();
+                            if (options.cloudUrl && !pair.existingTab.cloudUrl) pair.existingTab.cloudUrl = String(options.cloudUrl).trim();
                             if (!pair.existingTab.libraryTemplateId) affectedTabs.push(pair.existingTab);
                         }
                     }
@@ -2106,6 +2124,10 @@ function _applyImportedTabsToState(importedTabs, normalizedData, options = {}) {
     _skipNextApply = true;
     if (_batchTableState.visible) {
         _renderBatchTable();
+        if (window._reelsState?.tasks?.length > 0 && typeof reelsSelectTask === 'function') {
+            reelsSelectTask(0);
+            if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+        }
     } else {
         const visibleTabIds = _batchTableState.tabs.filter(tab => tab && !tab.hidden).map(tab => tab.id);
         if (visibleTabIds.length > 1 || ((importedTabs.length > 1 || _batchTableState.activeLibraryFolderId) && visibleTabIds.length > 0)) {
@@ -2257,20 +2279,25 @@ function _buildTabFromLibraryTemplate(tplData, summary = {}, folderId = '') {
         const clean = _stripBatchGroupMeta(task);
         if (!clean.id) _ensureTaskId(clean);
         if (tplId) clean._libraryTemplateId = tplId;
-        const mediaBg = clean.bgPath || clean.videoPath || '';
+        const mediaBg = clean.bgPath || clean.videoPath || (Array.isArray(clean.bgClipPool) ? clean.bgClipPool.find(Boolean) : '') || '';
         if (mediaBg && window.electronAPI?.toFileUrl && !clean.bgSrcUrl) {
             clean.bgSrcUrl = window.electronAPI.toFileUrl(mediaBg);
         }
+        const mediaAudio = clean.audioPath || clean.voicePath || '';
+        if (mediaAudio && window.electronAPI?.toFileUrl && !clean.audioSrcUrl) {
+            clean.audioSrcUrl = window.electronAPI.toFileUrl(mediaAudio);
+        }
         return clean;
     });
+    const cloudMeta = tplData?.projectData?.cloudMeta || {};
     return {
         tab: {
             id,
             name: cleanName,
-            group: '',
+            group: String(tplData?.projectData?.cloudMeta?.group || '').trim(),
             hidden: false,
-            cloudKey: '',
-            cloudUrl: '',
+            cloudKey: String(cloudMeta.cloudKey || summary?.cloudKey || '').trim(),
+            cloudUrl: String(cloudMeta.cloudUrl || summary?.cloudUrl || '').trim(),
             libraryTemplateId: tplId,
             libraryFolderId: String(folderId || '').trim(),
             libraryUpdatedAt: String(tplData?.updatedAt || summary?.updatedAt || '').trim(),
@@ -24374,8 +24401,10 @@ window.reelsRefreshTasksUsingOverlayPreset = function(name, previousPreset = nul
 
 const CLOUD_LIVE_PROJECT_FOLDER_NAME = '☁️ 云端同步工程';
 
-async function _ensureCloudLiveProjectsFolderId() {
-    if (typeof apiFetch !== 'function' || typeof API_BASE !== 'string' || !API_BASE) return '';
+async function _getCloudLiveProjectsFolderContext() {
+    if (typeof apiFetch !== 'function' || typeof API_BASE !== 'string' || !API_BASE) {
+        return { folderId: '', assignments: {} };
+    }
     try {
         const listResp = await apiFetch(`${API_BASE}/live-projects/folders/list`, {
             method: 'POST',
@@ -24386,8 +24415,11 @@ async function _ensureCloudLiveProjectsFolderId() {
         const folders = Array.isArray(listRaw?.folders)
             ? listRaw.folders
             : (Array.isArray(listRaw?.data?.folders) ? listRaw.data.folders : []);
+        const assignments = (listRaw?.assignments && typeof listRaw.assignments === 'object')
+            ? listRaw.assignments
+            : ((listRaw?.data?.assignments && typeof listRaw.data.assignments === 'object') ? listRaw.data.assignments : {});
         const existing = folders.find(f => f && String(f.name || '').trim() === CLOUD_LIVE_PROJECT_FOLDER_NAME);
-        if (existing?.id) return String(existing.id);
+        if (existing?.id) return { folderId: String(existing.id), assignments };
 
         const createResp = await apiFetch(`${API_BASE}/live-projects/folders/create`, {
             method: 'POST',
@@ -24396,10 +24428,15 @@ async function _ensureCloudLiveProjectsFolderId() {
         });
         const createdRaw = await createResp?.json?.().catch(() => null);
         const folderId = createdRaw?.folder?.id || createdRaw?.data?.folder?.id || createdRaw?.id || '';
-        return String(folderId || '');
+        return { folderId: String(folderId || ''), assignments };
     } catch (_) {
-        return '';
+        return { folderId: '', assignments: {} };
     }
+}
+
+async function _ensureCloudLiveProjectsFolderId() {
+    const ctx = await _getCloudLiveProjectsFolderContext();
+    return ctx.folderId || '';
 }
 
 function _saveCloudProjectSharedCopy(rawProject, label = '', savedPath = '') {
@@ -24429,7 +24466,7 @@ async function _syncCloudTabsToProjectLibrary(tabs = [], normalizedData = null) 
         return { synced: 0, folderId: '' };
     }
     try {
-        const folderId = await _ensureCloudLiveProjectsFolderId();
+        const { folderId, assignments } = await _getCloudLiveProjectsFolderContext();
         let existingItems = [];
         try {
             const listResp = await apiFetch(`${API_BASE}/live-projects/list`, {
@@ -24446,8 +24483,11 @@ async function _syncCloudTabsToProjectLibrary(tabs = [], normalizedData = null) 
         const nameToExistingId = new Map();
         for (const item of existingItems) {
             if (!item?.id || !item?.name) continue;
+            const assignedFolder = String(assignments?.[item.id] || '').trim();
+            if (folderId && assignedFolder && assignedFolder !== folderId) continue;
+            if (folderId && !assignedFolder) continue;
             const itemName = String(item.name).trim();
-            if (!nameToExistingId.has(itemName) || (folderId && item.folderId === folderId)) {
+            if (!nameToExistingId.has(itemName) || (folderId && assignedFolder === folderId)) {
                 nameToExistingId.set(itemName, String(item.id));
             }
         }
@@ -24463,7 +24503,11 @@ async function _syncCloudTabsToProjectLibrary(tabs = [], normalizedData = null) 
         for (const tab of tabs) {
             if (!tab) continue;
             const tabName = String(tab.name || '云端工程').trim() || '云端工程';
-            const existingId = String(tab.libraryTemplateId || nameToExistingId.get(tabName) || '').trim();
+            const assignedLibFolder = tab.libraryTemplateId ? String(assignments?.[tab.libraryTemplateId] || '').trim() : '';
+            const safeLinkedId = (tab.libraryTemplateId && (!folderId || !assignedLibFolder || assignedLibFolder === folderId))
+                ? tab.libraryTemplateId
+                : '';
+            const existingId = String(safeLinkedId || nameToExistingId.get(tabName) || '').trim();
             const projectData = window.ReelsProject.collectProjectData({
                 tasks: tab.tasks || [],
                 backgroundLibrary: normalizedData?.backgroundLibrary || window._reelsState?.backgroundLibrary || [],
@@ -24472,6 +24516,11 @@ async function _syncCloudTabsToProjectLibrary(tabs = [], normalizedData = null) 
                 watermarks: Array.isArray(tab.watermarks) ? _normalizeTabWatermarksArray(tab.watermarks) : fallbackWatermarks,
                 selectedIdx: tab.tasks?.length ? 0 : -1,
             });
+            projectData.cloudMeta = {
+                cloudKey: String(tab.cloudKey || '').trim(),
+                cloudUrl: String(tab.cloudUrl || '').trim(),
+                group: String(tab.group || '').trim(),
+            };
             let thumb = String(
                 (existingId && window._reelsLibraryThumbCache?.[existingId])
                 || normalizedData?.thumbnail
@@ -24680,6 +24729,7 @@ window.reelsBatchSyncCloudProjectsToLibrary = async function(options = {}) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: rawUrl,
+                    parent_folder_url: item.parent_folder_url || cfg.single_google_drive_url || '',
                     title: item.title || '',
                     date: item.date || '',
                     local_material_root: matRoot,
@@ -24955,8 +25005,9 @@ window.openCloudHubDialog = async function() {
 
             <!-- Footer -->
             <div style="padding:10px 20px;background:#090d16;border-top:1px solid rgba(148,163,184,0.15);display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:#94a3b8;">
-                <span id="ch-footer-msg" style="flex:1;min-width:0;">💡 提示：把工程 .json/.vktpl 上传到 Google Drive 并设为「知道链接的任何人可查看」，点下载/同步后会自动写入「当前标签」与「🗂️ 工程项目」。</span>
+                <span id="ch-footer-msg" style="flex:1;min-width:0;">💡 提示：把工程 .json/.vktpl（可连同素材子目录）上传到 Google Drive 并设为「知道链接的任何人可查看」，下载时会自动下载同步云盘音视频/字幕并写入「当前标签」与「🗂️ 工程项目」。</span>
                 <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                    <button type="button" id="ch-goto-live-lib-btn" style="padding:5px 12px;font-size:12px;font-weight:600;background:rgba(139,92,246,0.18);border:1px solid rgba(167,139,250,0.45);color:#ddd6fe;border-radius:6px;cursor:pointer;">🗂️ 去工程项目查看</button>
                     <button type="button" id="ch-goto-workspace-btn" style="padding:5px 14px;font-size:12px;font-weight:600;background:rgba(14,165,233,0.18);border:1px solid rgba(56,189,248,0.45);color:#7dd3fc;border-radius:6px;cursor:pointer;">📂 立即查看已加载工程</button>
                     <button type="button" id="ch-footer-close-btn" style="padding:5px 16px;font-size:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:6px;cursor:pointer;">关闭</button>
                 </div>
@@ -24967,6 +25018,7 @@ window.openCloudHubDialog = async function() {
     document.body.appendChild(modal);
 
     let lastLoadedTabId = '';
+    let lastCloudFolderId = '';
     const setFooterMsg = (text, color = '#94a3b8') => {
         const el = modal.querySelector('#ch-footer-msg');
         if (el) {
@@ -24974,8 +25026,9 @@ window.openCloudHubDialog = async function() {
             el.textContent = text;
         }
     };
-    const markWorkspaceReady = (tabId = '') => {
+    const markWorkspaceReady = (tabId = '', folderId = '') => {
         if (tabId) lastLoadedTabId = tabId;
+        if (folderId) lastCloudFolderId = folderId;
         const gotoBtn = modal.querySelector('#ch-goto-workspace-btn');
         if (gotoBtn) {
             gotoBtn.style.background = 'linear-gradient(135deg,#059669,#10b981)';
@@ -25035,7 +25088,7 @@ window.openCloudHubDialog = async function() {
             btnEl.disabled = true;
             btnEl.textContent = '⏳ 下载解析中...';
         }
-        setFooterMsg(`⏳ 正在从云端直接下载工程「${projItem.title || projItem.date || ''}」并关联本地素材...`, '#38bdf8');
+        setFooterMsg(`⏳ 正在下载工程「${projItem.title || projItem.date || ''}」并自动同步云盘音视频/字幕素材...`, '#38bdf8');
         try {
             await saveCurrentSettings();
             const activeTab = _getActiveTab();
@@ -25045,6 +25098,7 @@ window.openCloudHubDialog = async function() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: rawUrl,
+                    parent_folder_url: projItem.parent_folder_url || cfg.single_google_drive_url || '',
                     title: projItem.title || '',
                     date: projItem.date || '',
                     local_material_root: matRoot,
@@ -25073,17 +25127,21 @@ window.openCloudHubDialog = async function() {
                 cloudUrl: rawUrl,
                 duplicateStrategy: preChosenDuplicateStrategy,
             });
-            markWorkspaceReady(applied.matchedFirstTabId || _batchTableState.activeTabId);
+            markWorkspaceReady(applied.matchedFirstTabId || _batchTableState.activeTabId, applied.folderId || '');
             rebindProjectItemEvents();
-            const relink = data.relink_stats || { fixed: 0, missing: 0 };
+            const relink = data.relink_stats || { fixed: 0, missing: 0, downloaded: 0 };
             const actionNote = (applied.tabsUpdated > 0 && applied.tabsAdded === 0)
                 ? `已覆盖更新本地同名工程 ${applied.tabsUpdated} 个标签`
                 : (applied.skippedDuplicates > 0 && applied.tabsAdded === 0)
                     ? `检测到重名工程，已跳过重复加入 ${applied.skippedDuplicates} 个标签`
                     : `${applied.tabsCount} 个标签页、${applied.tasksCount} 条任务` + (applied.skippedDuplicates > 0 ? `（跳过重名 ${applied.skippedDuplicates} 个）` : '');
-            const summaryMsg = `✅ 「${label}」已加载到当前标签并同步到「工程项目」：${actionNote}` +
-                (relink.fixed > 0 ? `（自动关联本机素材 ${relink.fixed} 处）` : '') +
-                (relink.missing > 0 ? `（仍有 ${relink.missing} 处素材未找到，可点“🔍 查找素材”关联）` : '');
+            const mediaNote = [
+                relink.downloaded > 0 ? `从云盘下载 ${relink.downloaded} 个素材` : '',
+                relink.fixed > 0 ? `自动关联 ${relink.fixed} 处素材` : '',
+                relink.missing > 0 ? `仍有 ${relink.missing} 处素材未找到` : '',
+            ].filter(Boolean).join('，');
+            const summaryMsg = `✅ 「${label}」已加载到当前标签并同步到「工程项目 → ☁️ 云端同步工程」：${actionNote}` +
+                (mediaNote ? `（${mediaNote}）` : '');
             setFooterMsg(summaryMsg, '#4ade80');
             if (typeof showToast === 'function') showToast(summaryMsg, 'success', 5000);
             else alert(summaryMsg);
@@ -25172,6 +25230,13 @@ window.openCloudHubDialog = async function() {
     const closeModal = () => modal.remove();
     modal.querySelector('#ch-close-btn')?.addEventListener('click', closeModal);
     modal.querySelector('#ch-footer-close-btn')?.addEventListener('click', closeModal);
+    modal.querySelector('#ch-goto-live-lib-btn')?.addEventListener('click', async () => {
+        const folderId = lastCloudFolderId || await _ensureCloudLiveProjectsFolderId();
+        closeModal();
+        if (typeof window.openProjectLibrary === 'function') {
+            window.openProjectLibrary(folderId ? { folderId } : { preserveRoot: true });
+        }
+    });
     modal.querySelector('#ch-goto-workspace-btn')?.addEventListener('click', () => {
         const targetTab = (lastLoadedTabId && (_batchTableState.tabs || []).find(t => t && t.id === lastLoadedTabId))
             || _getActiveTab()
@@ -25199,7 +25264,7 @@ window.openCloudHubDialog = async function() {
             });
             if (Array.isArray(res?.dailyProjects)) cfg.daily_projects = res.dailyProjects;
             rebindProjectItemEvents();
-            markWorkspaceReady(_batchTableState.activeTabId);
+            markWorkspaceReady(_batchTableState.activeTabId, res?.targetFolderId || '');
             const msg = `✅ 云端全部同步完成：已同步 ${res?.downloaded || 0} 个工程（跳过 ${res?.skipped || 0}、失败 ${res?.failed || 0}），已入库「当前标签」与「🗂️ 工程项目」`;
             setFooterMsg(msg, res?.failed ? '#fbbf24' : '#4ade80');
         } catch (err) {

@@ -81,6 +81,7 @@ function normalizeDailyProjects(rawProjects) {
                 const date = String(item.date || item.day || new Date().toISOString().slice(0, 10)).trim();
                 const title = String(item.title || item.name || item.label || `${date} 云端工程`).trim();
                 const note = String(item.note || item.desc || item.description || '').trim();
+                const parentFolderUrl = String(item.parent_folder_url || '').trim();
                 out.push({
                     id: String(item.id || ('dp_' + date.replace(/[^0-9]/g, '') + '_' + Buffer.from(url).toString('base64').slice(0, 8))),
                     date,
@@ -88,6 +89,7 @@ function normalizeDailyProjects(rawProjects) {
                     url,
                     note,
                     material_folder_hint: String(item.material_folder_hint || '').trim(),
+                    ...(parentFolderUrl ? { parent_folder_url: parentFolderUrl } : {}),
                     updated_at: item.updated_at || null,
                 });
             }
@@ -439,6 +441,7 @@ async function fetchGoogleDriveFolderProjects(folderUrl, options = {}) {
                 title: folderLabel ? `${cleanTitle} (${folderLabel})` : cleanTitle,
                 url: file.url,
                 drive_url: file.url,
+                parent_folder_url: `https://drive.google.com/drive/folders/${folderId}`,
                 note: folderLabel ? `来自谷歌文件夹「${folderLabel}」` : '来自谷歌共享文件夹（可直接下载编辑）',
                 material_folder_hint: folderLabel || cleanTitle,
             });
@@ -587,7 +590,17 @@ function buildHubHeaders(token = '') {
     return headers;
 }
 
-async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
+async function _readResponseBuffer(res) {
+    if (typeof res.arrayBuffer === 'function') {
+        return Buffer.from(await res.arrayBuffer());
+    }
+    if (typeof res.text === 'function') {
+        return Buffer.from(String(await res.text()), 'utf8');
+    }
+    return Buffer.alloc(0);
+}
+
+async function fetchBufferWithDriveBypass(rawUrl, customHeaders = {}) {
     const directUrl = resolveCloudDownloadUrl(rawUrl);
     if (!directUrl) throw new Error('下载链接为空');
     _assertSafeHttpUrl(directUrl, { allowPrivateHttp: true, label: '远程下载链接' });
@@ -596,7 +609,7 @@ async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
     const res = await fetch(directUrl, {
         method: 'GET',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.9-beta',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.18-beta',
             ...customHeaders,
         },
         redirect: 'follow',
@@ -604,35 +617,44 @@ async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
     if (!res.ok) {
         throw new Error(`云端请求失败 (HTTP ${res.status} ${res.statusText})`);
     }
-    const text = await res.text();
+    const contentType = String(res.headers?.get?.('content-type') || '').toLowerCase();
+    const buf = await _readResponseBuffer(res);
 
     // Handle Google Drive large-file virus-scan HTML confirmation page if returned
-    if (gdriveId && /^\s*<!DOCTYPE html>|^\s*<html/i.test(text)) {
-        const confirmMatch = text.match(/name="confirm"\s+value="([^"]+)"/i);
-        const uuidMatch = text.match(/name="uuid"\s+value="([^"]+)"/i);
-        const actionMatch = text.match(/<form[^>]+action="([^"]+)"/i);
-        const actionUrl = actionMatch ? actionMatch[1].replace(/&amp;/g, '&') : 'https://drive.usercontent.google.com/download';
-        const u2 = _assertSafeHttpUrl(actionUrl, { requireHttpsGoogle: true, label: 'Google Drive 确认链接' });
-        u2.searchParams.set('id', gdriveId);
-        u2.searchParams.set('export', 'download');
-        u2.searchParams.set('confirm', confirmMatch ? confirmMatch[1] : 't');
-        if (uuidMatch) u2.searchParams.set('uuid', uuidMatch[1]);
+    const looksHtml = gdriveId && (contentType.includes('text/html') || /^\s*(<!DOCTYPE html>|<html)/i.test(buf.slice(0, 512).toString('utf8')));
+    if (looksHtml) {
+        const html = buf.toString('utf8');
+        if (/<!DOCTYPE html>|<html/i.test(html)) {
+            const confirmMatch = html.match(/name="confirm"\s+value="([^"]+)"/i);
+            const uuidMatch = html.match(/name="uuid"\s+value="([^"]+)"/i);
+            const actionMatch = html.match(/<form[^>]+action="([^"]+)"/i);
+            const actionUrl = actionMatch ? actionMatch[1].replace(/&amp;/g, '&') : 'https://drive.usercontent.google.com/download';
+            const u2 = _assertSafeHttpUrl(actionUrl, { requireHttpsGoogle: true, label: 'Google Drive 确认链接' });
+            u2.searchParams.set('id', gdriveId);
+            u2.searchParams.set('export', 'download');
+            u2.searchParams.set('confirm', confirmMatch ? confirmMatch[1] : 't');
+            if (uuidMatch) u2.searchParams.set('uuid', uuidMatch[1]);
 
-        const res2 = await fetch(u2.toString(), {
-            method: 'GET',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.10-beta',
-                ...customHeaders,
-            },
-            redirect: 'follow',
-        });
-        if (!res2.ok) {
-            throw new Error(`Google Drive 确认下载失败 (HTTP ${res2.status})`);
+            const res2 = await fetch(u2.toString(), {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.18-beta',
+                    ...customHeaders,
+                },
+                redirect: 'follow',
+            });
+            if (!res2.ok) {
+                throw new Error(`Google Drive 确认下载失败 (HTTP ${res2.status})`);
+            }
+            return await _readResponseBuffer(res2);
         }
-        return await res2.text();
     }
+    return buf;
+}
 
-    return text;
+async function fetchTextWithDriveBypass(rawUrl, customHeaders = {}) {
+    const buf = await fetchBufferWithDriveBypass(rawUrl, customHeaders);
+    return buf.toString('utf8');
 }
 
 /**
@@ -961,19 +983,27 @@ async function pushToCloudHub(input = {}) {
     };
 }
 
+function getCloudMaterialRootDir() {
+    const dir = path.join(path.dirname(settings.getBackendDir()), 'cloud_materials');
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    return dir;
+}
+
 /**
  * Recursively indexes media files by normalized path suffixes and lowercase basename inside
- * localMaterialRoot (up to maxDepth = 4) for automatic cross-machine path relinking.
+ * localMaterialRoot or extra root specs for automatic cross-machine path relinking.
  */
-function buildLocalMaterialIndex(rootDir, maxDepth = 4) {
+function buildLocalMaterialIndex(rootOrSpecs, maxDepth = 5) {
     const byBasename = new Map();
     const bySuffix = new Map();
-    if (!rootDir || typeof rootDir !== 'string' || !fs.existsSync(rootDir)) {
-        return { byBasename, bySuffix };
-    }
+    const specs = (Array.isArray(rootOrSpecs) ? rootOrSpecs : [rootOrSpecs])
+        .map(s => (typeof s === 'string' ? { dir: s, allowBasename: true, minSuffixDepth: 2, maxDepth } : s))
+        .filter(s => s && typeof s.dir === 'string' && s.dir.trim() && fs.existsSync(s.dir));
+    if (!specs.length) return { byBasename, bySuffix };
 
-    const walk = (dir, depth) => {
-        if (depth > maxDepth) return;
+    const walk = (dir, depth, spec) => {
+        const limit = Number.isFinite(spec.maxDepth) ? spec.maxDepth : maxDepth;
+        if (depth > limit) return;
         let entries = [];
         try {
             entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -984,44 +1014,180 @@ function buildLocalMaterialIndex(rootDir, maxDepth = 4) {
             if (!entry || entry.name.startsWith('.')) continue;
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                walk(full, depth + 1);
+                walk(full, depth + 1, spec);
             } else if (entry.isFile()) {
                 const key = entry.name.toLowerCase();
-                if (!byBasename.has(key)) {
+                if (spec.allowBasename !== false && !byBasename.has(key)) {
                     byBasename.set(key, full);
                 }
                 const parts = full.replace(/\\/g, '/').toLowerCase().split('/').filter(Boolean);
-                for (const depthCount of [2, 3]) {
-                    if (parts.length >= depthCount) {
-                        const suffix = parts.slice(-depthCount).join('/');
-                        if (!bySuffix.has(suffix)) {
-                            bySuffix.set(suffix, full);
-                        }
+                const minDepth = spec.minSuffixDepth || 2;
+                for (const depthCount of [3, 2]) {
+                    if (depthCount < minDepth || parts.length < depthCount) continue;
+                    const suffix = parts.slice(-depthCount).join('/');
+                    if (!bySuffix.has(suffix)) {
+                        bySuffix.set(suffix, full);
                     }
                 }
             }
         }
     };
-    walk(rootDir, 0);
+    for (const spec of specs) walk(spec.dir, 0, spec);
     return { byBasename, bySuffix };
 }
 
-function relinkProjectMediaPaths(projectData, localMaterialRoot) {
+function _visitProjectMediaPaths(projectData, visitor) {
+    if (!projectData || typeof projectData !== 'object' || typeof visitor !== 'function') return;
+
+    const visitPipeKey = (keyStr, assign) => {
+        if (!keyStr || typeof keyStr !== 'string' || keyStr === '[]') return;
+        let changed = false;
+        const next = keyStr.split(';').map((seg) => {
+            const pipeIdx = seg.indexOf('|');
+            if (pipeIdx <= 0) return seg;
+            const segPath = seg.slice(0, pipeIdx);
+            if (!/[\\/]/.test(segPath)) return seg;
+            const replaced = visitor(segPath);
+            if (replaced !== segPath) changed = true;
+            return `${replaced}${seg.slice(pipeIdx)}`;
+        }).join(';');
+        if (changed) assign(next);
+    };
+    const visitWatermarks = (wms) => {
+        if (!Array.isArray(wms)) return;
+        for (const wm of wms) {
+            if (wm && typeof wm === 'object' && wm.imagePath) {
+                wm.imagePath = visitor(wm.imagePath);
+            }
+        }
+    };
+
+    visitWatermarks(projectData.watermarks);
+
+    const tabs = Array.isArray(projectData.tabs)
+        ? projectData.tabs
+        : (Array.isArray(projectData.tasks) ? [{ id: 'tab_1', name: '云端工程', tasks: projectData.tasks }] : []);
+
+    for (const tab of tabs) {
+        for (const task of (tab?.tasks || [])) {
+            if (!task || typeof task !== 'object') continue;
+            for (const field of ['bgPath', 'videoPath', 'audioPath', 'voicePath', 'srtPath', 'txtPath', 'pipPath', 'hookFile', 'contentVideoPath', 'bgmPath']) {
+                if (task[field]) task[field] = visitor(task[field]);
+            }
+            if (task.cover && task.cover.bgPath) {
+                task.cover.bgPath = visitor(task.cover.bgPath);
+            }
+            for (const arrField of ['bgPaths', 'bgClipPool', 'bgmClipPool']) {
+                if (Array.isArray(task[arrField])) {
+                    task[arrField] = task[arrField].map(p => visitor(p));
+                }
+            }
+            if (Array.isArray(task.insertClips)) {
+                task.insertClips = task.insertClips.map((clip) => {
+                    if (typeof clip === 'string') return visitor(clip);
+                    if (clip && typeof clip === 'object') {
+                        for (const k of ['path', 'filePath', 'src', 'url']) {
+                            if (typeof clip[k] === 'string' && clip[k]) clip[k] = visitor(clip[k]);
+                        }
+                    }
+                    return clip;
+                });
+            }
+            if (task.introMedia) {
+                if (typeof task.introMedia === 'string') {
+                    task.introMedia = visitor(task.introMedia);
+                } else if (typeof task.introMedia === 'object') {
+                    for (const k of ['path', 'filePath', 'bgPath', 'url']) {
+                        if (typeof task.introMedia[k] === 'string' && task.introMedia[k]) {
+                            task.introMedia[k] = visitor(task.introMedia[k]);
+                        }
+                    }
+                }
+            }
+            if (Array.isArray(task.overlays)) {
+                for (const ov of task.overlays) {
+                    if (!ov || typeof ov !== 'object') continue;
+                    if (['image', 'video', 'sticker', 'decor'].includes(ov.type)) {
+                        for (const k of ['content', 'path', 'src', 'videoPath', 'imagePath']) {
+                            if (typeof ov[k] === 'string' && ov[k]) ov[k] = visitor(ov[k]);
+                        }
+                    }
+                    if (ov.is_phone_cta && ov.cta_image_src) {
+                        ov.cta_image_src = visitor(ov.cta_image_src);
+                    }
+                }
+            }
+            if (task.timeline && typeof task.timeline === 'object') {
+                if (task.timeline.sources && typeof task.timeline.sources === 'object') {
+                    for (const srcObj of Object.values(task.timeline.sources)) {
+                        if (srcObj && typeof srcObj === 'object' && srcObj.path) {
+                            srcObj.path = visitor(srcObj.path);
+                        }
+                    }
+                }
+                if (task.timeline.backgroundSegmentKey) {
+                    visitPipeKey(task.timeline.backgroundSegmentKey, (v) => { task.timeline.backgroundSegmentKey = v; });
+                }
+                if (task.timeline.insertClipKey) {
+                    visitPipeKey(task.timeline.insertClipKey, (v) => { task.timeline.insertClipKey = v; });
+                }
+            }
+            visitWatermarks(task.watermarks);
+        }
+    }
+}
+
+function _unwrapLocalMediaPath(origPath) {
+    const str = String(origPath || '');
+    if (/^local-media:\/\//i.test(str)) {
+        let p = str.slice('local-media://'.length).split('?')[0].split('#')[0];
+        if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
+        try { p = decodeURIComponent(p); } catch (_) {}
+        return { prefix: 'local-media://', rawPath: p };
+    }
+    return { prefix: '', rawPath: str };
+}
+
+function collectProjectMissingMediaPaths(projectData) {
+    const missing = [];
+    const seen = new Set();
+    _visitProjectMediaPaths(projectData, (origPath) => {
+        if (!origPath || typeof origPath !== 'string' || /^(data|blob|https?):/i.test(origPath)) return origPath;
+        const { rawPath } = _unwrapLocalMediaPath(origPath);
+        if (!rawPath || (!/[\\/]/.test(rawPath) && !/\.[a-z0-9]{2,6}$/i.test(rawPath))) return origPath;
+        if (!fs.existsSync(rawPath) && !seen.has(rawPath)) {
+            seen.add(rawPath);
+            missing.push(rawPath);
+        }
+        return origPath;
+    });
+    return missing;
+}
+
+function relinkProjectMediaPaths(projectData, localMaterialRoot, extraRootSpecs = []) {
     const stats = { relinkedCount: 0, missingCount: 0, checkedCount: 0, fixed: 0, missing: 0 };
     if (!projectData || typeof projectData !== 'object') return stats;
 
-    // Packaged batches with group subfolders have depth up to 5 (<root>/<group>/<task>-工程/<role>/<file>).
-    const index = buildLocalMaterialIndex(localMaterialRoot, 5);
-    const unwrapLocalUrl = (raw) => {
-        const str = String(raw || '');
-        if (/^local-media:\/\//i.test(str)) {
-            let p = str.slice('local-media://'.length).split('?')[0].split('#')[0];
-            if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);
-            try { p = decodeURIComponent(p); } catch (_) {}
-            return { prefix: 'local-media://', rawPath: p };
+    const specs = [];
+    if (localMaterialRoot && typeof localMaterialRoot === 'string' && fs.existsSync(localMaterialRoot)) {
+        specs.push({ dir: localMaterialRoot, allowBasename: true, minSuffixDepth: 2, maxDepth: 5 });
+    }
+    for (const extra of (Array.isArray(extraRootSpecs) ? extraRootSpecs : [extraRootSpecs])) {
+        if (!extra) continue;
+        if (typeof extra === 'string') {
+            if (fs.existsSync(extra)) specs.push({ dir: extra, allowBasename: true, minSuffixDepth: 2, maxDepth: 6 });
+        } else if (extra.dir && fs.existsSync(extra.dir)) {
+            specs.push(extra);
         }
-        return { prefix: '', rawPath: str };
-    };
+    }
+    try {
+        const downloadsDir = path.join(os.homedir(), 'Downloads');
+        if (downloadsDir && fs.existsSync(downloadsDir)) {
+            specs.push({ dir: downloadsDir, allowBasename: false, minSuffixDepth: 3, maxDepth: 4 });
+        }
+    } catch (_) {}
+
+    const index = buildLocalMaterialIndex(specs, 5);
     const lookupIndex = (rawPath) => {
         const parts = rawPath.replace(/\\/g, '/').toLowerCase().split('/').filter(Boolean);
         for (const depthCount of [3, 2]) {
@@ -1033,10 +1199,11 @@ function relinkProjectMediaPaths(projectData, localMaterialRoot) {
         const base = parts[parts.length - 1] || '';
         return (base && index.byBasename.has(base)) ? index.byBasename.get(base) : '';
     };
+
     const resolvePathIfMissing = (origPath) => {
         if (!origPath || typeof origPath !== 'string') return origPath;
         if (/^(data|blob|https?):/i.test(origPath)) return origPath;
-        const { prefix, rawPath } = unwrapLocalUrl(origPath);
+        const { prefix, rawPath } = _unwrapLocalMediaPath(origPath);
         if (!rawPath) return origPath;
         stats.checkedCount++;
         if (fs.existsSync(rawPath)) return origPath;
@@ -1052,100 +1219,184 @@ function relinkProjectMediaPaths(projectData, localMaterialRoot) {
         stats.missing++;
         return origPath;
     };
-    const relinkPipeKey = (keyStr) => {
-        if (!keyStr || typeof keyStr !== 'string' || keyStr === '[]') return keyStr;
-        return keyStr.split(';').map((seg) => {
-            const pipeIdx = seg.indexOf('|');
-            if (pipeIdx <= 0) return seg;
-            const segPath = seg.slice(0, pipeIdx);
-            if (!/[\\/]/.test(segPath)) return seg;
-            return `${resolvePathIfMissing(segPath)}${seg.slice(pipeIdx)}`;
-        }).join(';');
-    };
-    const relinkWatermarks = (wms) => {
-        if (!Array.isArray(wms)) return;
-        for (const wm of wms) {
-            if (wm && typeof wm === 'object' && wm.imagePath) {
-                wm.imagePath = resolvePathIfMissing(wm.imagePath);
-            }
-        }
-    };
 
-    relinkWatermarks(projectData.watermarks);
+    _visitProjectMediaPaths(projectData, resolvePathIfMissing);
 
+    const fallbackMatDir = (localMaterialRoot && fs.existsSync(localMaterialRoot) ? localMaterialRoot : '')
+        || (specs.find(s => s.allowBasename !== false)?.dir || '');
     const tabs = Array.isArray(projectData.tabs)
         ? projectData.tabs
-        : (Array.isArray(projectData.tasks) ? [{ id: 'tab_1', name: '云端工程', tasks: projectData.tasks }] : []);
-
+        : (Array.isArray(projectData.tasks) ? [{ tasks: projectData.tasks }] : []);
     for (const tab of tabs) {
-        if (tab.materialDir && !fs.existsSync(tab.materialDir) && localMaterialRoot && fs.existsSync(localMaterialRoot)) {
-            tab.materialDir = localMaterialRoot;
+        if (fallbackMatDir && (!tab.materialDir || !fs.existsSync(tab.materialDir))) {
+            tab.materialDir = fallbackMatDir;
         }
-        for (const task of (tab.tasks || [])) {
+        for (const task of (tab?.tasks || [])) {
             if (!task || typeof task !== 'object') continue;
-            for (const field of ['bgPath', 'videoPath', 'audioPath', 'voicePath', 'srtPath', 'txtPath', 'pipPath', 'hookFile', 'contentVideoPath', 'bgmPath']) {
-                if (task[field]) task[field] = resolvePathIfMissing(task[field]);
+            if (task.bgSrcUrl && typeof task.bgSrcUrl === 'string' && /^(file|local-media):/i.test(task.bgSrcUrl)) {
+                const { rawPath } = _unwrapLocalMediaPath(task.bgSrcUrl.replace(/^file:\/+/i, ''));
+                if (rawPath && !fs.existsSync(rawPath)) task.bgSrcUrl = null;
             }
-            if (task.cover && task.cover.bgPath) {
-                task.cover.bgPath = resolvePathIfMissing(task.cover.bgPath);
+            if (task.audioSrcUrl && typeof task.audioSrcUrl === 'string' && /^(file|local-media):/i.test(task.audioSrcUrl)) {
+                const { rawPath } = _unwrapLocalMediaPath(task.audioSrcUrl.replace(/^file:\/+/i, ''));
+                if (rawPath && !fs.existsSync(rawPath)) task.audioSrcUrl = null;
             }
-            for (const arrField of ['bgPaths', 'bgClipPool', 'bgmClipPool']) {
-                if (Array.isArray(task[arrField])) {
-                    task[arrField] = task[arrField].map(p => resolvePathIfMissing(p));
-                }
-            }
-            if (Array.isArray(task.insertClips)) {
-                task.insertClips = task.insertClips.map((clip) => {
-                    if (typeof clip === 'string') return resolvePathIfMissing(clip);
-                    if (clip && typeof clip === 'object') {
-                        for (const k of ['path', 'filePath', 'src', 'url']) {
-                            if (typeof clip[k] === 'string' && clip[k]) clip[k] = resolvePathIfMissing(clip[k]);
-                        }
-                    }
-                    return clip;
-                });
-            }
-            if (task.introMedia) {
-                if (typeof task.introMedia === 'string') {
-                    task.introMedia = resolvePathIfMissing(task.introMedia);
-                } else if (typeof task.introMedia === 'object') {
-                    for (const k of ['path', 'filePath', 'bgPath', 'url']) {
-                        if (typeof task.introMedia[k] === 'string' && task.introMedia[k]) {
-                            task.introMedia[k] = resolvePathIfMissing(task.introMedia[k]);
-                        }
-                    }
-                }
-            }
-            if (Array.isArray(task.overlays)) {
-                for (const ov of task.overlays) {
-                    if (!ov || typeof ov !== 'object') continue;
-                    if ((ov.type === 'image' || ov.type === 'video') && ov.content) {
-                        ov.content = resolvePathIfMissing(ov.content);
-                    }
-                    if (ov.is_phone_cta && ov.cta_image_src) {
-                        ov.cta_image_src = resolvePathIfMissing(ov.cta_image_src);
-                    }
-                }
-            }
-            if (task.timeline && typeof task.timeline === 'object') {
-                if (task.timeline.sources && typeof task.timeline.sources === 'object') {
-                    for (const srcObj of Object.values(task.timeline.sources)) {
-                        if (srcObj && typeof srcObj === 'object' && srcObj.path) {
-                            srcObj.path = resolvePathIfMissing(srcObj.path);
-                        }
-                    }
-                }
-                if (task.timeline.backgroundSegmentKey) {
-                    task.timeline.backgroundSegmentKey = relinkPipeKey(task.timeline.backgroundSegmentKey);
-                }
-                if (task.timeline.insertClipKey) {
-                    task.timeline.insertClipKey = relinkPipeKey(task.timeline.insertClipKey);
-                }
-            }
-            relinkWatermarks(task.watermarks);
         }
     }
     return stats;
+}
+
+async function _runConcurrentQueue(items, concurrency, worker) {
+    const queue = [...items];
+    const workers = Array.from({ length: Math.min(Math.max(1, concurrency), queue.length) }, async () => {
+        while (queue.length > 0) {
+            const next = queue.shift();
+            await worker(next);
+        }
+    });
+    await Promise.all(workers);
+}
+
+async function downloadMissingCloudDriveMedia(projectData, driveFolderUrl, options = {}) {
+    const rootFolderId = extractGoogleDriveFolderId(driveFolderUrl);
+    if (!rootFolderId) return { downloaded: 0, cached: 0, failed: 0, cacheDir: '', relinkStats: null };
+
+    const missingPaths = collectProjectMissingMediaPaths(projectData);
+    if (!missingPaths.length) return { downloaded: 0, cached: 0, failed: 0, cacheDir: '', relinkStats: null };
+
+    const neededFilenames = new Set();
+    const neededFolderNames = new Set();
+    const neededTaskPrefixes = new Set();
+    const ROLE_SUBDIRS = new Set(['人声音频', '背景素材', '辅助素材', '覆层素材', '字幕', '音频', '视频', '素材', '配音', 'srt', 'audio', 'video', 'media']);
+
+    for (const mp of missingPaths) {
+        const parts = String(mp).replace(/\\/g, '/').split('/').filter(Boolean);
+        if (!parts.length) continue;
+        neededFilenames.add(parts[parts.length - 1].toLowerCase());
+        for (const seg of parts.slice(0, -1)) {
+            const cleanSeg = seg.trim().toLowerCase();
+            if (!cleanSeg) continue;
+            neededFolderNames.add(cleanSeg);
+            const stripped = cleanSeg.replace(/-工程$/, '').trim();
+            if (stripped) neededFolderNames.add(stripped);
+            const prefixMatch = cleanSeg.match(/^(\d+[_-])/);
+            if (prefixMatch) neededTaskPrefixes.add(prefixMatch[1]);
+        }
+    }
+
+    const matchesNeededFolder = (folderName, depth) => {
+        const clean = String(folderName || '').trim().toLowerCase();
+        if (!clean) return false;
+        if (clean === 'reels工程') return false;
+        if (ROLE_SUBDIRS.has(clean) || neededFolderNames.has(clean)) return true;
+        const stripped = clean.replace(/-工程$/, '').trim();
+        if (stripped && neededFolderNames.has(stripped)) return true;
+        if (depth === 0) {
+            for (const pfx of neededTaskPrefixes) {
+                if (clean.startsWith(pfx)) return true;
+            }
+        }
+        return false;
+    };
+
+    const cacheDir = path.join(getCloudMaterialRootDir(), rootFolderId);
+    fs.mkdirSync(cacheDir, { recursive: true });
+
+    const visitedFolders = new Set();
+    const toDownload = [];
+    const seenFileIds = new Set();
+
+    const crawlFolder = async (folderId, relParts, depth) => {
+        if (!folderId || visitedFolders.has(folderId) || depth > 4) return;
+        visitedFolders.add(folderId);
+
+        let html = '';
+        try {
+            const embedUrl = `https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(folderId)}#list`;
+            const res = await fetch(embedUrl, {
+                method: 'GET',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.18-beta',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                },
+                redirect: 'follow',
+            });
+            if (!res.ok) return;
+            html = await res.text();
+        } catch (_) {
+            return;
+        }
+
+        const { files, folders } = parseGoogleDriveEmbeddedFolderHtml(html);
+        for (const f of files) {
+            if (!f?.id || !f?.name) continue;
+            if (!neededFilenames.has(f.name.toLowerCase())) continue;
+            if (seenFileIds.has(f.id)) continue;
+            seenFileIds.add(f.id);
+            toDownload.push({ id: f.id, name: f.name, url: f.url, relParts });
+        }
+
+        const candidateSubs = folders.filter(sub =>
+            matchesNeededFolder(sub.name, depth) || folders.length <= 10
+        );
+        if (depth < 4 && candidateSubs.length > 0) {
+            await _runConcurrentQueue(candidateSubs, 6, async (sub) => {
+                await crawlFolder(sub.id, [...relParts, sub.name || sub.id], depth + 1);
+            });
+        }
+    };
+
+    await crawlFolder(rootFolderId, [], 0);
+
+    let downloaded = 0;
+    let cached = 0;
+    let failed = 0;
+    const maxFiles = Number.isFinite(options.maxFiles) ? options.maxFiles : 600;
+    const headers = options.headers || {};
+
+    await _runConcurrentQueue(toDownload.slice(0, maxFiles), 5, async (item) => {
+        const safeRelParts = item.relParts
+            .map(seg => String(seg || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\.+/g, '.').trim())
+            .filter(seg => seg && seg !== '.' && seg !== '..');
+        const safeFileName = path.basename(String(item.name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim());
+        if (!safeFileName) return;
+
+        const targetDir = path.join(cacheDir, ...safeRelParts);
+        const targetPath = path.join(targetDir, safeFileName);
+        if (!path.resolve(targetPath).startsWith(path.resolve(cacheDir))) return;
+
+        try {
+            if (fs.existsSync(targetPath) && fs.statSync(targetPath).size > 0) {
+                cached++;
+                return;
+            }
+            const buf = await fetchBufferWithDriveBypass(item.url, headers);
+            const ext = path.extname(safeFileName).toLowerCase();
+            if (!buf || !buf.length) throw new Error('empty buffer');
+            if (!['.html', '.htm', '.txt', '.srt', '.json'].includes(ext)) {
+                const head = buf.slice(0, 256).toString('utf8');
+                if (/^\s*(<!DOCTYPE html|<html)/i.test(head)) {
+                    throw new Error('received html instead of binary media');
+                }
+            }
+            fs.mkdirSync(targetDir, { recursive: true });
+            const tmpPath = `${targetPath}.${process.pid}.tmp`;
+            fs.writeFileSync(tmpPath, buf);
+            fs.renameSync(tmpPath, targetPath);
+            downloaded++;
+        } catch (_) {
+            failed++;
+        }
+    });
+
+    const relinkStats = relinkProjectMediaPaths(projectData, options.localMaterialRoot || '', [{
+        dir: cacheDir,
+        allowBasename: true,
+        minSuffixDepth: 2,
+        maxDepth: 6,
+    }]);
+
+    return { downloaded, cached, failed, cacheDir, relinkStats };
 }
 
 /**
@@ -1344,8 +1595,10 @@ async function downloadCloudProject(input = {}) {
 
     let resolvedTitle = input.title || '';
     let resolvedDate = input.date || '';
+    let sourceFolderUrl = String(input.parent_folder_url || '').trim();
 
     if (extractGoogleDriveFolderId(targetUrl)) {
+        if (!sourceFolderUrl) sourceFolderUrl = targetUrl;
         const folderProjects = await fetchGoogleDriveFolderProjects(targetUrl);
         if (folderProjects.length === 0) {
             throw new Error('该 Google Drive 文件夹里暂无可编辑的 .json / .reels-project.json / .vktpl 工程文件（请确认已在网盘放入软件保存的工程文件）');
@@ -1362,6 +1615,7 @@ async function downloadCloudProject(input = {}) {
         targetUrl = folderProjects[0].url;
         resolvedTitle = resolvedTitle || folderProjects[0].title;
         resolvedDate = resolvedDate || folderProjects[0].date;
+        sourceFolderUrl = folderProjects[0].parent_folder_url || sourceFolderUrl;
     } else if (extractGoogleDocId(targetUrl)) {
         const docProjects = await fetchGoogleDocProjects(targetUrl);
         if (docProjects.length === 0) {
@@ -1383,8 +1637,18 @@ async function downloadCloudProject(input = {}) {
 
     const currentSettings = loadCloudHubSettings();
     const localMaterialRoot = String(input.local_material_root ?? currentSettings.local_material_root ?? '').trim();
+    if (!sourceFolderUrl) {
+        const matchedDaily = (currentSettings.daily_projects || []).find(p =>
+            p && (p.url === targetUrl || p.drive_url === targetUrl || extractGoogleDriveFileId(p.url) === extractGoogleDriveFileId(targetUrl))
+        );
+        sourceFolderUrl = String(matchedDaily?.parent_folder_url || '').trim();
+    }
+    if (!sourceFolderUrl && extractGoogleDriveFolderId(currentSettings.single_google_drive_url)) {
+        sourceFolderUrl = currentSettings.single_google_drive_url;
+    }
 
-    const text = await fetchTextWithDriveBypass(targetUrl, buildHubHeaders(currentSettings.access_token));
+    const hubHeaders = buildHubHeaders(currentSettings.access_token);
+    const text = await fetchTextWithDriveBypass(targetUrl, hubHeaders);
     let parsedRaw;
     try {
         parsedRaw = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
@@ -1398,7 +1662,39 @@ async function downloadCloudProject(input = {}) {
         localMaterialRoot
     );
 
-    const relinkStats = relinkProjectMediaPaths(projectData, localMaterialRoot);
+    const cacheRoot = getCloudMaterialRootDir();
+    let relinkStats = relinkProjectMediaPaths(projectData, localMaterialRoot, [cacheRoot]);
+    let downloadedMediaCount = 0;
+    let cachedMediaCount = 0;
+    let failedMediaCount = 0;
+    let mediaCacheDir = '';
+
+    if (relinkStats.missing > 0 && sourceFolderUrl && extractGoogleDriveFolderId(sourceFolderUrl) && !input.skip_media_download) {
+        try {
+            const mediaRes = await downloadMissingCloudDriveMedia(projectData, sourceFolderUrl, {
+                localMaterialRoot,
+                headers: hubHeaders,
+            });
+            downloadedMediaCount = mediaRes.downloaded || 0;
+            cachedMediaCount = mediaRes.cached || 0;
+            failedMediaCount = mediaRes.failed || 0;
+            mediaCacheDir = mediaRes.cacheDir || '';
+            if (mediaRes.relinkStats) {
+                relinkStats = {
+                    ...mediaRes.relinkStats,
+                    fixed: Math.max(relinkStats.fixed || 0, mediaRes.relinkStats.fixed || 0),
+                    relinkedCount: Math.max(relinkStats.relinkedCount || 0, mediaRes.relinkStats.relinkedCount || 0),
+                };
+            }
+        } catch (err) {
+            console.warn('[CloudHub] 自动下载云端关联素材失败:', err?.message || err);
+        }
+    }
+    relinkStats.downloaded = downloadedMediaCount;
+    relinkStats.cached = cachedMediaCount;
+    relinkStats.media_failed = failedMediaCount;
+    if (mediaCacheDir) relinkStats.media_cache_dir = mediaCacheDir;
+
     const totalTasks = (projectData.tabs || []).reduce((sum, t) => sum + ((t && Array.isArray(t.tasks)) ? t.tasks.length : 0), 0);
 
     let savedPath = '';
@@ -1455,5 +1751,8 @@ module.exports = {
     normalizeDownloadedProjectData,
     isEditableProjectFilename,
     relinkProjectMediaPaths,
+    collectProjectMissingMediaPaths,
+    downloadMissingCloudDriveMedia,
+    getCloudMaterialRootDir,
     getWorkerTemplateCode,
 };

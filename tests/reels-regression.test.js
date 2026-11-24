@@ -13708,5 +13708,218 @@ test('Live Project Library (工程项目) supports preview button, cloud sync bu
     );
 });
 
+test('Cloud Drive media auto-downloader resolves missing mp3/mp4/srt/png assets, prevents generic 标签3/标签25 folder collisions, and hydrates bgSrcUrl/audioSrcUrl', async () => {
+    const cloudHubService = require('../electron/services/cloud-hub');
+    const origFetch = global.fetch;
+    const testRootFolderId = '1TestCloudDriveRootFolderXYZ12345';
+    let createdCacheDir = '';
+
+    const driveHtmlById = {
+        [testRootFolderId]: `
+            <div class="flip-entry" id="entry-1SubTaskFolder454XYZ123">
+                <a href="https://drive.google.com/drive/folders/1SubTaskFolder454XYZ123" title="454_They_say-工程">
+                    <div class="flip-entry-title">454_They_say-工程</div>
+                </a>
+            </div>
+        `,
+        '1SubTaskFolder454XYZ123': `
+            <div class="flip-entry" id="entry-1AudioSubDirXYZ123456">
+                <a href="https://drive.google.com/drive/folders/1AudioSubDirXYZ123456" title="人声音频">
+                    <div class="flip-entry-title">人声音频</div>
+                </a>
+            </div>
+            <div class="flip-entry" id="entry-1VideoSubDirXYZ123456">
+                <a href="https://drive.google.com/drive/folders/1VideoSubDirXYZ123456" title="背景素材">
+                    <div class="flip-entry-title">背景素材</div>
+                </a>
+            </div>
+            <div class="flip-entry" id="entry-1SrtSubDirXYZ1234567">
+                <a href="https://drive.google.com/drive/folders/1SrtSubDirXYZ1234567" title="字幕">
+                    <div class="flip-entry-title">字幕</div>
+                </a>
+            </div>
+            <div class="flip-entry" id="entry-1OvSubDirXYZ12345678">
+                <a href="https://drive.google.com/drive/folders/1OvSubDirXYZ12345678" title="覆层素材">
+                    <div class="flip-entry-title">覆层素材</div>
+                </a>
+            </div>
+        `,
+        '1AudioSubDirXYZ123456': `
+            <div class="flip-entry" id="entry-1FileVoiceMp3Id123456">
+                <a href="https://drive.google.com/file/d/1FileVoiceMp3Id123456/view" title="001_voice.mp3">
+                    <div class="flip-entry-title">001_voice.mp3</div>
+                </a>
+            </div>
+        `,
+        '1VideoSubDirXYZ123456': `
+            <div class="flip-entry" id="entry-1FileBgMp4Id12345678">
+                <a href="https://drive.google.com/file/d/1FileBgMp4Id12345678/view" title="bg_clip.mp4">
+                    <div class="flip-entry-title">bg_clip.mp4</div>
+                </a>
+            </div>
+        `,
+        '1SrtSubDirXYZ1234567': `
+            <div class="flip-entry" id="entry-1FileSrtId1234567890">
+                <a href="https://drive.google.com/file/d/1FileSrtId1234567890/view" title="001_voice.srt">
+                    <div class="flip-entry-title">001_voice.srt</div>
+                </a>
+            </div>
+        `,
+        '1OvSubDirXYZ12345678': `
+            <div class="flip-entry" id="entry-1FilePngId1234567890">
+                <a href="https://drive.google.com/file/d/1FilePngId1234567890/view" title="logo.png">
+                    <div class="flip-entry-title">logo.png</div>
+                </a>
+            </div>
+        `,
+    };
+
+    try {
+        global.fetch = async (url) => {
+            const u = String(url || '');
+            for (const [fid, html] of Object.entries(driveHtmlById)) {
+                if (u.includes(`embeddedfolderview?id=${fid}`)) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        headers: { get: () => 'text/html' },
+                        text: async () => html,
+                    };
+                }
+            }
+            if (u.includes('1FileVoiceMp3Id123456')) {
+                return { ok: true, status: 200, headers: { get: () => 'audio/mpeg' }, arrayBuffer: async () => Buffer.from('ID3FAKE_MP3') };
+            }
+            if (u.includes('1FileBgMp4Id12345678')) {
+                return { ok: true, status: 200, headers: { get: () => 'video/mp4' }, arrayBuffer: async () => Buffer.from('FAKE_MP4_BYTES') };
+            }
+            if (u.includes('1FileSrtId1234567890')) {
+                return { ok: true, status: 200, headers: { get: () => 'text/plain' }, arrayBuffer: async () => Buffer.from('1\n00:00:00,000 --> 00:00:01,500\nAmen\n') };
+            }
+            if (u.includes('1FilePngId1234567890')) {
+                return { ok: true, status: 200, headers: { get: () => 'image/png' }, arrayBuffer: async () => Buffer.from('PNG_FAKE_BYTES') };
+            }
+            return { ok: false, status: 404, statusText: 'Not Found' };
+        };
+
+        const proj = {
+            version: '2.0',
+            tabs: [{
+                id: 'tab_1',
+                name: '标签25',
+                materialDir: 'C:\\MissingAuthor\\2026-11-13_0617_工程包',
+                tasks: [{
+                    id: 'task_454',
+                    bgPath: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\背景素材\\bg_clip.mp4',
+                    videoPath: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\背景素材\\bg_clip.mp4',
+                    audioPath: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\人声音频\\001_voice.mp3',
+                    srtPath: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\字幕\\001_voice.srt',
+                    overlays: [{ type: 'image', content: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\覆层素材\\logo.png' }],
+                    timeline: {
+                        sources: {
+                            srcA: { path: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\人声音频\\001_voice.mp3', has_audio: true },
+                            srcV: { path: 'C:\\MissingAuthor\\2026-11-13_0617_工程包\\454_They_say-工程\\背景素材\\bg_clip.mp4', has_video: true },
+                        },
+                    },
+                }],
+            }],
+        };
+
+        const dlRes = await cloudHubService.downloadMissingCloudDriveMedia(
+            proj,
+            `https://drive.google.com/drive/folders/${testRootFolderId}`
+        );
+        createdCacheDir = dlRes.cacheDir;
+        assert.equal(dlRes.downloaded, 4, 'All 4 missing media files (.mp3, .mp4, .srt, .png) must download from Drive');
+        assert.equal(dlRes.failed, 0);
+        const relinkedTask = proj.tabs[0].tasks[0];
+        assert.equal(fs.existsSync(relinkedTask.bgPath), true, 'bgPath must exist on disk after auto-download');
+        assert.equal(fs.existsSync(relinkedTask.audioPath), true, 'audioPath must exist on disk after auto-download');
+        assert.equal(fs.existsSync(relinkedTask.srtPath), true, 'srtPath must exist on disk after auto-download');
+        assert.equal(fs.existsSync(relinkedTask.overlays[0].content), true, 'overlay image path must exist after auto-download');
+        assert.equal(fs.existsSync(relinkedTask.timeline.sources.srcA.path), true, 'timeline audio source must relink');
+        assert.equal(fs.existsSync(relinkedTask.timeline.sources.srcV.path), true, 'timeline video source must relink');
+
+        // Frontend collision + hydration check: local "标签3" in "新建文件夹" must NOT be overwritten/stolen when downloading "2026-11-24_批量工程_64个任务"
+        const liveFolders = [
+            { id: 'fld_local', name: '新建文件夹', parentId: '' },
+            { id: 'fld_cloud', name: '☁️ 云端同步工程', parentId: '' },
+        ];
+        const liveAssignments = { lp_local_3: 'fld_local' };
+        const liveProjects = [
+            { id: 'lp_local_3', name: '标签3', folderId: 'fld_local', thumbnail: 'data:image/jpeg;base64,OLD', projectData: { version: '2.0', tasks: [{ id: 'old_1' }] } },
+        ];
+        const store = new Map();
+        const sandbox = {
+            console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout,
+            API_BASE: 'http://127.0.0.1:0/api',
+            localStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
+            document: { body: { appendChild() {}, querySelector: () => null }, head: { appendChild() {} }, createElement: () => ({ style: {}, dataset: {}, appendChild() {}, addEventListener() {}, querySelectorAll: () => [], querySelector: () => null }), getElementById: () => null, addEventListener() {} },
+            confirm: () => true, alert: () => {}, showToast: () => {}, reelsSelectTask: () => {}, reelsUpdatePreview: () => {},
+            apiFetch: async (url, init = {}) => {
+                const body = init.body ? JSON.parse(init.body) : {};
+                if (url.endsWith('/live-projects/folders/list')) return { ok: true, json: async () => ({ folders: liveFolders, assignments: liveAssignments }) };
+                if (url.endsWith('/live-projects/list')) return { ok: true, json: async () => liveProjects };
+                if (url.endsWith('/live-projects/save')) {
+                    const id = body.id || `lp_${liveProjects.length + 1}`;
+                    const rec = { id, name: body.name, folderId: body.folderId || '', thumbnail: body.thumbnail || '', projectData: body.projectData };
+                    const idx = liveProjects.findIndex(x => x.id === id);
+                    if (idx >= 0) liveProjects[idx] = rec; else liveProjects.push(rec);
+                    if (body.folderId) liveAssignments[id] = body.folderId;
+                    return { ok: true, json: async () => ({ success: true, id }) };
+                }
+                return { ok: true, json: async () => ({}) };
+            },
+            window: {
+                addEventListener() {},
+                location: { hash: '' },
+                _reelsState: { tasks: [], globalSubtitleStyle: {}, exportOpts: {}, watermarks: [] },
+                _reelsLibraryThumbCache: {},
+                ReelsProject: { collectProjectData: (opts) => ({ version: '2.0', tasks: opts.tasks || [] }) },
+                reelsCaptureProjectThumbnailFromData: async () => 'data:image/jpeg;base64,CLOUD_THUMB',
+                electronAPI: { toFileUrl: (p) => 'file:///' + String(p || '').replace(/\\/g, '/') },
+            },
+        };
+        sandbox.window.window = sandbox.window;
+        sandbox.globalThis = sandbox;
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-batch-table.js'), 'utf8'), sandbox);
+
+        // Seed existing local "标签3" in workspace
+        vm.runInContext(`_batchTableState.tabs = [{ id: 'tab_local_3', name: '标签3', libraryTemplateId: 'lp_local_3', libraryFolderId: 'fld_local', hidden: false, tasks: [{ id: 'local_task_1' }] }]; _batchTableState.activeTabId = 'tab_local_3'; _batchTableState.nextTabId = 20;`, sandbox);
+
+        const applied = await vm.runInContext(`_applyDownloadedCloudProjectToBatchTable(${JSON.stringify({
+            version: '2.0',
+            tabs: [
+                { name: '标签3', tasks: [{ id: 'c1', audioPath: relinkedTask.audioPath }] },
+                { name: '标签25', tasks: [{ id: 'c2', bgPath: relinkedTask.bgPath, audioPath: relinkedTask.audioPath }] },
+            ],
+        })}, '', 'append', '2026-11-24_批量工程_64个任务', { cloudKey: 'gdrive:file64', cloudUrl: 'https://drive.google.com/file/d/file64/view' })`, sandbox);
+
+        assert.equal(applied.tabsAdded, 2, 'Cloud generic tabs must NOT collide with local 标签3');
+        assert.equal(liveAssignments.lp_local_3, 'fld_local', 'Existing local 标签3 folder assignment must stay untouched');
+        assert.equal(
+            vm.runInContext(`_batchTableState.tabs.some(t => t.name === '批量工程_64个任务 · 标签3' && t.cloudKey === 'gdrive:file64' && t.libraryFolderId === 'fld_cloud' && t.tasks[0].audioSrcUrl.startsWith('file:///'))`, sandbox),
+            true,
+            'Cloud 标签3 must be cleanly named with package title, linked to ☁️ 云端同步工程, and hydrate audioSrcUrl'
+        );
+        assert.equal(
+            vm.runInContext(`_batchTableState.tabs.some(t => t.name === '批量工程_64个任务 · 标签25' && t.tasks[0].bgSrcUrl.startsWith('file:///') && t.tasks[0].audioSrcUrl.startsWith('file:///'))`, sandbox),
+            true,
+            'Cloud 标签25 must hydrate both bgSrcUrl and audioSrcUrl'
+        );
+        const savedCloudLp = liveProjects.find(x => x.name === '批量工程_64个任务 · 标签25');
+        assert.ok(savedCloudLp && savedCloudLp.projectData?.cloudMeta?.cloudKey === 'gdrive:file64', 'Saved liveProjectStore record must retain cloudMeta');
+        const restoredTabCheck = vm.runInContext(`(() => { const r = _buildTabFromLibraryTemplate(${JSON.stringify(savedCloudLp)}, {}, 'fld_cloud'); return r.tab.cloudKey + '|' + r.tab.tasks[0].audioSrcUrl; })()`, sandbox);
+        assert.ok(restoredTabCheck.startsWith('gdrive:file64|file:///'), 'Reopening cloud project from 🗂️ 工程项目 must preserve cloudKey & audioSrcUrl');
+    } finally {
+        global.fetch = origFetch;
+        if (createdCacheDir && fs.existsSync(createdCacheDir)) {
+            try { fs.rmSync(createdCacheDir, { recursive: true, force: true }); } catch (_) {}
+        }
+    }
+});
+
+
 
 
