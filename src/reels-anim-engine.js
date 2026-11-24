@@ -137,9 +137,20 @@ const ANIM_TYPE_LABELS = [
     ['三词叠排(中词放大)', 'three_word_focus_stack'],
     ['四行滚词(彩虹跟读)', 'rolling_rainbow_karaoke'],
     ['三行滚词(金羽跟读)', 'rolling_quill_karaoke'],
+    ['三词上推递进(白绿放大)', 'rolling_word_escalator'],
     ['闪光高亮', 'flash_highlight'],
     ['黄绿辉光逐词叠排', 'kinetic_glow_stack'],
 ];
+
+const CONTINUOUS_ROLLING_ANIMS = [
+    'rolling_rainbow_karaoke',
+    'rolling_quill_karaoke',
+    'rolling_word_escalator',
+];
+
+function isContinuousRollingAnim(type) {
+    return CONTINUOUS_ROLLING_ANIMS.includes(type);
+}
 
 const CHAR_ANIM_TYPES = [
     'char_float_up',
@@ -1174,6 +1185,7 @@ const ReelsAnimEngine = {
     // Easing
     EASING_MAP, EASING_LABELS, ANIM_TYPE_LABELS,
     CHAR_ANIM_TYPES, isCharAnimType,
+    CONTINUOUS_ROLLING_ANIMS, isContinuousRollingAnim,
     TRANSITION_PRESETS, DEFAULT_TRANSITION_DURATION, SPECTRUM_SHAPES,
     // Core
     computeAnimProgress,

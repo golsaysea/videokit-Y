@@ -6406,6 +6406,24 @@ const REELS_VIRAL_100_CODES = {};
             char_anim_duration: 0.16, char_anim_stagger: 0.032, char_anim_intensity: 0.35,
             anim_out_type: 'none', anim_out_duration: 0,
         })],
+        ['sub-255', '🟢 三词上推递进_白绿递增 (FB爆款同款)', mk({
+            font_family: 'Poppins', font_weight: 700, fontsize: 92, bold: true, italic: false,
+            uppercase: false, text_transform: 'none', mixed_layout: 'none',
+            letter_spacing: 0, word_spacing: 6, line_spacing: 22, text_align: 'center',
+            color_text: '#FFFFFF', color_high: '#24D926',
+            text_gradient_enabled: false, high_gradient_enabled: false,
+            highlight_enabled: true, karaoke_highlight: true, highlight_scale_enabled: false,
+            highlight_include_punctuation: true,
+            scrolling_visible_lines: 3,
+            kinetic_group_words: 3, kinetic_scale_min: 0.56, kinetic_scale_max: 1.24,
+            kinetic_pop_duration: 0.11, kinetic_old_word_opacity: 1, kinetic_line_gap: 0.14,
+            use_stroke: true, color_outline: '#000000', opacity_outline: 255, border_width: 5.5,
+            shadow_blur: 5, shadow_offset_x: 0, shadow_offset_y: 3, color_shadow: '#000000', opacity_shadow: 195, shadow: true,
+            use_box: false, dynamic_box: false, use_underline: false,
+            pos_x: 0.5, pos_y: 0.49, wrap_width_percent: 86, wrap_lines: 3,
+            anim_in_type: 'rolling_word_escalator', anim_in_duration: 0.11, anim_in_easing: 'ease_out_back',
+            anim_out_type: 'none', anim_out_duration: 0,
+        })],
     ];
     for (const [code, name, styleObj] of entries) {
         REELS_BUILTIN_PRESETS[name] = styleObj;
@@ -7993,6 +8011,81 @@ const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {
             anim_in_type: "none", anim_out_type: "none",
         }
     ],
+
+    // ════════════════════════════════════════════════════════════════
+    // 36. FB爆款 3D旋转金十字架 + 奶油圆角条祈祷滚词 (Reel 2073541946660889 / 122112000699541613 同款)
+    //     顶部旋转立体纯金十字架 + 中下部奶油圆角胶囊逐行包裹 + 上下柔和渐变透明遮罩
+    // ════════════════════════════════════════════════════════════════
+    "36-FB爆款_3D旋转金十字架+奶油条祈祷滚词": [
+        {
+            type: "sticker",
+            name: "✝️ 3D旋转纯金十字架",
+            sticker_kind: "golden_cross_3d_spin",
+            sticker_shadow: true,
+            x: 360,
+            y: 245,
+            w: 360,
+            h: 460,
+            rotation: 0,
+            opacity: 255,
+            start: 0,
+            end: 9999,
+            scroll_end_auto: true,
+        },
+        {
+            type: "scroll",
+            name: "📜 奶油圆角条祈祷滚词",
+            content: "Our Father who is in heaven, hallowed be Your name. Your kingdom come, Your will be done on earth as it is in heaven. Give us this day our daily bread. Forgive us our trespasses, as we forgive those who trespass against us. Lead us not into temptation, but deliver us from evil. Amen.",
+            x: 60,
+            y: 760,
+            w: 960,
+            h: 780,
+            rotation: 0,
+            opacity: 255,
+            start: 0,
+            end: 9999,
+            scroll_end_auto: true,
+            font_family: "Anton",
+            fontsize: 86,
+            font_weight: 400,
+            bold: false,
+            italic: false,
+            color: "#0F0202",
+            text_align: "center",
+            text_direction: "auto",
+            text_width: 900,
+            line_spacing: 28,
+            scroll_letter_spacing: -0.4,
+            scroll_uppercase: false,
+            use_stroke: false,
+            stroke_color: "#000000",
+            stroke_width: 0,
+            shadow_enabled: false,
+            scroll_body_bg_enabled: true,
+            scroll_body_bg_style: "solid",
+            scroll_body_bg_mode: "inline",
+            scroll_body_bg_color: "#FDE9CE",
+            scroll_body_bg_opacity: 100,
+            scroll_body_bg_radius: 18,
+            scroll_body_bg_pad_h: 28,
+            scroll_body_bg_pad_top: 12,
+            scroll_body_bg_pad_bottom: 12,
+            bg_enabled: false,
+            feather_mode: "clip",
+            feather_top: 170,
+            feather_bottom: 170,
+            scroll_x_anchor: "center",
+            scroll_from_x: 540,
+            scroll_from_y: 900,
+            scroll_to_x: 540,
+            scroll_to_y: -360,
+            scroll_speed: 0.72,
+            scroll_end_y_auto: true,
+            scroll_auto_stop: true,
+            scroll_focus_flow_enabled: false,
+            scroll_typewriter_enabled: false,
+        }
+    ],
 };
 
 // 暴露到全局供面板读取
@@ -8278,6 +8371,7 @@ const REELS_OVERLAY_PRESET_ID_MAP = {
     "ov-33": "33-Muse_FB13_玫红等宽逐行白字条",
     "ov-34": "34-Muse_FB14_全屏黑幕60%_窄体橙标",
     "ov-35": "35-Muse_FB28_纯黑高光标题+半透黑条正文",
+    "ov-36": "36-FB爆款_3D旋转金十字架+奶油条祈祷滚词",
 };
 
 function _buildScrollPreset(presetId, category, overrides = {}) {

@@ -49,6 +49,8 @@ const CANVAS_EXCLUSIVE_ANIMATIONS = new Set([
     'underline_sweep',
     'three_word_focus_stack',
     'rolling_rainbow_karaoke',
+    'rolling_quill_karaoke',
+    'rolling_word_escalator',
     'feather_wipe',
     'speech_feather_wipe',
     'char_fade',

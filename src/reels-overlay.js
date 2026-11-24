@@ -2803,7 +2803,7 @@ function drawOverlay(ctx, origOv, currentTime = 0, canvasW = 1920, canvasH = 108
     const isDecorTabOpenForPhoneCta = Boolean(
         ov.is_phone_cta &&
         typeof document !== 'undefined' &&
-        document.getElementById('inspector-tab-decor')?.style?.display !== 'none'
+        document.getElementById?.('inspector-tab-decor')?.style?.display !== 'none'
     );
     const isPlayingNow = (typeof ov._previewPlaying === 'boolean')
         ? ov._previewPlaying
@@ -7354,8 +7354,12 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             const v2Duration = window.ReelsPreviewV2?.isOpen?.()
                 ? window.ReelsPreviewV2.getDuration?.()
                 : 0;
-            const mediaEl = document.getElementById('reels-preview-video') || document.querySelector('#reels-preview video');
-            const audioEl = document.getElementById('reels-preview-audio');
+            const mediaEl = typeof document !== 'undefined'
+                ? (document.getElementById?.('reels-preview-video') || document.querySelector?.('#reels-preview video'))
+                : null;
+            const audioEl = typeof document !== 'undefined'
+                ? document.getElementById?.('reels-preview-audio')
+                : null;
             if (v2Duration && isFinite(v2Duration) && v2Duration > 0) {
                 end = v2Duration;
             } else if (audioEl && audioEl.duration && isFinite(audioEl.duration) && audioEl.duration > 0) {
@@ -10084,7 +10088,21 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
             ctx.save();
             ctx.globalAlpha = bbgAlpha * ctx.globalAlpha;
             ctx.fillStyle = ov.scroll_body_bg_color || '#000000';
-            if (ov.scroll_body_bg_mode === 'inline' || ov.scroll_body_bg_mode === 'inline-joined') {
+            if (ov.scroll_body_bg_mode === 'inline') {
+                let by = drawY;
+                for (const line of lines) {
+                    const trimmed = String(line || '').trim();
+                    const lw = trimmed ? ctx.measureText(line).width : 0;
+                    if (trimmed && lw > 0) {
+                        const lx = _alignX(ctx, line, textX, textW, align, bLetterSpacing);
+                        const glyphTop = by + fontSize * 0.19;
+                        const glyphH = fontSize * 1.04;
+                        _roundRect(ctx, lx - bbgPadH, glyphTop - bbgPadTop, lw + bbgPadH * 2, glyphH + bbgPadTop + bbgPadBot, bbgRad);
+                        ctx.fill();
+                    }
+                    by += lineHeight;
+                }
+            } else if (ov.scroll_body_bg_mode === 'inline-joined') {
                 let by = drawY;
                 for (const line of lines) {
                     const lw = ctx.measureText(line).width;

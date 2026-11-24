@@ -239,6 +239,7 @@ ipcRenderer.on('render-chunk', async (event, config) => {
         let renderer = null;
         if (typeof window.ReelsCanvasRenderer === 'function') {
             renderer = new window.ReelsCanvasRenderer(canvas);
+            renderer.setContextSegments?.(segments);
             log('字幕渲染器就绪');
         } else {
             log('⚠️ ReelsCanvasRenderer 未加载，字幕将不会渲染');
@@ -443,8 +444,16 @@ ipcRenderer.on('render-chunk', async (event, config) => {
 
             // ── 字幕 ──
             if (renderer && segments && segments.length > 0 && !window.ReelsOverlay?.isIntroSuppressingBodySubtitles?.(overlays, t)) {
-                const activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
+                let activeSeg = segments.find(seg => t >= (seg.start || 0) && t <= (seg.end || 0));
+                if (!activeSeg && (style.scrolling_mode || style.fullpage_typewriter || window.ReelsAnimEngine?.isContinuousRollingAnim?.(style.anim_in_type) || ['rolling_rainbow_karaoke', 'rolling_quill_karaoke', 'rolling_word_escalator'].includes(style.anim_in_type))) {
+                    let best = segments[0];
+                    for (const seg of segments) {
+                        if ((seg.start || 0) <= t) best = seg;
+                    }
+                    activeSeg = best;
+                }
                 if (activeSeg) {
+                    renderer.setContextSegments?.(segments);
                     renderer.renderSubtitle(style, activeSeg, t, targetWidth, targetHeight);
                 }
             }

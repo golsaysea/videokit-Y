@@ -5238,7 +5238,7 @@ function _reelsUpdatePreviewInternal() {
         const s = segs.find(s => audioCycleTime >= s.start && audioCycleTime <= s.end);
         if (s) {
             activeSegment = s;
-        } else if ((style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke') && segs.length > 0) {
+        } else if ((style.scrolling_mode || style.fullpage_typewriter || style.anim_in_type === 'rolling_rainbow_karaoke' || style.anim_in_type === 'rolling_quill_karaoke' || style.anim_in_type === 'rolling_word_escalator') && segs.length > 0) {
             // Scrolling/typewriter mode: find nearest segment so lines stay visible between gaps
             let best = segs[0];
             for (let i = 1; i < segs.length; i++) {

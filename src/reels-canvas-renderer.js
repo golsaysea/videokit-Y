@@ -163,6 +163,7 @@ const HOLIDAY_ICON_CATALOG = [
     { id: 'xmas_church_steeple', emoji: '🕍', label: '雪顶圣诞钟楼', category: '圣夜信仰', accent: '#F59E0B' },
     { id: 'xmas_carol_music', emoji: '🎼', label: '平安夜圣诗音符', category: '圣夜信仰', accent: '#F59E0B' },
     { id: 'xmas_peace_dove_holly', emoji: '🕊️', label: '冬青和平白鸽', category: '圣夜信仰', accent: '#22C55E' },
+    { id: 'golden_cross_3d_spin', emoji: '✝️', label: '3D旋转纯金十字架', category: '圣夜信仰', accent: '#FFDB62' },
     { id: 'xmas_gingerbread', emoji: '🍪', label: '糖霜姜饼人', category: '冬日美食', accent: '#B45309' },
     { id: 'xmas_snow_globe', emoji: '🔮', label: '雪景水晶球', category: '冬日美食', accent: '#38BDF8' },
     { id: 'xmas_hot_cocoa', emoji: '☕', label: '棉花糖热可可', category: '冬日美食', accent: '#991B1B' },
@@ -1365,6 +1366,90 @@ function drawHolidayStickerIcon(ctx, rawKind, cx, cy, size = 120, opts = {}) {
             _holidayGlossyBerry(ctx, 0.25, 0.22, 0.030);
             break;
         }
+        case 'golden_cross_3d_spin': {
+            // Extruded Y-axis 3D spinning metallic gold Latin cross (FB reel 2073541946660889 / 122112000699541613 style)
+            const theta = 0.36 + t * 1.15;
+            const cosA = Math.cos(theta);
+            const sinA = Math.sin(theta);
+            const persp = 3.2;
+            const proj = (x, y, z) => {
+                const xr = x * cosA + z * sinA;
+                const zr = -x * sinA + z * cosA;
+                const pScale = persp / Math.max(0.6, persp - zr);
+                return [xr * pScale, y * pScale];
+            };
+            const shadeColor = (nx, ny, nz, isSide) => {
+                const rx = nx * cosA + nz * sinA;
+                const rz = -nx * sinA + nz * cosA;
+                const lum = Math.max(0, Math.min(1, rx * -0.45 + ny * -0.42 + rz * 0.78));
+                if (isSide) {
+                    const r = Math.round(146 + lum * 95);
+                    const g = Math.round(82 + lum * 88);
+                    const b = Math.round(8 + lum * 42);
+                    return `rgb(${r},${g},${b})`;
+                }
+                const cTop = lum > 0.62 ? '#FFF7B2' : (lum > 0.38 ? '#FFE066' : '#FBBF24');
+                const cMid = lum > 0.50 ? '#FFDB62' : '#F59E0B';
+                const cBot = lum > 0.45 ? '#F59E0B' : '#B4690E';
+                return [cTop, cMid, cBot];
+            };
+            const drawQuad = (pts3d, fillStyle, strokeStyle = null, lw = 0.008) => {
+                const pts = pts3d.map(([x, y, z]) => proj(x, y, z));
+                ctx.beginPath();
+                ctx.moveTo(pts[0][0], pts[0][1]);
+                ctx.lineTo(pts[1][0], pts[1][1]);
+                ctx.lineTo(pts[2][0], pts[2][1]);
+                ctx.lineTo(pts[3][0], pts[3][1]);
+                ctx.closePath();
+                if (Array.isArray(fillStyle)) {
+                    ctx.fillStyle = _holidayLinGrad(ctx, 0, -0.42, 0, 0.42, [
+                        [0, fillStyle[0]], [0.52, fillStyle[1]], [1, fillStyle[2]],
+                    ], fillStyle[1]);
+                } else {
+                    ctx.fillStyle = fillStyle;
+                }
+                ctx.fill();
+                if (strokeStyle) {
+                    ctx.strokeStyle = strokeStyle;
+                    ctx.lineWidth = lw;
+                    ctx.stroke();
+                }
+            };
+            const drawPrism = (x0, x1, y0, y1, z0, z1, skipLeft, skipRight) => {
+                // Back & Front faces (outward normals +/- Z)
+                if (cosA >= 0) {
+                    drawQuad([[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], shadeColor(0, 0, 1, false));
+                } else {
+                    drawQuad([[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]], shadeColor(0, 0, -1, false));
+                }
+                // Left & Right side extruded bevel faces
+                if (!skipLeft && sinA > 0.001) {
+                    drawQuad([[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]], shadeColor(-1, 0, 0, true), '#92400E', 0.006);
+                }
+                if (!skipRight && sinA < -0.001) {
+                    drawQuad([[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]], shadeColor(1, 0, 0, true), '#92400E', 0.006);
+                }
+                // Subtle top horizontal gold cap chamfer
+                drawQuad([[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], '#FEF08A');
+            };
+
+            const vw = 0.076, hw = 0.305, d = 0.048;
+            const yTop = -0.42, yBot = 0.42, armY0 = -0.21, armY1 = -0.06;
+            ctx.save();
+            ctx.shadowColor = 'rgba(245, 158, 11, 0.38)';
+            ctx.shadowBlur = 0.08;
+            if (sinA >= 0) {
+                drawPrism(vw, hw, armY0, armY1, -d, d, true, false);
+                drawPrism(-vw, vw, yTop, yBot, -d, d, false, false);
+                drawPrism(-hw, -vw, armY0, armY1, -d, d, false, true);
+            } else {
+                drawPrism(-hw, -vw, armY0, armY1, -d, d, false, true);
+                drawPrism(-vw, vw, yTop, yBot, -d, d, false, false);
+                drawPrism(vw, hw, armY0, armY1, -d, d, true, false);
+            }
+            ctx.restore();
+            break;
+        }
     }
     ctx.restore();
     return true;
@@ -2071,6 +2156,11 @@ class ReelsCanvasRenderer {
 
         if (!_isSubCall && s.anim_in_type === 'rolling_quill_karaoke') {
             this._renderRollingQuillKaraoke(s, segment, currentTime, videoW, videoH);
+            return;
+        }
+
+        if (!_isSubCall && s.anim_in_type === 'rolling_word_escalator') {
+            this._renderRollingWordEscalator(s, segment, currentTime, videoW, videoH);
             return;
         }
 
@@ -9373,6 +9463,191 @@ class ReelsCanvasRenderer {
                 quillTipPos.y + offY,
                 fontSize * tipScale,
                 tipAngle
+            );
+            ctx.restore();
+        }
+
+        ctx.restore();
+    }
+
+    _collectContinuousTimedWords(s, segment) {
+        const segStart = Number(segment?.start) || 0;
+        const segEnd = Number(segment?.end) || segStart;
+        const ctxSegs = Array.isArray(this._contextSegments) && this._contextSegments.length > 0
+            ? this._contextSegments
+            : null;
+        const matchesContext = Boolean(ctxSegs && segment && ctxSegs.some(cs =>
+            cs === segment || (Math.abs((Number(cs.start) || 0) - segStart) < 1e-3 && Math.abs((Number(cs.end) || 0) - segEnd) < 1e-3)
+        ));
+        const sourceSegs = (matchesContext && ctxSegs.length > 1) ? ctxSegs : (segment ? [segment] : []);
+        const words = [];
+        for (const cs of sourceSegs) {
+            const segWords = this._getTimedWords(cs);
+            for (const w of segWords) {
+                const text = this._applyTextTransform(w.word || '', s).trim();
+                if (!text) continue;
+                const ws = Number.isFinite(Number(w.start)) ? Number(w.start) : (Number(cs.start) || 0);
+                const we = Number.isFinite(Number(w.end)) && Number(w.end) > ws ? Number(w.end) : Math.max(ws + 0.04, Number(cs.end) || ws + 0.04);
+                words.push({ word: text, start: ws, end: we });
+            }
+        }
+        return { words, firstStart: sourceSegs.length ? (Number(sourceSegs[0].start) || segStart) : segStart, lastEnd: sourceSegs.length ? (Number(sourceSegs[sourceSegs.length - 1].end) || segEnd) : segEnd };
+    }
+
+    /**
+     * 🟢 Rolling 3-Word Escalator Stack ("三词上推递进(白绿放大)" — FB reel 1683381336652209 style)
+     * - Displays up to 3 vertically stacked words anchored around (pos_x, pos_y).
+     * - Bottom active spoken word enters large in vibrant green; prior words shift upward
+     *   tier by tier in solid white at progressively smaller scales with crisp dark outline.
+     */
+    _renderRollingWordEscalator(s, segment, currentTime, videoW, videoH) {
+        if (!segment) return;
+        const { words, firstStart, lastEnd } = this._collectContinuousTimedWords(s, segment);
+        if (!words.length) return;
+
+        const segStart = Number(segment.start) || 0;
+        if (currentTime < Math.min(firstStart, segStart) - 1e-4) return;
+
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const clamp01 = (v) => clamp(v, 0, 1);
+        const lerp = (a, b, t) => a + (b - a) * t;
+        const smoothstep = (t) => {
+            const u = clamp01(t);
+            return u * u * (3 - 2 * u);
+        };
+
+        let activeIdx = -1;
+        for (let i = 0; i < words.length; i++) {
+            if (currentTime >= words[i].start - 1e-4) activeIdx = i;
+            else break;
+        }
+        if (activeIdx < 0) activeIdx = 0;
+
+        const globalLastEnd = Math.max(lastEnd, words[words.length - 1].end);
+        let outroAlpha = 1.0;
+        if (currentTime > globalLastEnd + 0.38) {
+            outroAlpha = clamp01(1 - (currentTime - (globalLastEnd + 0.38)) / 0.18);
+            if (outroAlpha <= 0.01) return;
+        }
+
+        const ctx = this.ctx;
+        const cx = (typeof s.pos_x === 'number' && s.pos_x <= 1) ? s.pos_x * videoW : (Number(s.pos_x) || videoW * 0.5);
+        const cy = (typeof s.pos_y === 'number' && s.pos_y <= 1) ? s.pos_y * videoH : (Number(s.pos_y) || videoH * 0.49);
+
+        const fontFamily = s.font_family || 'Poppins';
+        const fallbackFamily = _resolveGenericFallback(fontFamily);
+        const fontWeight = _resolveFontWeight(s.font_weight, s.bold !== false ? 800 : 400, s.bold);
+        const italic = Boolean(s.italic);
+        const baseSize = Math.max(20, Number(s.fontsize) || 84);
+        const letterSpacing = Number(s.letter_spacing) || 0;
+        const slotCount = clamp(parseInt(s.scrolling_visible_lines, 10) || parseInt(s.kinetic_group_words, 10) || 3, 2, 5);
+        const minScale = clamp(Number(s.kinetic_scale_min ?? 0.56), 0.25, 1.5);
+        const maxScale = Math.max(minScale, Number(s.kinetic_scale_max ?? 1.24));
+        const maxLineW = Math.max(120, videoW * ((Number(s.wrap_width_percent) || 86) / 100));
+        const baseLineGap = Number.isFinite(Number(s.line_spacing)) ? Math.max(4, Number(s.line_spacing)) : Math.round(baseSize * 0.14);
+
+        const slotScales = [];
+        for (let k = 0; k < slotCount; k++) {
+            slotScales.push(minScale + (maxScale - minScale) * (k / Math.max(1, slotCount - 1)));
+        }
+        const slotHeights = slotScales.map(sc => baseSize * sc * 1.02);
+        const totalH = slotHeights.reduce((sum, h) => sum + h, 0) + (slotCount - 1) * baseLineGap;
+        const slotCenterY = [];
+        let cursorY = cy - totalH / 2;
+        for (let k = 0; k < slotCount; k++) {
+            slotCenterY.push(cursorY + slotHeights[k] * 0.5);
+            cursorY += slotHeights[k] + baseLineGap;
+        }
+
+        const activeW = words[activeIdx];
+        const wordSpan = Math.max(0.08, (activeW.end || activeW.start + 0.35) - activeW.start);
+        const transDur = clamp(Number(s.kinetic_pop_duration ?? s.anim_in_duration) || 0.11, 0.04, Math.min(0.24, Math.max(0.08, wordSpan * 0.72)));
+        const elapsed = Math.max(0, currentTime - activeW.start);
+        const tNorm = clamp01(elapsed / transDur);
+        const stepP = smoothstep(tNorm);
+        const c1 = 1.70158;
+        const c3 = c1 + 1;
+        const easeBack = 1 + c3 * Math.pow(tNorm - 1, 3) + c1 * Math.pow(tNorm - 1, 2);
+
+        const baseTextColor = (s.text_gradient_enabled && s.text_gradient_colors)
+            ? s.text_gradient_colors
+            : (s.color_text || '#FFFFFF');
+        const highlightEnabled = s.highlight_enabled !== false && s.karaoke_highlight !== false;
+        const activeTextColor = (s.high_gradient_enabled && s.high_gradient_colors)
+            ? s.high_gradient_colors
+            : (s.color_high || '#24D926');
+        const oldOpacity = clamp01(Number(s.kinetic_old_word_opacity ?? 1));
+        const globalAlpha = clamp01(Number(s.opacity_text_global ?? 1)) * outroAlpha;
+
+        const useStroke = s.use_stroke !== false;
+        const outlineColor = s.color_outline || '#000000';
+        const outlineAlpha = (s.opacity_outline ?? 255) / 255;
+        const baseBorderW = Number(s.border_width ?? 10);
+        const shadowBlur = s.shadow ? (Number(s.shadow_blur) || 0) : 0;
+        const shadowOffX = s.shadow ? (Number(s.shadow_offset_x) || 0) : 0;
+        const shadowOffY = s.shadow ? (Number(s.shadow_offset_y) || 0) : 0;
+        const shadowColor = s.color_shadow || '#000000';
+        const shadowAlpha = s.shadow ? ((Number(s.opacity_shadow ?? 205)) / 255) : 0;
+
+        const startWordIdx = Math.max(0, activeIdx - slotCount);
+        ctx.save();
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        for (let wi = startWordIdx; wi <= activeIdx; wi++) {
+            const targetSlot = (slotCount - 1) - (activeIdx - wi);
+            if (targetSlot < 0 && !(activeIdx >= slotCount && tNorm < 0.98)) continue;
+
+            const wObj = words[wi];
+            let scale = slotScales[clamp(targetSlot, 0, slotCount - 1)];
+            let centerY = slotCenterY[clamp(targetSlot, 0, slotCount - 1)];
+            let wordAlpha = oldOpacity;
+
+            if (targetSlot === slotCount - 1) {
+                scale *= (0.86 + 0.14 * easeBack);
+                centerY += (baseSize * 0.20) * (1 - stepP);
+                wordAlpha = 0.28 + 0.72 * stepP;
+            } else if (targetSlot >= 0 && activeIdx > 0 && tNorm < 1 && (targetSlot + 1) < slotCount) {
+                centerY = lerp(slotCenterY[targetSlot + 1], slotCenterY[targetSlot], stepP);
+                scale = lerp(slotScales[targetSlot + 1], slotScales[targetSlot], stepP);
+            } else if (targetSlot < 0) {
+                centerY = slotCenterY[0] - baseSize * slotScales[0] * 0.92 * stepP;
+                scale = slotScales[0] * (1 - 0.18 * stepP);
+                wordAlpha = oldOpacity * (1 - stepP);
+            }
+
+            if (wordAlpha <= 0.01) continue;
+
+            let fontSize = Math.max(12, baseSize * scale);
+            const scaledSpacing = letterSpacing * (fontSize / baseSize);
+            let fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+            ctx.font = fontStr;
+            let wordW = this._measureTextWithSpacing(ctx, wObj.word, scaledSpacing);
+            if (wordW > maxLineW) {
+                const fit = maxLineW / Math.max(1, wordW);
+                fontSize *= fit;
+                fontStr = `${italic ? 'italic ' : ''}${fontWeight} ${fontSize}px "${fontFamily}", ${fallbackFamily}`;
+                ctx.font = fontStr;
+                wordW = this._measureTextWithSpacing(ctx, wObj.word, letterSpacing * (fontSize / baseSize));
+            }
+
+            const drawX = cx - wordW / 2;
+            const drawY = centerY - fontSize * 0.54;
+            const isBottomActive = targetSlot === slotCount - 1;
+            const wordColor = (isBottomActive && highlightEnabled) ? activeTextColor : baseTextColor;
+            const strokeW = useStroke ? baseBorderW * clamp(fontSize / baseSize, 0.52, 1.32) : 0;
+
+            ctx.save();
+            ctx.globalAlpha = globalAlpha * wordAlpha;
+            ctx.font = fontStr;
+            if (s.stroke_expand_enabled) {
+                this._renderWordStrokeExpand(ctx, s, wObj.word, drawX, drawY, fontStr, letterSpacing * (fontSize / baseSize));
+            }
+            this._drawWord(
+                ctx, wObj.word, drawX, drawY, wordColor,
+                useStroke && !s.stroke_expand_enabled, outlineColor, strokeW, outlineAlpha,
+                shadowBlur, shadowOffX, shadowOffY, shadowColor, shadowAlpha,
+                letterSpacing * (fontSize / baseSize), s
             );
             ctx.restore();
         }

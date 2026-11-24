@@ -522,7 +522,7 @@
         const tags = [];
         const keys = new Set();
 
-        if (anim.includes('word_pop') || s.highlight_scale_enabled || anim === 'three_word_focus_stack' || anim === 'line_focus') {
+        if (anim.includes('word_pop') || s.highlight_scale_enabled || anim === 'three_word_focus_stack' || anim === 'line_focus' || anim === 'rolling_word_escalator') {
             keys.add('word_pop');
             tags.push('🔥 逐词焦点');
         }
@@ -897,7 +897,7 @@
             const isBoxWipe = Boolean(style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
             const isLineFocus = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
             const isUnderline = style.anim_in_type === 'underline_sweep';
-            const isStack = ['three_word_focus_stack', 'kinetic_glow_stack', 'rolling_rainbow_karaoke', 'rolling_quill_karaoke'].includes(style.anim_in_type);
+            const isStack = ['three_word_focus_stack', 'kinetic_glow_stack', 'rolling_rainbow_karaoke', 'rolling_quill_karaoke', 'rolling_word_escalator'].includes(style.anim_in_type);
             const isFeather = style.anim_in_type === 'feather_wipe' || style.anim_in_type === 'speech_feather_wipe';
             if (isBoxWipe) return seg.start + (seg.end - seg.start) * 0.65;
             if (isLineFocus) return seg.start + (seg.end - seg.start) * 0.35;
@@ -912,7 +912,7 @@
             const isLineFocus = Boolean(style.active_line_focus_enabled || style.anim_in_type === 'line_focus');
             const preserve = isBoxWipe || isLineFocus || [
                 'underline_sweep', 'three_word_focus_stack', 'kinetic_glow_stack',
-                'rolling_rainbow_karaoke', 'rolling_quill_karaoke', 'feather_wipe', 'speech_feather_wipe',
+                'rolling_rainbow_karaoke', 'rolling_quill_karaoke', 'rolling_word_escalator', 'feather_wipe', 'speech_feather_wipe',
             ].includes(style.anim_in_type);
             return {
                 ...style,

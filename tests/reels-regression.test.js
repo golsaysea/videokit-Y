@@ -11240,10 +11240,10 @@ test('Christian devotional creative card presets (ov-16..ov-35) & Muse template 
     const { resolveFontFamily } = require('../bin/videokit-cli.cjs');
 
     const ovKeys = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
-    assert.equal(ovKeys.length, 35);
+    assert.equal(ovKeys.length, 36);
     const sigs = new Set();
     const newStructuralSigs = new Set();
-    for (let n = 1; n <= 35; n++) {
+    for (let n = 1; n <= 36; n++) {
         const code = `ov-${n < 10 ? '0' + n : n}`;
         const name = REELS_OVERLAY_PRESET_ID_MAP[code];
         assert.ok(name, `${code} must exist in REELS_OVERLAY_PRESET_ID_MAP`);
@@ -11285,11 +11285,11 @@ test('Christian devotional creative card presets (ov-16..ov-35) & Muse template 
     roSandbox.ReelsBrushEngine = roSandbox.window.ReelsBrushEngine;
     const RO = roSandbox.window.ReelsOverlay;
 
-    for (let n = 16; n <= 35; n++) {
+    for (let n = 16; n <= 36; n++) {
         const code = `ov-${n}`;
         const layers = resolveBuiltinPreset(code).overlays;
         for (const layer of layers) {
-            for (const fKey of ['title_font_family', 'body_font_family', 'footer_font_family', 'intro_top_font_family', 'intro_center_font_family', 'intro_bottom_font_family']) {
+            for (const fKey of ['font_family', 'title_font_family', 'body_font_family', 'footer_font_family', 'intro_top_font_family', 'intro_center_font_family', 'intro_bottom_font_family']) {
                 if (layer[fKey]) {
                     const info = resolveFontFamily(layer[fKey]);
                     assert.ok(info && info.fontFiles.length > 0, `Font ${layer[fKey]} in ${code} must resolve`);
@@ -14424,6 +14424,335 @@ test('Dual-layer masked compositor standalone tab (🧩 双层拼接), 4-edge fe
     assert.equal(handoffTask.contentVideoMaskFeatherLeft, 48);
     assert.equal(handoffTask.contentVideoMaskFeatherBottom, 42);
 });
+
+test('Facebook Reel 1683381336652209 rolling word escalator preset (sub-255): 3-row escalating white/green stack across preview & export', () => {
+    const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+    const animSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-anim-engine.js'), 'utf8');
+    const styleSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-style-engine.js'), 'utf8');
+    const presetsSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-presets-init.js'), 'utf8');
+    const batchSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'batch-reels.js'), 'utf8');
+    const v2Src = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-preview-v2.js'), 'utf8');
+    const layeredSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-layered-export.js'), 'utf8');
+    const wysiwygSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-wysiwyg-export.js'), 'utf8');
+    const shadowSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'shadow-renderer.html'), 'utf8');
+
+    assert.ok(htmlSrc.includes('<option value="rolling_word_escalator">'), 'index.html must expose rolling_word_escalator in anim-in dropdown');
+    assert.ok(batchSrc.includes("'rolling_word_escalator'") && v2Src.includes("'rolling_word_escalator'") && layeredSrc.includes("'rolling_word_escalator'") && wysiwygSrc.includes("'rolling_word_escalator'") && shadowSrc.includes("'rolling_word_escalator'"), 'Preview and all export pipelines must preserve rolling_word_escalator across segment gaps');
+
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error,
+        localStorage: { _m: new Map(), getItem(k) { return this._m.get(k) || null; }, setItem(k, v) { this._m.set(k, String(v)); }, removeItem(k) { this._m.delete(k); } },
+        document: { fonts: { add() {} }, querySelectorAll: () => [], getElementById: () => null },
+        window: { addEventListener() {} },
+        module: { exports: {} },
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-text-direction.js'), 'utf8'), sandbox);
+    vm.runInContext(animSrc, sandbox);
+    vm.runInContext(styleSrc, sandbox);
+    vm.runInContext(presetsSrc, sandbox);
+
+    const animLabels = Array.from(sandbox.window.ReelsAnimEngine.ANIM_TYPE_LABELS).map(p => p[1]);
+    assert.ok(animLabels.includes('rolling_word_escalator'));
+    assert.equal(sandbox.window.ReelsAnimEngine.isContinuousRollingAnim('rolling_word_escalator'), true);
+
+    const resolved = sandbox.resolveBuiltinPreset('sub-255');
+    assert.ok(resolved && resolved.kind === 'subtitle' && resolved.preset, 'sub-255 preset must resolve cleanly');
+    assert.equal(resolved.name, '🟢 三词上推递进_白绿递增 (FB爆款同款)');
+
+    const applied = sandbox.applySubtitlePreset(resolved.name);
+    assert.equal(applied.font_family, 'Poppins');
+    assert.equal(applied.color_text, '#FFFFFF');
+    assert.equal(applied.color_high, '#24D926');
+    assert.equal(applied.use_stroke, true);
+    assert.equal(applied.color_outline, '#000000');
+    assert.equal(applied.use_box, false);
+    assert.equal(applied.uppercase, false);
+    assert.equal(applied.anim_in_type, 'rolling_word_escalator');
+
+    const { categorized } = sandbox.getPresetsByCategory();
+    const hotWordCats = categorized.filter(c => c.names.includes(resolved.name));
+    assert.equal(hotWordCats.length, 1, 'sub-255 must belong to exactly one category');
+    assert.equal(hotWordCats[0].category, '🔥 逐词动态');
+
+    const fillOps = [];
+    const strokeOps = [];
+    const roundRectCalls = [];
+    const ctx = {
+        font: '800 84px "Poppins", sans-serif',
+        fillStyle: '#FFFFFF',
+        strokeStyle: '#000000',
+        lineWidth: 10,
+        lineJoin: 'round',
+        miterLimit: 2,
+        globalAlpha: 1,
+        textAlign: 'left',
+        textBaseline: 'top',
+        direction: 'ltr',
+        shadowBlur: 0,
+        shadowColor: '#000000',
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        _stack: [],
+        save() {
+            this._stack.push({
+                font: this.font, fillStyle: this.fillStyle, strokeStyle: this.strokeStyle,
+                lineWidth: this.lineWidth, globalAlpha: this.globalAlpha,
+                shadowBlur: this.shadowBlur, shadowColor: this.shadowColor,
+                shadowOffsetX: this.shadowOffsetX, shadowOffsetY: this.shadowOffsetY,
+            });
+        },
+        restore() {
+            const prev = this._stack.pop();
+            if (prev) Object.assign(this, prev);
+        },
+        translate() {},
+        rotate() {},
+        scale() {},
+        beginPath() {},
+        closePath() {},
+        rect() {},
+        fillRect() {},
+        clearRect() {},
+        clip() {},
+        moveTo() {},
+        lineTo() {},
+        arcTo() {},
+        quadraticCurveTo() {},
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        fill() {},
+        stroke() {},
+        setLineDash() {},
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+        measureText: (txt) => ({ width: String(txt || '').length * 20 }),
+        fillText(text, x, y) {
+            fillOps.push({
+                text: String(text),
+                x,
+                y,
+                font: String(this.font),
+                fillStyle: String(this.fillStyle).toUpperCase(),
+                shadowBlur: this.shadowBlur,
+            });
+        },
+        strokeText(text, x, y) {
+            strokeOps.push({
+                text: String(text),
+                x,
+                y,
+                strokeStyle: String(this.strokeStyle).toUpperCase(),
+                lineWidth: this.lineWidth,
+            });
+        },
+    };
+    const rendererSandbox = {
+        ...sandbox,
+        window: { ...sandbox.window, ReelsAnimEngine: sandbox.window.ReelsAnimEngine, ReelsTextDirection: sandbox.window.ReelsTextDirection },
+        document: { createElement: () => ({ width: 1080, height: 1920, getContext: () => ctx }) },
+        ReelsAnimEngine: sandbox.window.ReelsAnimEngine,
+        ReelsTextDirection: sandbox.window.ReelsTextDirection,
+    };
+    rendererSandbox.window.window = rendererSandbox.window;
+    rendererSandbox.globalThis = rendererSandbox;
+    vm.createContext(rendererSandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-canvas-renderer.js'), 'utf8'), rendererSandbox);
+
+    const renderer = new rendererSandbox.window.ReelsCanvasRenderer({ width: 1080, height: 1920, getContext: () => ctx });
+    const origRR = renderer._roundRect.bind(renderer);
+    renderer._roundRect = function (...args) {
+        roundRectCalls.push(args);
+        return origRR(...args);
+    };
+
+    const seg1 = {
+        start: 0.0,
+        end: 2.0,
+        text: "son, please don't skip this.",
+        words: [
+            { word: 'son,', start: 0.0, end: 0.4 },
+            { word: 'please', start: 0.4, end: 0.8 },
+            { word: "don't", start: 0.8, end: 1.2 },
+            { word: 'skip', start: 1.2, end: 1.6 },
+            { word: 'this.', start: 1.6, end: 2.0 },
+        ],
+    };
+    const seg2 = {
+        start: 2.05,
+        end: 3.5,
+        text: 'Your son protects',
+        words: [
+            { word: 'Your', start: 2.05, end: 2.5 },
+            { word: 'son', start: 2.5, end: 3.0 },
+            { word: 'protects', start: 3.0, end: 3.5 },
+        ],
+    };
+    renderer.setContextSegments([seg1, seg2]);
+
+    // Case A: settling on "don't" -> [son, (small white), please (mid white), don't (large green)]
+    renderer.renderSubtitle(applied, seg1, 1.0, 1080, 1920);
+    const glyphOpsA = fillOps.filter(op => op.shadowBlur === 0);
+    const shadowOpsA = fillOps.filter(op => op.shadowBlur > 0);
+    assert.equal(shadowOpsA.length, 3, 'Each stacked word should emit subtle drop shadow pass');
+    assert.deepEqual(glyphOpsA.map(op => op.text), ['son,', 'please', "don't"]);
+    assert.ok(glyphOpsA[0].y < glyphOpsA[1].y && glyphOpsA[1].y < glyphOpsA[2].y, '3 words must stack strictly top-to-bottom');
+    const parseFontPx = (f) => parseFloat(String(f).match(/([\d.]+)px/)?.[1] || '0');
+    const fsA = glyphOpsA.map(op => parseFontPx(op.font));
+    assert.ok(fsA[0] < fsA[1] && fsA[1] < fsA[2], `Expected ascending sizes top->bottom, got ${fsA.join(', ')}`);
+    assert.equal(glyphOpsA[0].fillStyle, '#FFFFFF');
+    assert.equal(glyphOpsA[1].fillStyle, '#FFFFFF');
+    assert.equal(glyphOpsA[2].fillStyle, '#24D926');
+    assert.ok(strokeOps.length === 3 && strokeOps.every(op => op.strokeStyle === '#000000'));
+    assert.equal(roundRectCalls.length, 0, 'FB 1683381336652209 style has no background box');
+
+    // Case B: rolls seamlessly across period & segment boundary onto "son" -> [this., Your, son]
+    fillOps.length = 0;
+    strokeOps.length = 0;
+    renderer.renderSubtitle(applied, seg2, 2.75, 1080, 1920);
+    const glyphOpsB = fillOps.filter(op => op.shadowBlur === 0);
+    assert.deepEqual(glyphOpsB.map(op => op.text), ['this.', 'Your', 'son']);
+    assert.equal(glyphOpsB[0].fillStyle, '#FFFFFF');
+    assert.equal(glyphOpsB[1].fillStyle, '#FFFFFF');
+    assert.equal(glyphOpsB[2].fillStyle, '#24D926');
+});
+
+test('Facebook Reel 122112000699541613 / 2073541946660889 style: 3D spinning gold cross + feathered inline cream pills (ov-36)', () => {
+    const rendererMod = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-canvas-renderer.js'), 'utf8');
+    const overlayMod = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-overlay.js'), 'utf8');
+    const presetsMod = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-presets-init.js'), 'utf8');
+
+    const pillOps = [];
+    const fillTextOps = [];
+    const compOps = [];
+    const crossDrawCalls = { fills: 0, strokes: 0 };
+    const makeCtx = () => ({
+        font: '400 86px "Anton", sans-serif',
+        fillStyle: '#0F0202',
+        strokeStyle: '#000000',
+        lineWidth: 1,
+        lineCap: 'round',
+        lineJoin: 'round',
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        direction: 'ltr',
+        shadowBlur: 0,
+        shadowColor: 'transparent',
+        shadowOffsetX: 0,
+        shadowOffsetY: 0,
+        _stack: [],
+        save() {
+            this._stack.push({
+                font: this.font, fillStyle: this.fillStyle, strokeStyle: this.strokeStyle,
+                globalAlpha: this.globalAlpha, globalCompositeOperation: this.globalCompositeOperation,
+                shadowBlur: this.shadowBlur, shadowColor: this.shadowColor,
+            });
+        },
+        restore() {
+            const p = this._stack.pop();
+            if (p) Object.assign(this, p);
+        },
+        setTransform() {},
+        translate() {},
+        rotate() {},
+        scale() {},
+        _pts: [],
+        beginPath() { this._pts = []; },
+        closePath() {},
+        moveTo(x, y) { this._pts.push([x, y]); },
+        lineTo(x, y) { this._pts.push([x, y]); },
+        quadraticCurveTo(_cx, _cy, x, y) { this._pts.push([x, y]); },
+        bezierCurveTo() {},
+        arc() {},
+        ellipse() {},
+        rect() {},
+        roundRect(x, y, w, h, r) { pillOps.push({ x, y, w, h, r, fillStyle: String(this.fillStyle).toUpperCase(), comp: this.globalCompositeOperation }); },
+        fill() {
+            crossDrawCalls.fills++;
+            if (this._pts.length >= 6 && String(this.fillStyle).toUpperCase() === '#FDE9CE') {
+                const xs = this._pts.map(p => p[0]);
+                const ys = this._pts.map(p => p[1]);
+                const minX = Math.min(...xs), minY = Math.min(...ys);
+                pillOps.push({ x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY, fillStyle: String(this.fillStyle).toUpperCase(), comp: this.globalCompositeOperation });
+            }
+        },
+        stroke() { crossDrawCalls.strokes++; },
+        fillRect(x, y, w, h) { compOps.push({ op: 'fillRect', x, y, w, h, comp: this.globalCompositeOperation }); },
+        strokeRect() {},
+        clearRect() {},
+        clip() {},
+        setLineDash() {},
+        drawImage() { compOps.push({ op: 'drawImage' }); },
+        createLinearGradient: () => ({ addColorStop() {} }),
+        createRadialGradient: () => ({ addColorStop() {} }),
+        createPattern: () => null,
+        measureText: (txt) => ({ width: String(txt || '').length * 24, actualBoundingBoxAscent: 68, actualBoundingBoxDescent: 14 }),
+        fillText(text, x, y) { fillTextOps.push({ text: String(text), x, y, fillStyle: String(this.fillStyle).toUpperCase() }); },
+        strokeText() {},
+    });
+
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error,
+        Path2D: class MockPath2D { constructor(d) { this.d = d; } },
+        Image: class MockImage {},
+        localStorage: { _m: new Map(), getItem(k) { return this._m.get(k) || null; }, setItem(k, v) { this._m.set(k, String(v)); } },
+        document: { createElement: () => ({ width: 1080, height: 1920, getContext: () => makeCtx() }) },
+        window: {},
+        module: { exports: {} },
+    };
+    sandbox.window = sandbox;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-anim-engine.js'), 'utf8'), sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-style-engine.js'), 'utf8'), sandbox);
+    vm.runInContext(presetsMod, sandbox);
+    vm.runInContext(rendererMod, sandbox);
+    vm.runInContext(overlayMod, sandbox);
+
+    // 1. Verify golden_cross_3d_spin is registered and renders 3D extruded faces across rotation angles
+    const crossItem = sandbox.HOLIDAY_ICON_CATALOG.find(i => i.id === 'golden_cross_3d_spin');
+    assert.ok(crossItem && crossItem.label.includes('3D旋转纯金十字架'));
+    const cCtx = makeCtx();
+    for (const ts of [0.0, 0.8, 1.7, 2.5]) {
+        const before = crossDrawCalls.fills;
+        assert.equal(sandbox.drawHolidayStickerIcon(cCtx, 'golden_cross_3d_spin', 540, 420, 320, { time: ts }), true);
+        assert.ok(crossDrawCalls.fills > before, `3D cross must draw golden faces at t=${ts}`);
+    }
+
+    // 2. Verify ov-36 resolves and draws both sticker + inline-pill feathered scroll layers
+    const ov36 = sandbox.resolveBuiltinPreset('ov-36');
+    assert.ok(ov36 && ov36.kind === 'overlay' && ov36.overlays.length === 2);
+    const [stickerOv, scrollOv] = ov36.overlays;
+    assert.equal(stickerOv.type, 'sticker');
+    assert.equal(stickerOv.sticker_kind, 'golden_cross_3d_spin');
+    assert.equal(scrollOv.type, 'scroll');
+    assert.equal(scrollOv.font_family, 'Anton');
+    assert.equal(scrollOv.scroll_body_bg_mode, 'inline');
+    assert.equal(scrollOv.scroll_body_bg_color, '#FDE9CE');
+    assert.equal(scrollOv.color, '#0F0202');
+    assert.equal(scrollOv.feather_top, 170);
+    assert.equal(scrollOv.feather_bottom, 170);
+
+    // Draw both layers at t=4.0 and verify per-line cream pill height leaves vertical gap + destination-in feather mask runs
+    const mainCtx = makeCtx();
+    sandbox.ReelsOverlay.drawOverlay(mainCtx, stickerOv, 4.0, 1080, 1920);
+    sandbox.ReelsOverlay.drawOverlay(mainCtx, scrollOv, 4.0, 1080, 1920);
+
+    const creamPills = pillOps.filter(p => p.fillStyle === '#FDE9CE');
+    assert.ok(creamPills.length >= 3, 'Inline cream pills must draw one snug pill per non-empty wrapped line');
+    // Line spacing = 28 -> lineHeight = 86 * 1.3 + 28 = 139.8; snug pill height = 86 * 1.04 + 24 = 113.44 < 139.8 -> clear gap!
+    const firstGap = creamPills[1].y - (creamPills[0].y + creamPills[0].h);
+    assert.ok(firstGap > 15, `Expected visible transparent gap between consecutive cream pills, got ${firstGap}`);
+    assert.ok(new Set(creamPills.map(p => p.w)).size >= 2, 'Pills should tightly match distinct per-line text widths');
+    assert.ok(compOps.some(op => op.op === 'fillRect' && op.comp === 'destination-in'), 'Scroll stack must apply vertical top/bottom alpha feather mask');
+    assert.ok(fillTextOps.some(op => op.fillStyle === '#0F0202'), 'Prayer text must render in crisp #0F0202 dark ink');
+});
+
 
 
 
