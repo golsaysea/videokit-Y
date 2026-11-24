@@ -26104,3 +26104,60 @@ window.reelsEditWritingTask=function(idx){
 window._normalizeTaskScrollOverlays = _normalizeTaskScrollOverlays;
 window._applyOverlayField = _applyOverlayField;
 window._applyOverlayFieldWithTarget = _applyOverlayFieldWithTarget;
+
+window.reelsReceiveDualCompositorTasks = function(items = [], opts = {}) {
+    const valid = (Array.isArray(items) ? items : []).filter(it => it && (it.bgPath || it.contentVideoPath));
+    if (!valid.length) return false;
+    const nowStamp = new Date().toTimeString().slice(0, 5).replace(':', '');
+    const tabName = String(opts.tabName || `🧩 双层拼接_${nowStamp}`).trim();
+
+    const mappedTasks = valid.map((it, idx) => {
+        const bgPath = String(it.bgPath || it.contentVideoPath || '').trim();
+        const cvPath = it.bgPath ? String(it.contentVideoPath || '').trim() : '';
+        const baseName = String(it.name || `dual_${idx + 1}`).replace(/\.[^.]+$/, '').trim() || `dual_${idx + 1}`;
+        const maskCfg = (typeof window !== 'undefined' && window.ReelsCompositeMask?.extractMaskConfig)
+            ? window.ReelsCompositeMask.extractMaskConfig(it)
+            : {};
+        return {
+            baseName,
+            exportName: baseName,
+            fileName: `${baseName}.mp4`,
+            bgMode: 'single',
+            bgPath,
+            videoPath: bgPath,
+            bgScale: Number(it.bgScale) || 100,
+            bgVideoVolume: it.bgVideoVolume != null ? Number(it.bgVideoVolume) : 100,
+            contentVideoPath: cvPath,
+            contentVideoVolume: it.contentVideoVolume != null ? Number(it.contentVideoVolume) : 100,
+            contentVideoTrimStart: it.contentVideoTrimStart != null ? it.contentVideoTrimStart : null,
+            contentVideoTrimEnd: it.contentVideoTrimEnd != null ? it.contentVideoTrimEnd : null,
+            contentVideoBlurBg: false,
+            contentVideoDirectBg: !it.bgPath && !!it.contentVideoPath,
+            ...(Number(it.customDuration) > 0 ? { customDuration: Number(it.customDuration) } : {}),
+            ...maskCfg,
+            segments: [],
+            overlays: [],
+        };
+    });
+
+    const importedTabs = _buildImportedTabObjects([{ name: tabName, tasks: mappedTasks }], tabName, 'dual', {
+        forceVisible: true,
+        loadMode: 'append',
+    });
+    const applyRes = _applyImportedTabsToState(importedTabs, { version: '2.0', tabs: importedTabs }, {
+        loadMode: 'append',
+        applyGlobalMeta: false,
+        duplicateStrategy: 'replace',
+    });
+    const targetTabs = (Array.isArray(applyRes?.affectedTabs) && applyRes.affectedTabs.length)
+        ? applyRes.affectedTabs
+        : importedTabs;
+    if (targetTabs.length > 0) {
+        _openCloudTabsImmediately(targetTabs);
+        if (typeof showToast === 'function') {
+            showToast(`🎬 已将 ${mappedTasks.length} 条「🧩 双层拼接」任务送入「批量Reels」标签「${targetTabs[0].name}」`, 'success', 4500);
+        }
+        return true;
+    }
+    return false;
+};

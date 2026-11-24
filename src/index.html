@@ -60,6 +60,7 @@
         <button class="tab" data-tab="media">媒体工具</button>
         <button class="tab" data-tab="video-download">视频下载</button>
         <button class="tab active" data-tab="batch-reels">🎬 批量Reels</button>
+        <button class="tab" data-tab="dual-composite">🧩 双层拼接</button>
         <button class="tab" data-tab="settings">设置</button>
       </nav>
     </header>
@@ -5105,7 +5106,7 @@
                   <button class="inspector-tab" data-tab="sticker" onclick="reelsInspectorSwitch('sticker',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:#86efac; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;" title="独立调节 40 款节日/圣诞画面小图标、持续动效、显示时段与跨页同步">🎄 小图标</button>
                   <button class="inspector-tab" data-tab="intro" onclick="reelsInspectorSwitch('intro',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:#fcd34d; font-size:11px; font-weight:700; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;" title="独立调节光环倒计时、爆款白黄斜体与红色幕布拉开开场效果">🎬 开场效果</button>
                   <button class="inspector-tab" data-tab="watermark" onclick="reelsInspectorSwitch('watermark',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🔒 水印</button>
-                  <button class="inspector-tab" data-tab="background" onclick="reelsInspectorSwitch('background',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🌫️ 背景与内容视频</button>
+                  <button class="inspector-tab" data-tab="background" onclick="reelsInspectorSwitch('background',this)" style="flex:1 1 auto; padding:6px 4px; border:none; background:transparent; color:var(--text-secondary); font-size:11px; font-weight:600; cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;">🎞️ 背景与内容视频</button>
                 </div>
 
                 <!-- Tab: 字幕样式 -->
@@ -6802,7 +6803,7 @@
 
                 <!-- Tab: 背景与内容视频设置 -->
                 <div id="inspector-tab-background" style="display:none; flex:1; overflow-y:scroll; scrollbar-gutter: stable; padding:10px;">
-                  <h3 class="section-title">🌫️ 背景与内容视频设置</h3>
+                  <h3 class="section-title">🎞️ 背景与内容视频设置</h3>
 
                   <!-- 整个队列同步调节总控栏 -->
                   <div id="reels-bg-queue-sync-bar" style="margin-bottom: 10px; padding: 8px 10px; background: linear-gradient(135deg, rgba(59,130,246,0.14), rgba(16,185,129,0.10)); border: 1px solid rgba(59,130,246,0.4); border-radius: 7px; display:flex; flex-direction:column; gap:6px;">
@@ -7221,6 +7222,82 @@
 
                         </div>
                       </div>
+
+                      <!-- 前景遮罩、四边独立羽化与混合模式 -->
+                      <details open style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px;">
+                        <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#7dd3fc; display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                          <span>🎭 前景遮罩与混合 (四边羽化 / 滤色)</span>
+                        </summary>
+                        <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px;">
+                          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px; background:rgba(14,165,233,0.18); border-color:rgba(56,189,248,0.45); color:#bae6fd;" onclick="window.reelsApplyCvMaskPresetUI?.('fb_top_right_blend')">🌟 右上融背景</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px;" onclick="window.reelsApplyCvMaskPresetUI?.('screen_mist_overlay')">🌫️ 滤色去黑底</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px;" onclick="window.reelsApplyCvMaskPresetUI?.('ellipse_feather_pip')">⭕ 椭圆柔边</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px;" onclick="window.reelsApplyCvMaskPresetUI?.('none_reset')">⬜ 无遮罩</button>
+                            <button type="button" class="btn btn-secondary" style="font-size:10px; padding:2px 6px; margin-left:auto; background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border:none;" onclick="window.reelsEditActiveTaskInDualCompositor?.()" title="跳到独立「🧩 双层拼接」大画布，带辅助线拖拽精调遮罩">🧩 去大画布精调</button>
+                          </div>
+
+                          <div style="display:grid; grid-template-columns:64px 1fr; gap:6px; align-items:center;">
+                            <label style="margin:0; font-size:11px; color:var(--text-secondary);">遮罩形状:</label>
+                            <select id="reels-cv-mask-shape-ui" class="select" style="height:24px; font-size:11px; padding:1px 4px;" onchange="reelsSaveBgConfigUI()">
+                              <option value="rect">矩形 · 四边独立羽化</option>
+                              <option value="rounded">圆角矩形</option>
+                              <option value="ellipse">椭圆形</option>
+                              <option value="circle">正圆形</option>
+                              <option value="split_diag_tl">斜切融合 ↘</option>
+                              <option value="split_diag_tr">斜切融合 ↙</option>
+                              <option value="vignette_inv">中心透出 (反遮罩)</option>
+                            </select>
+
+                            <label style="margin:0; font-size:11px; color:var(--text-secondary);">混合模式:</label>
+                            <select id="reels-cv-blend-ui" class="select" style="height:24px; font-size:11px; padding:1px 4px;" onchange="reelsSaveBgConfigUI()">
+                              <option value="source-over">正常覆盖</option>
+                              <option value="screen">滤色 Screen (去黑底/雾气)</option>
+                              <option value="lighter">线性减淡 Add</option>
+                              <option value="multiply">正片叠底 Multiply (去白底)</option>
+                              <option value="overlay">叠加 Overlay</option>
+                            </select>
+                          </div>
+
+                          <div style="display:grid; grid-template-columns:64px 1fr 44px; gap:4px 6px; align-items:center; font-size:10.5px;">
+                            <span style="color:var(--text-secondary);">透明度%:</span>
+                            <input type="range" id="reels-cv-opacity-range" min="0" max="100" value="100" oninput="document.getElementById('reels-cv-opacity-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-opacity-num" min="0" max="100" value="100" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-opacity-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">旋转°:</span>
+                            <input type="range" id="reels-cv-rotate-range" min="-180" max="180" value="0" oninput="document.getElementById('reels-cv-rotate-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-rotate-num" min="-180" max="180" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-rotate-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">左羽化%:</span>
+                            <input type="range" id="reels-cv-feather-left-range" min="0" max="100" value="0" oninput="document.getElementById('reels-cv-feather-left-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-feather-left-num" min="0" max="100" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-feather-left-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">右羽化%:</span>
+                            <input type="range" id="reels-cv-feather-right-range" min="0" max="100" value="0" oninput="document.getElementById('reels-cv-feather-right-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-feather-right-num" min="0" max="100" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-feather-right-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">上羽化%:</span>
+                            <input type="range" id="reels-cv-feather-top-range" min="0" max="100" value="0" oninput="document.getElementById('reels-cv-feather-top-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-feather-top-num" min="0" max="100" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-feather-top-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">下羽化%:</span>
+                            <input type="range" id="reels-cv-feather-bottom-range" min="0" max="100" value="0" oninput="document.getElementById('reels-cv-feather-bottom-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-feather-bottom-num" min="0" max="100" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-feather-bottom-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">柔边%:</span>
+                            <input type="range" id="reels-cv-mask-soft-range" min="0" max="100" value="0" oninput="document.getElementById('reels-cv-mask-soft-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-mask-soft-num" min="0" max="100" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-mask-soft-range').value=this.value; reelsSaveBgConfigUI();">
+
+                            <span style="color:var(--text-secondary);">圆角%:</span>
+                            <input type="range" id="reels-cv-mask-radius-range" min="0" max="50" value="0" oninput="document.getElementById('reels-cv-mask-radius-num').value=this.value; reelsSaveBgConfigUI();">
+                            <input type="number" id="reels-cv-mask-radius-num" min="0" max="50" value="0" style="height:20px; font-size:10px; padding:1px 3px;" oninput="document.getElementById('reels-cv-mask-radius-range').value=this.value; reelsSaveBgConfigUI();">
+                          </div>
+
+                          <label style="display:flex; align-items:center; gap:6px; font-size:11px; margin:2px 0 0; cursor:pointer;">
+                            <input type="checkbox" id="reels-cv-mask-invert-ui" onchange="reelsSaveBgConfigUI()"> 🔄 反转遮罩 (中间镂空)
+                          </label>
+                        </div>
+                      </details>
 
                     </div>
                   </details>
@@ -7916,6 +7993,9 @@
 
         </div>
       </section>
+
+      <!-- ==================== 🧩 双层拼接独立工作台 ==================== -->
+      <section id="dual-composite-panel" class="panel" style="height: 100%; margin: 0; overflow: hidden;"></section>
 
       <!-- ==================== 设置面板 ==================== -->
       <section id="settings-panel" class="panel">
@@ -9024,6 +9104,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-subtitle-processor.js"></script>
   <script src="reels-scroll-timing.js"></script>
   <script src="reels-frame-pipeline.js"></script>
+  <script src="reels-composite-mask.js"></script>
   <script src="reels-wysiwyg-export.js"></script>
   <script src="reels-layered-export.js"></script>
   <script src="reels-fcpxml-export.js"></script>
@@ -9051,6 +9132,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-preset-library.js"></script>
   <script src="batch-reels.js"></script>
   <script src="reels-preview-v2.js"></script>
+  <script src="reels-dual-compositor.js"></script>
   <script src="global-edit-history.js"></script>
   <script src="sort-upload.js"></script>
   <script src="app.js"></script>

@@ -5135,35 +5135,35 @@ function _reelsUpdatePreviewInternal() {
         }
 
         if (drawSource && cvW > 0) {
-            const { cropX, cropY, cropW, cropH } = _parseCropString(_selectedTask.contentVideoCrop);
-            const sx = cvW * cropX;
-            const sy = cvH * cropY;
-            const sWidth = cvW * cropW;
-            const sHeight = cvH * cropH;
+            if (typeof window !== 'undefined' && window.ReelsCompositeMask?.drawCompositedContentLayer) {
+                window.ReelsCompositeMask.drawCompositedContentLayer(ctx, drawSource, cvW, cvH, w, h, _selectedTask, {
+                    designW: 1080,
+                    designH: 1920,
+                });
+            } else {
+                const { cropX, cropY, cropW, cropH } = _parseCropString(_selectedTask.contentVideoCrop);
+                const sx = cvW * cropX;
+                const sy = cvH * cropY;
+                const sWidth = cvW * cropW;
+                const sHeight = cvH * cropH;
 
-            const cScale = (_selectedTask.contentVideoScale || 100) / 100;
-            
-            // Auto scale to fit width: width is 1080 -> canvas.width (w)
-            const baseScale = w / sWidth;
-            const finalScale = baseScale * cScale;
-            
-            const drawW = sWidth * finalScale;
-            const drawH = sHeight * finalScale;
-            
-            // Default position: centered
-            let drawX = (w - drawW) / 2;
-            let drawY = (h - drawH) / 2;
-            
-            if (_selectedTask.contentVideoX && _selectedTask.contentVideoX !== 'center') {
-                const relX = parseFloat(_selectedTask.contentVideoX);
-                if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += w * relX : drawX += (relX / 1080) * w;
+                const cScale = (_selectedTask.contentVideoScale || 100) / 100;
+                const baseScale = w / sWidth;
+                const finalScale = baseScale * cScale;
+                const drawW = sWidth * finalScale;
+                const drawH = sHeight * finalScale;
+                let drawX = (w - drawW) / 2;
+                let drawY = (h - drawH) / 2;
+                if (_selectedTask.contentVideoX && _selectedTask.contentVideoX !== 'center') {
+                    const relX = parseFloat(_selectedTask.contentVideoX);
+                    if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += w * relX : drawX += (relX / 1080) * w;
+                }
+                if (_selectedTask.contentVideoY && _selectedTask.contentVideoY !== 'center') {
+                    const relY = parseFloat(_selectedTask.contentVideoY);
+                    if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += h * relY : drawY += (relY / 1920) * h;
+                }
+                _drawImageFlipped(ctx, drawSource, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, _selectedTask.contentVideoFlipH, _selectedTask.contentVideoFlipV);
             }
-            if (_selectedTask.contentVideoY && _selectedTask.contentVideoY !== 'center') {
-                const relY = parseFloat(_selectedTask.contentVideoY);
-                if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += h * relY : drawY += (relY / 1920) * h;
-            }
-            
-            _drawImageFlipped(ctx, drawSource, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, _selectedTask.contentVideoFlipH, _selectedTask.contentVideoFlipV);
         }
     }
 
@@ -7386,6 +7386,9 @@ function _getReelsFastExportCapability(task, explicitBgPath = '') {
     }
     if (task.contentVideoDirectBg || task.contentVideoBlurBg) {
         return { supported: false, reason: '内容视频背景需要逐帧合成' };
+    }
+    if (task.contentVideoPath && task.contentVideoBlendMode && task.contentVideoBlendMode !== 'source-over') {
+        return { supported: false, reason: '内容视频使用了混合模式' };
     }
     const showOverlay = _isReelsOverlayToggleEnabled();
     const hasBlendOverlay = showOverlay && (task.overlays || []).some((overlay) =>
@@ -15832,6 +15835,26 @@ function _selectReelsDownloadTasks(tasks, settings) {
     return tasks.filter((task, index) => selected.has(index));
 }
 
+function _getCvExportMaskParams(task) {
+    if (!task) return {};
+    if (typeof window !== 'undefined' && window.ReelsCompositeMask?.extractMaskConfig) {
+        return window.ReelsCompositeMask.extractMaskConfig(task);
+    }
+    return {
+        contentVideoRotation: Number(task.contentVideoRotation) || 0,
+        contentVideoOpacity: task.contentVideoOpacity != null ? Number(task.contentVideoOpacity) : 100,
+        contentVideoBlendMode: task.contentVideoBlendMode || 'source-over',
+        contentVideoMaskShape: task.contentVideoMaskShape || 'rect',
+        contentVideoMaskFeatherTop: Number(task.contentVideoMaskFeatherTop) || 0,
+        contentVideoMaskFeatherBottom: Number(task.contentVideoMaskFeatherBottom) || 0,
+        contentVideoMaskFeatherLeft: Number(task.contentVideoMaskFeatherLeft) || 0,
+        contentVideoMaskFeatherRight: Number(task.contentVideoMaskFeatherRight) || 0,
+        contentVideoMaskRadius: Number(task.contentVideoMaskRadius) || 0,
+        contentVideoMaskSoftness: Number(task.contentVideoMaskSoftness) || 0,
+        contentVideoMaskInvert: Boolean(task.contentVideoMaskInvert),
+    };
+}
+
 function _buildReelsJobOutputInfo(job, baseName, outputDirTrimmed, outputJoinSep, suffix) {
     let jobBaseName = baseName;
     if (job?.presetName) {
@@ -16710,6 +16733,7 @@ async function _reelsStartExportImpl(options = {}) {
                     contentVideoDirectBg: task.contentVideoDirectBg || false,
                     contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                     contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
+                    ..._getCvExportMaskParams(task),
                     voicePath: resolvedVoiceSource || null,
                     outputDir: jobOutputDir,
                     taskName: jobBaseName,
@@ -17121,6 +17145,7 @@ async function _reelsStartExportImpl(options = {}) {
                                 contentVideoDirectBg: task.contentVideoDirectBg || false,
                                 contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                                 contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
+                                ..._getCvExportMaskParams(task),
                                 voicePath: resolvedVoiceSource || null,
                                 targetWidth: tw, targetHeight: th, fps: 30,
                                 voiceVolume: resolvedVoiceVolumeGain,
@@ -17219,6 +17244,7 @@ async function _reelsStartExportImpl(options = {}) {
                     contentVideoDirectBg: task.contentVideoDirectBg || false,
                     contentVideoBlur: task.contentVideoBlur != null ? task.contentVideoBlur : 40,
                     contentVideoBrightness: task.contentVideoBrightness != null ? task.contentVideoBrightness : 60,
+                    ..._getCvExportMaskParams(task),
                     voicePath: resolvedVoiceSource || null,
                     outputPath,
                     targetWidth: tw,
@@ -19585,7 +19611,72 @@ function _copyCvParamsToTask(sourceTask, targetTask) {
     targetTask.contentVideoCrop = sourceTask.contentVideoCrop || '';
     targetTask.contentVideoX = sourceTask.contentVideoX || 'center';
     targetTask.contentVideoY = sourceTask.contentVideoY || 'center';
+    Object.assign(targetTask, _getCvExportMaskParams(sourceTask));
 }
+
+const _CV_MASK_UI_PAIRS = [
+    ['reels-cv-opacity', 'contentVideoOpacity', 100],
+    ['reels-cv-rotate', 'contentVideoRotation', 0],
+    ['reels-cv-feather-left', 'contentVideoMaskFeatherLeft', 0],
+    ['reels-cv-feather-right', 'contentVideoMaskFeatherRight', 0],
+    ['reels-cv-feather-top', 'contentVideoMaskFeatherTop', 0],
+    ['reels-cv-feather-bottom', 'contentVideoMaskFeatherBottom', 0],
+    ['reels-cv-mask-soft', 'contentVideoMaskSoftness', 0],
+    ['reels-cv-mask-radius', 'contentVideoMaskRadius', 0],
+];
+
+function _syncCvMaskControlsToUI(task) {
+    const cfg = _getCvExportMaskParams(task);
+    const shapeEl = document.getElementById('reels-cv-mask-shape-ui');
+    if (shapeEl) shapeEl.value = cfg.contentVideoMaskShape || 'rect';
+    const blendEl = document.getElementById('reels-cv-blend-ui');
+    if (blendEl) blendEl.value = cfg.contentVideoBlendMode || 'source-over';
+    const invEl = document.getElementById('reels-cv-mask-invert-ui');
+    if (invEl) invEl.checked = !!cfg.contentVideoMaskInvert;
+    for (const [prefix, field, defVal] of _CV_MASK_UI_PAIRS) {
+        const val = cfg[field] != null ? cfg[field] : defVal;
+        const r = document.getElementById(`${prefix}-range`);
+        const n = document.getElementById(`${prefix}-num`);
+        if (r) r.value = val;
+        if (n) n.value = val;
+    }
+}
+
+function _readCvMaskControlsToTask(task) {
+    if (!task) return;
+    const shapeEl = document.getElementById('reels-cv-mask-shape-ui');
+    if (shapeEl) task.contentVideoMaskShape = shapeEl.value || 'rect';
+    const blendEl = document.getElementById('reels-cv-blend-ui');
+    if (blendEl) task.contentVideoBlendMode = blendEl.value || 'source-over';
+    const invEl = document.getElementById('reels-cv-mask-invert-ui');
+    if (invEl) task.contentVideoMaskInvert = !!invEl.checked;
+    for (const [prefix, field, defVal] of _CV_MASK_UI_PAIRS) {
+        const n = document.getElementById(`${prefix}-num`);
+        const r = document.getElementById(`${prefix}-range`);
+        const raw = n?.value ?? r?.value;
+        if (raw !== undefined && raw !== '') {
+            const parsed = parseFloat(raw);
+            task[field] = Number.isFinite(parsed) ? parsed : defVal;
+        }
+    }
+}
+
+window.reelsApplyCvMaskPresetUI = function(presetId) {
+    const idx = _reelsState?.selectedIdx;
+    const task = (idx >= 0 && _reelsState?.tasks?.[idx]) ? _reelsState.tasks[idx] : null;
+    const preset = window.ReelsCompositeMask?.MASK_LAYOUT_PRESETS?.find(p => p.id === presetId);
+    if (!task || !preset?.config) return;
+    Object.assign(task, preset.config);
+    window.reelsSyncBackgroundTabUI?.(task);
+    if (typeof reelsUpdatePreview === 'function') reelsUpdatePreview();
+    if (_isBgQueueSyncEnabled()) {
+        for (const t of _getBgQueueTargetTasks()) {
+            if (t && t !== task) _copyCvParamsToTask(task, t);
+        }
+    }
+    _flushBgQueueTableAndHistory({ immediate: true });
+    if (typeof showToast === 'function') showToast(`🎭 已应用前景遮罩预设：${preset.name}`, 'success');
+};
 
 function _copyBgmParamsToTask(sourceTask, targetTask) {
     if (!sourceTask || !targetTask || sourceTask === targetTask) return;
@@ -19824,6 +19915,8 @@ window.reelsSyncBackgroundTabUI = function(task) {
     document.getElementById('reels-cv-crop-height').value = cHeight;
     document.getElementById('reels-cv-crop-height-range').value = cHeight;
 
+    _syncCvMaskControlsToUI(task);
+
     // 片段池拼接设置同步
     const clipPoolDir = task.clipPoolDir || '';
     const clipPoolDirEl = document.getElementById('reels-bg-clippool-dir-ui');
@@ -20022,6 +20115,7 @@ window.reelsSaveBgConfigUI = function() {
     } else {
         task.contentVideoCrop = '';
     }
+    _readCvMaskControlsToTask(task);
 
     // 若开启了【同步调节整个队列所有任务】，实时同步背景/内容视频/配乐参数到目标队列任务
     if (_isBgQueueSyncEnabled()) {

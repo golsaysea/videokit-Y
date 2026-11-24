@@ -1884,6 +1884,14 @@
         const srcH = src.videoHeight || src.naturalHeight || src.height || 0;
         if (!(srcW > 0 && srcH > 0)) return;
 
+        if (window.ReelsCompositeMask && typeof window.ReelsCompositeMask.drawCompositedContentLayer === 'function') {
+            window.ReelsCompositeMask.drawCompositedContentLayer(ctx, src, srcW, srcH, w, h, task, {
+                designW: DEFAULT_W,
+                designH: DEFAULT_H,
+            });
+            return;
+        }
+
         const crop = parseCrop(task.contentVideoCrop);
         const sx = srcW * crop.x;
         const sy = srcH * crop.y;

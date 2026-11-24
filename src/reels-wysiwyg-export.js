@@ -1255,37 +1255,44 @@ async function reelsWysiwygExport(params) {
                 ctx.restore();
             }
 
-            // ── 绘制合并内容视频 ──
+            // ── 绘制合并内容视频（支持四向羽化遮罩、几何遮罩与混合模式） ──
             if (contentVideoPath && currentCvImg && !contentVideoDirectBg) {
                 const imgW = currentCvImg.naturalWidth || targetWidth;
                 const imgH = currentCvImg.naturalHeight || targetHeight;
-                const { cropX, cropY, cropW, cropH } = _parseCropString(contentVideoCrop);
-                const sx = imgW * cropX;
-                const sy = imgH * cropY;
-                const sWidth = imgW * cropW;
-                const sHeight = imgH * cropH;
+                if (typeof window !== 'undefined' && window.ReelsCompositeMask?.drawCompositedContentLayer) {
+                    window.ReelsCompositeMask.drawCompositedContentLayer(ctx, currentCvImg, imgW, imgH, targetWidth, targetHeight, params, {
+                        designW: 1080,
+                        designH: 1920,
+                    });
+                } else {
+                    const { cropX, cropY, cropW, cropH } = _parseCropString(contentVideoCrop);
+                    const sx = imgW * cropX;
+                    const sy = imgH * cropY;
+                    const sWidth = imgW * cropW;
+                    const sHeight = imgH * cropH;
 
-                const cScale = (contentVideoScale || 100) / 100;
-                
-                // Default width-fit
-                const baseScale = targetWidth / sWidth;
-                const finalScale = baseScale * cScale;
-                const drawW = sWidth * finalScale;
-                const drawH = sHeight * finalScale;
-                
-                let drawX = (targetWidth - drawW) / 2;
-                let drawY = (targetHeight - drawH) / 2;
-                
-                if (contentVideoX && contentVideoX !== 'center') {
-                    const relX = parseFloat(contentVideoX);
-                    if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += targetWidth * relX : drawX += relX;
+                    const cScale = (contentVideoScale || 100) / 100;
+                    
+                    // Default width-fit
+                    const baseScale = targetWidth / sWidth;
+                    const finalScale = baseScale * cScale;
+                    const drawW = sWidth * finalScale;
+                    const drawH = sHeight * finalScale;
+                    
+                    let drawX = (targetWidth - drawW) / 2;
+                    let drawY = (targetHeight - drawH) / 2;
+                    
+                    if (contentVideoX && contentVideoX !== 'center') {
+                        const relX = parseFloat(contentVideoX);
+                        if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += targetWidth * relX : drawX += relX;
+                    }
+                    if (contentVideoY && contentVideoY !== 'center') {
+                        const relY = parseFloat(contentVideoY);
+                        if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += targetHeight * relY : drawY += relY;
+                    }
+                    
+                    _drawImageFlipped(ctx, currentCvImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, contentVideoFlipH, contentVideoFlipV);
                 }
-                if (contentVideoY && contentVideoY !== 'center') {
-                    const relY = parseFloat(contentVideoY);
-                    if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += targetHeight * relY : drawY += relY;
-                }
-                
-                _drawImageFlipped(ctx, currentCvImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, contentVideoFlipH, contentVideoFlipV);
             }
 
             // 预设与覆层坐标基于 1080×1920 虚拟画布设计；当导出分辨率不同（如 720×1280）时按比例缩放，确保字号、描边、卡片坐标完全一致

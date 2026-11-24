@@ -618,28 +618,35 @@ async function reelsLayeredExport(params) {
             if (contentVideoPath && currentCvImg && !contentVideoDirectBg) {
                 const imgW = currentCvImg.naturalWidth || targetWidth;
                 const imgH = currentCvImg.naturalHeight || targetHeight;
-                const { cropX, cropY, cropW, cropH } = _parseCropString(contentVideoCrop);
-                const sx = imgW * cropX;
-                const sy = imgH * cropY;
-                const sWidth = imgW * cropW;
-                const sHeight = imgH * cropH;
+                if (typeof window !== 'undefined' && window.ReelsCompositeMask?.drawCompositedContentLayer) {
+                    window.ReelsCompositeMask.drawCompositedContentLayer(ctx, currentCvImg, imgW, imgH, targetWidth, targetHeight, params, {
+                        designW: 1080,
+                        designH: 1920,
+                    });
+                } else {
+                    const { cropX, cropY, cropW, cropH } = _parseCropString(contentVideoCrop);
+                    const sx = imgW * cropX;
+                    const sy = imgH * cropY;
+                    const sWidth = imgW * cropW;
+                    const sHeight = imgH * cropH;
 
-                const cScale = (contentVideoScale || 100) / 100;
-                const baseScale = targetWidth / sWidth;
-                const finalScale = baseScale * cScale;
-                const drawW = sWidth * finalScale;
-                const drawH = sHeight * finalScale;
-                let drawX = (targetWidth - drawW) / 2;
-                let drawY = (targetHeight - drawH) / 2;
-                if (contentVideoX && contentVideoX !== 'center') {
-                    const relX = parseFloat(contentVideoX);
-                    if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += targetWidth * relX : drawX += relX;
+                    const cScale = (contentVideoScale || 100) / 100;
+                    const baseScale = targetWidth / sWidth;
+                    const finalScale = baseScale * cScale;
+                    const drawW = sWidth * finalScale;
+                    const drawH = sHeight * finalScale;
+                    let drawX = (targetWidth - drawW) / 2;
+                    let drawY = (targetHeight - drawH) / 2;
+                    if (contentVideoX && contentVideoX !== 'center') {
+                        const relX = parseFloat(contentVideoX);
+                        if (!isNaN(relX)) Math.abs(relX) <= 1 ? drawX += targetWidth * relX : drawX += relX;
+                    }
+                    if (contentVideoY && contentVideoY !== 'center') {
+                        const relY = parseFloat(contentVideoY);
+                        if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += targetHeight * relY : drawY += relY;
+                    }
+                    _drawImageFlipped(ctx, currentCvImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, contentVideoFlipH, contentVideoFlipV);
                 }
-                if (contentVideoY && contentVideoY !== 'center') {
-                    const relY = parseFloat(contentVideoY);
-                    if (!isNaN(relY)) Math.abs(relY) <= 1 ? drawY += targetHeight * relY : drawY += relY;
-                }
-                _drawImageFlipped(ctx, currentCvImg, sx, sy, sWidth, sHeight, drawX, drawY, drawW, drawH, contentVideoFlipH, contentVideoFlipV);
             }
 
             // 全局蒙版

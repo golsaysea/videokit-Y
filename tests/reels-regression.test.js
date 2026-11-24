@@ -14263,6 +14263,168 @@ test('Personal font expansion pack (.zip/multi), Nerko One/DynaPuff, and Marcus 
     assert.equal(expandedStyle.font_family, 'Cheering Section', 'Must auto-prefer Cheering Section once installed in personal font expansion pack');
 });
 
+test('Dual-layer masked compositor standalone tab (🧩 双层拼接), 4-edge feather & blend modes, Batch Reels handoff & export', async () => {
+    const vm = require('vm');
+    const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+    const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'main.js'), 'utf8');
+    const rawvideoSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'services', 'ffmpeg-rawvideo.js'), 'utf8');
+    const shadowSrc = fs.readFileSync(path.join(__dirname, '..', 'electron', 'shadow-renderer.html'), 'utf8');
+    const projSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-project.js'), 'utf8');
+
+    assert.ok(htmlSrc.includes('data-tab="dual-composite">🧩 双层拼接</button>'), 'Top nav must expose 🧩 双层拼接 tab');
+    assert.ok(htmlSrc.includes('id="dual-composite-panel"'), 'index.html must mount standalone dual-composite-panel');
+    assert.ok(htmlSrc.includes('reels-composite-mask.js') && htmlSrc.includes('reels-dual-compositor.js'), 'index.html must load mask & dual compositor scripts');
+    assert.ok(!htmlSrc.includes('>🌫️ 背景与内容视频<') && htmlSrc.includes('>🎞️ 背景与内容视频<'), 'Replace tofu fog emoji in inspector tab');
+    assert.ok(htmlSrc.includes('id="reels-cv-mask-shape-ui"') && htmlSrc.includes('id="reels-cv-blend-ui"'), 'Inline background inspector must include mask/blend controls');
+    assert.ok(mainSrc.includes("'reels-composite-mask.js'"), 'electron/main.js workers must load reels-composite-mask.js');
+    assert.ok(rawvideoSrc.includes('reels-composite-mask.js') && rawvideoSrc.includes('contentVideoMaskFeatherLeft'), 'Parallel renderer must load mask engine & forward mask params');
+    assert.ok(shadowSrc.includes('drawCompositedContentLayer'), 'shadow-renderer.html must composite masked contentVideo');
+    assert.ok(projSrc.includes('contentVideoMaskFeatherLeft') && projSrc.includes('contentVideoBlendMode'), 'reels-project.js must serialize mask & blend fields');
+
+    // 1. Test ReelsCompositeMask drawing math & offscreen destination-in + blend compositing
+    const maskMod = require('../src/reels-composite-mask.js');
+    assert.equal(maskMod.hasActiveMaskOrBlend({ contentVideoMaskShape: 'rect', contentVideoOpacity: 100, contentVideoBlendMode: 'source-over' }), false);
+    assert.equal(maskMod.hasActiveMaskOrBlend({ contentVideoMaskFeatherLeft: 48 }), true);
+    assert.equal(maskMod.hasActiveMaskOrBlend({ contentVideoBlendMode: 'screen' }), true);
+    assert.equal(maskMod.hasActiveMaskOrBlend({ contentVideoMaskInvert: true }), true);
+
+    const drawOps = [];
+    const mockCtxFor = (tag) => ({
+        tag,
+        globalAlpha: 1,
+        globalCompositeOperation: 'source-over',
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        fillText() {},
+        save() { drawOps.push([tag, 'save']); },
+        restore() { drawOps.push([tag, 'restore']); },
+        translate(x, y) { drawOps.push([tag, 'translate', Math.round(x), Math.round(y)]); },
+        rotate(r) { drawOps.push([tag, 'rotate', Number(r.toFixed(2))]); },
+        scale(sx, sy) { drawOps.push([tag, 'scale', sx, sy]); },
+        clearRect() {},
+        fillRect(x, y, w, h) { drawOps.push([tag, 'fillRect', w, h, this.globalCompositeOperation]); },
+        strokeRect() { drawOps.push([tag, 'strokeRect']); },
+        setLineDash() {},
+        beginPath() {},
+        roundRect() {},
+        arc() {},
+        fill() { drawOps.push([tag, 'fill', this.globalCompositeOperation]); },
+        drawImage(_src, ...rest) { drawOps.push([tag, 'drawImage', this.globalCompositeOperation, this.globalAlpha, rest.length]); },
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+    });
+    const fakeFactory = (w, h) => {
+        const tag = w + 'x' + h + '_' + Math.random().toString(36).slice(2, 5);
+        const ctx = mockCtxFor(tag);
+        return { width: w, height: h, getContext: () => ctx };
+    };
+    const mainCtx = mockCtxFor('main');
+    const fbPreset = maskMod.MASK_LAYOUT_PRESETS.find(p => p.id === 'fb_top_right_blend');
+    assert.ok(fbPreset && fbPreset.config.contentVideoMaskFeatherLeft === 48 && fbPreset.config.contentVideoMaskFeatherBottom === 42);
+    const rectOut = maskMod.drawCompositedContentLayer(
+        mainCtx,
+        { naturalWidth: 1080, naturalHeight: 1920 },
+        1080,
+        1920,
+        1080,
+        1920,
+        { ...fbPreset.config, contentVideoBlendMode: 'screen', contentVideoOpacity: 85 },
+        { createCanvas: fakeFactory, showGuide: true }
+    );
+    assert.ok(rectOut && rectOut.drawW > 700 && rectOut.drawW < 760);
+    assert.ok(drawOps.some(op => op[0] === 'main' && op[1] === 'drawImage' && op[2] === 'screen' && Math.abs(op[3] - 0.85) < 0.01), 'Main canvas draw must apply screen blend & opacity');
+    assert.ok(drawOps.some(op => op[0] !== 'main' && op[2] === 'destination-in'), 'Offscreen mask must apply destination-in feathering without erasing main bg');
+    assert.ok(drawOps.some(op => op[0] === 'main' && op[1] === 'strokeRect'), 'showGuide must draw dashed editor box');
+
+    // 2. Test ReelsDualCompositor + sendToBatchReels + isolatedWysiwygExport flow
+    const panelEl = {
+        innerHTML: '',
+        querySelector: (sel) => {
+            if (!panelEl._nodes[sel]) {
+                panelEl._nodes[sel] = { value: '', checked: true, textContent: '', style: {}, addEventListener() {}, querySelectorAll: () => [], disabled: false };
+            }
+            return panelEl._nodes[sel];
+        },
+        querySelectorAll: () => [],
+        _nodes: {},
+    };
+    panelEl._nodes['#dc-preview-canvas'] = { width: 1080, height: 1920, getContext: () => mockCtxFor('stage'), addEventListener() {} };
+    const isolatedCalls = [];
+    let openedPanel = '';
+    const store = new Map();
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise, setTimeout, clearTimeout,
+        parseInt, parseFloat, isNaN, isFinite, requestAnimationFrame: () => 0, cancelAnimationFrame: () => {},
+        confirm: () => true, alert: () => {}, showToast: () => {},
+        API_BASE: 'http://127.0.0.1:0/api',
+        localStorage: { getItem: k => store.get(k) || null, setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) },
+        openPanelByName: (name) => { openedPanel = name; },
+        reelsSelectTask: () => {}, reelsUpdatePreview: () => {},
+        Image: class { constructor() { this.onload = null; } set src(v) {} },
+        document: {
+            getElementById: (id) => (id === 'dual-composite-panel' ? panelEl : (panelEl._nodes['#' + id] || null)),
+            createElement: (tag) => tag === 'video'
+                ? { tagName: 'VIDEO', style: {}, addEventListener() {}, removeAttribute() {}, load() {}, pause() {} }
+                : { tagName: tag.toUpperCase(), style: {}, addEventListener() {} },
+            addEventListener() {},
+        },
+        apiFetch: async () => ({ ok: true, json: async () => ({}) }),
+        window: {
+            addEventListener() {}, location: { hash: '' },
+            _reelsState: { tasks: [], globalSubtitleStyle: {}, exportOpts: {}, watermarks: [] },
+            openPanelByName: (name) => { openedPanel = name; },
+            electronAPI: {
+                toFileUrl: p => `file:///${String(p || '').replace(/\\/g, '/')}`,
+                readReelsOutputDirectory: () => 'C:\\Users\\Demo\\Videos\\Out',
+                getMediaDuration: async () => 12.5,
+                isolatedWysiwygExport: async (payload) => { isolatedCalls.push(payload); return { ok: true }; },
+            },
+        },
+    };
+    sandbox.window.window = sandbox.window;
+    sandbox.globalThis = sandbox;
+    sandbox.window.ReelsCompositeMask = maskMod;
+    sandbox.ReelsCompositeMask = maskMod;
+    vm.createContext(sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-batch-table.js'), 'utf8'), sandbox);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-dual-compositor.js'), 'utf8'), sandbox);
+
+    const dc = sandbox.window.ReelsDualCompositor;
+    dc.openWithTask({
+        baseName: 'faith_clip',
+        bgPath: 'C:\\Media\\lake.mp4',
+        contentVideoPath: 'C:\\Media\\speaker.mp4',
+    });
+    assert.equal(openedPanel, 'dual-composite');
+    dc.applyPreset('fb_top_right_blend');
+    assert.equal(dc.getState().items[0].contentVideoMaskFeatherLeft, 48);
+    assert.equal(dc.getState().items[0].contentVideoMaskFeatherBottom, 42);
+
+    // Direct batch MP4 export
+    await dc.exportSelected();
+    assert.equal(isolatedCalls.length, 1, 'exportSelected must invoke isolatedWysiwygExport');
+    assert.equal(isolatedCalls[0].params.backgroundPath, 'C:\\Media\\lake.mp4');
+    assert.equal(isolatedCalls[0].params.contentVideoPath, 'C:\\Media\\speaker.mp4');
+    assert.equal(isolatedCalls[0].params.showSubtitle, false);
+    assert.equal(isolatedCalls[0].params.contentVideoMaskFeatherLeft, 48);
+    assert.ok(isolatedCalls[0].params.outputPath.endsWith('faith_clip_dual.mp4'));
+
+    // Send into Batch Reels to add subtitles while retaining mask settings
+    openedPanel = '';
+    dc.sendToBatchReels();
+    assert.equal(openedPanel, 'batch-reels');
+    const handoffTask = vm.runInContext(`_batchTableState.tabs[_batchTableState.tabs.length - 1].tasks[0]`, sandbox);
+    assert.equal(handoffTask.bgPath, 'C:\\Media\\lake.mp4');
+    assert.equal(handoffTask.contentVideoPath, 'C:\\Media\\speaker.mp4');
+    assert.equal(handoffTask.contentVideoMaskFeatherLeft, 48);
+    assert.equal(handoffTask.contentVideoMaskFeatherBottom, 42);
+});
+
 
 
 
