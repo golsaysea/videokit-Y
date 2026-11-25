@@ -20701,7 +20701,7 @@ async function startAutoEditByScript(isRetry = false, options = {}) {
                 const isTextEmpty = !matchedSeg.recognized_text || matchedSeg.recognized_text.trim() === '' || matchedSeg.recognized_text.startsWith('(转录失败:');
                 if (matchedSeg.transcription_source === 'failed') {
                     file.status = 'failed';
-                    file.error = String(matchedSeg.recognized_text || '识别服务失败').replace(/^\(转录失败:\s*|\)$/g, '');
+                    file.error = String(matchedSeg.transcription_error || matchedSeg.issue_reason || matchedSeg.recognized_text || '识别服务失败').replace(/^\(转录失败:\s*|\)$/g, '');
                 } else if (isTextEmpty) {
                     file.status = 'empty';
                     file.error = '识别服务未返回有效文字结果，请重新识别';
@@ -21219,7 +21219,14 @@ function renderAutoEditResult(data) {
                     : '';
                 const isOpeningHook = seg.is_hook === true;
                 const reviewUnmatched = !isOpeningHook && !seg.review_acknowledged && (!seg.script || !seg.recognized_text);
-                const textDiff = buildAutoEditTextDiffHtml(seg.script || '', seg.recognized_text || '');
+                const isTransFailed = seg.transcription_source === 'failed';
+                const cleanFailReason = String(seg.transcription_error || seg.issue_reason || '转录失败').replace(/^\(转录失败:\s*|\)$/g, '').trim();
+                const textDiff = isTransFailed
+                    ? {
+                        actualHtml: `<span style="color:#fca5a5;">⚠️ 云端语音识别失败：${escapeHtml(cleanFailReason || '请点击“重新转录此片段”重试')}</span>`,
+                        scriptHtml: escapeHtml(seg.script || '') || '<span style="color:#9ca3af;">(尚未匹配文案)</span>',
+                    }
+                    : buildAutoEditTextDiffHtml(seg.script || '', seg.recognized_text || '');
                 const detailsOpen = duplicateText || isDuplicateSource || hasStableDuplicateGroup || reviewWarning || reviewUnmatched;
                 const srcTag = seg.transcription_source === 'cache'
                     ? '<span style="padding: 1px 4px; border-radius: 3px; font-size: 10px; background: rgba(81,207,102,0.15); color:#51cf66; font-weight:600; text-align:center;">缓存</span>'

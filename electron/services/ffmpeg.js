@@ -2546,54 +2546,111 @@ async function concatClipsWithTransitions(opts = {}) {
             return await concatClips({ clips: validClips, outputPath, targetWidth, targetHeight, fps, crf, preset });
         }
 
-        const args = ['-y'];
-        normalized.forEach(p => args.push('-reinit_filter', '0', '-i', p));
-
-        const filters = [];
         const safeFps = Math.max(1, parseFloat(fps) || 30);
         const frameStep = 1 / safeFps;
-        for (let i = 0; i < normalized.length; i++) {
-            const clipDur = Math.max(0.1, durations[i] || 0.1);
-            filters.push(`[${i}:v]setpts=PTS-STARTPTS,fps=${safeFps},settb=AVTB,setsar=1,trim=0:${clipDur.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
-            filters.push(`[${i}:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${clipDur.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
-        }
-
         const xfadeName = _mapXfadeTransition(transition);
-        let videoLabel = 'v0';
-        let audioLabel = 'a0';
-        let timelineDur = Math.max(0.1, durations[0] || 0.1);
+        const MAX_TRANSITION_BATCH = 8;
 
-        for (let i = 1; i < normalized.length; i++) {
-            const clipDur = Math.max(0.1, durations[i] || 0.1);
-            const tDur = transitionDurations[i - 1];
-            const outV = `vx${i}`;
-            const outA = `ax${i}`;
-            if (tDur > 0) {
-                // 预留半帧安全余量，防止 xfade 因浮点舍入在第一路流 EOF 后才到达 offset 导致后续画面永久冻结为静态图
-                const offset = Math.max(0.01, timelineDur - tDur - frameStep * 0.5);
-                filters.push(`[${videoLabel}][v${i}]xfade=transition=${xfadeName}:duration=${tDur.toFixed(3)}:offset=${offset.toFixed(3)},settb=AVTB[${outV}]`);
-                filters.push(`[${audioLabel}][a${i}]acrossfade=d=${tDur.toFixed(3)}[${outA}]`);
-                timelineDur = offset + clipDur;
-            } else {
-                filters.push(`[${videoLabel}][${audioLabel}][v${i}][a${i}]concat=n=2:v=1:a=1[${outV}][${outA}]`);
-                timelineDur += clipDur;
+        async function _runTransitionBatch({ batchNodes, batchTransitions, batchOutPath, isFinalPass }) {
+            const args = ['-y'];
+            batchNodes.forEach(n => args.push('-reinit_filter', '0', '-i', n.path));
+
+            const filters = [];
+            for (let i = 0; i < batchNodes.length; i++) {
+                const clipDur = Math.max(0.1, batchNodes[i].duration || 0.1);
+                filters.push(`[${i}:v]setpts=PTS-STARTPTS,fps=${safeFps},settb=AVTB,setsar=1,trim=0:${clipDur.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`);
+                filters.push(`[${i}:a]aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,atrim=0:${clipDur.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`);
             }
-            videoLabel = outV;
-            audioLabel = outA;
+
+            let videoLabel = 'v0';
+            let audioLabel = 'a0';
+            let timelineDur = Math.max(0.1, batchNodes[0].duration || 0.1);
+
+            for (let i = 1; i < batchNodes.length; i++) {
+                const clipDur = Math.max(0.1, batchNodes[i].duration || 0.1);
+                const tDur = batchTransitions[i - 1] || 0;
+                const outV = `vx${i}`;
+                const outA = `ax${i}`;
+                if (tDur > 0) {
+                    // 预留半帧安全余量，防止 xfade 因浮点舍入在第一路流 EOF 后才到达 offset 导致后续画面永久冻结为静态图
+                    const offset = Math.max(0.01, timelineDur - tDur - frameStep * 0.5);
+                    filters.push(`[${videoLabel}][v${i}]xfade=transition=${xfadeName}:duration=${tDur.toFixed(3)}:offset=${offset.toFixed(3)},settb=AVTB[${outV}]`);
+                    filters.push(`[${audioLabel}][a${i}]acrossfade=d=${tDur.toFixed(3)}[${outA}]`);
+                    timelineDur = offset + clipDur;
+                } else {
+                    filters.push(`[${videoLabel}][${audioLabel}][v${i}][a${i}]concat=n=2:v=1:a=1[${outV}][${outA}]`);
+                    timelineDur += clipDur;
+                }
+                videoLabel = outV;
+                audioLabel = outA;
+            }
+
+            const batchCrf = isFinalPass ? crf : Math.max(12, Number(crf || 18) - 4);
+            const batchPreset = isFinalPass ? preset : 'veryfast';
+            args.push(
+                '-filter_complex', filters.join(';'),
+                '-map', `[${videoLabel}]`,
+                '-map', `[${audioLabel}]`,
+                '-c:v', 'libx264', '-crf', String(batchCrf), '-preset', batchPreset, '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-b:a', isFinalPass ? '192k' : '256k',
+                '-avoid_negative_ts', 'make_zero',
+                '-shortest'
+            );
+            if (isFinalPass) args.push('-movflags', '+faststart');
+            args.push(batchOutPath);
+            await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
         }
 
-        args.push(
-            '-filter_complex', filters.join(';'),
-            '-map', `[${videoLabel}]`,
-            '-map', `[${audioLabel}]`,
-            '-c:v', 'libx264', '-crf', String(crf), '-preset', preset, '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-avoid_negative_ts', 'make_zero',
-            '-shortest',
-            '-movflags', '+faststart',
-            outputPath
-        );
-        await runCommand('ffmpeg', args, { timeout: Math.max(DEFAULT_TIMEOUT, 1800000) });
+        // 多片段场景按每批最多 MAX_TRANSITION_BATCH 个输入分治树状合并，
+        // 避免单进程打开数十路解码器和 xfade/acrossfade 节点导致内存暴涨或崩溃。
+        let nodes = normalized.map((p, idx) => ({ path: p, duration: durations[idx] || 0.1 }));
+        let seams = [...transitionDurations];
+        let stageIdx = 0;
+
+        while (nodes.length > MAX_TRANSITION_BATCH) {
+            const nextNodes = [];
+            const nextSeams = [];
+            const ranges = [];
+            for (let start = 0; start < nodes.length; start += MAX_TRANSITION_BATCH) {
+                ranges.push([start, Math.min(nodes.length - 1, start + MAX_TRANSITION_BATCH - 1)]);
+            }
+            if (ranges.length >= 2 && ranges[ranges.length - 1][0] === ranges[ranges.length - 1][1]) {
+                const last = ranges.pop();
+                ranges[ranges.length - 1][1] = last[1];
+            }
+            for (let rIdx = 0; rIdx < ranges.length; rIdx++) {
+                const [sIdx, eIdx] = ranges[rIdx];
+                const sliceNodes = nodes.slice(sIdx, eIdx + 1);
+                const sliceSeams = seams.slice(sIdx, eIdx);
+                if (sliceNodes.length === 1) {
+                    nextNodes.push(sliceNodes[0]);
+                } else {
+                    stageIdx++;
+                    const stageOut = path.join(tmpDir, `xfade_stage_${stageIdx}.mp4`);
+                    console.log(`[ConcatXfade] 分治合并批次 ${stageIdx} (${sliceNodes.length} 个片段)...`);
+                    await _runTransitionBatch({
+                        batchNodes: sliceNodes,
+                        batchTransitions: sliceSeams,
+                        batchOutPath: stageOut,
+                        isFinalPass: false,
+                    });
+                    const stageDur = await _getEffectiveClipDuration(stageOut) || sliceNodes.reduce((a, b) => a + b.duration, 0);
+                    nextNodes.push({ path: stageOut, duration: stageDur });
+                }
+                if (rIdx < ranges.length - 1) {
+                    nextSeams.push(seams[eIdx]);
+                }
+            }
+            nodes = nextNodes;
+            seams = nextSeams;
+        }
+
+        await _runTransitionBatch({
+            batchNodes: nodes,
+            batchTransitions: seams,
+            batchOutPath: outputPath,
+            isFinalPass: true,
+        });
 
         const duration = await getDuration(outputPath);
         return {

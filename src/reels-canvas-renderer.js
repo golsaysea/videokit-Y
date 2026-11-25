@@ -2194,7 +2194,8 @@ class ReelsCanvasRenderer {
             const activeSeg = this._contextSegments[activeIdx];
             const fontSize = s.fontsize || 60;
             // Gap between lines: generous spacing for readability
-            const gap = fontSize * 1.8;
+            const extraLineSpacing = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 0;
+            const gap = Math.max(Math.round(fontSize * 0.55), fontSize * 1.65 + extraLineSpacing);
 
             // Smooth transition when switching lines
             const transDur = 0.30;
@@ -6621,7 +6622,7 @@ class ReelsCanvasRenderer {
         let visibleLineIndices = lines.map((_, index) => index);
         let pageStartIdx = 0;
         {
-            const lineSpacingForPage = s.line_spacing || 8;
+            const lineSpacingForPage = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 8;
             const availablePageH = advEnabled
                 ? Math.max(1, advH - padTop - padBottom)
                 : Math.max(120, Math.floor(videoH * 0.78) - padTop - padBottom);
@@ -6682,7 +6683,7 @@ class ReelsCanvasRenderer {
         let maxLineW = 0;
         for (const w of lineWidths) maxLineW = Math.max(maxLineW, w);
 
-        const lineSpacing = s.line_spacing || 8;
+        const lineSpacing = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 8;
         let totalH = 0;
         for (let li = 0; li < visibleLines.length; li++) {
             totalH += getLineHeight(visibleLineIndices[li]);
@@ -7823,6 +7824,9 @@ class ReelsCanvasRenderer {
         const isZigzag4 = rowSpecs.some(r => r.interleavedZigzag);
         const wordGapRatio = 0.16;
         const rowGapRatio = isZigzag4 ? 0.05 : 0.08;
+        const mixedRowGap = Number.isFinite(Number(s.line_spacing))
+            ? Math.max(-Math.round(base * 0.35), Number(s.line_spacing))
+            : (base * rowGapRatio);
         const extraWordGap = Number.isFinite(Number(s.word_spacing))
             ? Math.max(-base * 0.08, Number(s.word_spacing))
             : 0;
@@ -7917,7 +7921,7 @@ class ReelsCanvasRenderer {
                 cursorX += w + r.gap;
             });
 
-            cursorY += rowHeight + (rIdx < measuredRows.length - 1 ? base * rowGapRatio : 0);
+            cursorY += rowHeight + (rIdx < measuredRows.length - 1 ? mixedRowGap : 0);
         });
 
         const totalHeight = Math.max(1, cursorY);
@@ -8514,7 +8518,7 @@ class ReelsCanvasRenderer {
         const popDuration = Math.max(0.06, Number(s.kinetic_pop_duration ?? 0.22));
         const oldOpacity = clamp01(Number(s.kinetic_old_word_opacity ?? 0.92));
         const letterSpacing = Number(s.letter_spacing) || 0;
-        const lineGap = Math.max(0, Number(s.kinetic_line_gap ?? 0.08)) * baseSize;
+        const lineGap = Math.max(-baseSize * 0.45, Math.max(0, Number(s.kinetic_line_gap ?? 0.08)) * baseSize + (Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 0));
         const rawGlowBlur = s.kinetic_glow_blur !== undefined
             ? Number(s.kinetic_glow_blur)
             : (s.holy_glow_radius !== undefined ? Number(s.holy_glow_radius) : 38);
@@ -8737,8 +8741,9 @@ class ReelsCanvasRenderer {
         // and Slot 2 (bottom) never shift or jump as words accumulate one by one.
         const slotScales = [smallScale, heroScale, smallScale];
         const slotBaseSizes = slotScales.map(sc => baseSize * sc);
-        const gap01 = baseSize * 0.22;
-        const gap12 = baseSize * 0.28;
+        const extraLineSpacing = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 0;
+        const gap01 = Math.max(2, Math.round(baseSize * 0.16 + extraLineSpacing * 0.8));
+        const gap12 = Math.max(2, Math.round(baseSize * 0.22 + extraLineSpacing));
         const slot0H = slotBaseSizes[0] * 1.04;
         const slot1H = slotBaseSizes[1] * 1.02;
         const slot2H = slotBaseSizes[2] * 1.04;
@@ -9279,7 +9284,7 @@ class ReelsCanvasRenderer {
         const padY = Number.isFinite(Number(s.box_padding_y)) ? Number(s.box_padding_y) : 10;
         const boxRadius = Number.isFinite(Number(s.box_radius)) ? Number(s.box_radius) : 22;
         const rawLineSpacing = Number.isFinite(Number(s.line_spacing)) ? Number(s.line_spacing) : 34;
-        const effectiveLineGap = Math.max(rawLineSpacing, padY * 2 + 12);
+        const effectiveLineGap = Math.max(-Math.round(fontSize * 0.35), rawLineSpacing);
         const lineStep = fontSize * 1.12 + effectiveLineGap;
         const visibleCount = Math.max(2, parseInt(s.scrolling_visible_lines, 10) || 3);
 
@@ -9340,10 +9345,10 @@ class ReelsCanvasRenderer {
                 ? String(s.color_high).trim()
                 : '#18A84B');
         const useStroke = s.use_stroke !== false;
-        const borderW = Number(s.border_width) || 4.5;
+        const borderW = Number.isFinite(Number(s.border_width)) ? Number(s.border_width) : 4.5;
         const outlineColor = s.color_outline || '#000000';
         const outlineAlpha = (s.opacity_outline ?? 255) / 255;
-        const shadowBlur = Number(s.shadow_blur) || 4;
+        const shadowBlur = Number.isFinite(Number(s.shadow_blur)) ? Number(s.shadow_blur) : 4;
         const shadowOffX = Number(s.shadow_offset_x) || 0;
         const shadowOffY = Number(s.shadow_offset_y) || 2;
         const shadowColor = s.color_shadow || '#000000';
@@ -9544,7 +9549,7 @@ class ReelsCanvasRenderer {
         const minScale = clamp(Number(s.kinetic_scale_min ?? 0.56), 0.25, 1.5);
         const maxScale = Math.max(minScale, Number(s.kinetic_scale_max ?? 1.24));
         const maxLineW = Math.max(120, videoW * ((Number(s.wrap_width_percent) || 86) / 100));
-        const baseLineGap = Number.isFinite(Number(s.line_spacing)) ? Math.max(4, Number(s.line_spacing)) : Math.round(baseSize * 0.14);
+        const baseLineGap = Number.isFinite(Number(s.line_spacing)) ? Math.max(-Math.round(baseSize * 0.35), Number(s.line_spacing)) : Math.round(baseSize * 0.14);
 
         const slotScales = [];
         for (let k = 0; k < slotCount; k++) {
@@ -9583,7 +9588,7 @@ class ReelsCanvasRenderer {
         const outlineColor = s.color_outline || '#000000';
         const outlineAlpha = (s.opacity_outline ?? 255) / 255;
         const baseBorderW = Number(s.border_width ?? 10);
-        const shadowBlur = s.shadow ? (Number(s.shadow_blur) || 0) : 0;
+        const shadowBlur = (s.shadow === false || (s.opacity_shadow !== undefined && Number(s.opacity_shadow) <= 0)) ? 0 : (Number(s.shadow_blur) || 0);
         const shadowOffX = s.shadow ? (Number(s.shadow_offset_x) || 0) : 0;
         const shadowOffY = s.shadow ? (Number(s.shadow_offset_y) || 0) : 0;
         const shadowColor = s.color_shadow || '#000000';

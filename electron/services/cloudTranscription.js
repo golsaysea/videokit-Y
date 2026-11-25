@@ -85,27 +85,133 @@ function request({ url, method = 'POST', headers = {}, body, timeout = 120000, s
         const req = https.request({ hostname: target.hostname, path: target.pathname + target.search, method, headers, timeout }, res => {
             const chunks = [];
             res.on('data', c => chunks.push(c));
-            res.on('end', () => done(resolve, { status: res.statusCode, body: Buffer.concat(chunks) }));
+            res.on('end', () => done(resolve, { status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
         });
         const abort = () => { req.destroy(); done(reject, new Error('任务已停止')); };
         if (signal?.aborted) return abort();
         signal?.addEventListener?.('abort', abort, { once: true });
         timer = setTimeout(() => { req.destroy(); done(reject, new Error('请求总超时（120 秒）')); }, timeout);
         req.on('timeout', () => { req.destroy(); done(reject, new Error('请求超时')); });
-        req.on('error', error => done(reject, signal?.aborted ? new Error('任务已停止') : error));
+        req.on('error', error => {
+            if (signal?.aborted) return done(reject, new Error('任务已停止'));
+            const code = error?.code || '';
+            const msg = error?.message || String(error || '');
+            done(reject, new Error(formatTranscriptionError('network', 0, msg, { code })));
+        });
         if (body) req.write(body);
         req.end();
     });
+}
+
+function parseRetryAfterMs(headers, rawMessage) {
+    const retryHeader = headers && (headers['retry-after'] || headers['Retry-After']);
+    if (retryHeader !== undefined && retryHeader !== null && String(retryHeader).trim() !== '') {
+        const num = Number(retryHeader);
+        if (Number.isFinite(num) && num >= 0) {
+            return Math.min(60000, Math.max(500, Math.ceil(num * 1000) + 250));
+        }
+        const dateMs = Date.parse(String(retryHeader));
+        if (Number.isFinite(dateMs)) {
+            return Math.min(60000, Math.max(500, dateMs - Date.now() + 250));
+        }
+    }
+    const text = String(rawMessage || '');
+    const m = text.match(/try again in\s+(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds|m|min|minutes)\b/i);
+    if (m) {
+        const val = parseFloat(m[1]);
+        const unit = m[2].toLowerCase();
+        const mult = unit === 'ms' ? 1 : (unit.startsWith('m') ? 60000 : 1000);
+        if (Number.isFinite(val) && val >= 0) {
+            return Math.min(60000, Math.max(500, Math.ceil(val * mult) + 300));
+        }
+    }
+    return 0;
+}
+
+function formatRetryWaitText(retryAfterMs, rawMessage) {
+    if (retryAfterMs >= 1000) {
+        return `${Math.ceil(retryAfterMs / 1000)} 秒`;
+    }
+    const m = String(rawMessage || '').match(/try again in\s+(\d+(?:\.\d+)?\s*(?:ms|s|m))/i);
+    return m ? m[1] : '';
+}
+
+function formatTranscriptionError(provider, status, rawMessage, extra = {}) {
+    const label = PROVIDER_LABEL[provider] || (provider === 'network' ? '云端转录服务' : String(provider || '转录服务'));
+    const msg = String(rawMessage || '').trim();
+    const lower = msg.toLowerCase();
+    const code = String(extra?.code || '').toUpperCase();
+    const retryAfterMs = Number(extra?.retryAfterMs || 0) || parseRetryAfterMs(extra?.headers, msg);
+
+    if (lower.includes('任务已停止') || lower === 'abort' || code === 'ABORT_ERR') {
+        return '任务已停止';
+    }
+    if (code === 'ECONNRESET' || lower.includes('socket hang up') || lower.includes('econnreset')) {
+        return `${label} 网络连接被中断，请检查网络或代理稳定性后重试`;
+    }
+    if (code === 'ETIMEDOUT' || code === 'ESOCKETTIMEDOUT' || lower.includes('etimedout') || lower.includes('timed out') || lower.includes('timeout')) {
+        return `${label} 网络请求超时，请检查网络连接或稍后重试`;
+    }
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || lower.includes('enotfound') || lower.includes('eai_again')) {
+        return `${label} 无法解析服务器域名，请检查网络、DNS 或代理设置`;
+    }
+    if (code === 'ECONNREFUSED' || lower.includes('econnrefused')) {
+        return `${label} 连接被拒绝，请检查代理软件或防火墙配置`;
+    }
+    if (code.includes('CERT') || lower.includes('certificate') || lower.includes('unable to verify')) {
+        return `${label} SSL 证书校验失败，请检查本机系统时间或代理证书配置`;
+    }
+
+    if (status === 429 || lower.includes('rate limit') || lower.includes('too many requests') || lower.includes('requests per minute')) {
+        const waitText = formatRetryWaitText(retryAfterMs, msg);
+        const rpmMatch = msg.match(/Limit\s+(\d+)\s*,\s*Used\s+(\d+)/i);
+        const rpmInfo = rpmMatch ? `（每分钟上限 ${rpmMatch[1]} 次）` : '';
+        const waitHint = waitText ? `，接口建议 ${waitText} 后重试` : '';
+        return `${label} 请求过于频繁（429 限流${rpmInfo}${waitHint}）：可降低并发数、添加多个 Key 轮询或切换备用服务商`;
+    }
+    if (status === 401 || lower.includes('invalid api key') || lower.includes('invalid_api_key') || lower.includes('unauthorized') || lower.includes('authentication failed')) {
+        return `${label} API Key 无效或已失效（401 鉴权失败），请在设置中检查并重新填写 Key`;
+    }
+    if (status === 403 || lower.includes('forbidden') || lower.includes('permission denied') || lower.includes('access denied') || lower.includes('unsupported country') || lower.includes('region')) {
+        return `${label} 接口拒绝访问（403 权限不足或当前网络地区受限），请检查账号权限或更换代理节点`;
+    }
+    if (status === 402 || lower.includes('insufficient') || lower.includes('quota') || lower.includes('credit') || lower.includes('billing') || lower.includes('balance') || lower.includes('payment required')) {
+        return `${label} 账户额度或余额不足，请充值、更换 Key 或切换备用转录服务商`;
+    }
+    if (status === 413 || lower.includes('too large') || lower.includes('maximum content size') || lower.includes('payload')) {
+        return `${label} 上传音频体积超出接口限制（413），请缩短单段时长或关闭高码率后再试`;
+    }
+    if (status === 400 || lower.includes('invalid audio') || lower.includes('could not process') || lower.includes('bad request')) {
+        return `${label} 音频格式不被支持或数据异常（400），请检查原片音轨是否正常`;
+    }
+    if (status >= 500 || lower.includes('internal server error') || lower.includes('bad gateway') || lower.includes('service unavailable') || lower.includes('gateway timeout') || lower.includes('overloaded')) {
+        return `${label} 服务器暂时繁忙或异常（HTTP ${status || '5xx'}），请稍后重试`;
+    }
+
+    if (/[\u4e00-\u9fff]/.test(msg) && !/[A-Za-z]{4,}/.test(msg)) {
+        return `${label}: ${msg.slice(0, 200)}`;
+    }
+    return `${label} 转录请求失败${status ? `（HTTP ${status}）` : ''}，请检查网络、代理或 API Key 配置`;
 }
 
 function parseResponse(provider, response) {
     const text = response.body.toString('utf8');
     if (response.status < 200 || response.status >= 300) {
         let message = text;
-        try { message = JSON.parse(text).error?.message || JSON.parse(text).err_msg || JSON.parse(text).message || text; } catch { }
-        throw new Error(`${PROVIDER_LABEL[provider]} HTTP ${response.status}: ${String(message).slice(0, 300)}`);
+        try {
+            const parsed = JSON.parse(text);
+            message = parsed.error?.message || parsed.err_msg || parsed.message || text;
+        } catch { }
+        const retryAfterMs = parseRetryAfterMs(response.headers, message);
+        const err = new Error(formatTranscriptionError(provider, response.status, String(message).slice(0, 500), {
+            headers: response.headers,
+            retryAfterMs,
+        }));
+        err.status = response.status;
+        if (retryAfterMs > 0) err.retryAfterMs = retryAfterMs;
+        throw err;
     }
-    try { return JSON.parse(text); } catch { throw new Error(`${PROVIDER_LABEL[provider]} 返回了无效响应`); }
+    try { return JSON.parse(text); } catch { throw new Error(`${PROVIDER_LABEL[provider] || provider} 返回了无效的 JSON 响应，请检查网络或代理设置`); }
 }
 
 function multipart(filePath, fields) {
@@ -340,7 +446,88 @@ async function transcribeSegment(provider, filePath, key, language, signal, meta
     }
 }
 
-async function transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes, onProgress, signal, options = {}) {
+const GROQ_RPM_SAFE_LIMIT = 18;
+const GROQ_RPM_WINDOW_MS = 60000;
+const _groqKeyHistory = new Map();
+const _groqKeyCooldownUntil = new Map();
+
+function _keyFingerprint(key) {
+    return crypto.createHash('sha256').update(String(key || '')).digest('hex').slice(0, 16);
+}
+
+function _pruneGroqHistory(keyId, now = Date.now()) {
+    const arr = _groqKeyHistory.get(keyId);
+    if (!arr || !arr.length) return [];
+    const cutoff = now - GROQ_RPM_WINDOW_MS;
+    let firstValid = 0;
+    while (firstValid < arr.length && arr[firstValid] <= cutoff) firstValid++;
+    if (firstValid > 0) arr.splice(0, firstValid);
+    return arr;
+}
+
+function _getGroqKeyWaitMs(key, now = Date.now()) {
+    const keyId = _keyFingerprint(key);
+    const cooldownUntil = _groqKeyCooldownUntil.get(keyId) || 0;
+    const cooldownWait = Math.max(0, cooldownUntil - now);
+    const history = _pruneGroqHistory(keyId, now);
+    let rpmWait = 0;
+    if (history.length >= GROQ_RPM_SAFE_LIMIT) {
+        rpmWait = Math.max(0, (history[0] + GROQ_RPM_WINDOW_MS + 150) - now);
+    }
+    return Math.max(cooldownWait, rpmWait);
+}
+
+function _recordGroqRequest(key, now = Date.now()) {
+    const keyId = _keyFingerprint(key);
+    const history = _pruneGroqHistory(keyId, now);
+    history.push(now);
+    _groqKeyHistory.set(keyId, history);
+}
+
+function _markGroqCooldown(key, waitMs) {
+    const keyId = _keyFingerprint(key);
+    const until = Date.now() + Math.max(500, Math.min(60000, Number(waitMs) || 3500));
+    _groqKeyCooldownUntil.set(keyId, Math.max(_groqKeyCooldownUntil.get(keyId) || 0, until));
+}
+
+function sleepWithSignal(ms, signal) {
+    const duration = Math.max(0, Number(ms) || 0);
+    if (!duration) return Promise.resolve();
+    if (signal?.aborted) return Promise.reject(new Error('任务已停止'));
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (fn, val) => {
+            if (settled) return;
+            settled = true;
+            signal?.removeEventListener?.('abort', onAbort);
+            fn(val);
+        };
+        const timer = setTimeout(() => finish(resolve), duration);
+        const onAbort = () => {
+            clearTimeout(timer);
+            finish(reject, new Error('任务已停止'));
+        };
+        signal?.addEventListener?.('abort', onAbort, { once: true });
+    });
+}
+
+function isRateLimitError(error) {
+    if (!error) return false;
+    if (error.status === 429) return true;
+    const msg = String(error.message || error || '').toLowerCase();
+    return msg.includes('429') || msg.includes('限流') || msg.includes('rate limit') || msg.includes('too many requests');
+}
+
+function isTransientTranscriptionError(error) {
+    if (!error) return false;
+    if (isRateLimitError(error)) return true;
+    if (Number(error.status) >= 500) return true;
+    const msg = String(error.message || error || '').toLowerCase();
+    return msg.includes('超时') || msg.includes('中断') || msg.includes('繁忙') || msg.includes('econnreset') || msg.includes('etimedout');
+}
+
+async function transcribeProvider(mediaPath, provider, keys, language, jsonPath, txtPath, minMinutes = 5, onProgress, signal, options = {}) {
+    if (signal?.aborted) throw new Error('任务已停止');
     if (!keys?.length) throw new Error(`${PROVIDER_LABEL[provider]} 未配置 API Key`);
     if (provider === 'gladia') {
         // 不让同一 Gladia Key 同时处理两个媒体。这样“每任务 3 路 × 同时 2
@@ -406,33 +593,81 @@ async function transcribeProvider(mediaPath, provider, keys, language, jsonPath,
     }
     const tmpDir = path.join(settings.getSecureTmpDir(), `transcription_${provider}_${crypto.randomUUID()}`);
     try {
+        const segRunner = options?._transcribeSegmentFn || transcribeSegment;
+        const sleepFn = options?._waitFn || sleepWithSignal;
         onProgress?.(`🎙️ [${PROVIDER_LABEL[provider]}] ${options?.musicMode ? '正在提取并提纯音乐人声...' : '正在提取音频...'}`);
-        const audioPath = await extractAudioFromVideo(mediaPath, tmpDir, 'wav', signal, options);
+        const audioPath = options?._audioSegments
+            ? null
+            : await extractAudioFromVideo(mediaPath, tmpDir, 'wav', signal, options);
         // Groq's standard upload limit is 25 MB.  32 kHz mono WAV is roughly
         // 3.8 MB/minute, so cap chunks at the caller's five-minute default.
         const effectiveMinMinutes = options?.musicMode ? Math.max(6, Number(minMinutes) || 5) : minMinutes;
-        const segments = await splitAudioOnSilence(audioPath, tmpDir, effectiveMinMinutes, Math.max(1, effectiveMinMinutes), 'wav');
+        const segments = options?._audioSegments
+            || await splitAudioOnSilence(audioPath, tmpDir, effectiveMinMinutes, Math.max(1, effectiveMinMinutes), 'wav');
         const utterances = [], texts = [];
         let offset = 0;
+        const maxRateLimitRounds = 3;
         for (let index = 0; index < segments.length; index++) {
             if (signal?.aborted) throw new Error('任务已停止');
             onProgress?.(`🎙️ [${PROVIDER_LABEL[provider]}] 转录进度 ${index + 1}/${segments.length}`);
             let result, lastError;
-            for (const key of keys) {
-                try {
-                    result = await transcribeSegment(provider, segments[index].path, key, language, signal, {
-                        mediaPath,
-                        mediaName: path.basename(mediaPath),
-                        segmentIndex: index,
-                        totalSegments: segments.length,
-                        promptHint: options?.promptHint || '',
-                        musicMode: !!options?.musicMode,
-                    });
-                    break;
-                } catch (error) {
-                    lastError = error;
-                    if (signal?.aborted) throw error;
+            for (let round = 0; round <= maxRateLimitRounds; round++) {
+                let sawRateLimit = false;
+                let sawTransient = false;
+                let shortestWaitMs = 0;
+                // 优先选择当前无需等待或等待最短的 Key（仅 Groq 启用 RPM 平滑节流）
+                const rotated = keys.map((key, idx) => ({ key, order: (idx + index) % keys.length }));
+                if (provider === 'groq') {
+                    const now = Date.now();
+                    rotated.sort((a, b) => _getGroqKeyWaitMs(a.key, now) - _getGroqKeyWaitMs(b.key, now) || a.order - b.order);
+                } else {
+                    rotated.sort((a, b) => a.order - b.order);
                 }
+
+                for (const { key } of rotated) {
+                    if (signal?.aborted) throw new Error('任务已停止');
+                    if (provider === 'groq' && !options?._disableRateLimiter) {
+                        const waitMs = _getGroqKeyWaitMs(key);
+                        if (waitMs > 0) {
+                            onProgress?.(`⏳ [Groq Whisper] 请求接近每分钟上限，自动平滑等待 ${Math.ceil(waitMs / 1000)} 秒...`);
+                            await sleepFn(waitMs, signal);
+                        }
+                        _recordGroqRequest(key);
+                    }
+                    try {
+                        result = await segRunner(provider, segments[index].path, key, language, signal, {
+                            mediaPath,
+                            mediaName: path.basename(mediaPath),
+                            segmentIndex: index,
+                            totalSegments: segments.length,
+                            promptHint: options?.promptHint || '',
+                            musicMode: !!options?.musicMode,
+                        });
+                        break;
+                    } catch (error) {
+                        lastError = error;
+                        if (signal?.aborted) throw error;
+                        if (isRateLimitError(error)) {
+                            sawRateLimit = true;
+                            const waitMs = Number(error.retryAfterMs) || 3500;
+                            if (provider === 'groq' && !options?._disableRateLimiter) {
+                                _markGroqCooldown(key, waitMs);
+                            }
+                            shortestWaitMs = shortestWaitMs ? Math.min(shortestWaitMs, waitMs) : waitMs;
+                        } else if (isTransientTranscriptionError(error)) {
+                            sawTransient = true;
+                            shortestWaitMs = shortestWaitMs ? Math.min(shortestWaitMs, 1200) : 1200;
+                        }
+                    }
+                }
+                if (result) break;
+                const canRetry = (sawRateLimit && round < maxRateLimitRounds) || (sawTransient && round < 1);
+                if (!canRetry) break;
+                const backoffMs = sawRateLimit
+                    ? Math.min(60000, Math.max(1000, shortestWaitMs || (3000 * (round + 1))))
+                    : 1200;
+                onProgress?.(`⏳ [${PROVIDER_LABEL[provider]}] ${sawRateLimit ? '触发限流' : '临时网络波动'}，等待 ${Math.ceil(backoffMs / 1000)} 秒后重试 (${round + 1}/${maxRateLimitRounds})...`);
+                await sleepFn(backoffMs, signal);
             }
             if (!result) throw lastError || new Error(`${PROVIDER_LABEL[provider]} 未返回结果`);
             let words = result.words.map(rawWord => {
@@ -511,5 +746,5 @@ module.exports = {
     transcribeProvider,
     getTranscriptionRecords,
     clearTranscriptionRecords,
-    _test: { multipart, parseResponse }
+    _test: { multipart, parseResponse, formatTranscriptionError, parseRetryAfterMs, isRateLimitError }
 };

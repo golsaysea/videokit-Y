@@ -425,7 +425,7 @@ async function fetchGoogleDriveFolderProjects(folderUrl, options = {}) {
         const res = await fetch(embedUrl, {
             method: 'GET',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.22',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.23-beta',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
             },
             redirect: 'follow',
@@ -585,7 +585,7 @@ function buildHubRequestUrl(hubUrl, token = '') {
 function buildHubHeaders(token = '') {
     const headers = {
         'Accept': 'application/json',
-        'User-Agent': 'VideoKit-CloudHub/4.6.22',
+        'User-Agent': 'VideoKit-CloudHub/4.6.23-beta',
     };
     const cleanToken = String(token || '').trim();
     if (cleanToken) {
@@ -614,7 +614,7 @@ async function fetchBufferWithDriveBypass(rawUrl, customHeaders = {}) {
     const res = await fetch(directUrl, {
         method: 'GET',
         headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.22',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.23-beta',
             ...customHeaders,
         },
         redirect: 'follow',
@@ -643,7 +643,7 @@ async function fetchBufferWithDriveBypass(rawUrl, customHeaders = {}) {
             const res2 = await fetch(u2.toString(), {
                 method: 'GET',
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.22',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.23-beta',
                     ...customHeaders,
                 },
                 redirect: 'follow',
@@ -1620,7 +1620,7 @@ async function downloadMissingCloudDriveMedia(projectData, driveFolderUrl, optio
             const res = await fetch(embedUrl, {
                 method: 'GET',
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.22',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) VideoKit/4.6.23-beta',
                     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                 },
                 redirect: 'follow',

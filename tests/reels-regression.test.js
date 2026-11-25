@@ -14753,6 +14753,400 @@ test('Facebook Reel 122112000699541613 / 2073541946660889 style: 3D spinning gol
     assert.ok(fillTextOps.some(op => op.fillStyle === '#0F0202'), 'Prayer text must render in crisp #0F0202 dark ink');
 });
 
+test('Cloud transcription translates English errors into Chinese, retries Groq 429 cleanly, and isolates failed autoEdit clips', async () => {
+    const cloudMod = require('../electron/services/cloudTranscription');
+    const gladiaMod = require('../electron/services/gladia');
+
+    // 1. parseResponse & formatTranscriptionError produce actionable Chinese messages
+    assert.throws(
+        () => cloudMod._test.parseResponse('groq', {
+            status: 429,
+            headers: {},
+            body: Buffer.from(JSON.stringify({
+                error: { message: "Rate limit reached for model `whisper-large-v3-turbo` on requests per minute (RPM): Limit 20, Used 20, Requested 1. Please try again in 3s." }
+            })),
+        }),
+        err => /请求过于频繁/.test(err.message) && /4 秒|3 秒/.test(err.message) && !/Rate limit reached/i.test(err.message) && err.status === 429 && err.retryAfterMs >= 3000
+    );
+    assert.throws(
+        () => cloudMod._test.parseResponse('groq', { status: 401, headers: {}, body: Buffer.from('{"error":{"message":"Invalid API key"}}') }),
+        err => /API Key 无效/.test(err.message) && !/Invalid API key/i.test(err.message)
+    );
+    assert.throws(
+        () => cloudMod._test.parseResponse('deepgram', { status: 403, headers: {}, body: Buffer.from('Forbidden') }),
+        err => /403/.test(err.message) && /拒绝访问/.test(err.message) && !/Forbidden/i.test(err.message)
+    );
+    assert.throws(
+        () => cloudMod._test.parseResponse('groq', { status: 503, headers: {}, body: Buffer.from('Service Unavailable') }),
+        err => /服务器暂时繁忙/.test(err.message)
+    );
+    assert.match(cloudMod._test.formatTranscriptionError('network', 0, 'read ECONNRESET', { code: 'ECONNRESET' }), /网络连接被中断/);
+    assert.match(cloudMod._test.formatTranscriptionError('network', 0, 'connect ETIMEDOUT', { code: 'ETIMEDOUT' }), /网络请求超时/);
+
+    // Gladia error classifier returns clean Chinese without raw English dumps
+    const g429 = gladiaMod._test.classifyGladiaError('LIMIT_EXCEEDED: Too many requests per minute from org');
+    assert.equal(g429.type, 'rate_limit');
+    assert.doesNotMatch(g429.friendly, /Too many requests/i);
+    const gOther = gladiaMod._test.classifyGladiaError('Unexpected gateway reset from upstream');
+    assert.match(gOther.friendly, /Gladia 转录接口返回异常/);
+    assert.doesNotMatch(gOther.friendly, /Unexpected gateway/i);
+
+    // 2. transcribeProvider retries Groq 429 with backoff before failing
+    let calls = 0;
+    const waits = [];
+    const progressMsgs = [];
+    const res = await cloudMod.transcribeProvider(
+        __filename,
+        'groq',
+        ['gsk_test_key_retry_only'],
+        'english',
+        null,
+        null,
+        5,
+        m => progressMsgs.push(m),
+        null,
+        {
+            _disableRateLimiter: true,
+            _audioSegments: [{ path: __filename, duration: 2 }],
+            _waitFn: async ms => { waits.push(ms); },
+            _transcribeSegmentFn: async () => {
+                calls++;
+                if (calls <= 2) {
+                    const e = new Error('Groq Whisper 请求过于频繁（429 限流）');
+                    e.status = 429;
+                    e.retryAfterMs = 1500;
+                    throw e;
+                }
+                return { text: 'Hello world', words: [{ word: 'Hello', start: 0, end: 0.4 }, { word: 'world', start: 0.5, end: 1.0 }] };
+            },
+        }
+    );
+    assert.equal(calls, 3);
+    assert.equal(waits.length, 2);
+    assert.equal(res.fullText, 'Hello world');
+    assert.ok(progressMsgs.some(m => m.includes('触发限流')));
+
+    // 3. Static safety checks for autoEdit & ffmpeg transition chunking
+    const autoEditSrc = fs.readFileSync(path.join(ROOT, 'electron/services/autoEdit.js'), 'utf8');
+    assert.ok(autoEditSrc.includes('toEvenDim(rawTargetWidth, 1080)') && autoEditSrc.includes('toEvenDim(rawTargetHeight, 1920)'), 'autoEdit must force even dimensions for libx264 yuv420p');
+    assert.ok(autoEditSrc.includes("if (analysisSegments[left].transcription_source === 'failed') continue;"), 'autoEdit must exclude failed-transcription clips from duplicate grouping');
+    assert.ok(autoEditSrc.includes('没有可导出的有效视频片段'), 'autoEdit must fail with Chinese message if 0 trimmed clips remain');
+    assert.ok(!autoEditSrc.includes('N/FRAME_RATE/TB'), 'autoEdit must avoid VFR NaN hazard from raw FRAME_RATE variable in select/setpts');
+
+    const ffmpegSrc = fs.readFileSync(path.join(ROOT, 'electron/services/ffmpeg.js'), 'utf8');
+    assert.ok(ffmpegSrc.includes('const MAX_TRANSITION_BATCH = 8;') && ffmpegSrc.includes('timelineDur - tDur - frameStep * 0.5'), 'concatClipsWithTransitions must batch transitions in chunks while preserving EOF safety offset');
+});
+
+test('T-subtitle line_spacing works across mixed_layout, kinetic, 3-word stack, rolling, scrolling, and fullpage modes + UI sync fixes', () => {
+    const styleSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-style-engine.js'), 'utf8');
+    const rendererSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-canvas-renderer.js'), 'utf8');
+    const animSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'reels-anim-engine.js'), 'utf8');
+    const htmlSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+    const batchSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'batch-reels.js'), 'utf8');
+
+    const textYs = [];
+    const makeCtx = () => {
+        let tx = 0;
+        let ty = 0;
+        const tStack = [];
+        const ctx = {
+            font: '700 72px Arimo',
+            fillStyle: '#FFFFFF',
+            strokeStyle: '#000000',
+            lineWidth: 2,
+            globalAlpha: 1,
+            textAlign: 'left',
+            textBaseline: 'top',
+            shadowColor: 'transparent',
+            shadowBlur: 0,
+            shadowOffsetX: 0,
+            shadowOffsetY: 0,
+            save() { tStack.push([tx, ty]); },
+            restore() { [tx, ty] = tStack.pop() || [0, 0]; },
+            translate(dx = 0, dy = 0) { tx += Number(dx) || 0; ty += Number(dy) || 0; },
+            rotate() {},
+            scale() {},
+            beginPath() {},
+            closePath() {},
+            moveTo() {},
+            lineTo() {},
+            quadraticCurveTo() {},
+            bezierCurveTo() {},
+            roundRect() {},
+            fill() {},
+            stroke() {},
+            fillRect() {},
+            strokeRect() {},
+            clearRect() {},
+            clip() {},
+            rect() {},
+            createLinearGradient() { return { addColorStop() {} }; },
+            createRadialGradient() { return { addColorStop() {} }; },
+            measureText(str) {
+                const sz = parseFloat(String(this.font).match(/([\d.]+)px/)?.[1] || '64');
+                return { width: String(str || '').length * sz * 0.52 };
+            },
+            fillText(text, x, y) {
+                textYs.push({ text: String(text), x: tx + x, y: ty + y, shadowBlur: this.shadowBlur });
+            },
+            strokeText() {},
+        };
+        return ctx;
+    };
+
+    const canvas = { width: 1080, height: 1920, getContext: () => makeCtx() };
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error,
+        Path2D: class MockPath2D {},
+        Image: class MockImage {},
+        document: { createElement: () => canvas },
+        window: {},
+        module: { exports: {} },
+    };
+    sandbox.window = sandbox;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(animSrc, sandbox);
+    vm.runInContext(styleSrc, sandbox);
+    vm.runInContext(rendererSrc, sandbox);
+
+    const renderer = new sandbox.ReelsCanvasRenderer(canvas);
+    const seg = {
+        start: 0,
+        end: 5,
+        text: 'Grace and peace unto you today',
+        words: [
+            { word: 'Grace', start: 0.0, end: 0.6 },
+            { word: 'and', start: 0.6, end: 1.0 },
+            { word: 'peace', start: 1.0, end: 1.8 },
+            { word: 'unto', start: 1.8, end: 2.4 },
+            { word: 'you', start: 2.4, end: 3.0 },
+            { word: 'today', start: 3.0, end: 4.5 },
+        ],
+    };
+
+    const measureVerticalSpan = (stylePatch, time = 1.2, segs = [seg]) => {
+        textYs.length = 0;
+        renderer.setContextSegments(segs);
+        const merged = sandbox.window.ReelsStyleEngine.mergeStyle(stylePatch);
+        renderer.renderSubtitle(merged, segs[0], time, 1080, 1920);
+        const ys = textYs.map(op => op.y);
+        assert.ok(new Set(ys.map(y => Math.round(y))).size >= 2, `Expected >=2 vertical lines for mode ${JSON.stringify(stylePatch)}`);
+        return Math.max(...ys) - Math.min(...ys);
+    };
+
+    // Mixed layout
+    assert.ok(measureVerticalSpan({ mixed_layout: 'stack', anim_in_type: 'none', anim_out_type: 'none', line_spacing: 50 }) > measureVerticalSpan({ mixed_layout: 'stack', anim_in_type: 'none', anim_out_type: 'none', line_spacing: -10 }) + 40);
+    // Kinetic glow stack
+    assert.ok(measureVerticalSpan({ anim_in_type: 'kinetic_glow_stack', kinetic_group_words: 3, line_spacing: 60 }, 1.5) > measureVerticalSpan({ anim_in_type: 'kinetic_glow_stack', kinetic_group_words: 3, line_spacing: -10 }, 1.5) + 50);
+    // Three-word focus stack
+    assert.ok(measureVerticalSpan({ anim_in_type: 'three_word_focus_stack', line_spacing: 60 }, 1.5) > measureVerticalSpan({ anim_in_type: 'three_word_focus_stack', line_spacing: -10 }, 1.5) + 50);
+    // Rolling word escalator (allows tight/negative spacing + reads shadow_blur without s.shadow)
+    const escWide = measureVerticalSpan({ anim_in_type: 'rolling_word_escalator', shadow_blur: 10, line_spacing: 44 }, 2.2);
+    assert.ok(textYs.some(op => op.shadowBlur > 0), 'rolling_word_escalator must render shadow when shadow_blur > 0 even without legacy s.shadow boolean');
+    const escTight = measureVerticalSpan({ anim_in_type: 'rolling_word_escalator', shadow_blur: 0, line_spacing: -12 }, 2.2);
+    assert.ok(escWide > escTight + 30);
+    // Rolling quill karaoke (slider values <= 32 must still work!)
+    assert.ok(measureVerticalSpan({ anim_in_type: 'rolling_quill_karaoke', wrap_lines: 3, max_words_per_line: 2, line_spacing: 28 }, 3.2) > measureVerticalSpan({ anim_in_type: 'rolling_quill_karaoke', wrap_lines: 3, max_words_per_line: 2, line_spacing: -12 }, 3.2) + 25);
+    // Scrolling mode
+    const scrollSegs = [
+        { start: 0, end: 2, text: 'First line here', words: [{ word: 'First', start: 0, end: 0.5 }, { word: 'line', start: 0.5, end: 1.0 }, { word: 'here', start: 1.0, end: 2.0 }] },
+        { start: 2, end: 4, text: 'Second line here', words: [{ word: 'Second', start: 2, end: 2.5 }, { word: 'line', start: 2.5, end: 3.0 }, { word: 'here', start: 3.0, end: 4.0 }] },
+    ];
+    assert.ok(measureVerticalSpan({ scrolling_mode: true, scrolling_visible_lines: 3, line_spacing: 70 }, 1.0, scrollSegs) > measureVerticalSpan({ scrolling_mode: true, scrolling_visible_lines: 3, line_spacing: -10 }, 1.0, scrollSegs) + 40);
+    // Fullpage typewriter with line_spacing: 0 vs 40 (ensures 0 doesn't coerce to 8)
+    const fpSeg = [{
+        start: 0,
+        end: 5,
+        text: 'Grace and peace\nunto you today',
+        words: seg.words,
+    }];
+    assert.ok(measureVerticalSpan({ fullpage_typewriter: true, line_spacing: 40 }, 4.8, fpSeg) > measureVerticalSpan({ fullpage_typewriter: true, line_spacing: 0 }, 4.8, fpSeg) + 30);
+
+    // HTML slider bounds & UI sync fixes
+    assert.ok(htmlSrc.includes('id="reels-line-spacing-range" min="-30" max="100"'), 'line spacing slider must allow -30..100');
+    assert.ok(batchSrc.includes("set('reels-word-pop-min', wprMin)") && batchSrc.includes("line_spacing: num('reels-line-spacing', 4)"), '_writeStyleToUI and _readStyleFromUI must keep word-pop controls and line_spacing default in sync');
+});
+
+test('ReelsDecorPanel supports saving, persisting, applying, updating, renaming, deleting, and importing/exporting custom decor presets', async () => {
+    const overlaySrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay.js'), 'utf8');
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const mainSrc = fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8');
+    const preloadSrc = fs.readFileSync(path.join(ROOT, 'electron/preload.js'), 'utf8');
+    const bridgeSrc = fs.readFileSync(path.join(ROOT, 'src/web-bridge.js'), 'utf8');
+
+    assert.ok(mainSrc.includes("'reels_decor_presets'"), 'electron/main.js must whitelist reels_decor_presets in persistent-presets:set');
+    assert.ok(preloadSrc.includes('readDecorPresets') && preloadSrc.includes('saveDecorPresets'), 'electron/preload.js must expose decor preset storage bridge');
+    assert.ok(bridgeSrc.includes('readDecorPresets') && bridgeSrc.includes('saveDecorPresets'), 'src/web-bridge.js must expose decor preset RPC bridge');
+    assert.ok(panelSrc.includes('id="rop-decor-save-preset-btn"'), 'Inline decor inspector must also provide quick-save decor preset button');
+
+    const storageMap = new Map();
+    const savedDialogs = [];
+    const makeEl = (tag = 'div') => ({
+        tagName: tag.toUpperCase(),
+        value: '',
+        checked: false,
+        textContent: '',
+        dataset: {},
+        style: {},
+        className: '',
+        listeners: {},
+        classList: {
+            _s: new Set(),
+            toggle(k, f) { if (f === undefined ? !this._s.has(k) : f) this._s.add(k); else this._s.delete(k); },
+            contains(k) { return this._s.has(k); },
+        },
+        addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); },
+        querySelector() { return null; },
+        querySelectorAll() { return []; },
+        appendChild() {},
+        remove() {},
+    });
+
+    const customSelectEl = makeEl('select');
+    const customBadgeEl = makeEl('span');
+    const customGridEl = {
+        _html: '',
+        _cards: [],
+        _delBtns: [],
+        get innerHTML() { return this._html; },
+        set innerHTML(v) { this._html = String(v); },
+        querySelectorAll(sel) {
+            if (sel === '.rdp-custom-preset-card') return this._cards;
+            if (sel === '.rdp-custom-card-del') return this._delBtns;
+            return [];
+        },
+    };
+    const masterCheck = { ...makeEl('input'), type: 'checkbox', checked: true };
+    const masterBadge = makeEl('span');
+    const masterBar = makeEl('div');
+    const styleSelect = makeEl('select');
+    const decorContainer = {
+        _html: '',
+        set innerHTML(v) { this._html = String(v); },
+        get innerHTML() { return this._html; },
+        querySelector(sel) {
+            if (sel === '#rdp-custom-preset-select') return customSelectEl;
+            if (sel === '#rdp-custom-count-badge') return customBadgeEl;
+            if (sel === '#rdp-custom-preset-grid') return customGridEl;
+            if (sel === '#rdp-master-enable') return masterCheck;
+            if (sel === '#rdp-master-status-badge') return masterBadge;
+            if (sel === '#rdp-master-bar') return masterBar;
+            if (sel === '#rdp-style-select') return styleSelect;
+            return null;
+        },
+        querySelectorAll() { return []; },
+    };
+
+    const existingSubtitleOv = { id: 'ov_text_keep', type: 'textcard', title_text: 'Keep me' };
+    const existingPhoneCta = { id: 'ov_cta_keep', type: 'text', is_phone_cta: true, text: 'Call 123' };
+    const overlays = [
+        existingSubtitleOv,
+        existingPhoneCta,
+        {
+            id: 'decor_old_1',
+            type: 'decor',
+            decor_style: 'dark_floating_dust',
+            decor_dark_enabled: true,
+            decor_dark_vignette: 82,
+            decor_color1: '#FFAA33',
+            decor_color2: '#112233',
+            decor_grain_enabled: true,
+            decor_grain_intensity: 38,
+            decor_margin: 44,
+        },
+        {
+            id: 'decor_old_2',
+            type: 'decor',
+            decor_style: 'vintage_gold_filigree',
+            decor_corner_ornaments: true,
+            opacity: 210,
+        },
+    ];
+    const proxy = {
+        overlayMgr: {
+            overlays,
+            add(o) { overlays.push(o); },
+        },
+        addOverlay(o) { overlays.push(o); },
+        removeOverlay(id) {
+            const idx = overlays.findIndex(o => o.id === id);
+            if (idx !== -1) overlays.splice(idx, 1);
+        },
+        onOverlayChange() {},
+        render() {},
+    };
+
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Promise,
+        confirm: () => true,
+        alert: (msg) => savedDialogs.push(msg),
+        localStorage: {
+            getItem: (k) => storageMap.get(k) ?? null,
+            setItem: (k, v) => { storageMap.set(k, String(v)); },
+        },
+        document: {
+            getElementById: () => null,
+            querySelector: () => null,
+            createElement: (tag) => makeEl(tag),
+            head: { appendChild() {} },
+            body: { appendChild() {} },
+        },
+        window: {
+            _reelsState: { tasks: [] },
+            showToast: () => {},
+        },
+        module: { exports: {} },
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(overlaySrc, sandbox);
+    vm.runInContext(panelSrc, sandbox);
+
+    const panel = new sandbox.window.ReelsDecorPanel(decorContainer, proxy, null);
+
+    // 1. Save custom 2-layer tuned decor preset
+    const saved = await panel.saveCustomPreset('黑金微尘+巴洛克<xss>');
+    assert.ok(saved && saved.layers.length === 2);
+    assert.ok(storageMap.get('reels_decor_presets'), 'Must persist custom decor preset to reels_decor_presets');
+    assert.ok(!customGridEl.innerHTML.includes('<xss>'), 'Preset name must be HTML-escaped when rendering cards');
+    assert.ok(customGridEl.innerHTML.includes('&lt;xss&gt;'), 'Escaped preset name must render safely in custom card grid');
+
+    // 2. Replace active decor overlays with something else, create a fresh panel instance (simulating restart), then apply saved preset
+    overlays.splice(2, overlays.length - 2, { id: 'decor_temp', type: 'decor', decor_style: 'xmas_snowfall_frost', decor_dark_vignette: 0 });
+    const panelAfterRestart = new sandbox.window.ReelsDecorPanel(decorContainer, proxy, null);
+    assert.equal(panelAfterRestart.applyCustomPreset('黑金微尘+巴洛克<xss>'), true);
+
+    const restoredDecors = overlays.filter(o => o.type === 'decor');
+    assert.equal(restoredDecors.length, 2, 'Applying saved preset must restore exact multi-layer decor stack');
+    assert.equal(restoredDecors[0].decor_dark_vignette, 82);
+    assert.equal(restoredDecors[0].decor_color1, '#FFAA33');
+    assert.equal(restoredDecors[0].decor_grain_intensity, 38);
+    assert.equal(restoredDecors[1].decor_style, 'vintage_gold_filigree');
+    assert.equal(restoredDecors[1].opacity, 210);
+    assert.notEqual(restoredDecors[0].id, 'decor_old_1', 'Restored layers must receive fresh unique overlay IDs');
+    assert.ok(overlays.some(o => o.id === 'ov_text_keep') && overlays.some(o => o.id === 'ov_cta_keep'), 'Applying decor preset must not remove textcard or phone CTA layers');
+
+    // 3. Update, rename, export/import, and delete
+    restoredDecors[0].decor_dark_vignette = 95;
+    await panelAfterRestart.updateSelectedCustomPreset();
+    assert.equal(panelAfterRestart.getCustomPresets()['黑金微尘+巴洛克<xss>'].layers[0].decor_dark_vignette, 95);
+
+    await panelAfterRestart.renameSelectedCustomPreset('黑金精调正式版');
+    assert.equal(panelAfterRestart.getCustomPresets()['黑金微尘+巴洛克<xss>'], undefined);
+    assert.equal(panelAfterRestart.getCustomPresets()['黑金精调正式版'].layers[0].decor_dark_vignette, 95);
+
+    const exportedJson = panelAfterRestart.exportCustomPresetsJson();
+    assert.equal(panelAfterRestart.deleteCustomPreset('黑金精调正式版', { skipConfirm: true }), true);
+    assert.deepEqual(Object.keys(panelAfterRestart.getCustomPresets()), []);
+
+    const imported = panelAfterRestart.importCustomPresetsJson(exportedJson, { confirmOverwrite: false });
+    assert.equal(imported.added, 1);
+    assert.equal(panelAfterRestart.getCustomPresets()['黑金精调正式版'].layers[1].decor_style, 'vintage_gold_filigree');
+});
+
+
 
 
 

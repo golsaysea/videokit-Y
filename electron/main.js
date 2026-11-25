@@ -1814,7 +1814,7 @@ app.whenReady().then(async () => {
     ipcMain.on('persistent-presets:set', (event, key, value) => {
         try {
             assertTrustedRenderer(event);
-            if (!['reels_overlay_group_presets','reels_subtitle_presets'].includes(key) || typeof value !== 'string') throw new Error('无效的预设数据');
+            if (!['reels_overlay_group_presets', 'reels_subtitle_presets', 'reels_decor_presets'].includes(key) || typeof value !== 'string') throw new Error('无效的预设数据');
             const parsed = JSON.parse(value);
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('无效的覆层预设格式');
             const values = persistentPresetStore.readSnapshot();

@@ -141,7 +141,7 @@ async function downloadSafeRemoteMedia(rawUrl, destDir, baseName = 'input', opti
                 redirect: 'manual',
                 signal: controller ? controller.signal : undefined,
                 headers: {
-                    'User-Agent': 'VideoKit-CanvaBridge/4.6.22',
+                    'User-Agent': 'VideoKit-CanvaBridge/4.6.23-beta',
                 },
             });
         } finally {
@@ -275,7 +275,7 @@ function buildCanvaPresetCatalog() {
         }));
 
     return {
-        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.22',
+        version: typeof cliMod.getPackageVersion === 'function' ? cliMod.getPackageVersion() : '4.6.23-beta',
         subtitles,
         scrolls,
         overlays,

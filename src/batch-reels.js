@@ -3223,7 +3223,7 @@ function _readStyleFromUI() {
         random_position_use_layout_range: val('reels-anim-in') === 'word_random_position',
         active_line_focus_enabled: val('reels-anim-in') === 'line_focus',
         random_position_height_percent: num('reels-random-position-height', 35),
-        line_spacing: num('reels-line-spacing', 1.2),
+        line_spacing: num('reels-line-spacing', 4),
         rotation: num('reels-rotation', 0),
 
         // Advanced Textbox
@@ -3698,7 +3698,7 @@ function _writeStyleToUI(style) {
     }
     setChk('reels-use-stroke', style.use_stroke !== false);
     set('reels-stroke-color', style.color_outline || '#3E2723');
-    set('reels-stroke-width', style.border_width || 3);
+    set('reels-stroke-width', style.border_width ?? 3);
     setChk('reels-stroke-expand', style.stroke_expand_enabled);
     set('reels-se-layers', style.stroke_expand_layers || 3);
     set('reels-se-layers-range', style.stroke_expand_layers || 3);
@@ -3720,7 +3720,7 @@ function _writeStyleToUI(style) {
     set('reels-effect-glow-opacity', style.effect_glow_opacity ?? 70);
     setChk('reels-shadow', (style.shadow_blur || 0) > 0);
     set('reels-shadow-color', style.color_shadow || '#000000');
-    set('reels-shadow-blur', style.shadow_blur || 4);
+    set('reels-shadow-blur', style.shadow_blur ?? 4);
     set('reels-shadow-offset-x', style.shadow_offset_x ?? 0);
     set('reels-shadow-offset-y', style.shadow_offset_y ?? 2);
     setChk('reels-use-box', style.use_box || style.box_wipe_enabled || style.anim_in_type === 'box_wipe');
@@ -3773,9 +3773,9 @@ function _writeStyleToUI(style) {
     set('reels-dyn-radius', style.dynamic_radius ?? 6);
     setChk('reels-use-underline', style.use_underline);
     set('reels-underline-color', style.color_underline || '#FFD700');
-    set('reels-pos-x', Math.round((style.pos_x || 0.5) * 100));
-    set('reels-pos-y', Math.round((style.pos_y || 0.5) * 100));
-    set('reels-wrap-width', style.wrap_width_percent || 90);
+    set('reels-pos-x', Math.round((style.pos_x ?? 0.5) * 100));
+    set('reels-pos-y', Math.round((style.pos_y ?? 0.5) * 100));
+    set('reels-wrap-width', style.wrap_width_percent ?? 90);
     setChk('reels-auto-wrap', style.auto_wrap !== false);
     set('reels-max-words-per-seg', Math.max(0, parseInt(style.max_words_per_segment, 10) || 0));
     set('reels-max-words-per-line', Math.max(0, parseInt(style.max_words_per_line, 10) || 0));
@@ -3821,23 +3821,23 @@ function _writeStyleToUI(style) {
     set('reels-adv-h', style.advanced_textbox_h || 280);
     setChk('reels-adv-bg', style.adv_bg_enabled);
     set('reels-adv-bg-color', style.adv_bg_color || '#000000');
-    set('reels-adv-bg-opacity', style.adv_bg_opacity || 150);
-    set('reels-adv-bg-radius', style.adv_bg_radius || 8);
+    set('reels-adv-bg-opacity', style.adv_bg_opacity ?? 150);
+    set('reels-adv-bg-radius', style.adv_bg_radius ?? 8);
     set('reels-anim-in', style.anim_in_type || 'fade');
-    set('reels-anim-in-dur', style.anim_in_duration || 0.3);
+    set('reels-anim-in-dur', style.anim_in_duration ?? 0.3);
     set('reels-anim-out', style.anim_out_type || 'fade');
-    set('reels-anim-out-dur', style.anim_out_duration || 0.25);
-    set('reels-float-amp', style.floating_amplitude || 8);
-    set('reels-float-period', style.floating_period || 2);
-    set('reels-bounce-height', style.char_bounce_height || 20);
+    set('reels-anim-out-dur', style.anim_out_duration ?? 0.25);
+    set('reels-float-amp', style.floating_amplitude ?? 8);
+    set('reels-float-period', style.floating_period ?? 2);
+    set('reels-bounce-height', style.char_bounce_height ?? 20);
     set('reels-char-anim-intensity', style.char_anim_intensity ?? 1.0);
     set('reels-char-anim-intensity-range', style.char_anim_intensity ?? 1.0);
     set('reels-char-anim-duration', style.char_anim_duration ?? 0.28);
     set('reels-char-anim-duration-range', style.char_anim_duration ?? 0.28);
     set('reels-char-anim-stagger', style.char_anim_stagger ?? 0.04);
     set('reels-char-anim-stagger-range', style.char_anim_stagger ?? 0.04);
-    set('reels-metro-bpm', style.metronome_bpm || 120);
-    set('reels-jump-scale', style.letter_jump_scale || 1.5);
+    set('reels-metro-bpm', style.metronome_bpm ?? 120);
+    set('reels-jump-scale', style.letter_jump_scale ?? 1.5);
     set('reels-flash-color', style.flash_color || '#FFFFFF');
     set('reels-glow-color', style.anim_in_type === 'kinetic_glow_stack'
         ? (style.kinetic_glow_color || style.holy_glow_color || '#E7FF00')
@@ -3867,6 +3867,21 @@ function _writeStyleToUI(style) {
     set('reels-kinetic-vignette-range', kVig);
     set('reels-blur-max', style.blur_sharp_max || 20);
     set('reels-typewriter-reveal-type', style.typewriter_reveal_type || 'word');
+    const wprMin = style.word_pop_random_min_scale ?? 0.7;
+    const wprMax = style.word_pop_random_max_scale ?? 1.34;
+    const wprDur = style.word_pop_random_duration ?? 0.22;
+    const wprUnreadOp = style.word_pop_random_unread_opacity ?? 0.0;
+    const wprReadOp = style.word_pop_random_read_opacity ?? 1.0;
+    set('reels-word-pop-min', wprMin);
+    set('reels-word-pop-min-range', wprMin);
+    set('reels-word-pop-max', wprMax);
+    set('reels-word-pop-max-range', wprMax);
+    set('reels-word-pop-dur', wprDur);
+    set('reels-word-pop-dur-range', wprDur);
+    set('reels-word-pop-unread-opacity', wprUnreadOp);
+    set('reels-word-pop-unread-opacity-range', wprUnreadOp);
+    set('reels-word-pop-read-opacity', wprReadOp);
+    set('reels-word-pop-read-opacity-range', wprReadOp);
     set('reels-random-word-spacing', style.random_word_spacing || 0);
     set('reels-random-word-spacing-range', style.random_word_spacing || 0);
     set('reels-random-line-spacing', style.random_line_spacing || 0);
@@ -3885,8 +3900,8 @@ function _writeStyleToUI(style) {
 
     // Scrolling lyrics mode
     setChk('reels-scrolling-mode', style.scrolling_mode);
-    set('reels-scrolling-lines', style.scrolling_visible_lines || 3);
-    set('reels-scrolling-opacity', style.scrolling_opacity_context || 0.3);
+    set('reels-scrolling-lines', style.scrolling_visible_lines ?? 3);
+    set('reels-scrolling-opacity', style.scrolling_opacity_context ?? 0.3);
     // Toggle visibility of scrolling sub-options
     const scrollOpts = document.getElementById('reels-scrolling-options');
     if (scrollOpts) scrollOpts.style.display = style.scrolling_mode ? '' : 'none';

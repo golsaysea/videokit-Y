@@ -23,7 +23,7 @@ try {
     if (response?.ok) {
         for (const [key, value] of Object.entries(response.values || {})) {
             try { localStorage.setItem(key, value); } catch (error) {
-                if (['reels_overlay_group_presets','reels_subtitle_presets'].includes(key)) _persistentPresetOverrides.set(key, value);
+                if (['reels_overlay_group_presets', 'reels_subtitle_presets', 'reels_decor_presets'].includes(key)) _persistentPresetOverrides.set(key, value);
                 console.warn('[Presets] Cache restore failed:', error.message);
             }
         }
@@ -596,6 +596,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
         return response;
     },
     // 平台信息
+    readDecorPresets: () => _persistentPresetOverrides.get('reels_decor_presets') ?? localStorage.getItem('reels_decor_presets') ?? '{}',
+    saveDecorPresets: (value) => {
+        const response = ipcRenderer.sendSync('persistent-presets:set', 'reels_decor_presets', value);
+        if (response?.ok) {
+            try {
+                localStorage.setItem('reels_decor_presets', value);
+                _persistentPresetOverrides.delete('reels_decor_presets');
+            } catch (error) {
+                _persistentPresetOverrides.set('reels_decor_presets', value);
+                console.warn('[Presets] Cache save failed:', error.message);
+            }
+        }
+        return response;
+    },
     platform: process.platform,
     autoSavePath: _autoSavePath,
     resolveAssetUrl,

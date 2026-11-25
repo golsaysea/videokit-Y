@@ -857,6 +857,7 @@ class ReelsOverlayPanel {
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
                         <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (34款黑色模板/粒子/电影颗粒/圣诞/退伍军人节)</div>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-save-preset-btn" style="padding:2px 8px;font-size:11px;background:rgba(168,85,247,0.22);color:#e9d5ff;border:1px solid rgba(192,132,252,0.5);border-radius:5px;cursor:pointer;" title="将当前点缀参数与叠加图层保存为“我的点缀预设”，方便以后一键复用">💾 存为点缀预设</button>
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-open-dedicated-decor-tab" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:1px solid #a78bfa;border-radius:5px;cursor:pointer;">✨ 切换到【点缀与颗粒】独立大面板</button>
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-apply-page-btn" style="padding:2px 7px;font-size:10.5px;border-radius:5px;cursor:pointer;" title="仅应用本页（只改当前这一条任务）">📄 本页</button>
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-apply-tab-btn" style="padding:2px 7px;font-size:10.5px;border-radius:5px;cursor:pointer;" title="将当前装饰图层应用到本标签页全部任务">📑 本标签页</button>
@@ -3846,6 +3847,22 @@ class ReelsOverlayPanel {
             this._syncToOverlay();
             if (window._reelsState?.decorPanel) window._reelsState.decorPanel.refresh();
         };
+        const decorSavePresetBtn = this.container.querySelector('#rop-decor-save-preset-btn');
+        if (decorSavePresetBtn) {
+            decorSavePresetBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                if (window._reelsState?.decorPanel?.saveCustomPreset) {
+                    await window._reelsState.decorPanel.saveCustomPreset();
+                } else {
+                    const saved = await _promptAndSaveDecorCustomPreset({
+                        overlays: this.videoCanvas?.overlayMgr?.overlays || [],
+                    });
+                    if (saved && window._reelsState?.decorPanel?.refresh) {
+                        window._reelsState.decorPanel.refresh();
+                    }
+                }
+            });
+        }
         const openDedicatedDecorBtn = this.container.querySelector('#rop-open-dedicated-decor-tab');
         if (openDedicatedDecorBtn) {
             openDedicatedDecorBtn.addEventListener('click', (e) => {
@@ -14823,6 +14840,218 @@ function _buildIntroCardHtml({ openAccordion = false } = {}) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ✨ 独立专属大面板：点缀、黑色氛围模板、飘浮粒子与电影颗粒工作台 (ReelsDecorPanel)
 // ═══════════════════════════════════════════════════════════════════════════
+const _DECOR_PRESET_STORAGE_KEY = 'reels_decor_presets';
+
+function _escDecorHtml(str) {
+    return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function _readDecorCustomPresetsStore() {
+    let raw = '{}';
+    try {
+        if (typeof window !== 'undefined' && typeof window.electronAPI?.readDecorPresets === 'function') {
+            raw = window.electronAPI.readDecorPresets() || '{}';
+        } else if (typeof localStorage !== 'undefined') {
+            raw = localStorage.getItem(_DECOR_PRESET_STORAGE_KEY) || '{}';
+        }
+    } catch (_) {
+        raw = '{}';
+    }
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+        const clean = {};
+        for (const [k, v] of Object.entries(parsed)) {
+            const name = String(k || '').trim();
+            if (!name || !v || typeof v !== 'object') continue;
+            const layers = Array.isArray(v.layers) ? v.layers.filter(l => l && typeof l === 'object') : [];
+            if (!layers.length) continue;
+            clean[name] = { ...v, name, layers };
+        }
+        return clean;
+    } catch (_) {
+        return {};
+    }
+}
+
+function _writeDecorCustomPresetsStore(map) {
+    const cleanMap = (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+    const raw = JSON.stringify(cleanMap);
+    if (typeof window !== 'undefined' && typeof window.electronAPI?.saveDecorPresets === 'function') {
+        const res = window.electronAPI.saveDecorPresets(raw);
+        if (res && res.ok === false) {
+            throw new Error(res.error || '无法写入点缀预设库');
+        }
+    }
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(_DECOR_PRESET_STORAGE_KEY, raw);
+        }
+    } catch (_) {}
+    return cleanMap;
+}
+
+function _serializeDecorLayersForPreset(overlays) {
+    const decors = (Array.isArray(overlays) ? overlays : []).filter(o => o && o.type === 'decor');
+    return decors.map(ov => {
+        const clone = JSON.parse(JSON.stringify(ov, (key, val) => (key === '_allOverlays' ? undefined : val)));
+        delete clone.id;
+        delete clone._img;
+        delete clone._imgLoaded;
+        delete clone._templateName;
+        delete clone._prevOpacity;
+        clone.type = 'decor';
+        clone.fixed_text = clone.fixed_text ?? true;
+        const savedStart = Number(clone.start);
+        const savedEnd = Number(clone.end);
+        clone.start = Number.isFinite(savedStart) ? Math.max(0, savedStart) : 0;
+        clone.end = Number.isFinite(savedEnd) && savedEnd >= clone.start ? savedEnd : 9999;
+        return clone;
+    });
+}
+
+function _summarizeDecorPresetEntry(entry) {
+    const layers = Array.isArray(entry?.layers) ? entry.layers : [];
+    const first = layers[0] || {};
+    const badges = _computeDecorSummaryBadges(first);
+    const parts = [];
+    if (layers.length > 1) parts.push(`${layers.length}层叠加`);
+    if (badges.effectsActive && badges.effectsLabel && badges.effectsLabel !== '未开启') parts.push(badges.effectsLabel);
+    if (badges.darkActive) parts.push(badges.darkLabel);
+    if (badges.grainActive) parts.push(badges.grainLabel);
+    if (!parts.length && badges.presetLabel && badges.presetLabel !== '未选择') parts.push(badges.presetLabel);
+    const presetMeta = window.ReelsOverlay?.DECOR_OVERLAY_STYLES?.[first.decor_style] || {};
+    return {
+        summary: parts.slice(0, 3).join(' · ') || '自定义点缀',
+        color1: first.decor_color1 || presetMeta.color1 || '#FFD700',
+        color2: first.decor_color2 || presetMeta.color2 || '#FFFDF5',
+        layerCount: layers.length,
+    };
+}
+
+function _showDecorPresetNameDialog({ title = '保存我的点缀预设', defaultName = '', summaryText = '', confirmText = '保存' } = {}) {
+    if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+        return Promise.resolve(String(defaultName || '').trim() || null);
+    }
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'rdp-preset-name-modal';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1000000;background:rgba(0,0,0,0.68);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'width:min(380px,92vw);box-sizing:border-box;padding:18px 20px;border-radius:12px;background:var(--bg-primary,#1e1e2e);border:1px solid rgba(168,85,247,0.45);box-shadow:0 16px 42px rgba(0,0,0,0.6);color:var(--text-primary,#f8fafc);';
+
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:6px;';
+        titleEl.textContent = title;
+
+        const hintEl = document.createElement('div');
+        hintEl.style.cssText = 'font-size:11.5px;color:#cbd5e1;margin-bottom:10px;line-height:1.45;';
+        hintEl.textContent = summaryText || '将当前点缀参数（含氛围暗角/胶片颗粒/粒子/配色/多层叠加）保存到预设库，下次可一键应用。';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultName || '';
+        input.placeholder = '输入点缀预设名称，如：黑金高对比微尘';
+        input.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 11px;border-radius:7px;border:1px solid rgba(148,163,184,0.4);background:var(--bg-secondary,#2a2a3e);color:var(--text-primary,#fff);font-size:13px;outline:none;';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:14px;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = '取消';
+        cancelBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid rgba(148,163,184,0.35);background:transparent;color:#cbd5e1;cursor:pointer;font-size:12.5px;';
+
+        const okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.textContent = confirmText;
+        okBtn.style.cssText = 'padding:6px 15px;border-radius:6px;border:none;background:linear-gradient(135deg,#7c3aed,#9333ea);color:#fff;font-weight:700;cursor:pointer;font-size:12.5px;';
+
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(okBtn);
+        box.appendChild(titleEl);
+        box.appendChild(hintEl);
+        box.appendChild(input);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        let done = false;
+        const finish = (val) => {
+            if (done) return;
+            done = true;
+            window.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+            resolve(val);
+        };
+        const submit = () => {
+            const val = String(input.value || '').trim();
+            if (!val) {
+                input.focus();
+                return;
+            }
+            finish(val);
+        };
+        const onKeyDown = (ev) => {
+            if (ev.key === 'Escape') { ev.preventDefault(); finish(null); }
+            else if (ev.key === 'Enter') { ev.preventDefault(); submit(); }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        cancelBtn.onclick = () => finish(null);
+        okBtn.onclick = submit;
+        overlay.onclick = (ev) => { if (ev.target === overlay) finish(null); };
+        setTimeout(() => { input.focus(); input.select?.(); }, 10);
+    });
+}
+
+async function _promptAndSaveDecorCustomPreset({ overlays = [], presetName = null, suggestedName = '' } = {}) {
+    const serialized = _serializeDecorLayersForPreset(overlays);
+    if (!serialized.length) {
+        if (typeof window?.showToast === 'function') window.showToast('⚠️ 当前还没有点缀图层，请先选择一个风格或调节参数后再保存', 'warning');
+        else if (typeof alert === 'function') alert('当前还没有点缀图层，请先选择一个风格或调节参数后再保存');
+        return null;
+    }
+    const existing = _readDecorCustomPresetsStore();
+    const firstStyle = window.ReelsOverlay?.DECOR_OVERLAY_STYLES?.[serialized[0].decor_style]?.name || '';
+    const cleanedBase = firstStyle.replace(/^[^\w\u4e00-\u9fff]+/, '').split('+')[0].trim() || '自定义点缀';
+    const fallbackDefault = suggestedName || `${cleanedBase}_自调`;
+
+    let finalName = presetName ? String(presetName).trim() : '';
+    if (!finalName) {
+        const meta = _summarizeDecorPresetEntry({ layers: serialized });
+        finalName = await _showDecorPresetNameDialog({
+            title: '💾 保存我的点缀预设',
+            defaultName: fallbackDefault,
+            summaryText: `将保存 ${meta.layerCount} 个点缀图层（${meta.summary}），下次可在【我的点缀预设】一键复用。`,
+            confirmText: '保存预设',
+        });
+        if (!finalName) return null;
+        if (existing[finalName] && typeof confirm === 'function' && !confirm(`点缀预设 "${finalName}" 已存在，确定要覆盖吗？`)) {
+            return null;
+        }
+    }
+
+    const nowIso = new Date().toISOString();
+    const entry = {
+        name: finalName,
+        layers: serialized,
+        createdAt: existing[finalName]?.createdAt || nowIso,
+        updatedAt: nowIso,
+    };
+    existing[finalName] = entry;
+    _writeDecorCustomPresetsStore(existing);
+    if (typeof window?.showToast === 'function') {
+        window.showToast(`✅ 点缀预设「${finalName}」已保存 (${serialized.length}层)`, 'success');
+    }
+    return entry;
+}
+
 class ReelsDecorPanel {
     constructor(container, videoCanvasProxy, linkedOverlayPanel = null) {
         this.container = container;
@@ -14830,6 +15059,8 @@ class ReelsDecorPanel {
         this.linkedOverlayPanel = linkedOverlayPanel;
         this._selectedDecorId = null;
         this._activeCategory = 'all';
+        this._activeCustomPresetName = '';
+        this._renderedCustomNames = [];
         this._syncing = false;
         this._syncingIntro = false;
         this._hasSyncedCtaOnce = false;
@@ -15161,6 +15392,26 @@ class ReelsDecorPanel {
                             <select id="rdp-style-select" class="rop-select" style="flex:1;min-width:0;font-size:11px;padding:3px 6px;">
                                 ${selectOptionsHtml}
                             </select>
+                        </div>
+                        <div class="rdp-custom-presets-box" id="rdp-custom-presets-box">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;">
+                                <span style="font-size:11.5px;font-weight:800;color:#e9d5ff;display:inline-flex;align-items:center;gap:5px;">
+                                    <span>⭐ 我的点缀预设</span>
+                                    <span id="rdp-custom-count-badge" style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(168,85,247,0.28);color:#f3e8ff;border:1px solid rgba(192,132,252,0.45);">0个</span>
+                                </span>
+                                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+                                    <button type="button" id="rdp-custom-save-btn" class="rop-btn" style="padding:2px 7px;font-size:10.5px;font-weight:700;background:linear-gradient(135deg,#7c3aed,#9333ea);color:#fff;border:1px solid #c084fc;border-radius:5px;cursor:pointer;" title="把当前调好的点缀参数与叠加图层保存为我的预设">💾 保存当前</button>
+                                    <button type="button" id="rdp-custom-update-btn" class="rop-btn" style="padding:2px 6px;font-size:10.5px;background:rgba(148,163,184,0.16);color:#e2e8f0;border:1px solid rgba(148,163,184,0.35);border-radius:5px;cursor:pointer;" title="用当前参数覆盖更新已选中的我的预设">🔄 更新</button>
+                                    <button type="button" id="rdp-custom-rename-btn" class="rop-btn" style="padding:2px 5px;font-size:10.5px;background:rgba(148,163,184,0.12);color:#cbd5e1;border:1px solid rgba(148,163,184,0.3);border-radius:5px;cursor:pointer;" title="重命名选中的点缀预设">✏️</button>
+                                    <button type="button" id="rdp-custom-del-btn" class="rop-btn" style="padding:2px 5px;font-size:10.5px;background:rgba(239,68,68,0.16);color:#fca5a5;border:1px solid rgba(239,68,68,0.35);border-radius:5px;cursor:pointer;" title="删除选中的点缀预设">🗑️</button>
+                                    <button type="button" id="rdp-custom-import-btn" class="rop-btn" style="padding:2px 5px;font-size:10.5px;background:rgba(59,130,246,0.14);color:#93c5fd;border:1px solid rgba(59,130,246,0.35);border-radius:5px;cursor:pointer;" title="从 JSON 文件导入点缀预设">📥</button>
+                                    <button type="button" id="rdp-custom-export-btn" class="rop-btn" style="padding:2px 5px;font-size:10.5px;background:rgba(16,185,129,0.14);color:#6ee7b7;border:1px solid rgba(16,185,129,0.35);border-radius:5px;cursor:pointer;" title="导出全部我的点缀预设为 JSON 备份">📤</button>
+                                </div>
+                            </div>
+                            <select id="rdp-custom-preset-select" class="rop-select" style="font-size:11px;padding:3px 6px;">
+                                <option value="">-- 选择我的点缀预设 (尚未保存) --</option>
+                            </select>
+                            <div id="rdp-custom-preset-grid" class="rdp-custom-preset-grid"></div>
                         </div>
                         <div class="rdp-cat-bar">
                             <button type="button" class="rdp-cat-btn active" data-cat="all" style="border:1px solid #6366f1;background:#4f46e5;color:#fff;font-weight:700;">全部 (34)</button>
@@ -15769,6 +16020,9 @@ class ReelsDecorPanel {
             });
         }
 
+        // 绑定“我的点缀预设”保存、更新、重命名、删除、导入/导出
+        this._bindCustomPresetEvents();
+
         // 绑定独立邀约电话模块事件
         this._bindPhoneCtaModuleEvents();
         // 绑定节日倒计时光环开场模块事件
@@ -16359,6 +16613,7 @@ class ReelsDecorPanel {
     }
 
     applyPreset(styleId) {
+        this._activeCustomPresetName = '';
         // 点击预设时若顶部总开关处于关闭状态，自动帮用户勾选启用以便立即看到效果
         const masterCheck = this.container?.querySelector('#rdp-master-enable');
         if (masterCheck && !masterCheck.checked) {
@@ -16380,12 +16635,358 @@ class ReelsDecorPanel {
         this._syncFromDecorOverlay(ov);
         this._syncScopeAndRender(ov);
         this._renderLayerList();
+        this._refreshCustomPresetsUI();
         if (this.linkedOverlayPanel) {
             this.linkedOverlayPanel._refreshList();
             if (this.linkedOverlayPanel._selectedOv?.id === ov.id) {
                 this.linkedOverlayPanel._syncFromOverlay(ov);
             }
         }
+    }
+
+    getCustomPresets() {
+        return _readDecorCustomPresetsStore();
+    }
+
+    async saveCustomPreset(explicitName = null) {
+        const decors = this._getDecorOverlays();
+        const overlaysToSave = decors.length ? decors : [];
+        const suggestedBase = this._activeCustomPresetName ? `${this._activeCustomPresetName}_副本` : '';
+        const saved = await _promptAndSaveDecorCustomPreset({
+            overlays: overlaysToSave,
+            presetName: explicitName,
+            suggestedName: suggestedBase,
+        });
+        if (!saved) return null;
+        this._activeCustomPresetName = saved.name;
+        this._refreshCustomPresetsUI();
+        return saved;
+    }
+
+    async updateSelectedCustomPreset() {
+        const selectEl = this.container?.querySelector('#rdp-custom-preset-select');
+        const targetName = String(selectEl?.value || this._activeCustomPresetName || '').trim();
+        if (!targetName) {
+            if (typeof window?.showToast === 'function') window.showToast('请先在“我的点缀预设”中选择要更新的预设', 'info');
+            else if (typeof alert === 'function') alert('请先在“我的点缀预设”中选择要更新的预设');
+            return null;
+        }
+        const presets = _readDecorCustomPresetsStore();
+        if (!presets[targetName]) return null;
+        if (typeof confirm === 'function' && !confirm(`确定要用当前调好的点缀参数覆盖预设 "${targetName}" 吗？`)) {
+            return null;
+        }
+        return this.saveCustomPreset(targetName);
+    }
+
+    async renameSelectedCustomPreset(explicitNewName = null) {
+        const selectEl = this.container?.querySelector('#rdp-custom-preset-select');
+        const oldName = String(selectEl?.value || this._activeCustomPresetName || '').trim();
+        if (!oldName) {
+            if (typeof alert === 'function') alert('请先在“我的点缀预设”中选择要重命名的预设');
+            return null;
+        }
+        const presets = _readDecorCustomPresetsStore();
+        const entry = presets[oldName];
+        if (!entry) return null;
+
+        let newName = explicitNewName ? String(explicitNewName).trim() : '';
+        if (!newName) {
+            newName = await _showDecorPresetNameDialog({
+                title: '✏️ 重命名点缀预设',
+                defaultName: oldName,
+                summaryText: `将“${oldName}”重命名为新名称：`,
+                confirmText: '确认重命名',
+            });
+        }
+        if (!newName || newName === oldName) return null;
+        if (presets[newName] && typeof confirm === 'function' && !confirm(`点缀预设 "${newName}" 已存在，确定覆盖？`)) {
+            return null;
+        }
+        delete presets[oldName];
+        presets[newName] = { ...entry, name: newName, updatedAt: new Date().toISOString() };
+        _writeDecorCustomPresetsStore(presets);
+        if (this._activeCustomPresetName === oldName) this._activeCustomPresetName = newName;
+        this._refreshCustomPresetsUI();
+        if (typeof window?.showToast === 'function') window.showToast(`✅ 已重命名为「${newName}」`, 'success');
+        return presets[newName];
+    }
+
+    deleteCustomPreset(name = null, { skipConfirm = false } = {}) {
+        const selectEl = this.container?.querySelector('#rdp-custom-preset-select');
+        const targetName = String(name ?? selectEl?.value ?? this._activeCustomPresetName ?? '').trim();
+        if (!targetName) {
+            if (typeof alert === 'function') alert('请先在“我的点缀预设”中选择要删除的预设');
+            return false;
+        }
+        const presets = _readDecorCustomPresetsStore();
+        if (!presets[targetName]) return false;
+        if (!skipConfirm && typeof confirm === 'function' && !confirm(`确定删除我的点缀预设 "${targetName}" 吗？`)) {
+            return false;
+        }
+        delete presets[targetName];
+        _writeDecorCustomPresetsStore(presets);
+        if (this._activeCustomPresetName === targetName) this._activeCustomPresetName = '';
+        this._refreshCustomPresetsUI();
+        if (typeof window?.showToast === 'function') window.showToast(`🗑️ 已删除点缀预设「${targetName}」`, 'info');
+        return true;
+    }
+
+    applyCustomPreset(name) {
+        const targetName = String(name || '').trim();
+        if (!targetName) return false;
+        const presets = _readDecorCustomPresetsStore();
+        const entry = presets[targetName];
+        if (!entry || !Array.isArray(entry.layers) || !entry.layers.length) return false;
+
+        const masterCheck = this.container?.querySelector('#rdp-master-enable');
+        if (masterCheck && !masterCheck.checked) {
+            masterCheck.checked = true;
+            this._syncMasterEnableUI(true);
+            if (typeof window.reelsOnDecorToggleChange === 'function') {
+                window.reelsOnDecorToggleChange(masterCheck);
+            }
+        }
+
+        const existingDecors = this._getDecorOverlays();
+        existingDecors.forEach(d => {
+            if (this.videoCanvas && typeof this.videoCanvas.removeOverlay === 'function') {
+                this.videoCanvas.removeOverlay(d.id);
+            } else if (Array.isArray(this.videoCanvas?.overlayMgr?.overlays)) {
+                const idx = this.videoCanvas.overlayMgr.overlays.indexOf(d);
+                if (idx !== -1) this.videoCanvas.overlayMgr.overlays.splice(idx, 1);
+            }
+        });
+
+        const ReelsOverlayMod = typeof window !== 'undefined' ? window.ReelsOverlay : null;
+        const created = [];
+        for (const layerSpec of entry.layers) {
+            const specCopy = JSON.parse(JSON.stringify(layerSpec));
+            delete specCopy.id;
+            const ov = (ReelsOverlayMod && typeof ReelsOverlayMod.createDecorOverlay === 'function')
+                ? ReelsOverlayMod.createDecorOverlay(specCopy)
+                : { ...specCopy, id: `ov_decor_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, type: 'decor' };
+            if (specCopy.disabled !== undefined) ov.disabled = Boolean(specCopy.disabled);
+            if (this.videoCanvas && typeof this.videoCanvas.addOverlay === 'function') {
+                this.videoCanvas.addOverlay(ov);
+            } else if (Array.isArray(this.videoCanvas?.overlayMgr?.overlays)) {
+                this.videoCanvas.overlayMgr.overlays.push(ov);
+            }
+            created.push(ov);
+        }
+
+        const primary = created[created.length - 1] || null;
+        this._selectedDecorId = primary?.id || null;
+        this._activeCustomPresetName = targetName;
+        if (primary) {
+            this._syncFromDecorOverlay(primary);
+            this._syncScopeAndRender(primary, { structuralChange: true });
+        }
+        this._renderLayerList();
+        this._refreshCustomPresetsUI();
+        if (this.linkedOverlayPanel) {
+            this.linkedOverlayPanel._refreshList();
+            if (primary && this.linkedOverlayPanel._selectedOv?.id === primary.id) {
+                this.linkedOverlayPanel._syncFromOverlay(primary);
+            }
+        }
+        if (typeof window?.showToast === 'function') {
+            window.showToast(`✨ 已应用点缀预设「${targetName}」`, 'success');
+        }
+        return true;
+    }
+
+    exportCustomPresetsJson() {
+        const presets = _readDecorCustomPresetsStore();
+        const names = Object.keys(presets);
+        if (!names.length) {
+            if (typeof alert === 'function') alert('当前还没有保存任何自定义点缀预设');
+            return '';
+        }
+        const payload = JSON.stringify({
+            version: 1,
+            kind: 'videokit_decor_presets',
+            exportedAt: new Date().toISOString(),
+            presets,
+        }, null, 2);
+        try {
+            if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof document !== 'undefined') {
+                const blob = new Blob([payload], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `videokit_decor_presets_${new Date().toISOString().slice(0, 10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+        } catch (_) {}
+        return payload;
+    }
+
+    importCustomPresetsJson(rawJson, { confirmOverwrite = true } = {}) {
+        const parsed = JSON.parse(String(rawJson || ''));
+        const candidateMap = (parsed && typeof parsed === 'object' && parsed.kind === 'videokit_decor_presets' && parsed.presets)
+            ? parsed.presets
+            : parsed;
+        if (!candidateMap || typeof candidateMap !== 'object' || Array.isArray(candidateMap)) {
+            throw new Error('无效的点缀预设 JSON 格式');
+        }
+        const existing = _readDecorCustomPresetsStore();
+        let added = 0;
+        let overwritten = 0;
+        let lastImported = '';
+        for (const [key, item] of Object.entries(candidateMap)) {
+            const name = String(item?.name || key || '').trim();
+            const rawLayers = Array.isArray(item?.layers) ? item.layers : (item?.type === 'decor' ? [item] : []);
+            const layers = _serializeDecorLayersForPreset(rawLayers);
+            if (!name || !layers.length) continue;
+            if (existing[name]) {
+                if (confirmOverwrite && typeof confirm === 'function' && !confirm(`预设「${name}」已存在，是否覆盖？`)) continue;
+                overwritten++;
+            } else {
+                added++;
+            }
+            existing[name] = {
+                name,
+                layers,
+                createdAt: item?.createdAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            };
+            lastImported = name;
+        }
+        if (!added && !overwritten) {
+            throw new Error('文件中没有有效的点缀预设图层');
+        }
+        _writeDecorCustomPresetsStore(existing);
+        if (lastImported && !this._activeCustomPresetName) this._activeCustomPresetName = lastImported;
+        this._refreshCustomPresetsUI();
+        return { added, overwritten, total: Object.keys(existing).length };
+    }
+
+    _bindCustomPresetEvents() {
+        if (!this.container) return;
+        const q = (sel) => this.container.querySelector(sel);
+        q('#rdp-custom-save-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.saveCustomPreset();
+        });
+        q('#rdp-custom-update-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.updateSelectedCustomPreset();
+        });
+        q('#rdp-custom-rename-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.renameSelectedCustomPreset();
+        });
+        q('#rdp-custom-del-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.deleteCustomPreset();
+        });
+        q('#rdp-custom-preset-select')?.addEventListener('change', (e) => {
+            const val = String(e.target.value || '').trim();
+            if (val) this.applyCustomPreset(val);
+        });
+        q('#rdp-custom-export-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.exportCustomPresetsJson();
+        });
+        q('#rdp-custom-import-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof document === 'undefined' || typeof FileReader === 'undefined') return;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json,application/json';
+            input.onchange = () => {
+                const file = input.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const res = this.importCustomPresetsJson(reader.result);
+                        if (typeof window?.showToast === 'function') {
+                            window.showToast(`✅ 导入完成：新增 ${res.added} 个，覆盖 ${res.overwritten} 个`, 'success');
+                        }
+                    } catch (err) {
+                        if (typeof alert === 'function') alert(`导入失败：${err.message}`);
+                    }
+                };
+                reader.readAsText(file, 'utf8');
+            };
+            input.click();
+        });
+    }
+
+    _refreshCustomPresetsUI() {
+        if (!this.container) return;
+        const presets = _readDecorCustomPresetsStore();
+        const names = Object.keys(presets);
+        this._renderedCustomNames = names;
+
+        const badge = this.container.querySelector('#rdp-custom-count-badge');
+        if (badge) badge.textContent = `${names.length}个`;
+
+        const selectEl = this.container.querySelector('#rdp-custom-preset-select');
+        if (selectEl) {
+            const opts = [`<option value="">-- 选择我的点缀预设 (${names.length}个) --</option>`];
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                const meta = _summarizeDecorPresetEntry(presets[name]);
+                const safeName = _escDecorHtml(name);
+                opts.push(`<option value="${safeName}">${safeName} (${meta.layerCount}层)</option>`);
+            }
+            selectEl.innerHTML = opts.join('');
+            if (this._activeCustomPresetName && presets[this._activeCustomPresetName]) {
+                selectEl.value = this._activeCustomPresetName;
+            }
+        }
+
+        const gridEl = this.container.querySelector('#rdp-custom-preset-grid');
+        if (!gridEl) return;
+        if (!names.length) {
+            gridEl.innerHTML = `<div style="grid-column:1/-1;font-size:10.5px;color:#cbd5e1;opacity:0.8;padding:3px 2px;">调好暗角、颗粒、粒子或配色后点上方「💾 保存当前」，下次就能直接一键应用。</div>`;
+            return;
+        }
+        gridEl.innerHTML = names.map((name, idx) => {
+            const meta = _summarizeDecorPresetEntry(presets[name]);
+            const isActive = this._activeCustomPresetName === name;
+            const safeName = _escDecorHtml(name);
+            const safeSummary = _escDecorHtml(meta.summary);
+            const safeColor1 = _escDecorHtml(meta.color1);
+            const safeColor2 = _escDecorHtml(meta.color2);
+            return `
+                <div class="rdp-custom-preset-card${isActive ? ' is-active' : ''}" data-custom-idx="${idx}" title="${safeName} · ${safeSummary}">
+                    <div style="display:flex;width:100%;justify-content:space-between;align-items:center;gap:4px;">
+                        <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;opacity:0.9;">
+                            <i style="width:8px;height:8px;border-radius:50%;background:${safeColor1};display:inline-block;border:1px solid rgba(255,255,255,0.45);"></i>
+                            <i style="width:8px;height:8px;border-radius:50%;background:${safeColor2};display:inline-block;border:1px solid rgba(255,255,255,0.45);"></i>
+                            <span>${meta.layerCount}层</span>
+                        </span>
+                        <button type="button" class="rdp-custom-card-del" data-custom-idx="${idx}" title="删除此预设" style="background:none;border:none;color:#fca5a5;cursor:pointer;font-size:11px;padding:0 2px;line-height:1;">✕</button>
+                    </div>
+                    <div style="font-size:11px;font-weight:700;line-height:1.25;word-break:break-word;width:100%;">${safeName}</div>
+                    <div style="font-size:9.5px;opacity:0.78;line-height:1.2;word-break:break-word;width:100%;">${safeSummary}</div>
+                </div>
+            `;
+        }).join('');
+
+        gridEl.querySelectorAll('.rdp-custom-preset-card').forEach(card => {
+            card.addEventListener('click', (e) => {
+                if (e.target?.closest?.('.rdp-custom-card-del')) return;
+                const idx = Number(card.dataset.customIdx);
+                const presetName = this._renderedCustomNames?.[idx];
+                if (presetName) this.applyCustomPreset(presetName);
+            });
+        });
+        gridEl.querySelectorAll('.rdp-custom-card-del').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = Number(btn.dataset.customIdx);
+                const presetName = this._renderedCustomNames?.[idx];
+                if (presetName) this.deleteCustomPreset(presetName);
+            });
+        });
     }
 
     _setVal(id, val) {
@@ -16783,6 +17384,7 @@ class ReelsDecorPanel {
         }
         this._syncIntroUI(this._getIntroCountdown());
         this._syncPhoneCtaUI(this._getPhoneCta());
+        this._refreshCustomPresetsUI();
         this._updateScopeQuickUI();
     }
 }

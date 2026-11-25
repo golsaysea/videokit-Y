@@ -74,18 +74,30 @@ function isGladiaRateLimit(status, body) {
 }
 
 function classifyGladiaError(message) {
-    const text = String(message || '');
+    const text = String(message || '').trim();
     const lower = text.toLowerCase();
     if (text.includes('401') || lower.includes('unauthorized') || lower.includes('invalid api key')) {
         return {
             type: 'auth',
-            friendly: '401 Unauthorized (接口鉴权失败，请检查 Key 是否正确或已过期)',
+            friendly: '401 鉴权失败（API Key 无效或已过期，请检查 Key 是否正确）',
         };
     }
     if (text.includes('403') || lower.includes('forbidden')) {
         return {
             type: 'auth',
-            friendly: '403 Forbidden (无权限，可能账号受限)',
+            friendly: '403 拒绝访问（账号无权限或当前网络地区受限）',
+        };
+    }
+    if (text.includes('413') || lower.includes('too large') || lower.includes('payload')) {
+        return {
+            type: 'other',
+            friendly: '413 音频文件过大，超出接口上传限制，请切分较短片段后再试',
+        };
+    }
+    if (text.includes('400') || lower.includes('bad request') || lower.includes('invalid audio') || lower.includes('corrupt')) {
+        return {
+            type: 'other',
+            friendly: '400 请求参数或音频格式异常，请检查原片音轨是否正常',
         };
     }
     if (lower.includes('insufficient credit') || lower.includes('insufficient balance') ||
@@ -94,7 +106,7 @@ function classifyGladiaError(message) {
         lower.includes('audio quota') || lower.includes('quota exceeded')) {
         return {
             type: 'quota',
-            friendly: `额度已用完或余额不足${text ? `：${text.slice(0, 260)}` : ''}`,
+            friendly: 'Gladia 账户额度已用完或余额不足，请更换 Key 或充值后重试',
         };
     }
     if (lower.includes('concurren') || lower.includes('simultaneous') ||
@@ -102,7 +114,7 @@ function classifyGladiaError(message) {
         lower.includes('already processing')) {
         return {
             type: 'concurrency',
-            friendly: `并发任务已达上限，请等待正在处理的任务完成后重试${text ? `：${text.slice(0, 260)}` : ''}`,
+            friendly: 'Gladia 并发任务已达上限，请降低批量并发数或等待其他任务完成后重试',
         };
     }
     if (text.includes('LIMIT_EXCEEDED') || text.includes('429') ||
@@ -111,24 +123,37 @@ function classifyGladiaError(message) {
         lower.includes('too many requests')) {
         return {
             type: 'rate_limit',
-            friendly: `请求频率过高（429），请降低批量并发或稍后重试${text ? `：${text.slice(0, 260)}` : ''}`,
+            friendly: 'Gladia 请求频率过高（429 限流），请降低批量并发数或稍后重试',
         };
     }
-    if (/\b5\d\d\b/.test(text) || lower.includes('service unavailable') || lower.includes('bad gateway')) {
-        return { type: 'service', friendly: `Gladia 服务端暂时异常${text ? `：${text.slice(0, 260)}` : ''}` };
+    if (/\b5\d\d\b/.test(text) || lower.includes('service unavailable') || lower.includes('bad gateway') || lower.includes('internal server error')) {
+        return { type: 'service', friendly: 'Gladia 服务端暂时繁忙或异常，请稍后重试' };
     }
-    if (lower.includes('econn') || lower.includes('enotfound') || lower.includes('socket') || lower.includes('network')) {
-        return { type: 'network', friendly: `网络连接失败${text ? `：${text.slice(0, 260)}` : ''}` };
+    if (lower.includes('econnreset') || lower.includes('socket hang up')) {
+        return { type: 'network', friendly: 'Gladia 网络连接被中断，请检查网络或代理稳定性' };
     }
-    if (lower.includes('timeout') || text.includes('超时')) {
+    if (lower.includes('enotfound') || lower.includes('eai_again')) {
+        return { type: 'network', friendly: 'Gladia 域名解析失败，请检查网络、DNS 或代理设置' };
+    }
+    if (lower.includes('econn') || lower.includes('socket') || lower.includes('network') || lower.includes('certificate')) {
+        return { type: 'network', friendly: 'Gladia 网络连接失败，请检查网络或代理配置' };
+    }
+    if (lower.includes('timeout') || lower.includes('timed out') || text.includes('超时')) {
         return {
             type: 'timeout',
-            friendly: '连接超时 (Timeout)',
+            friendly: 'Gladia 接口请求超时，请检查网络连接或稍后重试',
         };
     }
+    if (/[\u4e00-\u9fff]/.test(text) && !/[A-Za-z]{4,}/.test(text)) {
+        return {
+            type: 'other',
+            friendly: text.slice(0, 200),
+        };
+    }
+    const statusMatch = text.match(/\b([45]\d{2})\b/);
     return {
         type: 'other',
-        friendly: text || '未知错误',
+        friendly: `Gladia 转录接口返回异常${statusMatch ? `（HTTP ${statusMatch[1]}）` : ''}，请检查网络、代理或账号配置后重试`,
     };
 }
 

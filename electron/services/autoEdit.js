@@ -1451,8 +1451,15 @@ async function autoEditByScript(opts = {}) {
     const firstResolution = await ffmpegService.getResolution(clips[0]);
     const [sourceWidth, sourceHeight] = String(firstResolution || '').split('x').map(Number);
     const sourceFps = await ffmpegService.getFrameRate(clips[0]);
-    const targetWidth = parseInt(opts.targetWidth || opts.target_width || sourceWidth || 1080, 10);
-    const targetHeight = parseInt(opts.targetHeight || opts.target_height || sourceHeight || 1920, 10);
+    const rawTargetWidth = parseInt(opts.targetWidth || opts.target_width || sourceWidth || 1080, 10);
+    const rawTargetHeight = parseInt(opts.targetHeight || opts.target_height || sourceHeight || 1920, 10);
+    // libx264 yuv420p 强制要求偶数宽高，奇数分辨率会在最终导出/封装阶段直接报错
+    const toEvenDim = (val, fallback) => {
+        const n = Number.isFinite(val) && val >= 2 ? Math.round(val) : fallback;
+        return Math.max(2, n - (n % 2));
+    };
+    const targetWidth = toEvenDim(rawTargetWidth, 1080);
+    const targetHeight = toEvenDim(rawTargetHeight, 1920);
     const fps = Number(opts.fps) > 0 ? Number(opts.fps) : (sourceFps || 30);
     const fitMode = opts.fitMode === 'contain' || opts.fit_mode === 'contain' ? 'contain' : 'cover';
     const videoFitFilter = fitMode === 'contain'
@@ -1851,7 +1858,8 @@ async function autoEditByScript(opts = {}) {
                     errorMsg = err.message || String(err);
                     transcription = {
                         wordTimeInfo: [],
-                        fullText: `(转录失败: ${errorMsg})`,
+                        fullText: '',
+                        error: errorMsg,
                         source: 'failed'
                     };
                 }
@@ -2946,6 +2954,8 @@ async function autoEditByScript(opts = {}) {
                     speed: normalizeAutoEditSpeed(plan.speed),
                     source_duration: Math.round((plan.duration || plan.end) * 1000) / 1000,
                     transcription_source: plan.transcription.source,
+                transcription_error: plan.transcription.error || '',
+                    transcription_error: plan.transcription.error || '',
                     word_timeline: (plan.words || []).map(word => ({
                         word: word.raw,
                         start: word.start,
@@ -2986,9 +2996,11 @@ async function autoEditByScript(opts = {}) {
             // （如 Third）不再完全相同，但识别全文高度相似时仍必须进入同一组。
             // 0.92 与原有 duplicatePlan 阈值一致；短于 12 个归一化字符不做整段判定。
             for (let left = 0; left < analysisSegments.length; left++) {
+                if (analysisSegments[left].transcription_source === 'failed') continue;
                 const leftText = normalizeText(analysisSegments[left].recognized_text || '');
                 if (leftText.length < 12) continue;
                 for (let right = left + 1; right < analysisSegments.length; right++) {
+                    if (analysisSegments[right].transcription_source === 'failed') continue;
                     const rightText = normalizeText(analysisSegments[right].recognized_text || '');
                     if (!isLikelyDuplicateTranscription(leftText, rightText)) continue;
                     unionDuplicateRows(left, right);
@@ -3264,7 +3276,8 @@ async function autoEditByScript(opts = {}) {
                     return `between(t\\,${from}\\,${to})`;
                 }).join('+')
                 : '';
-            const videoRemoveFilter = removeExpr ? `select='not(${removeExpr})',setpts=N/FRAME_RATE/TB,` : '';
+            const safeRemoveFps = (Number.isFinite(sourceFps) && sourceFps > 1) ? Number(sourceFps.toFixed(3)) : 30;
+            const videoRemoveFilter = removeExpr ? `select='not(${removeExpr})',setpts=N/${safeRemoveFps}/TB,` : '';
             const audioRemoveFilter = removeExpr ? `aselect='not(${removeExpr})',asetpts=N/SR/TB,` : '';
 
             let atempoFilter = '';
@@ -3562,6 +3575,7 @@ async function autoEditByScript(opts = {}) {
                 source_duration: Number(plan.duration) || Math.round((plan.end - plan.start) * 1000) / 1000,
                 audience_response: plan.audienceResponse || null,
                 transcription_source: plan.transcription.source,
+                transcription_error: plan.transcription.error || '',
                 word_timeline: (plan.words || [])
                     .filter(word => word.end > plan.start - 0.05 && word.start < plan.end + 0.05)
                     .map(word => ({
@@ -3600,6 +3614,9 @@ async function autoEditByScript(opts = {}) {
             }
         }
 
+        if (tempClips.length === 0) {
+            throw new Error('没有可导出的有效视频片段（所有片段裁切后均为空或时长过短），请检查文案匹配结果与原片内容');
+        }
         if (tempClips.length === 1) {
             emitProgress({
                 percent: 86,

@@ -541,6 +541,11 @@
             try { localStorage.setItem('reels_subtitle_presets', value); } catch (_) {}
             return rpcSync('savePersistentPreset', { key: 'reels_subtitle_presets', value }, { ok: true });
         },
+        readDecorPresets: () => rpcSync('readPersistentPreset', { key: 'reels_decor_presets' }, localStorage.getItem('reels_decor_presets') || '{}'),
+        saveDecorPresets: (value) => {
+            try { localStorage.setItem('reels_decor_presets', value); } catch (_) {}
+            return rpcSync('savePersistentPreset', { key: 'reels_decor_presets', value }, { ok: true });
+        },
         exportOverlayPresetPackage: (presets) => rpcAsync('exportOverlayPresetPackage', { presets }),
         importOverlayPresetPackage: (packagePath) => rpcAsync('importOverlayPresetPackage', { packagePath }),
         saveOverlayPresetAssets: (preset) => rpcAsync('saveOverlayPresetAssets', { preset }),
