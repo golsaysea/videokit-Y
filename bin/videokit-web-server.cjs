@@ -828,7 +828,7 @@ function createWebServer(options = {}) {
             sendJson(res, 200, {
                 status: 'ok',
                 mode: 'web-bridge',
-                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.6.10-beta',
+                version: typeof getPackageVersion === 'function' ? getPackageVersion() : '4.6.22',
                 commit: commit || undefined,
                 ui_source: uiInfo.source,
                 ui_reason: uiInfo.reason,
