@@ -961,7 +961,7 @@ function createScrollOverlay(opts = {}) {
     return {
         id: _overlayId(),
         type: 'scroll',
-        content: opts.content || '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字',
+        content: opts.content ?? '滚动文字内容\n第二行文字\n第三行文字\n第四行文字\n第五行文字',
         scroll_title_styled_ranges: opts.scroll_title_styled_ranges || null,
         scroll_styled_ranges: opts.scroll_styled_ranges || null,
         // x/y/w/h = 裁切区域
@@ -1513,6 +1513,14 @@ const INTRO_CURTAIN_THEMES = {
     morandi_slate_blue:{ id: 'morandi_slate_blue',name: '🌫️ 莫兰迪雾霾莫蓝灰（静谧高级）',   highlight: '#AEBDCA', mid: '#7895B2', shadow: '#3D5266', trimColor: '#E8DFCA', lightTint: '#D8E3EC' },
     morandi_clay_taupe:{ id: 'morandi_clay_taupe',name: '🏺 莫兰迪陶土暖咖褐（法式侘寂）',   highlight: '#D3BFB2', mid: '#9F8678', shadow: '#54433A', trimColor: '#E6D4B9', lightTint: '#EDE2DA' },
     watercolor_mist_mint:{id:'watercolor_mist_mint',name:'🎨 淡雅青瓷水彩晕染（冷压纸纹）',   highlight: '#DCE7E1', mid: '#9BB5A8', shadow: '#4A6358', trimColor: '#D4B982', lightTint: '#EDF4F0' },
+    cyber_phosphor_teal:{id:'cyber_phosphor_teal', name:'📺 复古CRT荧光青绿显像管（赛博故障）', highlight: '#22D3EE', mid: '#091521', shadow: '#02060D', trimColor: '#67E8F9', lightTint: '#F472B6' },
+    amber_kodak_burn:  { id: 'amber_kodak_burn',   name: '🎞️ 柯达35mm琥珀灼烧暖光（胶片漏光）', highlight: '#FB923C', mid: '#431407', shadow: '#120502', trimColor: '#FDE047', lightTint: '#FDA4AF' },
+    editorial_cream_ink:{id: 'editorial_cream_ink',name: '📸 拍立得奶油相纸炭黑（杂志剪贴）',   highlight: '#FAF6EE', mid: '#ECE3D3', shadow: '#1C1917', trimColor: '#D97706', lightTint: '#FEF3C7' },
+    prismatic_obsidian:{id: 'prismatic_obsidian',  name: '💎 暗夜曜石幻彩棱镜（极光玻璃）',     highlight: '#C4B5FD', mid: '#1E1B4B', shadow: '#050714', trimColor: '#67E8F9', lightTint: '#F0ABFC' },
+    cloud_white_mist:  { id: 'cloud_white_mist',   name: '☁️ 纯白晨云银灰（FB爆款穿云同款）',   highlight: '#FFFFFF', mid: '#E2E8F0', shadow: '#64748B', trimColor: '#FACC15', lightTint: '#BAE6FD' },
+    cloud_golden_dawn: { id: 'cloud_golden_dawn',  name: '🌅 圣光金曦暖云（清晨祷告）',         highlight: '#FFFBEB', mid: '#FEF3C7', shadow: '#B45309', trimColor: '#FDE047', lightTint: '#FDBA74' },
+    cloud_rose_heaven: { id: 'cloud_rose_heaven',  name: '🌸 粉霞晚祷玫瑰云（治愈温柔）',       highlight: '#FFF1F2', mid: '#FCE7F3', shadow: '#9D174D', trimColor: '#FDE68A', lightTint: '#FDA4AF' },
+    cloud_azure_clear: { id: 'cloud_azure_clear',  name: '🌤️ 晴空霁云蓝白（豁然开朗）',         highlight: '#F8FAFC', mid: '#DBEAFE', shadow: '#3B82F6', trimColor: '#E0F2FE', lightTint: '#93C5FD' },
 };
 const INTRO_REVEAL_THEMES = INTRO_CURTAIN_THEMES;
 
@@ -1620,6 +1628,43 @@ const INTRO_REVEAL_THEMES = INTRO_CURTAIN_THEMES;
     ['watercolor_oatmeal_zero', '🌾 莫兰迪燕麦水彩0s直开', '高级燕麦灰米水彩底纹，0s同步人声与字幕开讲', 'paper', 'paper_reveal', 'morandi_oatmeal', 'watercolor_wash', 2.2, 0, false],
     ['watercolor_clay_drift', '🏺 莫兰迪陶土亚麻双开', '法式侘寂陶土质感纤维纸纹优雅左右滑开', 'paper', 'paper_reveal', 'morandi_clay_taupe', 'minimal_linen_slide', 2.1, 0, true],
     ['watercolor_mint_porcelain', '🫧 青瓷淡彩渐变晕染开场', '淡青瓷水彩晕染质感如晨雾漫散亮屏', 'paper', 'paper_reveal', 'watercolor_mist_mint', 'watercolor_wash', 2.3, 0, true],
+
+    // —— 📼 CRT电子管开机 / VHS追踪故障 / 赛博RGB撕裂 (3款 · 2026短视频吸睛爆款) ——
+    ['glitch_crt_power_on', '📺 CRT老电视电子束开机', '90年代显像管横向聚焦爆亮+RGB扫描线解码亮屏', 'glitch', 'glitch_reveal', 'cyber_phosphor_teal', 'crt_power_on', 1.8, 0, true],
+    ['glitch_vhs_tracking', '📼 VHS磁带故障解码开屏', '复古DV磁带横条跟踪噪波扫净+青红错位收敛呈现正片', 'glitch', 'glitch_reveal', 'cyber_phosphor_teal', 'vhs_tracking_open', 2.0, 0, true],
+    ['glitch_cyber_rgb_slice', '⚡ 赛博RGB错位切片开场(0s直开)', '高燃三色RGB错位切片左右滑出，0s语音字幕同步起爆', 'glitch', 'glitch_reveal', 'prismatic_obsidian', 'cyber_rgb_slice', 1.6, 0, false],
+
+    // —— 🎞️ 35mm 柯达胶片灼烧漏光转场 (2款 · 电影质感天花板) ——
+    ['film_burn_amber_flash', '🔥 35mm柯达琥珀胶片灼烧开场', '暗房胶片过曝金橙光团漫燃闪白揭晓画面', 'film_burn', 'film_burn_reveal', 'amber_kodak_burn', 'film_burn_amber', 1.9, 0, true],
+    ['film_burn_dreamy_rose', '🌺 浪漫玫瑰红晕胶片漏光唤醒', '温暖玫瑰粉金胶片斜向漏光波澜流转渐出正片', 'film_burn', 'film_burn_reveal', 'blush_rose_gold', 'dreamy_rose_leak', 2.0, 0, true],
+
+    // —— 📸 拍立得快门显影 / 美式杂志剪贴拼贴 (3款 · IG/Pinterest爆款) ——
+    ['polaroid_snap_toss', '📸 拍立得相纸快门显影滑开', '白边拍立得相框+纸胶带闪白显影后斜向优雅滑出', 'polaroid', 'polaroid_reveal', 'editorial_cream_ink', 'polaroid_toss_open', 2.1, 0, true],
+    ['magazine_cutout_peel', '✂️ 美式杂志头版拼贴错层揭幕', '双层手撕杂志卡片与牛皮纸胶带交错揭开露出主画面', 'polaroid', 'polaroid_reveal', 'editorial_cream_ink', 'magazine_headline_peel', 2.2, 0, true],
+    ['polaroid_zero_memory', '🎞️ 拍立得回忆显影(0s直开开讲)', '奶油相纸显影淡出+0s同步字幕开讲，适合每日恩典故事', 'polaroid', 'polaroid_reveal', 'editorial_cream_ink', 'polaroid_toss_open', 1.9, 0, false],
+
+    // —— 💎 水晶棱镜多格/斜切镜面 (2款 · 2026高级现代风) ——
+    ['prism_triple_panel', '💎 三格水晶棱镜错落拉幕', '三道竖向磨砂玻璃棱镜伴高光流影错速滑开', 'prism', 'prism_reveal', 'prismatic_obsidian', 'prism_three_strip', 2.0, 0, true],
+    ['prism_diagonal_slice', '🔷 钻石45°棱镜镜面对角劈开', '炫彩青紫微光镜面沿45°斜角丝滑分离揭晓画面', 'prism', 'prism_reveal', 'prismatic_obsidian', 'diagonal_prism_slice', 1.9, 0, true],
+
+    // —— ☁️ 程序化2D分形云雾噪波·穿云而出 (4款 · FB Reel 1799239781357237 1:1复刻) ——
+    ['cloud_part_white_iris', '☁️ 穿云而出_白灰云雾中心拨开(FB同款)', '多层分形云雾噪波满屏翻涌，从中心向四角自然撕裂拨开露出正片', 'clouds', 'cloud_reveal', 'cloud_white_mist', 'cloud_part_iris', 2.1, 0, true],
+    ['cloud_part_golden_dawn', '🌅 圣光金云拨雾_晨祷旭日开屏', '圣洁象牙白与暖金曦云随柔和气流拨雾而开，适合晨间祷告开场', 'clouds', 'cloud_reveal', 'cloud_golden_dawn', 'cloud_part_golden', 2.1, 0, true],
+    ['cloud_part_rose_heaven', '🌸 玫瑰粉霞穿云_温柔治愈开场', '柔粉天霞云海由中心缓散退至四周，营造神圣温暖氛围', 'clouds', 'cloud_reveal', 'cloud_rose_heaven', 'cloud_part_rose', 2.1, 0, true],
+    ['cloud_part_blue_storm_clear', '🌤️ 拨云见日_蓝调云雾散开(0s直开)', '晴空蓝白银云迅速向四周拨云见日+0s语音字幕同步起爆', 'clouds', 'cloud_reveal', 'cloud_azure_clear', 'cloud_part_iris_fast', 1.8, 0, false],
+
+    // —— 💥 纯音效冲击开场 (11款 · 画面零遮挡，仅开篇冲击声效紧接人声与字幕) ——
+    ['sfx_cinema_boom', '💥 纯音效·电影重低音轰击 (无画面遮挡)', '0s直出纯净画面+1.2s震撼重低音冲击后，人声配音与字幕重磅切入', 'sfx_only', 'audio_only', '', 'audio_only', 1.2, 0, true],
+    ['sfx_riser_slam', '⚡ 纯音效·极速蓄力撞击 (无画面遮挡)', '0.48s气流蓄力拉升撞击落地，紧接着开启配音与字幕', 'sfx_only', 'audio_only', '', 'audio_only', 1.1, 0, true],
+    ['sfx_whip_whoosh', '💨 纯音效·利落甩屏破空风声 (无画面)', '0.75s干脆利落甩屏风声，无缝紧接开口金句', 'sfx_only', 'audio_only', '', 'audio_only', 0.75, 0, true],
+    ['sfx_sacred_bell', '🔔 纯音效·教堂沉钟震颤 (祷告开场)', '1.4s庄严教堂钟声回荡后接入晨祷或信仰金句朗读', 'sfx_only', 'audio_only', '', 'audio_only', 1.4, 0, true],
+    ['sfx_heartbeat_drop', '💓 纯音效·沉重双心跳声 (走心悬念)', '1.0s揪心双心跳声抓人入戏，随后温柔开启正文配音', 'sfx_only', 'audio_only', '', 'audio_only', 1.0, 0, true],
+    ['sfx_thunder_crack', '⛈️ 纯音效·惊雷震撼劈落 (命运转折)', '1.3s惊雷劈落轰鸣定调后切入极具感染力的旁白与字幕', 'sfx_only', 'audio_only', '', 'audio_only', 1.3, 0, true],
+    ['sfx_shutter_freeze', '📸 纯音效·单反快门定格 (故事吸睛)', '0.75s清脆机械快门咔嚓声+低频暗涌瞬间定住注意力', 'sfx_only', 'audio_only', '', 'audio_only', 0.75, 0, true],
+    ['sfx_piano_deep_drop', '🎹 纯音效·深情钢琴低音和弦 (共鸣泪目)', '1.3s深沉钢琴重和弦开篇，不遮挡画面直接拉满情感张力', 'sfx_only', 'audio_only', '', 'audio_only', 1.3, 0, true],
+    ['sfx_sword_ring', '⚔️ 纯音效·寒锋出鞘铿锵 (干货破局)', '0.95s清冽锐利金属出鞘声，极适合干货科普与反常识金句', 'sfx_only', 'audio_only', '', 'audio_only', 0.95, 0, true],
+    ['sfx_news_breaking_hit', '🚨 纯音效·突发快讯双响重击 (紧凑开篇)', '0.9s干脆双响节奏定调，立刻引入紧凑快节奏口播', 'sfx_only', 'audio_only', '', 'audio_only', 0.9, 0, true],
+    ['sfx_boom_zero_sync', '🔥 纯音效·重低音冲击+0s配音同起 (不延后)', '0s直接叠加重低音冲击声与人声字幕同起，节奏 zero-delay', 'sfx_only', 'audio_only', '', 'audio_only', 1.2, 0, false],
 ].forEach(([id, name, tag, intro_category, intro_layout, intro_curtain_theme, intro_curtain_style, duration, extra, delayBody]) => {
     const isBlinds = intro_layout === 'blinds_reveal' || intro_curtain_style === 'black_slats';
     const isValanceCurtain = intro_layout === 'curtain_reveal' && Boolean(extra);
@@ -1651,6 +1696,64 @@ const INTRO_REVEAL_THEMES = INTRO_CURTAIN_THEMES;
         intro_backdrop_scrim: 0,
         intro_offset_y: 0,
     };
+});
+
+function _getIntroAudioModule() {
+    if (typeof globalThis !== 'undefined' && globalThis.ReelsIntroAudio) return globalThis.ReelsIntroAudio;
+    if (typeof require === 'function') {
+        try { return require('./reels-intro-audio.js'); } catch (_) {}
+    }
+    return null;
+}
+
+const _FALLBACK_AUDIO_BY_CAT = {
+    flag: 'patriotic_freedom_anthem',
+    eagle: 'eagle_canyon_drum',
+    cardinal: 'cardinal_woodland_chime',
+    glitch: 'crt_glitch_powerup',
+    film_burn: 'film_burn_whoosh',
+    polaroid: 'polaroid_shutter_snap',
+    prism: 'prism_glass_shimmer',
+    clouds: 'cloud_part_heavenly_breeze',
+    sfx_only: 'impact_cinema_boom',
+    paper: 'parchment_paper_quill',
+    black: 'dark_cinema_pulse',
+    frost: 'winter_crystal_bells',
+    blinds: 'wooden_doors_sanctuary',
+    doors: 'wooden_doors_sanctuary',
+    iris: 'curtain_grand_fanfare',
+    gift: 'holiday_gift_sparkle',
+    curtain: 'curtain_grand_fanfare',
+    kinetic: 'viral_hook_punch',
+    ring: 'xmas_wonder_glockenspiel',
+};
+
+function _defaultIntroAudioPresetFor(presetOrOv) {
+    const mod = _getIntroAudioModule();
+    if (mod && typeof mod.getDefaultIntroAudioForPreset === 'function') {
+        return mod.getDefaultIntroAudioForPreset(presetOrOv);
+    }
+    const p = typeof presetOrOv === 'string' ? (INTRO_COUNTDOWN_PRESETS[presetOrOv] || {}) : (presetOrOv || {});
+    const id = p.intro_style || p.id || (typeof presetOrOv === 'string' ? presetOrOv : '');
+    if (id === 'ready_321' || p.intro_center_mode === 'countdown_sec') return 'countdown_321_tension';
+    if (id === 'morning_prayer_gold' || id === 'thx_auto_days') return 'sacred_prayer_organ';
+    return _FALLBACK_AUDIO_BY_CAT[p.intro_category || 'ring'] || 'curtain_grand_fanfare';
+}
+
+function _defaultIntroAudioVolumeFor(presetOrOv) {
+    const mod = _getIntroAudioModule();
+    if (mod && typeof mod.getIntroAudioDefaultVolume === 'function') {
+        return mod.getIntroAudioDefaultVolume(presetOrOv);
+    }
+    const base = 85;
+    return presetOrOv && presetOrOv.intro_delay_body === false ? Math.round(base * 0.65) : base;
+}
+
+Object.values(INTRO_COUNTDOWN_PRESETS).forEach((preset) => {
+    if (!preset || typeof preset !== 'object') return;
+    if (!preset.intro_audio_preset) {
+        preset.intro_audio_preset = _defaultIntroAudioPresetFor(preset);
+    }
 });
 
 function _shiftHexColor(hex, factor) {
@@ -1773,6 +1876,15 @@ function createIntroCountdownOverlay(opts = {}) {
         intro_offset_y: opts.intro_offset_y ?? preset.intro_offset_y ?? -20,
         intro_fade_in: opts.intro_fade_in ?? 0.30,
         intro_fade_out: opts.intro_fade_out ?? 0.20,
+        intro_audio_preset: opts.intro_audio_preset || preset.intro_audio_preset || _defaultIntroAudioPresetFor(preset),
+        intro_audio_custom_path: opts.intro_audio_custom_path || '',
+        intro_audio_volume: opts.intro_audio_volume !== undefined
+            ? Number(opts.intro_audio_volume)
+            : _defaultIntroAudioVolumeFor({
+                intro_audio_preset: opts.intro_audio_preset || preset.intro_audio_preset || _defaultIntroAudioPresetFor(preset),
+                intro_delay_body: opts.intro_delay_body !== undefined ? Boolean(opts.intro_delay_body) : Boolean(preset.intro_delay_body ?? true),
+            }),
+        intro_audio_fade_out: opts.intro_audio_fade_out !== undefined ? Number(opts.intro_audio_fade_out) : 0.45,
         anim_in_type: 'none',
         anim_out_type: 'none',
         transition_preset: 'none',
@@ -1832,6 +1944,13 @@ function applyIntroCountdownPreset(ov, presetId) {
     ov.start = 0;
     ov.end = Number(preset.duration) || 3.0;
     ov.intro_delay_body = preset.intro_delay_body !== false;
+    ov.intro_audio_preset = preset.intro_audio_preset || _defaultIntroAudioPresetFor(preset);
+    if (!ov.intro_audio_volume_custom) {
+        ov.intro_audio_volume = _defaultIntroAudioVolumeFor(ov);
+    }
+    if (!Number.isFinite(Number(ov.intro_audio_fade_out))) {
+        ov.intro_audio_fade_out = 0.45;
+    }
     return ov;
 }
 
@@ -1855,6 +1974,7 @@ function listIntroPresets(options = {}) {
             ring_theme: preset.intro_ring_theme || '',
             duration: Number(preset.duration) || 3.0,
             delay_body: preset.intro_delay_body !== false,
+            audio_preset: preset.intro_audio_preset || _defaultIntroAudioPresetFor(preset),
         });
     }
     return items;
@@ -2003,6 +2123,8 @@ function resolveIntroOverlayConfig(spec, overrides = {}) {
     assignIfDefined('intro_ring_track_color', 'intro_ring_track_color', 'ring_track_color');
     assignIfDefined('intro_ring_spark_color', 'intro_ring_spark_color', 'ring_spark_color');
     assignBoolIfDefined('intro_ring_spark_enabled', 'intro_ring_spark_enabled', 'ring_spark_enabled');
+    assignIfDefined('intro_audio_preset', 'intro_audio_preset', 'audio_preset');
+    assignIfDefined('intro_audio_custom_path', 'intro_audio_custom_path', 'audio_custom_path');
 
     const numMappings = [
         ['start', ['start'], 0, null],
@@ -2024,6 +2146,8 @@ function resolveIntroOverlayConfig(spec, overrides = {}) {
         ['intro_offset_y', ['intro_offset_y', 'offset_y'], -1920, 1920],
         ['intro_fade_in', ['intro_fade_in', 'fade_in'], 0, 5],
         ['intro_fade_out', ['intro_fade_out', 'fade_out'], 0, 5],
+        ['intro_audio_volume', ['intro_audio_volume', 'audio_volume'], 0, 200],
+        ['intro_audio_fade_out', ['intro_audio_fade_out', 'audio_fade_out'], 0, 5],
         ['opacity', ['opacity'], 0, 255],
         ['rotation', ['rotation'], -360, 360],
         ['z_index', ['z_index'], -999, 999],
@@ -5399,7 +5523,8 @@ function _drawSolidMaskOverlay(ctx, ov, x, y, w, h, canvasW, canvasH, currentTim
  */
 let _scrollMotionMeasureCanvas = null;
 function measureScrollMotion(overlay) {
-    if (!overlay || overlay.type !== 'scroll' || !overlay.content || typeof document === 'undefined') return null;
+    const hasScrollText = Boolean(overlay && (String(overlay.content || '').trim() || String(overlay.scroll_title || '').trim()));
+    if (!overlay || overlay.type !== 'scroll' || !hasScrollText || typeof document === 'undefined') return null;
     const canvas = _scrollMotionMeasureCanvas || (_scrollMotionMeasureCanvas = document.createElement('canvas'));
     const ctx = canvas.getContext('2d');
     const copy = { ...overlay, _scrollBindingMeasureOnly: true };
@@ -6883,7 +7008,7 @@ function _drawScrollCardTopMascot(ctx, rx, ry, rw, rh, currentTime = 0, opts = {
     const t = Math.max(0, Number(currentTime) || 0) * speed;
 
     const baseCx = rx + rw * 0.5 + offX;
-    const baseCy = ry - 148 * scale + offY;
+    const baseCy = ry - 78 * scale + offY;
 
     ctx.save();
     if (mascot === 'peace_dove_rose' || mascot === 'peace_dove_olive') {
@@ -7293,9 +7418,9 @@ function _drawScrollCardTopMascot(ctx, rx, ry, rw, rh, currentTime = 0, opts = {
     } else if (mascot.startsWith('na_') && NA_PRAYER_EMBLEM_META[mascot]) {
         const meta = NA_PRAYER_EMBLEM_META[mascot];
         const s = 1.16 * scale;
-        const bobY = Math.sin(t * 3.4) * 6.5 * scale;
+        const bobY = Math.sin(t * 3.4) * 5.5 * scale;
         const sway = Math.sin(t * 2.2) * 0.04;
-        ctx.translate(baseCx, baseCy + 14 * scale + bobY);
+        ctx.translate(baseCx, ry - 52 * scale + offY + bobY);
         ctx.scale(s, s);
         ctx.rotate(sway);
 
@@ -7328,6 +7453,43 @@ function _drawScrollCardTopMascot(ctx, rx, ry, rw, rh, currentTime = 0, opts = {
     ctx.restore();
 }
 
+/**
+ * 计算滚动字幕主题画板的安全内边距，保证正文/固定标题始终位于装饰边框与角花之内。
+ */
+function _getScrollCardFrameInsets(styleId, rw, rh, bgEnabled, hasBorder, borderW) {
+    let insetX = 0;
+    let insetY = 0;
+    if (bgEnabled && styleId && styleId !== 'solid' && styleId !== 'none') {
+        const cfg = (typeof ReelsBrushEngine !== 'undefined' && ReelsBrushEngine.CARD_BACKGROUND_STYLES)
+            ? ReelsBrushEngine.CARD_BACKGROUND_STYLES[styleId]
+            : null;
+        if (cfg && cfg.isPrayerBookmark) {
+            insetX = 24;
+            insetY = 18;
+        } else if (styleId === 'xmas_candy_frame') {
+            const candyW = Math.max(12, Math.min(22, Math.min(rw || 860, rh || 860) * 0.032));
+            insetX = Math.max(36, Math.round(candyW + 16));
+            insetY = Math.max(38, Math.round(candyW + 18));
+        } else if (styleId.startsWith('xmas_')) {
+            insetX = 32;
+            insetY = 34;
+        } else {
+            insetX = 26;
+            insetY = 26;
+        }
+    }
+    if (hasBorder && Number(borderW) > 0) {
+        const minBorderInset = Math.ceil(Number(borderW)) + 10;
+        insetX = Math.max(insetX, minBorderInset);
+        insetY = Math.max(insetY, minBorderInset);
+    }
+    const maxWInset = Math.max(0, Math.floor((rw || 800) * 0.16));
+    const maxHInset = Math.max(0, Math.floor((rh || 800) * 0.16));
+    const left = Math.min(insetX, maxWInset);
+    const top = Math.min(insetY, maxHInset);
+    return { left, right: left, top, bottom: top };
+}
+
 function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, canvasW, canvasH) {
     ctx.textBaseline = 'alphabetic';
     // 整体偏移：裁切区域 + 滚动坐标一起移动
@@ -7336,11 +7498,13 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     clipX += offsetX;
     clipY += offsetY;
 
+    const scrollTitleRaw = (ov.scroll_title || '').trim();
     let content = ov.content || '';
     if (ov.scroll_uppercase !== false) content = content.toUpperCase();
-    if (!content) return;
+    const hasBodyContent = Boolean(content.trim());
+    if (!hasBodyContent && !scrollTitleRaw) return;
     const bodyDirection = (typeof ReelsTextDirection !== 'undefined')
-        ? ReelsTextDirection.resolve(ov.text_direction, content)
+        ? ReelsTextDirection.resolve(ov.text_direction, hasBodyContent ? content : scrollTitleRaw)
         : 'ltr';
     ctx.direction = bodyDirection;
 
@@ -7394,13 +7558,23 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     const _origClipY = clipY;
     const _origClipW = clipW;
     const _origClipH = clipH;
+    const _preEstW = _rawBgW > 0 ? Math.max(60, _rawBgW) : Math.max(60, _origClipW + _padL0 + _padR0);
+    const _preEstH = _rawBgH > 0 ? Math.max(60, _rawBgH) : Math.max(60, _origClipH + _padT0 + _padB0);
+    const _preFrameInset = _getScrollCardFrameInsets(
+        ov.bg_style || 'solid',
+        _preEstW,
+        _preEstH,
+        Boolean(ov.bg_enabled && !ov.bg_fullscreen),
+        Boolean(ov.bg_border_enabled && !ov.bg_fullscreen),
+        parseFloat(ov.bg_border_width ?? 3)
+    );
     if (!ov.bg_fullscreen && (_rawBgW > 0 || _padL0 < 0 || _padR0 < 0 || _bgOffX !== 0)) {
         const targetCardW = _rawBgW > 0 ? Math.max(60, _rawBgW) : Math.max(60, _origClipW + _padL0 + _padR0);
         const targetCardX = _rawBgW > 0
             ? (_origClipX + _origClipW / 2 - targetCardW / 2 + _bgOffX)
             : (_origClipX - _padL0 + _bgOffX);
         if (_rawBgW > 0 || _padL0 < 0 || _padR0 < 0) {
-            const innerX = Math.min(24, Math.max(8, targetCardW * 0.04));
+            const innerX = Math.max(Math.min(24, Math.max(8, targetCardW * 0.04)), _preFrameInset.left);
             clipX = targetCardX + innerX;
             clipW = Math.max(40, targetCardW - innerX * 2);
         } else {
@@ -7413,7 +7587,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             ? (_origClipY + _origClipH / 2 - targetCardH / 2 + _bgOffY)
             : (_origClipY - _padT0 + _bgOffY);
         if (_rawBgH > 0 || _padT0 < 0 || _padB0 < 0) {
-            const innerY = Math.min(24, Math.max(8, targetCardH * 0.035));
+            const innerY = Math.max(Math.min(24, Math.max(8, targetCardH * 0.035)), _preFrameInset.top);
             clipY = targetCardY + innerY;
             clipH = Math.max(40, targetCardH - innerY * 2);
         } else {
@@ -7444,8 +7618,11 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     const lineSpacing = parseFloat(ov.line_spacing ?? 6);
     const align       = ov.text_align || 'center';
     const rawTextW    = Math.max(1, parseFloat(ov.text_width || (clipW - 40)));
+    const _maxInnerCardTextW = (ov.bg_enabled && !ov.bg_fullscreen)
+        ? Math.max(60, _preEstW - _preFrameInset.left - _preFrameInset.right - 8)
+        : clipW;
     const textW       = (_rawBgW > 0 || _padL0 < 0 || _padR0 < 0 || ov.bg_enabled)
-        ? Math.min(rawTextW, Math.max(60, clipW - 16))
+        ? Math.min(rawTextW, Math.max(60, Math.min(clipW - 16, _maxInnerCardTextW)))
         : rawTextW;
 
     // ── 计算标题占用高度 ──
@@ -7492,9 +7669,13 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     const bodyVisibleH = visibleH - titleOccupiedH;  // 可用于正文的高度
     const minFontSize = parseFloat(ov.scroll_min_fontsize ?? 16);
 
-    const bMergedRanges = _getAutoColorMergedRanges(ov, 'scroll', content) || ov.scroll_styled_ranges || [];
+    const bMergedRanges = hasBodyContent ? (_getAutoColorMergedRanges(ov, 'scroll', content) || ov.scroll_styled_ranges || []) : [];
     let fontStr, lineHeight, lines;
-    if (ov.scroll_auto_fit && bodyVisibleH > 0) {
+    if (!hasBodyContent) {
+        lineHeight = fontSize * 1.3 + lineSpacing;
+        fontStr = `${italicStr} ${fontWeight} ${fontSize}px "${fontFamily}", ${fallback}`;
+        lines = [];
+    } else if (ov.scroll_auto_fit && bodyVisibleH > 0) {
         // 循环缩小字号直到正文高度 <= 可用高度
         for (let trySize = fontSize; trySize >= minFontSize; trySize -= 2) {
             const actualTrySize = _getMaxFontSizeFromRanges(trySize, bMergedRanges);
@@ -7531,7 +7712,8 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     let bodyClipTopBase = (_titleFixed && !titleIndependent) ? (clipY + titleOccupiedH) : clipY;
     let bodyClipBotBase = clipY + clipH;
-    if (!ov.bg_fullscreen && ov.bg_body_only) {
+    const _useBodyOnlyCard = Boolean(!ov.bg_fullscreen && ov.bg_body_only && (hasBodyContent || !_titleFixed));
+    if (_useBodyOnlyCard) {
         const baseBodyY = _titleBottomWithGapY;
         const baseBodyBot = _origClipY + _origClipH;
         if (_rawBgH > 0) {
@@ -7555,30 +7737,35 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     // ── 自动停止：到达最终位置后冻结 ──
     let effectiveToY = toY;
-    ctx.save();
-    ctx.textBaseline = 'alphabetic';
     let lastLineIndex = Math.max(0, lines.length - 1);
-    while (lastLineIndex > 0 && !lines[lastLineIndex].trim()) lastLineIndex--;
-    const lastLine = lines[lastLineIndex] || '';
-    const bottomMetrics = ctx.measureText(lastLine);
-    let lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
-    const endRanges = _getAutoColorMergedRanges(ov, 'scroll_body', content) || ov.scroll_styled_ranges;
-    if (endRanges?.length && typeof ReelsRichText !== 'undefined') {
-        const lineStart = content.lastIndexOf(lastLine);
-        const lineEnd = lineStart + lastLine.length;
-        const chunks = ReelsRichText.splitByRanges(content, endRanges, { fontsize: fontSize, bold: fontWeight >= 700 });
-        lastDescent = -Infinity;
-        for (const chunk of chunks) {
-            const a = Math.max(chunk.start, lineStart), b = Math.min(chunk.end, lineEnd);
-            if (a >= b) continue;
-            ctx.font = `${chunk.style.bold ? 700 : fontWeight} ${chunk.style.fontsize || fontSize}px "${fontFamily}", ${fallback}`;
-            lastDescent = Math.max(lastDescent, Number(ctx.measureText(content.substring(a, b)).actualBoundingBoxDescent) || 0);
+    let lastDescent = 0;
+    if (hasBodyContent) {
+        ctx.save();
+        ctx.textBaseline = 'alphabetic';
+        while (lastLineIndex > 0 && !lines[lastLineIndex].trim()) lastLineIndex--;
+        const lastLine = lines[lastLineIndex] || '';
+        const bottomMetrics = ctx.measureText(lastLine);
+        lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
+        const endRanges = _getAutoColorMergedRanges(ov, 'scroll_body', content) || ov.scroll_styled_ranges;
+        if (endRanges?.length && typeof ReelsRichText !== 'undefined') {
+            const lineStart = content.lastIndexOf(lastLine);
+            const lineEnd = lineStart + lastLine.length;
+            const chunks = ReelsRichText.splitByRanges(content, endRanges, { fontsize: fontSize, bold: fontWeight >= 700 });
+            lastDescent = -Infinity;
+            for (const chunk of chunks) {
+                const a = Math.max(chunk.start, lineStart), b = Math.min(chunk.end, lineEnd);
+                if (a >= b) continue;
+                ctx.font = `${chunk.style.bold ? 700 : fontWeight} ${chunk.style.fontsize || fontSize}px "${fontFamily}", ${fallback}`;
+                lastDescent = Math.max(lastDescent, Number(ctx.measureText(content.substring(a, b)).actualBoundingBoxDescent) || 0);
+            }
+            if (!Number.isFinite(lastDescent)) lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
         }
-        if (!Number.isFinite(lastDescent)) lastDescent = Number(bottomMetrics.actualBoundingBoxDescent) || 0;
+        ctx.restore();
     }
-    ctx.restore();
     const movingTitleH = (ov.scroll_title_fixed !== false && (ov.scroll_title || '').trim()) ? 0 : titleOccupiedH;
-    const bodyBottomOffset = movingTitleH + fontSize + lastLineIndex * lineHeight + lastDescent;
+    const bodyBottomOffset = hasBodyContent
+        ? (movingTitleH + fontSize + lastLineIndex * lineHeight + lastDescent)
+        : Math.max(0, movingTitleH > 0 ? _fullTitleBlockH : 0);
     if (ov.scroll_focus_flow_enabled === true && lines.length > 0) {
         // 焦点阅读区模式 (爆款祈祷书签卡同款)：
         // 首行在开始时即位于正文区中部偏上焦点区 (默认 42%)，末行在结束时停在焦点区 (默认 54%)，
@@ -7597,12 +7784,12 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         effectiveToY = Math.min(fromY, bodyClipBotBase - bottomClearance - 1 - bodyBottomOffset);
     } else if (ov.scroll_auto_stop) {
         // 正文行高度
-        let totalTextH = lines.length * lineHeight;
+        let totalTextH = hasBodyContent ? (lines.length * lineHeight) : 0;
         // 非固定标题会跟随滚动，它的高度也要计入总文本高度
         const titleFixed = ov.scroll_title_fixed !== false && (ov.scroll_title || '').trim();
         if (!titleFixed && titleOccupiedH > 0) {
             // titleOccupiedH = titleLines.length * tLineH + tGap
-            totalTextH += titleOccupiedH;
+            totalTextH += hasBodyContent ? titleOccupiedH : _fullTitleBlockH;
         }
 
         const featherT = Math.max(0, parseFloat(ov.feather_top ?? 0) || 0) + Math.max(0, parseFloat(ov.feather_top_offset ?? 0) || 0);
@@ -7789,7 +7976,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         const _effPadT = (_padT0 === 55 || _padT0 === 48) ? 18 : _padT0;
         const _effPadB = (_padB0 === 55 || _padB0 === 48) ? 18 : _padB0;
 
-        if (ov.bg_body_only) {
+        if (ov.bg_body_only && (hasBodyContent || !_titleFixed)) {
             const baseBodyY = _titleBottomWithGapY;
             const baseBodyBot = _origClipY + _origClipH;
             if (_rawBgH > 0) {
@@ -7801,9 +7988,12 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 const padBotVis = Math.max(12, Math.min(32, _effPadB > 0 ? _effPadB : 20));
                 const minTopAllowed = Math.min(baseBodyBot - 80, baseBodyY + _fTopInset - Math.max(0, padTopVis)) - Math.min(0, _effPadT) + _bgOffY;
                 const maxBotAllowed = Math.max(minTopAllowed + 80, baseBodyBot - _fBotInset + Math.max(0, padBotVis)) + Math.min(0, _effPadB) + _bgOffY;
-                if (lines && lines.length > 0) {
+                const contentHVis = (lines && lines.length > 0)
+                    ? (lines.length * lineHeight)
+                    : ((!_titleFixed && _fullTitleBlockH > 0) ? _fullTitleBlockH : 0);
+                if (contentHVis > 0) {
                     const textTopY = curY - padTopVis + _bgOffY;
-                    const textBotY = curY + lines.length * lineHeight + padBotVis + _bgOffY;
+                    const textBotY = curY + contentHVis + padBotVis + _bgOffY;
                     const clampedTop = Math.max(minTopAllowed, Math.min(maxBotAllowed - 80, textTopY));
                     const clampedBot = Math.max(clampedTop + 80, Math.min(maxBotAllowed, textBotY));
                     _cardY = clampedTop;
@@ -7822,6 +8012,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
                 : (_baseCardRefY - _padT0 - _cardExpT + _bgOffY);
         }
     }
+    const _skipEmptyBodyOnlyCard = Boolean(!ov.bg_fullscreen && ov.bg_body_only && !hasBodyContent && _titleFixed);
     const _cardRad = ov.bg_fullscreen ? 0 : parseFloat(ov.bg_radius ?? 12);
 
     if (!ov.bg_fullscreen && (ov.bg_enabled || ov.bg_border_enabled || ov.bg_body_only || _rawBgW > 0 || _rawBgH > 0)) {
@@ -7849,7 +8040,7 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
     }
 
     // ── 磨砂模糊 (Frosted Glass) ──
-    if (ov.bg_blur_enabled) {
+    if (ov.bg_blur_enabled && !_skipEmptyBodyOnlyCard) {
         const blurPx = Math.max(1, Math.min(40, parseFloat(ov.bg_blur_amount ?? 10)));
         ctx.save();
         if (ov.bg_fullscreen) {
@@ -7873,31 +8064,51 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
         : null;
     const _edgeFeatherPx = Math.max(0, parseFloat(ov.bg_edge_feather ?? (_bgStyleCfg?.edgeFeather || 0)) || 0);
     const _isPrayerBookmarkStyle = Boolean(_bgStyleCfg?.isPrayerBookmark);
+    const _isEdgeFeatheredBoard = _isPrayerBookmarkStyle || _bgStyle === 'solid' || _edgeFeatherPx > 0;
+    const _isFramedCrispCard = Boolean(_bgEnabled && !ov.bg_fullscreen && !_isEdgeFeatheredBoard);
+    const _syncBodyTextFeatherToCard = !ov.bg_fullscreen && ov.bg_feather_sync !== false && (_isPrayerBookmarkStyle || _bgStyle === 'solid');
+    const _cardFrameInsets = _getScrollCardFrameInsets(
+        _bgStyle,
+        _cardW,
+        _cardH,
+        Boolean(_bgEnabled && !ov.bg_fullscreen),
+        _bgBorderEnabled,
+        parseFloat(ov.bg_border_width ?? 3)
+    );
+    const _cardInteriorClip = (_bgEnabled && !ov.bg_fullscreen && (_cardFrameInsets.left > 0 || _cardFrameInsets.top > 0))
+        ? {
+            x: _cardX + _cardFrameInsets.left,
+            y: _cardY + _cardFrameInsets.top,
+            w: Math.max(40, _cardW - _cardFrameInsets.left - _cardFrameInsets.right),
+            h: Math.max(40, _cardH - _cardFrameInsets.top - _cardFrameInsets.bottom),
+        }
+        : null;
     const _bookmarkEnabled = _bgEnabled && !ov.bg_fullscreen && (
         ov.bg_bookmark_enabled !== undefined && ov.bg_bookmark_enabled !== null
             ? Boolean(ov.bg_bookmark_enabled)
             : _isPrayerBookmarkStyle
     );
 
-    if (_bgEnabled || _bgBorderEnabled) {
+    if ((_bgEnabled || _bgBorderEnabled) && !_skipEmptyBodyOnlyCard) {
         const bgAlpha = (ov.bg_opacity ?? 191) / 255;
-        const _syncCardFeather = !ov.bg_fullscreen && ov.bg_feather_sync !== false;
         const _hasFixedTitleHeader = !ov.bg_body_only && Boolean(ov.scroll_title && (ov.scroll_title_fixed !== false) && titleOccupiedH > 0);
-        const _rawInT = (_syncCardFeather && !_hasFixedTitleHeader) ? Math.max(0, featherTopOff) : 0;
-        const _rawInB = _syncCardFeather ? Math.max(0, featherBotOff) : 0;
-        const _rawInL = _syncCardFeather ? Math.max(0, featherLeftOff) : 0;
-        const _rawInR = _syncCardFeather ? Math.max(0, featherRightOff) : 0;
+        const _rawInT = (_syncBodyTextFeatherToCard && !_hasFixedTitleHeader) ? Math.max(0, featherTopOff) : 0;
+        const _rawInB = _syncBodyTextFeatherToCard ? Math.max(0, featherBotOff) : 0;
+        const _rawInL = _syncBodyTextFeatherToCard ? Math.max(0, featherLeftOff) : 0;
+        const _rawInR = _syncBodyTextFeatherToCard ? Math.max(0, featherRightOff) : 0;
 
-        const cardFeatherSpec = ov.bg_fullscreen ? { top: 0, bottom: 0, left: 0, right: 0, inT: 0, inB: 0, inL: 0, inR: 0 } : {
-            top: (_syncCardFeather && !_hasFixedTitleHeader) ? Math.max(_edgeFeatherPx, featherTop) : _edgeFeatherPx,
-            bottom: _syncCardFeather ? Math.max(_edgeFeatherPx, featherBottom) : _edgeFeatherPx,
-            left: _syncCardFeather ? Math.max(_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx, featherLeft) : (_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx),
-            right: _syncCardFeather ? Math.max(_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx, featherRight) : (_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx),
-            inT: _rawInT > 0 ? Math.max(0, (_origClipY + _rawInT) - _cardY) : 0,
-            inB: _rawInB > 0 ? Math.max(0, (_cardY + _cardH) - (_origClipY + _origClipH - _rawInB)) : 0,
-            inL: _rawInL > 0 ? Math.max(0, (_origClipX + _rawInL) - _cardX) : 0,
-            inR: _rawInR > 0 ? Math.max(0, (_cardX + _cardW) - (_origClipX + _origClipW - _rawInR)) : 0,
-        };
+        const cardFeatherSpec = (ov.bg_fullscreen || !_isEdgeFeatheredBoard)
+            ? { top: 0, bottom: 0, left: 0, right: 0, inT: 0, inB: 0, inL: 0, inR: 0 }
+            : {
+                top: (_syncBodyTextFeatherToCard && !_hasFixedTitleHeader) ? Math.max(_edgeFeatherPx, featherTop) : _edgeFeatherPx,
+                bottom: _syncBodyTextFeatherToCard ? Math.max(_edgeFeatherPx, featherBottom) : _edgeFeatherPx,
+                left: _syncBodyTextFeatherToCard ? Math.max(_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx, featherLeft) : (_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx),
+                right: _syncBodyTextFeatherToCard ? Math.max(_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx, featherRight) : (_isPrayerBookmarkStyle ? 0 : _edgeFeatherPx),
+                inT: _rawInT > 0 ? Math.max(0, (_origClipY + _rawInT) - _cardY) : 0,
+                inB: _rawInB > 0 ? Math.max(0, (_cardY + _cardH) - (_origClipY + _origClipH - _rawInB)) : 0,
+                inL: _rawInL > 0 ? Math.max(0, (_origClipX + _rawInL) - _cardX) : 0,
+                inR: _rawInR > 0 ? Math.max(0, (_cardX + _cardW) - (_origClipX + _origClipW - _rawInR)) : 0,
+            };
         const _borderKey = _bgBorderEnabled
             ? `${ov.bg_border_width ?? 3}|${ov.bg_border_opacity ?? 100}|${ov.bg_border_style || 'solid'}|${ov.bg_border_sides || 'all'}|${ov.bg_border_color || '#FFD700'}`
             : 'nb';
@@ -8110,16 +8321,43 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
     const _renderScrollBodyLayer = (effClipY, effClipH, bodyStartY, blockContentH, baseOv) => {
         if (effClipH <= 0) return;
+        let renderClipX = clipX;
+        let renderClipW = clipW;
+        let renderClipY = effClipY;
+        let renderClipH = effClipH;
+        if (_cardInteriorClip) {
+            const ix0 = Math.max(clipX, _cardInteriorClip.x);
+            const iy0 = Math.max(effClipY, _cardInteriorClip.y);
+            const ix1 = Math.min(clipX + clipW, _cardInteriorClip.x + _cardInteriorClip.w);
+            const iy1 = Math.min(effClipY + effClipH, _cardInteriorClip.y + _cardInteriorClip.h);
+            renderClipX = ix0;
+            renderClipW = Math.max(0, ix1 - ix0);
+            renderClipY = iy0;
+            renderClipH = Math.max(0, iy1 - iy0);
+            if (renderClipW <= 2 || renderClipH <= 2) return;
+        }
         const _twSegments = Array.isArray(ov._taskSegments)
             ? ov._taskSegments
             : (typeof window !== 'undefined' && window._reelsState?.tasks?.[window._reelsState?.selectedIdx]?.segments) || null;
         const _twContext = { currentTime, start, end, effectiveDuration, progress, bodyClipTop: bodyClipTopBase, bodyClipBot: bodyClipBotBase, drawCurY: bodyStartY, segments: _twSegments };
-        const hasFeather = featherTop > 0 || featherBottom > 0 || featherTopOff !== 0 || featherBotOff !== 0 || featherLeft > 0 || featherRight > 0 || featherLeftOff !== 0 || featherRightOff !== 0;
-        const fWin = _resolveFeatherWindow(clipX, effClipY, clipW, effClipH, curY, blockContentH);
+        const _effFeatherTop = _isFramedCrispCard ? Math.min(featherTop, Math.min(34, Math.round(renderClipH * 0.06))) : featherTop;
+        const _effFeatherBottom = _isFramedCrispCard ? Math.min(featherBottom, Math.min(34, Math.round(renderClipH * 0.06))) : featherBottom;
+        const _effFeatherLeft = _isFramedCrispCard ? Math.min(featherLeft, Math.min(28, Math.round(renderClipW * 0.05))) : featherLeft;
+        const _effFeatherRight = _isFramedCrispCard ? Math.min(featherRight, Math.min(28, Math.round(renderClipW * 0.05))) : featherRight;
+        const hasFeather = _effFeatherTop > 0 || _effFeatherBottom > 0 || (!_isFramedCrispCard && (featherTopOff !== 0 || featherBotOff !== 0 || featherLeftOff !== 0 || featherRightOff !== 0)) || _effFeatherLeft > 0 || _effFeatherRight > 0;
+        const fWin = _resolveFeatherWindow(renderClipX, renderClipY, renderClipW, renderClipH, curY, blockContentH);
         const _drewBodyBlockBg = _drawScrollBodyBlockBgOutsideClip(
             ctx, ov, lines, curX, bodyStartY, textW, lineHeight,
-            effClipY, effClipH, featherTopOff, featherBotOff, _bgScrollOffsetY,
-            { hasFeather, fWin, featherTop, featherBottom, featherLeft, featherRight, featherTopOff, featherBotOff, featherLeftOff, featherRightOff }
+            renderClipY, renderClipH, _isFramedCrispCard ? 0 : featherTopOff, _isFramedCrispCard ? 0 : featherBotOff, _bgScrollOffsetY,
+            {
+                hasFeather, fWin,
+                featherTop: _effFeatherTop, featherBottom: _effFeatherBottom,
+                featherLeft: _effFeatherLeft, featherRight: _effFeatherRight,
+                featherTopOff: _isFramedCrispCard ? 0 : featherTopOff,
+                featherBotOff: _isFramedCrispCard ? 0 : featherBotOff,
+                featherLeftOff: _isFramedCrispCard ? 0 : featherLeftOff,
+                featherRightOff: _isFramedCrispCard ? 0 : featherRightOff,
+            }
         );
         const ovForBlock = _drewBodyBlockBg ? Object.assign({}, baseOv, { _skipBodyBlockBg: true }) : baseOv;
         const _clipBlockBg = (clipBaseX, clipBaseY, clipBaseW, clipBaseH, paintFn) => {
@@ -8140,7 +8378,11 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             } else {
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
+                if (_cardInteriorClip) {
+                    ctx.rect(renderClipX, renderClipY, renderClipW, renderClipH);
+                } else {
+                    ctx.rect(fWin.drawX, fWin.drawY, fWin.cW, fWin.cH);
+                }
                 ctx.clip();
                 paintFn();
                 ctx.restore();
@@ -8157,20 +8399,20 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
             tc.globalCompositeOperation = 'destination-in';
             const grad = tc.createLinearGradient(0, gradY0, 0, gradY1);
-            _applyScrollFeatherGradientStops(grad, spanY, inTOff, featherTop, featherBottom, inBOff);
+            _applyScrollFeatherGradientStops(grad, spanY, _isFramedCrispCard ? 0 : inTOff, _effFeatherTop, _effFeatherBottom, _isFramedCrispCard ? 0 : inBOff);
             tc.fillStyle = grad;
             tc.fillRect(0, 0, cW, cH);
 
-            if (featherLeft > 0 || featherRight > 0 || inLOff > 0 || inROff > 0) {
+            if (_effFeatherLeft > 0 || _effFeatherRight > 0 || (!_isFramedCrispCard && (inLOff > 0 || inROff > 0))) {
                 const gradX = tc.createLinearGradient(gradX0, 0, gradX1, 0);
-                _applyScrollFeatherGradientStops(gradX, spanX, inLOff, featherLeft, featherRight, inROff);
+                _applyScrollFeatherGradientStops(gradX, spanX, _isFramedCrispCard ? 0 : inLOff, _effFeatherLeft, _effFeatherRight, _isFramedCrispCard ? 0 : inROff);
                 tc.fillStyle = gradX;
                 tc.fillRect(0, 0, cW, cH);
             }
 
             _clipBlockBg(drawX, drawY, cW, cH, () => ctx.drawImage(tmp, drawX, drawY));
         } else {
-            _clipBlockBg(clipX, effClipY, clipW, effClipH, () => {
+            _clipBlockBg(renderClipX, renderClipY, renderClipW, renderClipH, () => {
                 _drawScrollTextBlock(ctx, ovForBlock, lines, curX, curY, textW, lineHeight, fontSize, align, _twContext);
             });
         }
@@ -8219,7 +8461,9 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
 
             // ── 1. 绘制固定标题 (在覆层顶部，不受裁切) ──
             // 标题X/Y：当卡片未勾选“仅包裹正文区”且调节了画板长度/偏移时，非独立标题跟随卡片顶部移动
-            const titleDrawY = _fixedTitleTopY;
+            const titleDrawY = (_cardInteriorClip && !titleIndependent && !ov.bg_body_only)
+                ? Math.max(_fixedTitleTopY, _cardInteriorClip.y + 4)
+                : _fixedTitleTopY;
             const titleAxisX = ov.scroll_title_x != null
                 ? parseFloat(ov.scroll_title_x) + offsetX
                 : (legacyDefaultLeftX ? (clipX + clipW / 2) : fromX);
@@ -8400,20 +8644,23 @@ function _drawScrollOverlay(ctx, ov, clipX, clipY, clipW, clipH, currentTime, ca
             }
 
         // ── 2. 正文在标题下方的剩余空间内滚动 ──
-        const _titleDeductedH = titleIndependent ? 0 : Math.min(Math.max(0, clipH - 80), titleBlockH + tGap);
-        const bodyClipY = ov.bg_body_only
-            ? bodyClipTopBase
-            : (clipY + _titleDeductedH);
-        const bodyClipH = ov.bg_body_only
-            ? Math.max(40, bodyClipBotBase - bodyClipTopBase)
-            : Math.max(40, clipH - _titleDeductedH);
-        _renderScrollBodyLayer(
-            bodyClipY,
-            bodyClipH,
-            curY,
-            Math.max(lineHeight, bodyBottomOffset - movingTitleH),
-            Object.assign({}, ov, { _skipTitle: true })
-        );
+        if (hasBodyContent) {
+            const _titleBottomY = titleDrawY + titleBlockH + tGap;
+            const _titleDeductedH = titleIndependent ? 0 : Math.min(Math.max(0, clipH - 80), Math.max(titleBlockH + tGap, _titleBottomY - clipY));
+            const bodyClipY = ov.bg_body_only
+                ? Math.max(bodyClipTopBase, _titleBottomY)
+                : (clipY + _titleDeductedH);
+            const bodyClipH = ov.bg_body_only
+                ? Math.max(40, bodyClipBotBase - bodyClipTopBase)
+                : Math.max(40, clipH - _titleDeductedH);
+            _renderScrollBodyLayer(
+                bodyClipY,
+                bodyClipH,
+                curY,
+                Math.max(lineHeight, bodyBottomOffset - movingTitleH),
+                Object.assign({}, ov, { _skipTitle: true })
+            );
+        }
     } else {
         // ── 标题跟随滚动或无标题 ──
         const effClipY = ov.bg_body_only ? bodyClipTopBase : clipY;
@@ -8932,6 +9179,18 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
     const unrevealedOpacity = hideUnread
         ? Math.max(0, Math.min(1, Number(ov.scroll_tw_unrevealed_opacity ?? 0) / 100))
         : 1.0;
+    const activeHighlight = ov.scroll_tw_active_highlight !== false;
+    const activeColor = ov.scroll_tw_active_color || '#FFD700';
+    const keepReadColor = Boolean(ov.scroll_tw_keep_read_color);
+    const activeScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
+        ? Boolean(ov.scroll_tw_active_scale_enabled)
+        : (Number(ov.scroll_tw_active_scale || 100) !== 100);
+    const activeScale = activeScaleEnabled
+        ? Math.max(0.5, Math.min(2.5, (Number(ov.scroll_tw_active_scale) || 125) / 100))
+        : 1.0;
+    const cursorEnabled = ov.scroll_tw_cursor_enabled !== false;
+    const tipKind = ov.scroll_tw_cursor_kind || 'quill';
+    const isImageTip = tipKind !== 'char';
     let currentTime = rawCurrentTime;
     const isRealExport = Boolean(ov._exporting && !ov._staticPreview);
     const isPlayingPreview = Boolean(ov._previewPlaying);
@@ -8947,18 +9206,6 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             currentTime = wordGroups[demoWgIdx].start + (wordGroups[demoWgIdx].end - wordGroups[demoWgIdx].start) * 0.5;
         }
     }
-    const activeHighlight = ov.scroll_tw_active_highlight !== false;
-    const activeColor = ov.scroll_tw_active_color || '#FFD700';
-    const keepReadColor = Boolean(ov.scroll_tw_keep_read_color);
-    const activeScaleEnabled = ov.scroll_tw_active_scale_enabled !== undefined
-        ? Boolean(ov.scroll_tw_active_scale_enabled)
-        : (Number(ov.scroll_tw_active_scale || 100) !== 100);
-    const activeScale = activeScaleEnabled
-        ? Math.max(0.5, Math.min(2.5, (Number(ov.scroll_tw_active_scale) || 125) / 100))
-        : 1.0;
-    const cursorEnabled = ov.scroll_tw_cursor_enabled !== false;
-    const tipKind = ov.scroll_tw_cursor_kind || 'quill';
-    const isImageTip = tipKind !== 'char';
 
     // Resolve the currently active word across both char and word reveal modes
     let activeWord = null;
@@ -9144,26 +9391,25 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                 }
             }
 
-            const isFocusZoneLineMode = revealType === 'line' && lineTrackMode === 'focus_zone' && activeLineIdx >= 0;
-            const allowLinePreviewCursorInit = revealType === 'line'
-                && li === activeLineIdx
-                && !hasWritingStarted
-                && !/^\s+$/.test(tok.text)
-                && (!hideUnread || !ov._exporting || isFocusZoneLineMode);
-            const tokenActiveByTime = isFocusZoneLineMode
-                ? (li === activeLineIdx && currentTime >= tok.start && !/^\s+$/.test(tok.text))
-                : (currentTime >= tok.start && !/^\s+$/.test(tok.text));
-            const shouldAdvanceCursor = tokenActiveByTime
-                || allowLinePreviewCursorInit
-                || (!hasWritingStarted && activeWord && tok === activeWord.tokens[0] && (!hideUnread || !ov._exporting));
+            const isStaticWordEndPreview = !isRealExport && !isPlayingPreview && !hideUnread
+                && rawCurrentTime <= Math.max(0.05, firstWordStart + 0.05)
+                && activeWord && activeWord.tokens?.length;
+            const activeWordPreviewTok = isStaticWordEndPreview
+                ? activeWord.tokens[activeWord.tokens.length - 1]
+                : ((!hideUnread || !ov._exporting) && activeWord && activeWord.tokens?.length ? activeWord.tokens[activeWord.tokens.length - 1] : null);
+            const shouldAdvanceCursor = revealType !== 'line' && (
+                isStaticWordEndPreview
+                    ? (tok === activeWordPreviewTok)
+                    : ((currentTime >= tok.start && !/^\s+$/.test(tok.text)) || (!hasWritingStarted && activeWordPreviewTok && tok === activeWordPreviewTok))
+            );
             if (shouldAdvanceCursor) {
                 const prefixW = _measureScrollSubstrWidth(ctx, line, 0, tok.charStart, bLetterSpacing);
                 const nextPrefixW = _measureScrollSubstrWidth(ctx, line, 0, tok.charEnd, bLetterSpacing);
                 const tokW = nextPrefixW - prefixW;
                 const tokenX = isRtl ? (lx + lineW - nextPrefixW) : (lx + prefixW);
-                const p = (isImageTip && !tok._sentenceToken && tok.end > tok.start && currentTime >= tok.start)
+                const p = (!isStaticWordEndPreview && isImageTip && !tok._sentenceToken && tok.end > tok.start && currentTime >= tok.start)
                     ? Math.max(0, Math.min(1, (currentTime - tok.start) / (tok.end - tok.start)))
-                    : (currentTime < tok.start ? 0.25 : 1);
+                    : 1;
                 cursorX = isRtl ? (tokenX + tokW * (1 - p)) : (tokenX + tokW * p);
                 cursorBaselineY = yc;
                 hasWritingStarted = true;
@@ -9188,6 +9434,22 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
                     text: line.slice(tok.charStart, tok.charEnd),
                 });
             }
+        }
+        if (revealType === 'line' && li === activeLineIdx && line.trim()) {
+            const trimmedStart = Math.max(0, line.search(/\S/));
+            const trimmedEnd = Math.max(trimmedStart + 1, line.replace(/\s+$/, '').length);
+            const spanStartX = lx + _measureScrollSubstrWidth(ctx, line, 0, trimmedStart, bLetterSpacing);
+            const spanEndX = lx + _measureScrollSubstrWidth(ctx, line, 0, trimmedEnd, bLetterSpacing);
+            const lr = lineRanges[li];
+            let lp = 0.28;
+            if (lr && lr.end > lr.start && currentTime >= lr.start) {
+                lp = Math.max(0.08, Math.min(1, (currentTime - lr.start) / (lr.end - lr.start)));
+            } else if (lineTrackMode === 'focus_zone') {
+                lp = 0.65;
+            }
+            cursorX = isRtl ? (spanEndX - (spanEndX - spanStartX) * lp) : (spanStartX + (spanEndX - spanStartX) * lp);
+            cursorBaselineY = yc;
+            hasWritingStarted = true;
         }
         preparedLines.push({ li, line, yc, lx, lineW, runs });
     }
@@ -9414,13 +9676,15 @@ function _renderScrollTypewriterBody(ctx, ov, lines, textX, drawY, textW, lineHe
             const offX = Number(ov.scroll_tw_cursor_offset_x) || 0;
             const offY = Number(ov.scroll_tw_cursor_offset_y) || 0;
             const angle = Number(ov.scroll_tw_cursor_angle) ?? -8;
-            const tipX = cursorX + offX;
+            const nibClearanceX = isImageTip ? (isRtl ? -Math.max(8, fontSize * 0.22) : Math.max(8, fontSize * 0.22)) : 0;
+            const tipX = cursorX + nibClearanceX + offX;
             const tipY = cursorBaselineY - fontSize * 0.08 + offY;
             const tipSize = fontSize * scale;
+            const tipAnimTime = (!isRealExport && currentTime <= 0.02) ? 0.35 : currentTime;
             if (tipKind === 'image') {
-                _drawScrollTypewriterCursorImage(ctx, ov, tipX, tipY, tipSize, angle, currentTime);
+                _drawScrollTypewriterCursorImage(ctx, ov, tipX, tipY, tipSize, angle, tipAnimTime);
             } else if (typeof drawSpeechWritingTip === 'function') {
-                drawSpeechWritingTip(ctx, tipKind, tipX, tipY, tipSize, angle);
+                drawSpeechWritingTip(ctx, tipKind, tipX, tipY, tipSize, angle, tipAnimTime);
             }
         } else if (!isImageTip && Math.floor(currentTime * 2) % 2 === 0) {
             ctx.save();
@@ -9995,6 +10259,7 @@ function _drawScrollTextBlock(ctx, ov, lines, textX, textY, textW, lineHeight, f
     }
 
     // ── 正文 ──
+    if (!Array.isArray(lines) || lines.length === 0) return;
     ctx.direction = (typeof ReelsTextDirection !== 'undefined')
         ? ReelsTextDirection.resolve(ov.text_direction, ov.content || '')
         : 'ltr';
@@ -14433,6 +14698,7 @@ const DECOR_OVERLAY_CATEGORIES = [
     { id: 'dark_particles', name: '🖤 黑色氛围模板 & 飘浮粒子 (7款)' },
     { id: 'film_grain',     name: '🎞️ 电影颗粒 & 回忆质感 (7款)' },
     { id: 'stars',          name: '🌟 发光星芒 & 梦幻光斑 (6款)' },
+    { id: 'clouds',         name: '☁️ 穿云转场 & 云雾噪波 (4款)' },
     { id: 'xmas',           name: '🎄 圣诞节限定点缀 (5款)' },
     { id: 'veterans',       name: '🇺🇸 美国退伍军人节限定 (4款)' },
     { id: 'frame',          name: '⚜️ 复古画框 & 边缘装饰 (5款)' },
@@ -14601,8 +14867,31 @@ const DECOR_OVERLAY_STYLES = {
         density: 70,
         center_clear: 40,
     },
+    golden_petal_sanctuary: {
+        name: '🕊️ 暗夜圣光金色花瓣微光漂浮',
+        category: 'dark_particles',
+        color1: '#FBBF24',
+        color2: '#FFFBEB',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: false,
+        dark_vignette: 72,
+        vignette_spread: 56,
+        dark_tint: '#0D0804',
+        floating_particles: true,
+        particle_mode: 'gold_petals',
+        grain_intensity: 16,
+        grain_size: 95,
+        grain_warmth: 24,
+        film_scratches: false,
+        light_leak: false,
+        layout: 'edges_and_float',
+        density: 60,
+        center_clear: 52,
+    },
 
-    // ── B. 🎞️ 电影颗粒 & 回忆质感 (7款) ──
+    // ── B. 🎞️ 电影颗粒 & 回忆质感 (10款) ──
     cinema_35mm_grain: {
         name: '🎞️ 35mm 经典电影颗粒 + 宽银幕暗角',
         category: 'film_grain',
@@ -14764,8 +15053,77 @@ const DECOR_OVERLAY_STYLES = {
         density: 45,
         center_clear: 60,
     },
+    anamorphic_cinema_streak: {
+        name: '🎬 好莱坞变形宽银幕蓝金拉丝眩光 + 细颗粒',
+        category: 'film_grain',
+        color1: '#38BDF8',
+        color2: '#FDE68A',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: true,
+        dark_vignette: 48,
+        vignette_spread: 46,
+        dark_tint: '#040914',
+        floating_particles: true,
+        particle_mode: 'dust',
+        grain_intensity: 34,
+        grain_size: 92,
+        grain_warmth: 8,
+        film_scratches: false,
+        light_leak: false,
+        layout: 'edges_and_float',
+        density: 38,
+        center_clear: 62,
+    },
+    rec_camcorder_viewfinder: {
+        name: '📹 Y2K 千禧DV摄像机红点REC取景器 + 扫描线',
+        category: 'film_grain',
+        color1: '#EF4444',
+        color2: '#F8FAFC',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: true,
+        dark_vignette: 42,
+        vignette_spread: 44,
+        dark_tint: '#060B10',
+        floating_particles: false,
+        particle_mode: 'dust',
+        grain_intensity: 44,
+        grain_size: 115,
+        grain_warmth: 10,
+        film_scratches: true,
+        light_leak: false,
+        layout: 'edges_only',
+        density: 32,
+        center_clear: 70,
+    },
+    a24_warm_halation: {
+        name: '🎞️ A24 柯达胶片暖调红晕漏光 + 柔焦尘埃',
+        category: 'film_grain',
+        color1: '#FB923C',
+        color2: '#FDA4AF',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: true,
+        dark_vignette: 54,
+        vignette_spread: 50,
+        dark_tint: '#180904',
+        floating_particles: true,
+        particle_mode: 'dust',
+        grain_intensity: 48,
+        grain_size: 100,
+        grain_warmth: 48,
+        film_scratches: false,
+        light_leak: true,
+        layout: 'edges_and_float',
+        density: 42,
+        center_clear: 55,
+    },
 
-    // ── C. 🌟 发光星芒 & 梦幻光斑 (6款) ──
+    // ── C. 🌟 发光星芒 & 梦幻光斑 (7款) ──
     glowing_starfield: {
         name: '🌟 璀璨发光星芒点缀',
         category: 'stars',
@@ -14835,6 +15193,21 @@ const DECOR_OVERLAY_STYLES = {
         light_leak: true,
         grain_warmth: 35,
         density: 55,
+    },
+    prismatic_glass_refraction: {
+        name: '💎 幻彩棱镜光学色散光斑 (Ins极简爆款)',
+        category: 'stars',
+        color1: '#67E8F9',
+        color2: '#F0ABFC',
+        glow_stars: true,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: true,
+        floating_particles: true,
+        particle_mode: 'prism_bokeh',
+        layout: 'edges_and_float',
+        density: 58,
+        center_clear: 56,
     },
 
     // ── D. 🎄 圣诞节限定点缀 (5款) ──
@@ -14954,6 +15327,24 @@ const DECOR_OVERLAY_STYLES = {
         floating_particles: true,
         particle_mode: 'dust',
     },
+    editorial_dual_matte_frame: {
+        name: '🖼️ 高级杂志双细线画框 + 胶片微粒',
+        category: 'frame',
+        color1: '#F8FAFC',
+        color2: '#E5C165',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: true,
+        edge_garland: true,
+        dark_vignette: 26,
+        vignette_spread: 38,
+        dark_tint: '#09090B',
+        grain_intensity: 24,
+        grain_size: 92,
+        grain_warmth: 6,
+        floating_particles: false,
+        particle_mode: 'dust',
+    },
 
     // ── F. 🇺🇸 美国退伍军人节限定 (4款) ──
     vet_stars_stripes_bunting: {
@@ -15012,6 +15403,73 @@ const DECOR_OVERLAY_STYLES = {
         layout: 'full_scatter',
         center_clear: 45,
     },
+
+    // ── G. ☁️ 穿云转场 & 云雾噪波 (4款 · 片中0:32同款云雾拨开转场 & 仙气云霭) ──
+    cloud_part_transition: {
+        name: '☁️ 穿云而出_片中噪波云雾拨开转场(0:32同款)',
+        category: 'clouds',
+        color1: '#FFFFFF',
+        color2: '#64748B',
+        cloud_tint: '#BAE6FD',
+        cloud_mode: 'mid_transition',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: false,
+        floating_particles: false,
+        layout: 'full_scatter',
+        density: 78,
+        center_clear: 20,
+    },
+    cloud_part_gold_transition: {
+        name: '🌅 金光云涌_片中暖金云雾散开转场',
+        category: 'clouds',
+        color1: '#FFFBEB',
+        color2: '#B45309',
+        cloud_tint: '#FDBA74',
+        cloud_mode: 'mid_transition',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: false,
+        floating_particles: false,
+        layout: 'full_scatter',
+        density: 76,
+        center_clear: 20,
+    },
+    cloud_mist_ambient_drift: {
+        name: '🌫️ 柔焦云雾慢飘_边缘灵动仙气薄纱',
+        category: 'clouds',
+        color1: '#F8FAFC',
+        color2: '#94A3B8',
+        cloud_tint: '#E0F2FE',
+        cloud_mode: 'ambient_perimeter',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: false,
+        floating_particles: true,
+        particle_mode: 'dust',
+        layout: 'edges_only',
+        density: 54,
+        center_clear: 58,
+    },
+    cloud_heavenly_top_wisps: {
+        name: '⛅ 顶部天际流云_圣洁高空云霭慢涌',
+        category: 'clouds',
+        color1: '#FFFFFF',
+        color2: '#7DD3FC',
+        cloud_tint: '#CBD5E1',
+        cloud_mode: 'top_sky',
+        glow_stars: false,
+        snowflakes: false,
+        corner_ornaments: false,
+        edge_garland: false,
+        floating_particles: false,
+        layout: 'top_bottom',
+        density: 58,
+        center_clear: 68,
+    },
 };
 
 ReelsBrushEngine.DECOR_OVERLAY_CATEGORIES = DECOR_OVERLAY_CATEGORIES;
@@ -15020,6 +15478,298 @@ ReelsBrushEngine.DECOR_OVERLAY_STYLES = DECOR_OVERLAY_STYLES;
 function _decorHash(n) {
     const s = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
     return s - Math.floor(s);
+}
+
+// ═══════════════════════════════════════════════════════
+// Procedural 2D Fractal Brownian Motion Cloud Engine (穿云而出 / 云雾噪波核心算法)
+// Shared by Cloud Reveal Openers AND Mid-Video Cloud Transitions / Mist
+// ═══════════════════════════════════════════════════════
+const _CLOUD_LUT_W = 256;
+const _CLOUD_LUT_H = 448;
+const _CLOUD_SW = 160;
+const _CLOUD_SH = 284;
+const _cloudFbmCache = {
+    luts: null,
+    scratchCanvas: null,
+    scratchCtx: null,
+    imgData: null,
+};
+
+function _parseHexRgbTuple(hex, fallback) {
+    if (typeof hex === 'string' && hex.startsWith('#') && hex.length >= 7) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+            return [r, g, b];
+        }
+    }
+    return fallback;
+}
+
+function _periodicHash2D(ix, iy, px, py, seed) {
+    const wx = ((ix % px) + px) % px;
+    const wy = ((iy % py) + py) % py;
+    let h = (wx * 374761393 + wy * 668265263 + seed * 1442695041) | 0;
+    h = ((h ^ (h >> 13)) * 1274126177) | 0;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+}
+
+function _samplePeriodicValueNoise(u, v, px, py, seed) {
+    const x = u * px;
+    const y = v * py;
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const tx = x - x0;
+    const ty = y - y0;
+    const sx = tx * tx * (3 - 2 * tx);
+    const sy = ty * ty * (3 - 2 * ty);
+    const n00 = _periodicHash2D(x0, y0, px, py, seed);
+    const n10 = _periodicHash2D(x0 + 1, y0, px, py, seed);
+    const n01 = _periodicHash2D(x0, y0 + 1, px, py, seed);
+    const n11 = _periodicHash2D(x0 + 1, y0 + 1, px, py, seed);
+    const nx0 = n00 + (n10 - n00) * sx;
+    const nx1 = n01 + (n11 - n01) * sx;
+    return nx0 + (nx1 - nx0) * sy;
+}
+
+function _getCloudFbmLuts() {
+    if (_cloudFbmCache.luts) return _cloudFbmCache.luts;
+    const W = _CLOUD_LUT_W;
+    const H = _CLOUD_LUT_H;
+    const macro = new Float32Array(W * H);
+    const detail = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+        const v = y / H;
+        for (let x = 0; x < W; x++) {
+            const u = x / W;
+            const o1 = _samplePeriodicValueNoise(u, v, 4, 7, 17);
+            const o2 = _samplePeriodicValueNoise(u, v, 8, 14, 53);
+            const o3 = _samplePeriodicValueNoise(u, v, 16, 28, 97);
+            const o4 = _samplePeriodicValueNoise(u, v, 32, 56, 139);
+            const o5 = _samplePeriodicValueNoise(u, v, 64, 112, 193);
+            const idx = y * W + x;
+            macro[idx] = o1 * 0.52 + o2 * 0.30 + o3 * 0.18;
+            detail[idx] = o3 * 0.46 + o4 * 0.34 + o5 * 0.20;
+        }
+    }
+    _cloudFbmCache.luts = { w: W, h: H, macro, detail };
+    return _cloudFbmCache.luts;
+}
+
+function _computeCloudFieldAlpha(nx, ny, fbmVal, mode, progress, centerClear = 0.58) {
+    const p = Math.max(0, Math.min(1, Number(progress) || 0));
+    const dx = (nx - 0.5) / 0.86;
+    const dy = (ny - 0.44) / 1.06;
+    const dist = Math.hypot(dx, dy);
+    const eroded = fbmVal - 0.50;
+
+    if (mode === 'top_sky') {
+        const vert = Math.max(0, Math.min(1, (0.48 - ny) / 0.34));
+        if (vert <= 0.001) return 0;
+        const wisp = Math.max(0, Math.min(1, (fbmVal - 0.34) / 0.46));
+        return Math.min(0.86, vert * wisp * 0.72);
+    }
+
+    if (mode === 'ambient_perimeter') {
+        const clearR = 0.22 + Math.max(0, Math.min(0.95, centerClear)) * 0.32;
+        const raw = (dist - clearR + eroded * 0.44) / 0.28;
+        const mask = Math.max(0, Math.min(1, raw));
+        return Math.min(0.72, mask * (0.30 + 0.52 * fbmVal) * 0.62);
+    }
+
+    let openNorm = 0;
+    let envMul = 1;
+    if (mode === 'mid_transition') {
+        const inSplit = 0.24;
+        if (p < inSplit) {
+            const b = Math.max(0, Math.min(1, p / inSplit));
+            const easeB = b * b * (3 - 2 * b);
+            const gatherCut = 1.08 - easeB * 1.64;
+            const rawIn = (dist - gatherCut + eroded * 0.46) / 0.24;
+            const covIn = Math.max(0, Math.min(1, rawIn));
+            return Math.min(1, covIn * (0.30 + 0.70 * easeB) * (0.46 + 0.54 * fbmVal + 0.34 * covIn));
+        }
+        const outT = (p - inSplit) / (1 - inSplit);
+        openNorm = outT * outT * (3 - 2 * outT);
+    } else {
+        const holdFrac = 0.14;
+        const tOpen = Math.max(0, Math.min(1, (p - holdFrac) / (1 - holdFrac)));
+        openNorm = tOpen * tOpen * (3 - 2 * tOpen);
+    }
+
+    if (openNorm > 0.88) {
+        envMul = Math.max(0, (1 - openNorm) / 0.12);
+    }
+    const radiusCut = openNorm * 1.56 - 0.56;
+    const rawCov = (dist - radiusCut + eroded * 0.48) / 0.24;
+    const cov = Math.max(0, Math.min(1, rawCov));
+    return Math.min(1, cov * envMul * (0.46 + 0.54 * fbmVal + 0.34 * cov));
+}
+
+function evaluateCloudFbmSample(nx, ny, opts = {}) {
+    const mode = opts.mode || 'iris_clear';
+    const progress = Number(opts.progress ?? 0);
+    const timeSec = Number(opts.timeSec ?? 0);
+    const centerClear = Number(opts.centerClear ?? 0.58);
+    const luts = _getCloudFbmLuts();
+    const driftU = ((timeSec * 0.045) % 1 + 1) % 1;
+    const driftV = ((timeSec * 0.015) % 1 + 1) % 1;
+    const u1 = (((nx + driftU) % 1) + 1) % 1;
+    const v1 = (((ny - driftV) % 1) + 1) % 1;
+    const u2 = (((nx * 1.35 - driftU * 1.6) % 1) + 1) % 1;
+    const v2 = (((ny * 1.35 + driftV * 1.2) % 1) + 1) % 1;
+    const ix1 = Math.min(luts.w - 1, Math.floor(u1 * luts.w));
+    const iy1 = Math.min(luts.h - 1, Math.floor(v1 * luts.h));
+    const ix2 = Math.min(luts.w - 1, Math.floor(u2 * luts.w));
+    const iy2 = Math.min(luts.h - 1, Math.floor(v2 * luts.h));
+    const macroVal = luts.macro[iy1 * luts.w + ix1];
+    const detailVal = luts.detail[iy2 * luts.w + ix2];
+    const fbmVal = macroVal * 0.68 + detailVal * 0.32;
+    const alpha = _computeCloudFieldAlpha(nx, ny, fbmVal, mode, progress, centerClear);
+    return { fbm: fbmVal, macro: macroVal, detail: detailVal, alpha };
+}
+
+function _drawProceduralCloudFieldOverlay(ctx, opts = {}) {
+    const x = Number(opts.x) || 0;
+    const y = Number(opts.y) || 0;
+    const w = Math.max(1, Number(opts.w) || 1080);
+    const h = Math.max(1, Number(opts.h) || 1920);
+    const mode = opts.mode || 'iris_clear';
+    const progress = Math.max(0, Math.min(1, Number(opts.progress) || 0));
+    const timeSec = Math.max(0, Number(opts.timeSec) || 0);
+    const opacity = Math.max(0, Math.min(1, Number(opts.opacity ?? 1)));
+    const centerClear = Number(opts.centerClear ?? 0.58);
+    if (opacity <= 0.004) return;
+
+    const hiRgb = _parseHexRgbTuple(opts.highlightHex, [255, 255, 255]);
+    const midRgb = _parseHexRgbTuple(opts.midHex, [226, 232, 240]);
+    const shRgb = _parseHexRgbTuple(opts.shadowHex, [100, 116, 139]);
+    const skyRgb = _parseHexRgbTuple(opts.skyHex, [186, 230, 253]);
+
+    const hasScratchCanvas = typeof document !== 'undefined' && typeof document.createElement === 'function' && typeof ctx.drawImage === 'function';
+    if (hasScratchCanvas) {
+        if (!_cloudFbmCache.scratchCanvas) {
+            const sc = document.createElement('canvas');
+            sc.width = _CLOUD_SW;
+            sc.height = _CLOUD_SH;
+            const sctx = sc.getContext('2d');
+            if (sctx && typeof sctx.createImageData === 'function') {
+                _cloudFbmCache.scratchCanvas = sc;
+                _cloudFbmCache.scratchCtx = sctx;
+                _cloudFbmCache.imgData = sctx.createImageData(_CLOUD_SW, _CLOUD_SH);
+            }
+        }
+        const sctx = _cloudFbmCache.scratchCtx;
+        const img = _cloudFbmCache.imgData;
+        if (sctx && img && img.data) {
+            const luts = _getCloudFbmLuts();
+            const LW = luts.w;
+            const LH = luts.h;
+            const macro = luts.macro;
+            const detail = luts.detail;
+            const data = img.data;
+
+            const openNorm = (mode === 'mid_transition')
+                ? (progress >= 0.24 ? Math.pow((progress - 0.24) / 0.76, 1.35) : 0)
+                : (mode === 'iris_clear' ? Math.max(0, (progress - 0.14) / 0.86) : 0);
+            const advect = openNorm * 0.16;
+            const driftX = timeSec * 0.042;
+            const driftY = timeSec * 0.014;
+
+            for (let py = 0; py < _CLOUD_SH; py++) {
+                const ny = py / (_CLOUD_SH - 1);
+                const dy = (ny - 0.44) / 1.06;
+                for (let px = 0; px < _CLOUD_SW; px++) {
+                    const nx = px / (_CLOUD_SW - 1);
+                    const dx = (nx - 0.5) / 0.86;
+                    const su1 = (((nx - dx * advect + driftX) % 1) + 1) % 1;
+                    const sv1 = (((ny - dy * advect - driftY) % 1) + 1) % 1;
+                    const su2 = ((((nx - dx * advect * 1.4) * 1.35 - driftX * 1.55) % 1) + 1) % 1;
+                    const sv2 = ((((ny - dy * advect * 1.4) * 1.35 + driftY * 1.25) % 1) + 1) % 1;
+
+                    const mIdx = ((sv1 * LH) | 0) * LW + ((su1 * LW) | 0);
+                    const dIdx = ((sv2 * LH) | 0) * LW + ((su2 * LW) | 0);
+                    const fbmVal = macro[mIdx] * 0.68 + detail[dIdx] * 0.32;
+                    const alpha = _computeCloudFieldAlpha(nx, ny, fbmVal, mode, progress, centerClear);
+                    const outIdx = (py * _CLOUD_SW + px) * 4;
+                    if (alpha <= 0.004) {
+                        data[outIdx + 3] = 0;
+                        continue;
+                    }
+                    // Internal volumetric cloud puff shading: billowy bright crests + cool grey/slate bases + wispy edge sky scatter
+                    const crest = Math.max(0, Math.min(1, (fbmVal - 0.28) / 0.56));
+                    let r; let g; let b;
+                    if (crest > 0.54) {
+                        const k = (crest - 0.54) / 0.46;
+                        r = midRgb[0] + (hiRgb[0] - midRgb[0]) * k;
+                        g = midRgb[1] + (hiRgb[1] - midRgb[1]) * k;
+                        b = midRgb[2] + (hiRgb[2] - midRgb[2]) * k;
+                    } else {
+                        const k = crest / 0.54;
+                        r = shRgb[0] + (midRgb[0] - shRgb[0]) * k;
+                        g = shRgb[1] + (midRgb[1] - shRgb[1]) * k;
+                        b = shRgb[2] + (midRgb[2] - shRgb[2]) * k;
+                    }
+                    if (alpha < 0.42) {
+                        const skyMix = (1 - alpha / 0.42) * 0.32;
+                        r = r + (skyRgb[0] - r) * skyMix;
+                        g = g + (skyRgb[1] - g) * skyMix;
+                        b = b + (skyRgb[2] - b) * skyMix;
+                    }
+                    data[outIdx] = r & 255;
+                    data[outIdx + 1] = g & 255;
+                    data[outIdx + 2] = b & 255;
+                    data[outIdx + 3] = Math.round(alpha * 255);
+                }
+            }
+            sctx.putImageData(img, 0, 0);
+            ctx.save();
+            ctx.globalAlpha = opacity;
+            if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = true;
+            if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(_cloudFbmCache.scratchCanvas, x, y, w, h);
+            ctx.restore();
+            return;
+        }
+    }
+
+    // Graceful procedural puff fallback when running inside headless mock contexts without ImageData/DOM Canvas
+    const puffs = [
+        [0.50, 0.44, 0.55], [0.22, 0.20, 0.48], [0.78, 0.22, 0.46],
+        [0.18, 0.52, 0.45], [0.82, 0.54, 0.45], [0.26, 0.84, 0.48],
+        [0.74, 0.84, 0.48], [0.06, 0.08, 0.42], [0.94, 0.10, 0.42],
+        [0.50, 0.12, 0.44], [0.50, 0.88, 0.44],
+    ];
+    const openFrac = mode === 'mid_transition'
+        ? (progress < 0.24 ? Math.max(0, 1 - progress / 0.24) : (progress - 0.24) / 0.76)
+        : (mode === 'iris_clear' ? Math.max(0, (progress - 0.14) / 0.86) : 0.75);
+    ctx.save();
+    for (let i = 0; i < puffs.length; i++) {
+        const [pu, pv, prFrac] = puffs[i];
+        const vx = pu - 0.5;
+        const vy = pv - 0.44;
+        const pushOut = openFrac * 0.92;
+        const px = x + w * (pu + vx * pushOut);
+        const py = y + h * (pv + vy * pushOut);
+        const pr = Math.max(w, h) * prFrac * (0.85 + 0.15 * Math.sin(timeSec * 0.8 + i));
+        const aPuff = opacity * Math.max(0, 1 - openFrac * 0.95) * (mode === 'top_sky' && pv > 0.5 ? 0 : 1);
+        if (aPuff <= 0.01) continue;
+        ctx.globalAlpha = aPuff;
+        if (typeof ctx.createRadialGradient === 'function') {
+            const rg = ctx.createRadialGradient(px, py, pr * 0.1, px, py, pr);
+            rg.addColorStop(0, _withAlpha(opts.highlightHex || '#FFFFFF', 0.92));
+            rg.addColorStop(0.55, _withAlpha(opts.midHex || '#E2E8F0', 0.65));
+            rg.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = rg;
+        } else {
+            ctx.fillStyle = opts.highlightHex || '#FFFFFF';
+        }
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.restore();
 }
 
 /**
@@ -15528,6 +16278,47 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
     }
 
     // ══════════════════════════════════════════════════
+    // 0B-2. 程序化 2D 分形云雾噪波 / 片中穿云拨开转场 (Clouds & FBM Mist)
+    // ══════════════════════════════════════════════════
+    const cloudMode = ov.decor_cloud_mode || preset.cloud_mode || '';
+    if (cloudMode || styleId.startsWith('cloud_')) {
+        let segStart = Number(ov.start) || 0;
+        let segEnd = Number(ov.end) || (segStart + 2.2);
+        if (Array.isArray(ov.display_ranges)) {
+            for (const rng of ov.display_ranges) {
+                if (Array.isArray(rng) && rng.length >= 2) {
+                    const rs = Number(rng[0]);
+                    const re = Number(rng[1]);
+                    if (Number.isFinite(rs) && Number.isFinite(re) && rawTime >= rs - 0.01 && rawTime <= re + 0.01) {
+                        segStart = rs;
+                        segEnd = re;
+                        break;
+                    }
+                }
+            }
+        }
+        const segDur = Math.max(0.4, (segEnd > 9000 ? 2.4 : Math.max(0.4, segEnd - segStart)));
+        const cloudProgress = Math.max(0, Math.min(1, (rawTime - segStart) / segDur));
+        const densityMul = Math.max(0.25, Math.min(1.4, density / 75));
+        const baseAlpha = (ov.opacity !== undefined ? Math.max(0, Math.min(1, Number(ov.opacity) / 255)) : 1);
+        _drawProceduralCloudFieldOverlay(ctx, {
+            x,
+            y,
+            w,
+            h,
+            mode: cloudMode || 'mid_transition',
+            progress: cloudProgress,
+            timeSec: t,
+            opacity: Math.max(0, Math.min(1, baseAlpha * densityMul)),
+            centerClear: centerClearRatio,
+            highlightHex: color1 || '#FFFFFF',
+            midHex: (preset.color1 === '#FFFBEB' ? '#FEF3C7' : '#E2E8F0'),
+            shadowHex: color2 || '#64748B',
+            skyHex: preset.cloud_tint || '#BAE6FD',
+        });
+    }
+
+    // ══════════════════════════════════════════════════
     // 0C. 电影颗粒 / 回忆颗粒感 / 8mm划痕 / VHS扫描线 (Film Grain & Scratches)
     // ══════════════════════════════════════════════════
     if (showFilmGrain && grainIntensity > 0) {
@@ -15564,15 +16355,15 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
 
     if (showFilmScratches) {
         ctx.save();
-        if (styleId === 'vhs_retro_scanlines') {
-            // VHS CRT 水平扫描线与磁带追踪波纹
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+        if (styleId === 'vhs_retro_scanlines' || styleId === 'rec_camcorder_viewfinder') {
+            // VHS CRT / DV 摄像机水平扫描线与磁带追踪波纹
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
             const stepY = Math.max(4, Math.round(6 * sizeMul));
             for (let sy = y; sy < y + h; sy += stepY) {
                 ctx.fillRect(x, sy, w, Math.max(1.5, stepY * 0.42));
             }
             const trackY = y + ((rawTime * 160) % h);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+            ctx.fillStyle = styleId === 'rec_camcorder_viewfinder' ? 'rgba(103, 232, 249, 0.08)' : 'rgba(255, 255, 255, 0.12)';
             ctx.fillRect(x, trackY, w, 14 * sizeMul);
         } else {
             // 8mm / 老电影纵向划痕、毛发灰尘与轻微放映机明暗闪烁
@@ -15867,6 +16658,68 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
             ctx.restore();
         }
 
+        if (styleId === 'anamorphic_cinema_streak' && typeof ctx.createLinearGradient === 'function') {
+            // 🎬 好莱坞变形宽银幕蓝金水平拉丝眩光 (Anamorphic Streak)
+            ctx.save();
+            const pulse = 0.72 + 0.28 * Math.sin(t * 1.4);
+            for (const [syFrac, col] of [[0.14, color1 || '#38BDF8'], [0.86, color2 || '#FDE68A']]) {
+                const cyStreak = y + h * syFrac;
+                const bandH = (26 * sizeMul);
+                const sg = ctx.createLinearGradient(x, cyStreak, x + w, cyStreak);
+                sg.addColorStop(0, 'rgba(56,189,248,0)');
+                sg.addColorStop(0.25, _withAlpha(col, 0.14 * pulse * glowMul));
+                sg.addColorStop(0.5, _withAlpha('#FFFFFF', 0.32 * pulse * glowMul));
+                sg.addColorStop(0.75, _withAlpha(col, 0.14 * pulse * glowMul));
+                sg.addColorStop(1, 'rgba(56,189,248,0)');
+                ctx.fillStyle = sg;
+                ctx.fillRect(x, cyStreak - bandH * 0.5, w, bandH);
+                ctx.fillStyle = _withAlpha('#FFFFFF', 0.22 * pulse * glowMul);
+                ctx.fillRect(x + w * 0.08, cyStreak - 1.5, w * 0.84, 3);
+            }
+            ctx.restore();
+        }
+
+        if (styleId === 'prismatic_glass_refraction' && typeof ctx.createLinearGradient === 'function') {
+            // 💎 幻彩棱镜边缘光学色散光束
+            ctx.save();
+            const drift = Math.sin(t * 0.85) * 0.08;
+            const pg = ctx.createLinearGradient(x, y + h * (0.05 + drift), x + w, y + h * (0.42 - drift));
+            pg.addColorStop(0, _withAlpha(color1 || '#67E8F9', 0.22 * glowMul));
+            pg.addColorStop(0.45, _withAlpha(color2 || '#F0ABFC', 0.18 * glowMul));
+            pg.addColorStop(0.8, _withAlpha('#FDE68A', 0.12 * glowMul));
+            pg.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = pg;
+            ctx.fillRect(x, y, w, h * 0.45);
+            ctx.restore();
+        }
+
+        if (styleId === 'a24_warm_halation' && typeof ctx.createRadialGradient === 'function') {
+            // 🎞️ 柯达 2383 边缘红晕暖调溢光 (Halation Bloom)
+            ctx.save();
+            const pulse = 0.75 + 0.25 * Math.sin(t * 0.7);
+            const hr = Math.max(w, h) * 0.48 * sizeMul;
+            const hg = ctx.createRadialGradient(x + w * 0.08, y + h * 0.14, 0, x + w * 0.08, y + h * 0.14, hr);
+            hg.addColorStop(0, _withAlpha(color2 || '#FDA4AF', 0.28 * pulse * glowMul));
+            hg.addColorStop(0.45, _withAlpha(color1 || '#FB923C', 0.16 * pulse * glowMul));
+            hg.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = hg;
+            ctx.fillRect(x, y, w, h);
+            ctx.restore();
+        }
+
+        if (styleId === 'editorial_dual_matte_frame') {
+            // 🖼️ 高级杂志双细线架构画框 + 中轴微标
+            ctx.save();
+            ctx.strokeStyle = _withAlpha(color1 || '#F8FAFC', 0.56);
+            ctx.lineWidth = 1.6 * sizeMul;
+            ctx.strokeRect(bx, by, bw, bh);
+            ctx.strokeStyle = _withAlpha(color2 || '#E5C165', 0.42);
+            ctx.lineWidth = 1.0 * sizeMul;
+            const inset = 10 * sizeMul;
+            ctx.strokeRect(bx + inset, by + inset, Math.max(4, bw - inset * 2), Math.max(4, bh - inset * 2));
+            ctx.restore();
+        }
+
         if (styleId === 'vet_stars_stripes_bunting') {
             // 🇺🇸 顶部红白蓝星条旗三角彩旗挂绳 + 红蓝双色烫金外框
             ctx.save();
@@ -15994,24 +16847,36 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
                 ctx.fillRect(-38 * sizeMul, -11 * sizeMul, 76 * sizeMul, 22 * sizeMul);
                 ctx.strokeRect(-38 * sizeMul, -11 * sizeMul, 76 * sizeMul, 22 * sizeMul);
                 ctx.restore();
-            } else if (styleId === 'vhs_retro_scanlines' || styleId === 'cinema_vignette_grain') {
-                // 电影/摄像机取景框直角折线 + REC 闪烁红点
+            } else if (styleId === 'vhs_retro_scanlines' || styleId === 'cinema_vignette_grain' || styleId === 'rec_camcorder_viewfinder' || styleId === 'editorial_dual_matte_frame') {
+                // 电影/摄像机取景框直角折线 + REC 闪烁红点 / 杂志定位准星
                 ctx.save();
-                const arm = 36 * sizeMul;
+                const arm = (styleId === 'editorial_dual_matte_frame' ? 28 : 36) * sizeMul;
                 const dx = c.fx ? -1 : 1;
                 const dy = c.fy ? -1 : 1;
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
-                ctx.lineWidth = 2.6 * sizeMul;
+                ctx.strokeStyle = styleId === 'editorial_dual_matte_frame'
+                    ? _withAlpha(color2 || '#E5C165', 0.85)
+                    : 'rgba(255, 255, 255, 0.78)';
+                ctx.lineWidth = (styleId === 'editorial_dual_matte_frame' ? 2.0 : 2.6) * sizeMul;
                 ctx.beginPath();
                 ctx.moveTo(c.cx, c.cy + dy * arm);
                 ctx.lineTo(c.cx, c.cy);
                 ctx.lineTo(c.cx + dx * arm, c.cy);
                 ctx.stroke();
-                if (ci === 0 && Math.floor(rawTime * 2) % 2 === 0) {
-                    ctx.fillStyle = '#EF4444';
-                    ctx.beginPath();
-                    ctx.arc(c.cx + 22 * sizeMul, c.cy + 22 * sizeMul, 6 * sizeMul, 0, Math.PI * 2);
-                    ctx.fill();
+                if ((styleId === 'vhs_retro_scanlines' || styleId === 'rec_camcorder_viewfinder') && ci === 0) {
+                    const blinkOn = Math.floor(rawTime * 2) % 2 === 0;
+                    if (blinkOn) {
+                        ctx.fillStyle = color1 || '#EF4444';
+                        ctx.beginPath();
+                        ctx.arc(c.cx + 22 * sizeMul, c.cy + 22 * sizeMul, 6.5 * sizeMul, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    if (styleId === 'rec_camcorder_viewfinder' && typeof ctx.fillText === 'function') {
+                        ctx.fillStyle = blinkOn ? '#F8FAFC' : 'rgba(248,250,252,0.45)';
+                        ctx.font = `700 ${Math.round(14 * sizeMul)}px monospace`;
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText('REC', c.cx + 35 * sizeMul, c.cy + 22 * sizeMul);
+                    }
                 }
                 ctx.restore();
             } else {
@@ -16158,6 +17023,40 @@ function _drawDecorOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, canvasH) {
                 const pr = (7 + h3 * 15) * sizeMul * (0.5 + 0.5 * pulse);
                 ctx.globalAlpha *= (0.3 + 0.7 * pulse);
                 _drawGlowingStar(ctx, px, py, pr, '#FFFFFF', (i % 2 === 0) ? color1 : '#F0ABFC', glowMul * 1.25 * pulse, 8, t * 0.4);
+            } else if (particleMode === 'prism_bokeh') {
+                // 🌈 幻彩棱镜色散柔光光斑
+                const driftX = Math.sin(t * 0.62 + i * 1.2) * 26 * sizeMul;
+                const driftY = Math.cos(t * 0.48 + i * 1.8) * 22 * sizeMul;
+                px = baseX + driftX;
+                py = baseY + driftY;
+                const pbR = (14 + h3 * 28) * sizeMul * (0.75 + 0.25 * pulse);
+                const pCol = (i % 3 === 0) ? (color1 || '#67E8F9') : ((i % 3 === 1) ? (color2 || '#F0ABFC') : '#FDE68A');
+                ctx.globalAlpha *= (0.22 + 0.38 * pulse);
+                if (typeof ctx.createRadialGradient === 'function') {
+                    const pbg = ctx.createRadialGradient(px, py, 0, px, py, pbR);
+                    pbg.addColorStop(0, _withAlpha('#FFFFFF', 0.78));
+                    pbg.addColorStop(0.45, _withAlpha(pCol, 0.42));
+                    pbg.addColorStop(1, 'rgba(255,255,255,0)');
+                    ctx.fillStyle = pbg;
+                } else {
+                    ctx.fillStyle = _withAlpha(pCol, 0.28);
+                }
+                ctx.beginPath();
+                ctx.arc(px, py, pbR, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (particleMode === 'gold_petals') {
+                // 🕊️ 圣光金色流萤花瓣缓缓旋落
+                const swayX = Math.sin(t * (1.1 + h3 * 0.9) + i * 2.1) * 30 * sizeMul;
+                const fallY = t * (28 + h4 * 36);
+                px = x + ((baseX - x + swayX) % w + w) % w;
+                py = y + ((baseY - y + fallY) % h + h) % h;
+                const petR = (4.2 + h3 * 6.5) * sizeMul;
+                const rotAngle = t * (1.4 + h2) + i;
+                ctx.globalAlpha *= (0.42 + 0.48 * pulse);
+                ctx.fillStyle = (i % 2 === 0) ? (color1 || '#FBBF24') : (color2 || '#FFFBEB');
+                ctx.beginPath();
+                ctx.ellipse(px, py, petR * 1.45, petR * 0.62, rotAngle, 0, Math.PI * 2);
+                ctx.fill();
             } else {
                 // 🖤 默认 'dust' 悬浮微尘：远近景深双层微粒缓慢漂移
                 const driftX = Math.sin(t * (0.5 + h3 * 0.7) + i * 1.7) * 20 * sizeMul;
@@ -16373,6 +17272,8 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
     const rawElapsed = Math.max(0, (Number(currentTime) || 0) - start);
 
     const layoutMode = ov.intro_layout || 'ring';
+    // 纯音效冲击开场 (audio_only): 画面保持 100% 透明纯净，仅在开篇播放冲击音效
+    if (layoutMode === 'audio_only') return;
     const isRevealTransition = layoutMode !== 'ring' && layoutMode !== 'kinetic_stack';
     const isSnapshotPausedAtZero = !ov._exporting && !ov._previewPlaying && rawElapsed <= 0.001;
     const fadeInDur = isRevealTransition
@@ -16410,7 +17311,12 @@ function _drawIntroCountdownOverlay(ctx, ov, x, y, w, h, currentTime, canvasW, c
         layoutMode === 'eagle_ink_reveal' ||
         layoutMode === 'flag_reveal' ||
         layoutMode === 'cardinal_reveal' ||
-        layoutMode === 'paper_reveal'
+        layoutMode === 'paper_reveal' ||
+        layoutMode === 'glitch_reveal' ||
+        layoutMode === 'film_burn_reveal' ||
+        layoutMode === 'polaroid_reveal' ||
+        layoutMode === 'prism_reveal' ||
+        layoutMode === 'cloud_reveal'
     ) {
         return _drawIntroRevealEngineOverlay(
             ctx, ov, dur, rawElapsed, isSnapshotPausedAtZero, baseOpacity, canvasW || 1080, canvasH || 1920
@@ -18328,6 +19234,240 @@ function _drawPaperGlassReveal(ctx, ov, subStyle, dur, rawElapsed, isSnapshotPau
 /**
  * 渲染北美多元化开场揭幕特效引擎 (blinds_reveal / doors_reveal / frost_wipe / iris_spotlight / gift_scroll_reveal / black_reveal / eagle_ink_reveal / flag_reveal / cardinal_reveal / paper_reveal)
  */
+function _drawNovel2026IntroReveal(ctx, ov, layout, subStyle, dur, rawElapsed, isSnapshotPausedAtZero, theme, baseOpacity, canvasW, canvasH) {
+    const tNorm = isSnapshotPausedAtZero ? 0.26 : Math.max(0, Math.min(1, rawElapsed / Math.max(0.1, dur)));
+    const p = 1 - Math.pow(1 - tNorm, 3);
+    const halfW = canvasW * 0.5;
+    const halfH = canvasH * 0.5;
+    const primary = (ov.intro_color1 && ov.intro_color1.startsWith('#')) ? ov.intro_color1 : (theme.mid || '#091521');
+    const accent = (ov.intro_color2 && ov.intro_color2.startsWith('#')) ? ov.intro_color2 : (theme.trimColor || '#22D3EE');
+    const hiTint = theme.lightTint || '#F472B6';
+
+    if (layout === 'glitch_reveal') {
+        const mode = subStyle || 'crt_power_on';
+        if (mode === 'crt_power_on') {
+            // CRT 电子束展开遮罩：上部+下部黑幕收拢 + 中央青红RGB扫描线光束
+            const openY = p < 0.25 ? Math.max(6, canvasH * 0.012) : canvasH * Math.min(1, (p - 0.22) / 0.78);
+            const openX = p < 0.25 ? canvasW * Math.min(1, p / 0.25) : canvasW;
+            const barH = Math.max(0, (canvasH - openY) * 0.5);
+            ctx.fillStyle = '#03060C';
+            if (barH > 0.5) {
+                ctx.fillRect(0, 0, canvasW, barH);
+                ctx.fillRect(0, canvasH - barH, canvasW, barH);
+            }
+            if (openX < canvasW - 2) {
+                const sideW = (canvasW - openX) * 0.5;
+                ctx.fillRect(0, barH, sideW, openY);
+                ctx.fillRect(canvasW - sideW, barH, sideW, openY);
+            }
+            const glowA = baseOpacity * Math.max(0, 1 - p * 0.92);
+            if (glowA > 0.02) {
+                // RGB chromatic seam edges along top/bottom shutter
+                ctx.save();
+                ctx.globalAlpha = glowA * 0.85;
+                ctx.fillStyle = accent;
+                ctx.fillRect(halfW - openX * 0.5, Math.max(0, barH - 4), openX, 4);
+                ctx.fillStyle = hiTint;
+                ctx.fillRect(halfW - openX * 0.5, Math.min(canvasH - 4, canvasH - barH), openX, 4);
+                // CRT scanlines during warmup
+                ctx.fillStyle = 'rgba(0,0,0,0.22)';
+                for (let sy = 0; sy < canvasH; sy += 8) {
+                    ctx.fillRect(0, sy, canvasW, 3);
+                }
+                if (typeof ctx.createRadialGradient === 'function' && p < 0.55) {
+                    const spotR = Math.max(40, canvasW * 0.42);
+                    const rg = ctx.createRadialGradient(halfW, halfH, 0, halfW, halfH, spotR);
+                    rg.addColorStop(0, _withAlpha('#FFFFFF', 0.65 * (1 - p / 0.55)));
+                    rg.addColorStop(0.35, _withAlpha(accent, 0.32 * (1 - p / 0.55)));
+                    rg.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = rg;
+                    ctx.fillRect(0, 0, canvasW, canvasH);
+                }
+                ctx.restore();
+            }
+        } else if (mode === 'vhs_tracking_open') {
+            // VHS 磁带信号从上往下解码扫描清除 + 赛博色差干扰条
+            const clearY = p * (canvasH + 140) - 70;
+            if (clearY < canvasH) {
+                ctx.fillStyle = primary;
+                ctx.fillRect(0, Math.max(0, clearY), canvasW, canvasH - Math.max(0, clearY));
+            }
+            const slices = 10;
+            for (let s = 0; s < slices; s++) {
+                const bandY = Math.max(0, Math.min(canvasH - 18, clearY + (s - 4) * 16));
+                const fade = Math.max(0, 1 - Math.abs(s - 4) / 5) * (1 - p * 0.75);
+                if (fade <= 0.02) continue;
+                const shift = Math.sin(rawElapsed * 24 + s * 2.1) * 44;
+                ctx.fillStyle = s % 2 === 0 ? _withAlpha(accent, 0.45 * fade) : _withAlpha(hiTint, 0.45 * fade);
+                ctx.fillRect(shift, bandY, canvasW, 12);
+                ctx.fillStyle = _withAlpha('#FFFFFF', 0.35 * fade);
+                ctx.fillRect(-shift * 0.4, bandY + 4, canvasW * 0.72, 4);
+            }
+        } else {
+            // cyber_rgb_slice: 7条高燃横向切片交错向左右滑出
+            const bandCount = 7;
+            const bandH = canvasH / bandCount;
+            for (let i = 0; i < bandCount; i++) {
+                const dir = i % 2 === 0 ? -1 : 1;
+                const localP = Math.max(0, Math.min(1, p * 1.18 - (i / bandCount) * 0.18));
+                const shiftX = dir * localP * (canvasW + 60);
+                if (Math.abs(shiftX) >= canvasW + 40) continue;
+                ctx.fillStyle = primary;
+                ctx.fillRect(shiftX, i * bandH, canvasW, bandH + 1);
+                const leadX = dir < 0 ? shiftX + canvasW - 14 : shiftX;
+                ctx.fillStyle = i % 2 === 0 ? accent : hiTint;
+                ctx.fillRect(leadX, i * bandH, 14, bandH + 1);
+            }
+        }
+        return;
+    }
+
+    if (layout === 'film_burn_reveal') {
+        const isRose = subStyle === 'dreamy_rose_leak';
+        const baseA = baseOpacity * Math.pow(Math.max(0, 1 - tNorm * 1.05), 1.35);
+        if (baseA > 0.01) {
+            ctx.save();
+            ctx.globalAlpha = baseA;
+            ctx.fillStyle = primary;
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.restore();
+        }
+        const burnPeak = Math.sin(Math.min(1, tNorm * 1.05) * Math.PI);
+        const blobs = isRose
+            ? [
+                { ux: 0.22 + 0.16 * p, uy: 0.28 + 0.08 * p, c1: '#FDA4AF', c2: '#F43F5E', r: 0.72 },
+                { ux: 0.78 - 0.14 * p, uy: 0.70 - 0.12 * p, c1: '#FEF08A', c2: '#EC4899', r: 0.65 },
+                { ux: 0.50, uy: 0.48, c1: '#FFF1F2', c2: '#FB7185', r: 0.85 },
+            ]
+            : [
+                { ux: 0.18 + 0.22 * p, uy: 0.34, c1: '#FEF08A', c2: '#F97316', r: 0.78 },
+                { ux: 0.82 - 0.18 * p, uy: 0.68, c1: '#FDBA74', c2: '#DC2626', r: 0.68 },
+                { ux: 0.50, uy: 0.50, c1: '#FFFBEB', c2: '#FB923C', r: 0.88 },
+            ];
+        if (typeof ctx.createRadialGradient === 'function') {
+            for (const b of blobs) {
+                const br = Math.max(canvasW, canvasH) * b.r * (0.65 + 0.55 * burnPeak);
+                const bg = ctx.createRadialGradient(canvasW * b.ux, canvasH * b.uy, 0, canvasW * b.ux, canvasH * b.uy, br);
+                bg.addColorStop(0, _withAlpha('#FFFFFF', Math.min(0.85, 0.72 * burnPeak * baseOpacity)));
+                bg.addColorStop(0.28, _withAlpha(b.c1, 0.68 * burnPeak * baseOpacity));
+                bg.addColorStop(0.65, _withAlpha(b.c2, 0.42 * burnPeak * baseOpacity));
+                bg.addColorStop(1, 'rgba(0,0,0,0)');
+                ctx.fillStyle = bg;
+                ctx.fillRect(0, 0, canvasW, canvasH);
+            }
+        } else {
+            ctx.fillStyle = _withAlpha(accent, 0.45 * burnPeak * baseOpacity);
+            ctx.fillRect(0, 0, canvasW, canvasH);
+        }
+        return;
+    }
+
+    if (layout === 'polaroid_reveal') {
+        const isCutout = subStyle === 'magazine_headline_peel';
+        const exitSlide = p < 0.22 ? 0 : Math.pow((p - 0.22) / 0.78, 1.35);
+        const veilA = baseOpacity * Math.max(0, 1 - exitSlide * 1.15);
+        if (veilA > 0.01) {
+            ctx.fillStyle = _withAlpha('#111827', 0.82 * veilA);
+            ctx.fillRect(0, 0, canvasW, canvasH);
+        }
+        const flashA = (!isSnapshotPausedAtZero && tNorm > 0.04 && tNorm < 0.24)
+            ? Math.sin(((tNorm - 0.04) / 0.20) * Math.PI) * 0.52 * baseOpacity
+            : 0;
+        const cardW = canvasW * (isCutout ? 0.82 : 0.78);
+        const cardH = cardW * (isCutout ? 1.24 : 1.18);
+        const drawSheet = (dxOff, dyOff, rotRad, bgHex, borderHex, showWindow) => {
+            ctx.save();
+            ctx.globalAlpha = baseOpacity * Math.max(0, 1 - exitSlide * 0.92);
+            ctx.translate(halfW + dxOff, halfH - canvasH * 0.03 + dyOff);
+            ctx.rotate(rotRad);
+            ctx.fillStyle = 'rgba(0,0,0,0.34)';
+            ctx.fillRect(-cardW * 0.5 + 14, -cardH * 0.5 + 18, cardW, cardH);
+            ctx.fillStyle = bgHex;
+            ctx.fillRect(-cardW * 0.5, -cardH * 0.5, cardW, cardH);
+            ctx.strokeStyle = borderHex;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-cardW * 0.5, -cardH * 0.5, cardW, cardH);
+            if (showWindow) {
+                const winM = cardW * 0.07;
+                const winW = cardW - winM * 2;
+                const winH = cardH * 0.72;
+                const devDark = Math.max(0, 1 - p * 2.1);
+                ctx.fillStyle = _withAlpha('#18181B', 0.88 * devDark + 0.12);
+                ctx.fillRect(-winW * 0.5, -cardH * 0.5 + winM, winW, winH);
+                // top kraft masking tape
+                ctx.fillStyle = _withAlpha(accent, 0.72);
+                ctx.fillRect(-cardW * 0.14, -cardH * 0.5 - 18, cardW * 0.28, 36);
+            }
+            ctx.restore();
+        };
+        if (isCutout) {
+            drawSheet(-exitSlide * canvasW * 0.95, -exitSlide * canvasH * 0.22, -0.07 - exitSlide * 0.3, '#E7DEC8', accent, false);
+            drawSheet(exitSlide * canvasW * 0.98, exitSlide * canvasH * 0.18, 0.045 + exitSlide * 0.28, theme.highlight || '#FAF6EE', '#1C1917', true);
+        } else {
+            drawSheet(exitSlide * canvasW * 0.85, exitSlide * canvasH * 0.92, -0.04 + exitSlide * 0.35, theme.highlight || '#FAF6EE', '#D6D3D1', true);
+        }
+        if (flashA > 0.01) {
+            ctx.fillStyle = _withAlpha('#FFFFFF', flashA);
+            ctx.fillRect(0, 0, canvasW, canvasH);
+        }
+        return;
+    }
+
+    // prism_reveal: prism_three_strip | diagonal_prism_slice
+    if (subStyle === 'diagonal_prism_slice') {
+        const splitDist = p * Math.hypot(canvasW, canvasH) * 0.78;
+        const nx = 0.7071;
+        const ny = 0.7071;
+        for (const dir of [-1, 1]) {
+            ctx.save();
+            ctx.translate(dir * nx * splitDist, dir * ny * splitDist);
+            ctx.beginPath();
+            if (dir < 0) {
+                ctx.moveTo(-canvasW, -canvasH);
+                ctx.lineTo(canvasW * 2, -canvasH);
+                ctx.lineTo(-canvasW, canvasH * 2);
+            } else {
+                ctx.moveTo(canvasW * 2, canvasH * 2);
+                ctx.lineTo(canvasW * 2, -canvasH);
+                ctx.lineTo(-canvasW, canvasH * 2);
+            }
+            ctx.closePath();
+            ctx.fillStyle = primary;
+            ctx.fill();
+            ctx.strokeStyle = dir < 0 ? accent : hiTint;
+            ctx.lineWidth = 6;
+            ctx.stroke();
+            ctx.restore();
+        }
+    } else {
+        // prism_three_strip: 3 vertical crystal glass strips sliding alternately vertically
+        const cols = 3;
+        const colW = canvasW / cols;
+        for (let i = 0; i < cols; i++) {
+            const localP = Math.max(0, Math.min(1, p * 1.18 - i * 0.09));
+            const dir = i % 2 === 0 ? -1 : 1;
+            const yOff = dir * localP * (canvasH + 40);
+            if (Math.abs(yOff) >= canvasH + 20) continue;
+            const x0 = i * colW;
+            ctx.save();
+            ctx.fillStyle = primary;
+            ctx.fillRect(x0, yOff, colW + 1, canvasH);
+            if (typeof ctx.createLinearGradient === 'function') {
+                const sheen = ctx.createLinearGradient(x0, yOff, x0 + colW, yOff + canvasH * 0.55);
+                sheen.addColorStop(0, _withAlpha(accent, 0.24));
+                sheen.addColorStop(0.5, _withAlpha(hiTint, 0.16));
+                sheen.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = sheen;
+                ctx.fillRect(x0, yOff, colW + 1, canvasH);
+            }
+            ctx.strokeStyle = _withAlpha(i % 2 === 0 ? accent : hiTint, 0.8);
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x0 + 1, yOff + 1, colW - 2, canvasH - 2);
+            ctx.restore();
+        }
+    }
+}
+
 function _drawIntroRevealEngineOverlay(ctx, ov, dur, rawElapsed, isSnapshotPausedAtZero, baseOpacity, canvasW, canvasH) {
     if (!isSnapshotPausedAtZero && rawElapsed >= dur) return;
     const prog = _computeRevealProgress(dur, rawElapsed, isSnapshotPausedAtZero);
@@ -18414,6 +19554,25 @@ function _drawIntroRevealEngineOverlay(ctx, ov, dur, rawElapsed, isSnapshotPause
         _drawFlagReveal(ctx, ov, subStyle, dur, rawElapsed, isSnapshotPausedAtZero, theme, baseOpacity, canvasW, canvasH);
     } else if (layout === 'paper_reveal') {
         _drawPaperGlassReveal(ctx, ov, subStyle, dur, rawElapsed, isSnapshotPausedAtZero, theme, baseOpacity, canvasW, canvasH);
+    } else if (layout === 'glitch_reveal' || layout === 'film_burn_reveal' || layout === 'polaroid_reveal' || layout === 'prism_reveal') {
+        _drawNovel2026IntroReveal(ctx, ov, layout, subStyle, dur, rawElapsed, isSnapshotPausedAtZero, theme, baseOpacity, canvasW, canvasH);
+    } else if (layout === 'cloud_reveal') {
+        const cloudElapsed = isSnapshotPausedAtZero ? dur * 0.42 : Math.max(0, rawElapsed);
+        const cloudProg = isSnapshotPausedAtZero ? 0.44 : Math.max(0, Math.min(1, rawElapsed / Math.max(0.1, dur)));
+        _drawProceduralCloudFieldOverlay(ctx, {
+            x: 0,
+            y: 0,
+            w: canvasW,
+            h: canvasH,
+            mode: 'iris_clear',
+            progress: cloudProg,
+            timeSec: cloudElapsed,
+            opacity: baseOpacity,
+            highlightHex: theme.highlight || '#FFFFFF',
+            midHex: theme.mid || '#E2E8F0',
+            shadowHex: theme.shadow || '#64748B',
+            skyHex: theme.lightTint || '#BAE6FD',
+        });
     } else if (layout === 'frost_wipe') {
         const wipeMode = subStyle || 'melt_center';
         const frostAlpha = baseOpacity * Math.max(0, 1 - p * 0.88);
@@ -18846,6 +20005,12 @@ function clearRuntimeCaches() {
     _scrollWrapCache.clear();
     for (const c of _filmGrainTileCache.values()) _releaseCanvasSurface(c);
     _filmGrainTileCache.clear();
+    if (_cloudFbmCache && _cloudFbmCache.scratchCanvas) {
+        _releaseCanvasSurface(_cloudFbmCache.scratchCanvas);
+        _cloudFbmCache.scratchCanvas = null;
+        _cloudFbmCache.scratchCtx = null;
+        _cloudFbmCache.imgData = null;
+    }
     if (typeof _introDoorSurfaceCache !== 'undefined' && _introDoorSurfaceCache) {
         for (const c of _introDoorSurfaceCache.values()) _releaseCanvasSurface(c);
         _introDoorSurfaceCache.clear();
@@ -18910,6 +20075,7 @@ const ReelsOverlay = {
     NA_PRAYER_EMBLEM_META,
     _resolveOverlayTextFill,
     _computeScrollFeatherAxis,
+    evaluateCloudFbmSample,
     clearRuntimeCaches,
 };
 

@@ -378,9 +378,54 @@ function _drawCroppedVideoCover(ctx, videoEl, cropX, cropY, cropW, cropH, target
 
 
 /**
- * WYSIWYG 导出一个 Reel 任务
+ * WYSIWYG 导出一个 Reel 任务（外层统一负责 GPU->CPU 与 Fast Alpha->标准抽帧自动容错降级，
+ * 确保阶段 1/2 编码器初始化失败或阶段 3/4 运行期编码失败都能自动回退重试）
  */
 async function reelsWysiwygExport(params) {
+    try {
+        return await _reelsWysiwygExportAttempt(params);
+    } catch (e) {
+        if (e && e.message === '__CANCELLED__') {
+            return { cancelled: true };
+        }
+        const isCancelled = params && typeof params.isCancelled === 'function' ? params.isCancelled : null;
+        if (isCancelled && isCancelled()) {
+            return { cancelled: true };
+        }
+        const log = (params && typeof params.onLog === 'function') ? params.onLog : ((m) => console.log('[WYSIWYG]', m));
+        const errText = (e && e.message) ? e.message : String(e);
+        const looksLikeGpuFailure = /\b(nvenc|amf|qsv|videotoolbox|cuda|dx11|d3d11|opencl)\b|gpu|硬件编码|硬件加速|session limit|incompatible client/i.test(errText);
+        if (params?.useGPU && !params._gpuFallbackRetried && looksLikeGpuFailure) {
+            log(`⚠️ 硬件 GPU 编码遇到兼容性问题 (${errText})，正在自动回退为 CPU 稳定编码重试...`);
+            return await reelsWysiwygExport({
+                ...params,
+                useGPU: false,
+                exportEngine: params.exportEngine === 'hardware' ? 'pipeline' : params.exportEngine,
+                _gpuFallbackRetried: true,
+            });
+        }
+        if (params?.alphaOverlayBgPath && !params._alphaFallbackRetried) {
+            log(`⚠️ Fast Alpha 直通合成遇到源视频时间戳/编码兼容问题 (${errText})，正在自动切换为「标准固定帧率抽帧合成模式」重试...`);
+            return await reelsWysiwygExport({
+                ...params,
+                alphaOverlayBgPath: null,
+                _alphaFallbackRetried: true,
+            });
+        }
+        if (params?.useGPU && !params._gpuFallbackRetried) {
+            log(`⚠️ 编码阶段异常 (${errText})，正在自动关闭 GPU 加速并用 CPU 稳定编码重试...`);
+            return await reelsWysiwygExport({
+                ...params,
+                useGPU: false,
+                exportEngine: params.exportEngine === 'hardware' ? 'precise' : params.exportEngine,
+                _gpuFallbackRetried: true,
+            });
+        }
+        throw e;
+    }
+}
+
+async function _reelsWysiwygExportAttempt(params) {
     params={...params,style:getWritingVisualStyle(params.style)};
     let {
         canvas,
@@ -463,6 +508,14 @@ async function reelsWysiwygExport(params) {
         voicePath = null;
     }
     taskOverlays = _cloneOverlaysForWysiwygExport(taskOverlays);
+    const effectiveInsertAudioClips = Array.isArray(insertAudioClips) ? [...insertAudioClips] : [];
+    if (!effectiveInsertAudioClips.some(c => c && c.isIntroAudio) && typeof window !== 'undefined' && window.ReelsIntroAudio?.buildIntroAudioClipForTask) {
+        const autoIntroClip = window.ReelsIntroAudio.buildIntroAudioClipForTask({
+            overlays: taskOverlays,
+            showIntro: params.showIntro !== false,
+        });
+        if (autoIntroClip) effectiveInsertAudioClips.push(autoIntroClip);
+    }
 
     // ── 多素材诊断日志 ──
     console.log(`[WYSIWYG-EXPORT] bgMode=${bgMode}, bgClipPool=${Array.isArray(bgClipPool) ? bgClipPool.length : 'N/A'}, isMultiClip=${isMultiClip}, backgroundPath=${backgroundPath || '(empty)'}`);
@@ -783,12 +836,14 @@ async function reelsWysiwygExport(params) {
         if (_probedBg > 0 && duration <= _probedBg + 0.5) {
             log(`🎯 [智能提速] 合成时长(${duration.toFixed(2)}s)无需底板(${_probedBg.toFixed(2)}s)循环！强制关闭渐变，唤醒极速贴合 ⚡️！`);
             loopFade = false; 
-            // 只要不是多视频，就可以霸王硬上弓恢复极速直通路径！
-            // ⚠️ 但如果有覆层使用了 blend mode，或已经是 Alpha 失败后的自动降级重试，则不能走 alpha overlay
+            // 若用户已明确选用「精准画布（兼容优先）」或关闭了极速贴合，不再强行改走 Fast Alpha 直通，
+            // 避免他人机器或非常规口播切片命中直通兼容坑。
             if (params.alphaOverlayBgPath === null && !params._alphaFallbackRetried && !_hasBlendOverlay
-                && !contentVideoDirectBg && !contentVideoBlurBg) {
-                const uiFastAlpha = (document.getElementById('reels-fast-alpha-mode') || {}).checked !== false;
-                if (uiFastAlpha) params.alphaOverlayBgPath = backgroundPath; 
+                && !contentVideoDirectBg && !contentVideoBlurBg && params.exportEngine !== 'precise') {
+                const fastAlphaSetting = params.fastAlphaEnabled !== undefined
+                    ? Boolean(params.fastAlphaEnabled)
+                    : ((document.getElementById('reels-fast-alpha-mode') || {}).checked !== false);
+                if (fastAlphaSetting) params.alphaOverlayBgPath = backgroundPath; 
             }
         }
     }
@@ -1019,7 +1074,9 @@ async function reelsWysiwygExport(params) {
         reverbMix,
         stereoWidth,
         audioFxTarget,
-        insertAudioClips,
+        overlays: taskOverlays,
+        showIntro: params.showIntro !== false,
+        insertAudioClips: effectiveInsertAudioClips,
         voiceDelay: introDelaySec,
         useGPU,
         crf,
@@ -1484,17 +1541,6 @@ async function reelsWysiwygExport(params) {
         if (e && e.message === '__CANCELLED__') {
             log('导出已取消，资源已清理');
             return { cancelled: true };
-        }
-        // ── 自动容错降级：若 Fast Alpha Overlay 直通模式因快剪口播素材的 VFR/时间戳/elst 异常导致编码或收尾失败，
-        //    自动回退到标准固定帧率背景抽帧 + 单路 rawvideo 管道合成模式重试一次，确保成片稳定导出 ──
-        if (params.alphaOverlayBgPath && !params._alphaFallbackRetried && !(isCancelled && isCancelled())) {
-            const errText = (e && e.message) ? e.message : String(e);
-            log(`⚠️ Fast Alpha 直通合成遇到源视频时间戳/编码兼容问题 (${errText})，正在自动切换为「标准固定帧率抽帧合成模式」重试...`);
-            return await reelsWysiwygExport({
-                ...params,
-                alphaOverlayBgPath: null,
-                _alphaFallbackRetried: true,
-            });
         }
         throw e;
     }

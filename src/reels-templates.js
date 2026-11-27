@@ -520,6 +520,102 @@ function openTemplateLibrary(onSelectCallback = null, opts = {}) {
 }
 window.openTemplateLibrary = openTemplateLibrary;
 
+function _tplShowInputDialog(title, placeholder = '', defaultValue = '', extra = null) {
+    const hasCustomCheckbox = Boolean(extra && extra.checkboxLabel);
+    if (!hasCustomCheckbox) {
+        const externalPrompt = (typeof window !== 'undefined' && typeof window.reelsShowInputDialog === 'function')
+            ? window.reelsShowInputDialog
+            : (typeof _showInputDialog === 'function' ? _showInputDialog : null);
+        if (typeof externalPrompt === 'function') {
+            return Promise.resolve(externalPrompt(title, placeholder, defaultValue));
+        }
+    }
+    if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+        return Promise.resolve(hasCustomCheckbox ? { value: defaultValue, checked: Boolean(extra?.checkboxDefault) } : defaultValue);
+    }
+    return new Promise((resolve) => {
+        const prevActive = document.activeElement;
+        const overlay = document.createElement('div');
+        overlay.className = 'vk-tpl-input-dialog';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2000000;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;';
+        const box = document.createElement('div');
+        box.style.cssText = 'width:min(440px,calc(100vw - 36px));box-sizing:border-box;padding:22px;border-radius:12px;background:var(--bg-primary,#1e1e2e);border:1px solid rgba(129,140,248,0.45);box-shadow:0 18px 48px rgba(0,0,0,.65);color:var(--text-primary,#f8fafc);font-family:inherit;';
+
+        const titleEl = document.createElement('div');
+        titleEl.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:12px;';
+        titleEl.textContent = String(title || '请输入');
+        box.appendChild(titleEl);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = String(placeholder || '');
+        input.value = defaultValue == null ? '' : String(defaultValue);
+        input.style.cssText = 'width:100%;box-sizing:border-box;padding:9px 11px;border-radius:7px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:13px;outline:none;';
+        box.appendChild(input);
+
+        let checkbox = null;
+        if (hasCustomCheckbox) {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:flex-start;gap:8px;margin-top:11px;font-size:12px;color:#cbd5e1;line-height:1.45;cursor:pointer;';
+            checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = Boolean(extra.checkboxDefault);
+            checkbox.style.marginTop = '2px';
+            const span = document.createElement('span');
+            span.textContent = String(extra.checkboxLabel);
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            box.appendChild(label);
+        }
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = '取消';
+        cancelBtn.style.cssText = 'padding:7px 15px;border-radius:7px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;font-size:12px;';
+        const okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.textContent = '确定';
+        okBtn.style.cssText = 'padding:7px 16px;border:0;border-radius:7px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;cursor:pointer;font-size:12px;font-weight:600;';
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(okBtn);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+
+        let settled = false;
+        const finish = (val) => {
+            if (settled) return;
+            settled = true;
+            overlay.remove();
+            if (prevActive && typeof prevActive.focus === 'function' && prevActive.isConnected) {
+                try { prevActive.focus(); } catch (_) {}
+            }
+            resolve(val);
+        };
+        const submit = () => {
+            const raw = input.value;
+            finish(hasCustomCheckbox ? { value: raw, checked: Boolean(checkbox?.checked) } : raw);
+        };
+        cancelBtn.onclick = () => finish(null);
+        okBtn.onclick = submit;
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(null); });
+        // 阻止按键被底层模板库窗口拦截（避免出现无法打字/回车/退格的问题）
+        const guardKey = (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); submit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); finish(null); }
+        };
+        input.addEventListener('keydown', guardKey);
+        box.addEventListener('keydown', (e) => e.stopPropagation());
+        setTimeout(() => {
+            input.focus();
+            try { input.select(); } catch (_) {}
+        }, 25);
+    });
+}
+
 function openProjectLibrary(opts = {}) {
     _openLibraryModal('liveProject', null, opts);
 }
@@ -791,17 +887,33 @@ async function _sealSelectedLiveProjectsToTemplates(st) {
         showToast?.('请先勾选要封存的工程项目卡片', 'info');
         return;
     }
-    if (!confirm(`将所选 ${selected.length} 个实时工程另存一份为「📂 模板库」封存模板？\n\n原工程项目会继续保持实时编辑，新生成的模板独立封存互不干扰。`)) return;
     try {
         const items = await _fetchLibraryItemsFull(st, selected);
+        const validItems = items.filter(it => it && it.projectData);
+        if (!validItems.length) {
+            showToast?.('所选工程缺少可封存的工程数据', 'warning');
+            return;
+        }
+        let customSingleName = '';
+        if (validItems.length === 1) {
+            const single = validItems[0];
+            const entered = await _tplShowInputDialog(
+                '封存保存到「📂 模板库」',
+                '输入封存模板名称',
+                single.name || '未命名模板'
+            );
+            if (!entered || !entered.trim()) return;
+            customSingleName = entered.trim();
+        } else if (!confirm(`将所选 ${validItems.length} 个实时工程另存一份为「📂 模板库」封存模板？\n\n原工程项目会继续保持实时编辑，新生成的模板独立封存互不干扰。`)) {
+            return;
+        }
         let saved = 0;
-        for (const item of items) {
-            if (!item?.projectData) continue;
+        for (const item of validItems) {
             await apiFetch(`${API_BASE}/templates/save`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: item.name,
+                    name: validItems.length === 1 ? customSingleName : item.name,
                     description: item.description || '从工程项目封存',
                     thumbnail: item.thumbnail || '',
                     tags: item.tags || [],
@@ -1562,9 +1674,7 @@ async function tplSaveSelectedPresets() {
     if (!modal || modal._onSelectCallback) return;
     const selected = [...(modal._selectedItemIds || [])];
     if (!selected.length) return;
-    const groupName = await (typeof _showInputDialog === 'function'
-        ? _showInputDialog('预设保存分组', '例如：九月祷告、金色字幕', '我的预设')
-        : Promise.resolve(prompt('输入预设分组名称：', '我的预设')));
+    const groupName = await _tplShowInputDialog('预设保存分组', '例如：九月祷告、金色字幕', '我的预设');
     const category = String(groupName || '').trim();
     if (!category) return;
     if (!confirm(`将 ${selected.length} 个模板中的动态字幕和覆层分别保存到分组「${category}」？\n\n同名预设会自动重命名，不会修改原模板或已有预设。`)) return;
@@ -2712,13 +2822,18 @@ async function saveCurrentAsTemplate() {
     const st = _getLibState('template');
     const saveFolderId = st.folderId || (_currentTemplateContext.id ? (await _libFolderRequest(st, 'list')).assignments?.[_currentTemplateContext.id] || '' : '');
     const defaultName = `模板_${new Date().toLocaleDateString('zh-CN')}`;
-    const name = await (typeof _showInputDialog === 'function'
-        ? _showInputDialog('保存当前工程为封存模板', '输入模板名称', defaultName)
-        : Promise.resolve(prompt('请输入模板名称：', defaultName)));
+    const saveResult = await _tplShowInputDialog(
+        '保存当前工程为封存模板',
+        '输入模板名称',
+        defaultName,
+        {
+            checkboxLabel: '同时同步保存独立预设（把模板内的动态字幕样式和覆层分别保存为同名独立预设）',
+            checkboxDefault: false,
+        }
+    );
+    const name = typeof saveResult === 'string' ? saveResult : saveResult?.value;
     if (!name || !name.trim()) return;
-    const syncPresetAssets = typeof confirm === 'function'
-        ? confirm('是否同时同步保存独立预设？\n\n“确定”：把模板内的动态字幕样式和覆层分别保存为同名独立预设。\n“取消”：仅封存保存模板工程。')
-        : false;
+    const syncPresetAssets = Boolean(saveResult && typeof saveResult === 'object' && saveResult.checked);
 
     try {
         const baseName = name.trim();
@@ -3334,9 +3449,7 @@ function _getParentFolder(st, folderId) {
 async function _newLibraryFolder(st, parentOverride) {
     const parentId = typeof parentOverride === 'string' ? parentOverride : st.folderId;
     const parentLabel = parentId ? `（位于「${_buildTemplateFolderPathText(parentId, st.folderData.folders, st.cfg.homeLabel)}」）` : `（位于${st.cfg.homeLabel}）`;
-    const name = typeof _showInputDialog === 'function'
-        ? await _showInputDialog(`新建文件夹 ${parentLabel}`, '输入文件夹名称', '新建文件夹')
-        : prompt(`文件夹名称 ${parentLabel}`, '新建文件夹');
+    const name = await _tplShowInputDialog(`新建文件夹 ${parentLabel}`, '输入文件夹名称', '新建文件夹');
     if (!name?.trim()) return;
     try {
         await _libFolderRequest(st, 'create', { name: name.trim(), parentId });

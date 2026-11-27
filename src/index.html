@@ -5964,7 +5964,7 @@
                                 <label style="margin:0;">标题字号</label><input type="number" id="reels-fullpage-typewriter-title-size" class="input" value="56" step="1" min="8" max="300" oninput="reelsRefreshSpeechWritingPreview()">
                                 <label style="margin:0;">标题字重</label><select id="reels-fullpage-typewriter-title-weight" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="400">常规</option><option value="700" selected>粗体</option><option value="900">特粗</option></select>
                                 <label style="margin:0;">标题颜色</label><input type="color" id="reels-fullpage-typewriter-title-color" value="#FFD700" oninput="reelsRefreshSpeechWritingPreview()">
-                                <label style="margin:0;">标题出字</label><select id="reels-fullpage-typewriter-title-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
+                                <label style="margin:0;">标题出字</label><select id="reels-fullpage-typewriter-title-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="line">逐行出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
                                 <label style="margin:0;">标题X %</label><input type="number" id="reels-fullpage-typewriter-title-x" class="input" value="50" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">标题Y %</label><input type="number" id="reels-fullpage-typewriter-title-y" class="input" value="20" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">标题时间偏移 秒</label><input type="number" id="reels-fullpage-typewriter-title-delay" class="input" value="0" step="0.1" min="-1000" max="1000" oninput="reelsRefreshSpeechWritingPreview()">
                               </div>
                               <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-title-cursor" checked onchange="reelsRefreshSpeechWritingPreview()">标题显示笔尖</label>
@@ -5975,7 +5975,7 @@
  <label>描边粗细</label><input type="number" id="reels-fullpage-typewriter-body-stroke-width" min="0" max="40" step="0.5" value="3" oninput="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()">
  <label>描边不透明度</label><input type="range" id="reels-fullpage-typewriter-body-stroke-opacity" min="0" max="255" value="255" oninput="document.getElementById('reels-fullpage-typewriter-body-stroke-independent').checked=true;reelsRefreshSpeechWritingPreview()"></div><div style="display:grid;grid-template-columns:100px minmax(0,1fr);gap:6px;margin:8px 0;align-items:center;"><label>正文底框</label><label><input type="checkbox" id="reels-fullpage-typewriter-body-box-enabled" checked onchange="reelsRefreshSpeechWritingPreview()">显示底框</label><label>底框颜色</label><input type="color" id="reels-fullpage-typewriter-body-box-color" value="#000000" oninput="reelsRefreshSpeechWritingPreview()"><label>底框不透明度</label><input type="range" id="reels-fullpage-typewriter-body-box-opacity" min="0" max="255" value="180" oninput="reelsRefreshSpeechWritingPreview()" title="0 完全透明，255 完全不透明"></div>
                               <div style="display:grid;grid-template-columns:85px minmax(0,1fr);gap:6px;align-items:center;margin-top:8px;">
-                                <label style="margin:0;">正文出字</label><select id="reels-fullpage-typewriter-body-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
+                                <label style="margin:0;">正文出字</label><select id="reels-fullpage-typewriter-body-reveal" class="select" onchange="reelsRefreshSpeechWritingPreview()"><option value="sentence">逐句出现</option><option value="line">逐行出现</option><option value="char">逐字出现</option><option value="word">逐词出现</option></select>
                                 <label style="margin:0;">正文X %</label><input type="number" id="reels-fullpage-typewriter-body-x" class="input" value="50" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">正文Y %</label><input type="number" id="reels-fullpage-typewriter-body-y" class="input" value="60" step="1" min="1" max="99" oninput="reelsRefreshSpeechWritingPreview()"><label style="margin:0;">正文时间偏移 秒</label><input type="number" id="reels-fullpage-typewriter-body-delay" class="input" value="0" step="0.1" min="-1000" max="1000" oninput="reelsRefreshSpeechWritingPreview()">
                               </div>
                               <label style="display:flex;gap:6px;margin:6px 0;"><input type="checkbox" id="reels-fullpage-typewriter-body-cursor" checked onchange="reelsRefreshSpeechWritingPreview()">正文显示笔尖</label>
@@ -6024,6 +6024,17 @@
                               <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#38bdf8;background:rgba(3,105,161,0.32);color:#e0f2fe;" onclick="reelsSetSpeechWritingTip('frost_crystal_feather')">❄️ 冰晶雪羽</button>
                               <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#14b8a6;background:rgba(15,118,110,0.32);color:#ccfbf1;" onclick="reelsSetSpeechWritingTip('peacock_plumage')">🦚 孔雀翎羽</button>
                               <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#e0f2fe;background:rgba(51,65,85,0.35);color:#f8fafc;" onclick="reelsSetSpeechWritingTip('dove_white_feather')">🕊️ 鎏金白羽</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#ef4444;background:rgba(30,58,138,0.32);color:#fef2f2;" onclick="reelsSetSpeechWritingTip('us_waving_flag')">🇺🇸 飘扬星条旗</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#dc2626;background:rgba(153,27,27,0.30);color:#fef2f2;" onclick="reelsSetSpeechWritingTip('canada_maple_flag')">🇨🇦 加拿大枫叶旗</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#f43f5e;background:rgba(136,19,55,0.28);color:#ffe4e6;" onclick="reelsSetSpeechWritingTip('us_patriotic_rose')">🌹 美国玫瑰</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#d97706;background:rgba(120,53,15,0.30);color:#fef3c7;" onclick="reelsSetSpeechWritingTip('canada_harvest_turkey')">🦃 感恩火鸡</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#facc15;background:rgba(113,63,18,0.32);color:#fef08a;" onclick="reelsSetSpeechWritingTip('golden_cross_halo_rays')">✝️ 圣光金十字</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#ef4444;background:rgba(185,28,28,0.32);color:#fef2f2;" onclick="reelsSetSpeechWritingTip('cardinal_smile')">😊 微笑红雀</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#ef4444;background:rgba(185,28,28,0.32);color:#fef2f2;" onclick="reelsSetSpeechWritingTip('cardinal_pray')">🙏 祈祷红雀</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#ef4444;background:rgba(185,28,28,0.32);color:#fef2f2;" onclick="reelsSetSpeechWritingTip('cardinal_cry')">😢 哭泣红雀</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#fde047;background:rgba(71,85,105,0.32);color:#fef9c3;" onclick="reelsSetSpeechWritingTip('gentle_lamb_halo')">🐑 圣光小羊</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#b45309;background:rgba(120,53,15,0.32);color:#fef3c7;" onclick="reelsSetSpeechWritingTip('rudolph_animated_leap')">🦌 欢跳驯鹿</button>
+                              <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;border-color:#e2e8f0;background:rgba(51,65,85,0.32);color:#f8fafc;" onclick="reelsSetSpeechWritingTip('white_dove_flap_olive')">🕊️ 振翅白鸽</button>
                               <button type="button" class="btn btn-secondary" style="padding:3px 7px;font-size:11px;" onclick="reelsUploadSpeechWritingImage()">🖼 上传图片</button>
                             </div>
                             <label style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
@@ -6075,6 +6086,29 @@
                                 <option value="frost_crystal_feather">❄️ 冰晶银蓝雪羽</option>
                                 <option value="peacock_plumage">🦚 翡翠孔雀翎羽</option>
                                 <option value="dove_white_feather">🕊️ 圣洁鎏金白鸽羽</option>
+                                <option value="us_waving_flag">🇺🇸 美国飘扬星条旗</option>
+                                <option value="us_flag_heart">🇺🇸 星条旗爱心徽</option>
+                                <option value="canada_maple_flag">🇨🇦 加拿大飘扬枫叶旗</option>
+                                <option value="us_canada_friendship_flags">🏳️ 美加双旗飘扬结</option>
+                                <option value="us_patriotic_rose">🌹 美国三色玫瑰花束</option>
+                                <option value="us_texas_bluebonnet">🪻 美国德州蓝帽花</option>
+                                <option value="us_sunflower_liberty">🌻 美国自由向日葵</option>
+                                <option value="us_dogwood_blossom">🌸 美国山茱萸圣花</option>
+                                <option value="canada_harvest_turkey">🦃 加拿大感恩火鸡</option>
+                                <option value="roast_turkey_feast">🍗 感恩金色烤火鸡</option>
+                                <option value="xmas_nutcracker_soldier">💂 圣诞胡桃夹子</option>
+                                <option value="xmas_carousel_ornament">🎠 松枝双铃挂饰</option>
+                                <option value="rudolph_animated_leap">🦌 欢跳红鼻驯鹿</option>
+                                <option value="golden_cross_halo_rays">✝️ 圣光万丈金十字</option>
+                                <option value="golden_cross_dove_bloom">🕊️ 白鸽金十字徽章</option>
+                                <option value="cardinal_smile">😊 微笑开心红雀鸟</option>
+                                <option value="cardinal_pray">🙏 虔诚祈祷红雀鸟</option>
+                                <option value="cardinal_cry">😢 感动哭泣红雀鸟</option>
+                                <option value="cardinal_sing">🎶 欢唱颂赞红雀鸟</option>
+                                <option value="gentle_lamb_halo">🐑 圣光温柔小绵羊</option>
+                                <option value="shepherd_lamb_heart">🐑 爱心祈祷小羊羔</option>
+                                <option value="white_dove_flap_olive">🕊️ 振翅衔枝白鸽</option>
+                                <option value="white_dove_pray_heart">🕊️ 祈祷圣光白鸽</option>
                                 <option value="image">🖼 上传的图片</option>
                               </select>
                             </div>
@@ -6097,7 +6131,7 @@
                               <select id="reels-fullpage-typewriter-reveal-type" class="select" style="width:100px;"
                                 onchange="if(typeof reelsUpdatePreview==='function')reelsUpdatePreview();">
                                 <option value="char">字母/单字</option>
-                                <option value="word">单词/短语</option><option value="sentence">逐句出现</option>
+                                <option value="word">单词/短语</option><option value="sentence">逐句出现</option><option value="line">逐行出现</option>
                               </select>
                             </div>
                             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px;">
@@ -6374,6 +6408,7 @@
                                 <option value="word" selected>按单词</option>
                                 <option value="char">按字符</option>
                                 <option value="sentence">按整句 (逐句)</option>
+                                <option value="line">按整行 (逐行)</option>
                               </select>
                             </div>
                             <div style="display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; width: 100%;">
@@ -7692,7 +7727,7 @@
                 </select>
                 <span id="reels-quality-bitrate-label"
                   style="font-size:10px;color:var(--text-secondary);white-space:nowrap;"
-                  title="当前档位的视频目标码率 / 最大码率">目标 2 / 最大 3 Mbps</span>
+                  title="默认采用恒定质量 CRF 动态码率；只有选择「自定义码率」时才限制目标/最大 Mbps">恒定质量 CRF 23 (口播默认动态码率)</span>
                 <span id="reels-custom-bitrate-settings" style="display:none;align-items:center;gap:4px;">
                   <label title="视频平均目标码率">目标:</label>
                   <input type="number" id="reels-custom-bitrate" class="input input-small"
@@ -8460,7 +8495,7 @@
           <div class="form-section">
             <h3 class="section-title">关于</h3>
             <div class="about-info">
-              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.23-beta</span></p>
+              <p><strong>VideoKit</strong> <span id="app-version-display">v4.6.24-beta</span></p>
               <p>视频工具包-批量：音频生成-reels视频制作-多媒体转换</p>
               <div style="margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                 <button id="check-update-btn" class="btn btn-secondary" onclick="checkAppUpdate()"
@@ -9132,6 +9167,7 @@ THE HOLY	This is no coincidence...</div>
   <script src="reels-project.js"></script>
   <script src="reels-templates.js"></script>
   <script src="reels-intro-assets.js"></script>
+  <script src="reels-intro-audio.js"></script>
   <script src="reels-overlay.js"></script>
   <script src="reels-preset-thumb.js"></script>
   <script src="reels-audio-spectrum.js"></script>

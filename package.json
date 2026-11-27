@@ -1,6 +1,6 @@
 {
   "name": "videokit",
-  "version": "4.6.23-beta",
+  "version": "4.6.24-beta",
   "description": "视频工具包-批量：音频生成-reels视频制作-多媒体转换",
   "author": {
     "name": "TimCode",
@@ -72,6 +72,7 @@
       "src/reels-presets-init.js",
       "src/reels-overlay.js",
       "src/reels-intro-assets.js",
+      "src/reels-intro-audio.js",
       "src/reels-canvas-renderer.js",
       "scripts/cloudflare-hub-worker.js",
       "scripts/cloudflare-hub-simple-worker.js"

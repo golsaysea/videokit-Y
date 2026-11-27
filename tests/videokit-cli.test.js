@@ -547,19 +547,19 @@ test('A20: All 114 preset IDs (se-*, sub-*, scroll-*, ov-*), Canvas style routin
         resolveBuiltinPreset,
     } = require('../src/reels-presets-init.js');
 
-    // 1. All 288 subtitle/scroll preset IDs + 35 overlay preset IDs + 428 scroll style IDs (sc-01..sc-214 & scroll-01..scroll-214) must resolve
+    // 1. All 297 subtitle/scroll preset IDs + 40 overlay preset IDs + 444 scroll style IDs (sc-01..sc-222 & scroll-01..scroll-222) must resolve
     const subIds = Object.keys(REELS_PRESET_ID_MAP);
     const ovIds = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
     const scIds = Object.keys(REELS_SCROLL_PRESET_ID_MAP);
-    assert.equal(subIds.length, 288, 'Expected 288 subtitle/scroll preset IDs (including sub-252..sub-255)');
-    assert.equal(ovIds.length, 36, 'Expected 36 overlay preset IDs');
-    assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 214, 'Expected all 214 builtin scroll style presets');
-    assert.equal(scIds.length, 428, 'Expected all 428 scroll style ID mappings (sc-01..sc-214 & scroll-01..scroll-214)');
+    assert.equal(subIds.length, 297, 'Expected 297 subtitle/scroll preset IDs (including sub-256..sub-264)');
+    assert.equal(ovIds.length, 40, 'Expected 40 overlay preset IDs (including ov-37..ov-40)');
+    assert.equal(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 222, 'Expected all 222 builtin scroll style presets');
+    assert.equal(scIds.length, 444, 'Expected all 444 scroll style ID mappings (sc-01..sc-222 & scroll-01..scroll-222)');
     for (const id of [...subIds, ...ovIds, ...scIds]) {
         const resolved = resolveBuiltinPreset(id);
         assert.ok(resolved, `Preset ID ${id} must resolve`);
     }
-    for (let n = 1; n <= 214; n++) {
+    for (let n = 1; n <= 222; n++) {
         const pad = n < 10 ? `0${n}` : `${n}`;
         assert.ok(resolveBuiltinPreset(`sc-${pad}`), `Legacy preset ID sc-${pad} must still resolve`);
         assert.ok(resolveBuiltinPreset(`scroll-${pad}`), `Legacy preset alias scroll-${pad} must still resolve`);
@@ -828,11 +828,11 @@ test('A25: Canva bridge SSRF protection, preset catalog, async job queue, tokeni
     assert.ok(segs[0].end > 0 && segs[0].end <= segs[1].start + 0.001);
     assert.equal(segs[1].end, 8);
 
-    // 3. Preset catalog reflects restored 214 scroll styles + 255 subtitles + Cardinal feather cursor + sentence reveal
+    // 3. Preset catalog reflects restored 222 scroll styles + 264 subtitles + Cardinal feather cursor + sentence reveal
     const catalog = buildCanvaPresetCatalog();
-    assert.equal(catalog.scrolls.length, 214, 'Canva catalog must expose all 214 restored sc-* presets');
-    assert.equal(catalog.subtitles.length, 255, 'Canva catalog must expose all 255 sub-* presets');
-    assert.equal(catalog.overlays.length, 36, 'Canva catalog must expose all 36 ov-* presets');
+    assert.equal(catalog.scrolls.length, 222, 'Canva catalog must expose all 222 sc-* presets');
+    assert.equal(catalog.subtitles.length, 264, 'Canva catalog must expose all 264 sub-* presets');
+    assert.equal(catalog.overlays.length, 40, 'Canva catalog must expose all 40 ov-* presets');
     assert.ok(catalog.cursorIcons.some(c => c.id === 'cardinal_feather'), 'Canva catalog must include cardinal_feather');
     assert.ok(catalog.revealTypes.some(r => r.id === 'sentence'), 'Canva catalog must include sentence reveal option');
 
@@ -883,7 +883,7 @@ test('A25: Canva bridge SSRF protection, preset catalog, async job queue, tokeni
         });
         assert.equal(presetsRes.status, 200);
         const presetsBody = await presetsRes.json();
-        assert.equal(presetsBody.scrolls.length, 214);
+        assert.equal(presetsBody.scrolls.length, 222);
 
         // Submit Canva render job with Cardinal feather & sentence reveal behind forwarded HTTPS proxy headers
         const renderRes = await fetch(`${base}/api/canva/render`, {
@@ -962,26 +962,29 @@ test('A25: Canva bridge SSRF protection, preset catalog, async job queue, tokeni
     assert.ok(fs.existsSync(path.join(repoRoot, 'docs', 'CANVA_APP_SETUP.md')));
 });
 
-test('A26: Cloud CLI & HTTP servers recognize all 88 openers, auto-route to wysiwyg, and validate shorthands', async () => {
+test('A26: Cloud CLI & HTTP servers recognize all 113 openers, auto-route to wysiwyg, and validate shorthands', async () => {
     const http = require('node:http');
     const { buildCanvaPresetCatalog, CanvaJobManager } = require('../electron/services/canva-bridge');
     const { createWebServer } = require('../bin/videokit-web-server.cjs');
 
-    // 1. videokit-cli presets exposes all 88 visible intro_presets & 25 intro_themes
+    // 1. videokit-cli presets exposes all 113 visible intro_presets & 33 intro_themes
     const presetsRes = runCliProcess(['presets']);
     assert.equal(presetsRes.status, 0, `presets failed: ${presetsRes.stderr}`);
     const presetsJson = JSON.parse(presetsRes.stdout.trim());
-    assert.equal(presetsJson.intro_count, 88);
-    assert.equal(Object.keys(presetsJson.intro_presets).length, 88);
+    assert.equal(presetsJson.intro_count, 113);
+    assert.equal(Object.keys(presetsJson.intro_presets).length, 113);
     for (const id of [
         'curtain_red_reveal', 'doors_rustic_barn_cedar', 'black_slit_fb',
         'eagle_ink_slash', 'flag_usa_wave', 'cardinal_snow_pine',
         'paper_parchment_turn', 'watercolor_morandi_sage',
+        'glitch_crt_power_on', 'film_burn_amber_flash', 'polaroid_snap_toss', 'prism_triple_panel',
+        'cloud_part_white_iris', 'cloud_part_golden_dawn', 'cloud_part_rose_heaven', 'cloud_part_blue_storm_clear',
+        'sfx_cinema_boom', 'sfx_riser_slam', 'sfx_sacred_bell', 'sfx_boom_zero_sync',
     ]) {
         assert.ok(presetsJson.intro_presets[id], `intro_presets missing ${id}`);
     }
     assert.equal(presetsJson.intro_presets.fb_yellow_stack_hook, undefined, 'hidden intro must not be listed');
-    assert.ok(Object.keys(presetsJson.intro_themes).length >= 25);
+    assert.ok(Object.keys(presetsJson.intro_themes).length >= 33);
 
     // 2. Task shorthand resolution, engine routing, CLI --intro override & error handling
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-intro-cloud-'));
@@ -1073,8 +1076,8 @@ test('A26: Cloud CLI & HTTP servers recognize all 88 openers, auto-route to wysi
 
         // 3. HTTP /api/presets + /api/canva/presets + /api/canva/render intro forwarding
         const canvaCatalog = buildCanvaPresetCatalog();
-        assert.equal(canvaCatalog.intros.length, 88);
-        assert.ok(Object.keys(canvaCatalog.introThemes).length >= 25);
+        assert.equal(canvaCatalog.intros.length, 113);
+        assert.ok(Object.keys(canvaCatalog.introThemes).length >= 33);
 
         const recorded = [];
         mockMediaServer = http.createServer((_req, res) => {
@@ -1110,8 +1113,8 @@ test('A26: Cloud CLI & HTTP servers recognize all 88 openers, auto-route to wysi
         });
         assert.equal(webPresetsRes.status, 200);
         const webPresetsJson = await webPresetsRes.json();
-        assert.equal(webPresetsJson.intro_count, 88);
-        assert.ok(webPresetsJson.intro_presets.cardinal_snow_pine);
+        assert.equal(webPresetsJson.intro_count, 113);
+        assert.ok(webPresetsJson.intro_presets.sfx_cinema_boom);
 
         const canvaBadRes = await fetch(`${base}/api/canva/render`, {
             method: 'POST',

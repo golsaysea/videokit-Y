@@ -568,9 +568,10 @@ function _initReelsModule() {
             if (video) video.pause();
             const fadeVideo = _reelsState.previewFadeVideo;
             if (fadeVideo) fadeVideo.pause();
-            // 同步暂停 BGM
+            // 同步暂停 BGM 与开场配乐
             const bgmAudio = _reelsState._bgmAudioEl;
             if (bgmAudio) bgmAudio.pause();
+            if (_reelsState._introAudioEl) _reelsState._introAudioEl.pause();
             const btn = document.getElementById('reels-preview-play');
             if (btn) btn.textContent = '▶️';
         });
@@ -589,6 +590,7 @@ function _initReelsModule() {
             if (audio) audio.pause();
             const bgmAudio = _reelsState._bgmAudioEl;
             if (bgmAudio) bgmAudio.pause();
+            if (_reelsState._introAudioEl) _reelsState._introAudioEl.pause();
             const btn = document.getElementById('reels-preview-play');
             if (btn) btn.textContent = '▶️';
         });
@@ -603,6 +605,16 @@ function _initReelsModule() {
         bgmEl.loop = _isPreviewLoopEnabled();
         document.body.appendChild(bgmEl);
         _reelsState._bgmAudioEl = bgmEl;
+    }
+    // ═══ 创建开场效果专属配乐音频元素（隐藏） ═══
+    if (!_reelsState._introAudioEl) {
+        const introEl = document.createElement('audio');
+        introEl.id = 'reels-preview-intro-audio';
+        introEl.crossOrigin = 'anonymous';
+        introEl.style.display = 'none';
+        introEl.loop = false;
+        document.body.appendChild(introEl);
+        _reelsState._introAudioEl = introEl;
     }
     _applyPreviewLoopMode();
 
@@ -4460,16 +4472,21 @@ window.reelsInitChristmasIconPickers = function() {
     const catalog = Array.isArray(window.HOLIDAY_ICON_CATALOG) ? window.HOLIDAY_ICON_CATALOG : [];
     if (catalog.length === 0) return;
 
-    const twSelect = document.getElementById('reels-fullpage-typewriter-cursor-kind');
-    if (twSelect && typeof twSelect.querySelector === 'function') {
-        const imgOpt = twSelect.querySelector('option[value="image"]');
-        for (const item of catalog) {
-            if (!twSelect.querySelector(`option[value="${item.id}"]`)) {
-                const opt = document.createElement('option');
-                opt.value = item.id;
-                opt.textContent = `${item.emoji} ${item.label}`;
-                if (imgOpt) twSelect.insertBefore(opt, imgOpt);
-                else twSelect.appendChild(opt);
+    const selectTargets = [
+        document.getElementById('reels-fullpage-typewriter-cursor-kind'),
+        document.getElementById('rop-scroll-tw-cursor-kind'),
+    ].filter(Boolean);
+    for (const twSelect of selectTargets) {
+        if (typeof twSelect.querySelector === 'function') {
+            const imgOpt = twSelect.querySelector('option[value="image"]');
+            for (const item of catalog) {
+                if (!twSelect.querySelector(`option[value="${item.id}"]`)) {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = `${item.emoji} ${item.label}`;
+                    if (imgOpt) twSelect.insertBefore(opt, imgOpt);
+                    else twSelect.appendChild(opt);
+                }
             }
         }
     }
@@ -4489,6 +4506,10 @@ window.reelsInitChristmasIconPickers = function() {
                 { val: '萌物人物', label: '⛄ 萌物人物' },
                 { val: '圣夜信仰', label: '🌟 圣夜信仰' },
                 { val: '冬日美食', label: '🍪 冬日美食' },
+                { val: '美加国旗', label: '🇺🇸 美加国旗' },
+                { val: '美加花卉', label: '🌹 美加花卉' },
+                { val: '感恩秋日', label: '🦃 感恩秋日' },
+                { val: '书写笔尖', label: '✏️ 书写笔尖' },
             ];
             for (const c of cats) {
                 const btn = document.createElement('button');
@@ -4529,7 +4550,7 @@ window.reelsInitChristmasIconPickers = function() {
                 const c = cvs.getContext && cvs.getContext('2d');
                 if (!c) return;
                 c.clearRect(0, 0, cvs.width, cvs.height);
-                window.drawHolidayStickerIcon(c, cvs.dataset.kind, 19, 19, 32, { time: 0 });
+                window.drawHolidayStickerIcon(c, cvs.dataset.kind, 19, 19, 32, { time: 0.35 });
             });
         }
 
@@ -5474,6 +5495,7 @@ function _reelsUpdatePreviewInternal() {
 
     // ── Hook → Main / Intro 留白 → 朗读自动切换 ──
     _syncHookPhaseTransition();
+    _syncIntroAudioElement(_getSelectedTask(), cTime, isMediaPlaying);
 
     // 当开启了开场留白推迟人声且开启循环播放时，到达片尾后自动重启 0.00s（因为 audio.loop 已让位于整片时钟循环）
     if (_isPreviewLoopEnabled() && dDur > 0 && cTime >= dDur - 0.03 && _getTaskIntroDelaySec(_getSelectedTask()) > 0) {
@@ -5490,6 +5512,9 @@ function _reelsUpdatePreviewInternal() {
             if (video) video.currentTime = 0;
             if (fadeVideo) fadeVideo.currentTime = 0;
             if (bgmAudio && _selectedTask) bgmAudio.currentTime = _getTaskBgmStart(_selectedTask);
+            if (_reelsState._introAudioEl) {
+                try { _reelsState._introAudioEl.pause(); _reelsState._introAudioEl.currentTime = 0; } catch (_) {}
+            }
             _reelsState.mockPausedTime = 0;
             _reelsState.mockPlaying = true;
             _reelsState.mockStartTime = performance.now() / 1000;
@@ -5514,6 +5539,7 @@ function _reelsUpdatePreviewInternal() {
             if (fadeVideo) fadeVideo.pause();
             if (hookVideoStop) hookVideoStop.pause();
             if (_reelsState._bgmAudioEl) _reelsState._bgmAudioEl.pause();
+            if (_reelsState._introAudioEl) _reelsState._introAudioEl.pause();
             
             _reelsState.mockPlaying = false;
             _reelsState.mockPausedTime = dDur; // Ensure UI stays at the end
@@ -8389,15 +8415,94 @@ function _isPreviewLoopEnabled() {
     return el ? !!el.checked : true;
 }
 
+function _getTaskLiveOverlays(task) {
+    if (!task) return [];
+    const isCurrent = task === _getSelectedTask();
+    return (isCurrent && _reelsState.overlayProxy?.overlayMgr?.overlays)
+        ? _reelsState.overlayProxy.overlayMgr.overlays
+        : (task.overlays || []);
+}
+
+function _getTaskIntroAudioPlaybackState(task, curT) {
+    const api = typeof window !== 'undefined' ? window.ReelsIntroAudio : null;
+    if (!task || !api?.computeIntroAudioPlaybackState) {
+        return { url: '', active: false, localTime: 0, gain: 0 };
+    }
+    const coverDur = (task.cover && task.cover.enabled) ? (parseFloat(task.cover.duration) || 0.01) : 0;
+    const hookDur = _reelsState.hookDuration || 0;
+    const rawMainTime = (Number(curT) || 0) - coverDur - hookDur;
+    if (rawMainTime < -0.0005) {
+        const probe = api.computeIntroAudioPlaybackState(_getTaskLiveOverlays(task), 0, {
+            showIntro: _isReelsIntroToggleEnabled(),
+        });
+        return { ...probe, active: false, localTime: 0, gain: 0 };
+    }
+    return api.computeIntroAudioPlaybackState(_getTaskLiveOverlays(task), Math.max(0, rawMainTime), {
+        showIntro: _isReelsIntroToggleEnabled(),
+    });
+}
+
+function _applyIntroAudioElementVolume(introEl, gain) {
+    if (!introEl) return;
+    const g = Math.max(0, Number(gain) || 0);
+    const ctx = _reelsState._audioCtx;
+    const isRouted = !!(ctx && _reelsState._gainNodes && _reelsState._mediaSources?.has(introEl) && _reelsState._gainNodes.has(introEl));
+    if (isRouted) {
+        try { _reelsState._gainNodes.get(introEl).gain.setValueAtTime(g, ctx.currentTime); } catch (_) {}
+        introEl.volume = g > 0 ? 1.0 : 0;
+    } else {
+        introEl.volume = Math.max(0, Math.min(1.0, g));
+    }
+    introEl.muted = g <= 0.001;
+}
+
+function _syncIntroAudioElement(task, curT, isPlayingNow = null) {
+    const introEl = _reelsState._introAudioEl;
+    if (!introEl) return;
+    const st = _getTaskIntroAudioPlaybackState(task, curT);
+    if (!st.url) {
+        if (!introEl.paused) introEl.pause();
+        if (introEl.getAttribute('src')) {
+            introEl.removeAttribute('src');
+            try { introEl.load(); } catch (_) {}
+        }
+        _applyIntroAudioElementVolume(introEl, 0);
+        return;
+    }
+    if (introEl.dataset.resolvedUrl !== st.url) {
+        introEl.dataset.resolvedUrl = st.url;
+        introEl.src = st.url;
+        try { introEl.load(); } catch (_) {}
+    }
+    _applyIntroAudioElementVolume(introEl, st.gain);
+
+    const playing = isPlayingNow !== null
+        ? Boolean(isPlayingNow)
+        : (document.getElementById('reels-preview-play')?.textContent === '⏸️');
+    if (!st.active || !playing) {
+        if (!introEl.paused) introEl.pause();
+        if (!st.active && Math.abs((introEl.currentTime || 0) - st.localTime) > 0.25) {
+            try { introEl.currentTime = st.localTime; } catch (_) {}
+        }
+        return;
+    }
+    if (!introEl.seeking) {
+        const diff = Math.abs((introEl.currentTime || 0) - st.localTime);
+        if (diff > 0.28 || (introEl.paused && st.localTime < 0.08)) {
+            try { introEl.currentTime = st.localTime; } catch (_) {}
+        }
+    }
+    if (introEl.paused && st.gain > 0.001) {
+        introEl.play().catch(() => {});
+    }
+}
+
 function _getTaskIntroDelaySec(task, customOptions = {}) {
     if (!task || typeof window === 'undefined' || !window.ReelsOverlay?.getIntroDelaySec) return 0;
     const showOverlay = customOptions.showOverlay !== undefined ? customOptions.showOverlay : _isReelsOverlayToggleEnabled();
     const showDecor = customOptions.showDecor !== undefined ? customOptions.showDecor : _isReelsDecorToggleEnabled();
     const showIntro = customOptions.showIntro !== undefined ? customOptions.showIntro : _isReelsIntroToggleEnabled();
-    const isCurrent = task === _getSelectedTask();
-    const ovs = (isCurrent && _reelsState.overlayProxy?.overlayMgr?.overlays)
-        ? _reelsState.overlayProxy.overlayMgr.overlays
-        : (task.overlays || []);
+    const ovs = _getTaskLiveOverlays(task);
     return window.ReelsOverlay.getIntroDelaySec(ovs, { showOverlay, showDecor, showIntro });
 }
 
@@ -9050,6 +9155,21 @@ function _applyPreviewAudioMix() {
         }
     }
 
+    // ── 开场配乐音量 ──
+    const introEl = _reelsState._introAudioEl;
+    if (introEl) {
+        const st = _getTaskIntroAudioPlaybackState(task, _getPreviewCurrentTime());
+        if (st.url && introEl.dataset.resolvedUrl !== st.url) {
+            introEl.dataset.resolvedUrl = st.url;
+            introEl.src = st.url;
+        } else if (!st.url && introEl.getAttribute('src')) {
+            introEl.pause();
+            introEl.removeAttribute('src');
+            introEl.dataset.resolvedUrl = '';
+        }
+        _applyIntroAudioElementVolume(introEl, st.gain);
+    }
+
     // 外围表格和控件仍统一调用本函数；V2 开启时同步其独立媒体节点。
     window.ReelsPreviewV2?.syncAudio?.();
     _updateBgVolumeConsistencyHint();
@@ -9134,7 +9254,8 @@ function _setupPreviewReverb() {
 
     // Attach MediaElementSource for any new elements
     const fadeVideo = _reelsState.previewFadeVideo;
-    const els = [audio, video, fadeVideo, contentVideoEl, bgm].filter(Boolean);
+    const introAudioEl = _reelsState._introAudioEl;
+    const els = [audio, video, fadeVideo, contentVideoEl, bgm, introAudioEl].filter(Boolean);
     for (const el of els) {
         if (!_reelsState._mediaSources.has(el)) {
             try {
@@ -11603,8 +11724,9 @@ function _renderTaskList(options = {}) {
             const groupThumbHtml = groupThumbUrl
                 ? `<img class="reels-batch-group-thumb" src="${escapeTaskText(groupThumbUrl)}" alt="" draggable="false" />`
                 : '';
+            const tabIdAttr = !isLegacyTask ? `data-tab-id="${escapeTaskText(batchGroupId)}"` : 'data-tab-id="__legacy__"';
             batchGroupHeader = `
-                <div class="reels-batch-group-header"
+                <div class="reels-batch-group-header" ${tabIdAttr} data-tab-name="${groupName}"
                     style="display:flex;align-items:center;gap:7px;padding:8px 7px;margin:7px 0 3px;
                            border-radius:6px;background:rgba(123,139,239,0.16);border:1px solid rgba(123,139,239,0.35);
                            color:#c7d2fe;font-size:11px;font-weight:700;">
@@ -11640,7 +11762,7 @@ function _renderTaskList(options = {}) {
             const queueIndeterminate = queueSelected > 0 && queueSelected < queueCount;
             const encodedQueueId = encodeURIComponent(queueId);
             folderHeader = `
-                <div class="reels-folder-queue-header" onclick="reelsToggleFolderQueue(decodeURIComponent('${encodedQueueId}'))"
+                <div class="reels-folder-queue-header" data-queue-id="${escapeTaskText(queueId)}" data-queue-name="${queueName}" onclick="reelsToggleFolderQueue(decodeURIComponent('${encodedQueueId}'))"
                     style="display:flex;align-items:center;gap:6px;padding:7px 6px;margin:5px 0 3px;
                            border-radius:6px;background:rgba(76,158,255,0.12);border:1px solid rgba(76,158,255,0.25);
                            color:#9ccaff;cursor:pointer;font-size:11px;font-weight:600;">
@@ -12079,6 +12201,10 @@ function reelsSelectTask(idx, options = {}) {
         // 切换任务时，BGM 回到该任务时间轴的起点（不是沿用上一任务的播放位置）。
         try { bgmAudio.currentTime = _getTaskBgmStart(task); } catch (e) { }
     }
+    if (_reelsState._introAudioEl) {
+        _reelsState._introAudioEl.pause();
+        try { _reelsState._introAudioEl.currentTime = 0; } catch (_) {}
+    }
     _applyPreviewAudioMix();
     // 同一个 MP3 被多个任务复用时，src 不会变化，浏览器会保留 currentTime。
     // 因此显式归零，保证每次切换任务都从时间轴 0:00 预览。
@@ -12516,13 +12642,11 @@ async function reelsDuplicateTask(idx, versionTagInput) {
 
     let versionTag = versionTagInput;
     if (versionTag === undefined || versionTag === null) {
-        const promptFn = window.reelsPrompt || window._bcPrompt;
+        const promptFn = window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : null) || window.reelsPrompt || window._bcPrompt;
         if (typeof promptFn === 'function') {
-            const res = await promptFn('请输入副本版本说明（例如 Hook-B、短版、变体A）', '副本');
-            if (res === null) return null;
-            versionTag = res.trim() || '副本';
-        } else if (typeof prompt === 'function') {
-            const res = prompt('请输入副本版本说明（例如 Hook-B、短版、变体A）', '副本');
+            const res = promptFn === (window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : null))
+                ? await promptFn('复制任务副本', '请输入副本版本说明（例如 Hook-B、短版、变体A）', '副本')
+                : await promptFn('请输入副本版本说明（例如 Hook-B、短版、变体A）', '副本');
             if (res === null) return null;
             versionTag = res.trim() || '副本';
         } else {
@@ -12581,13 +12705,12 @@ async function reelsDuplicateSelectedTasks(versionTagInput) {
 
     let versionTag = versionTagInput;
     if (versionTag === undefined || versionTag === null) {
-        const promptFn = window.reelsPrompt || window._bcPrompt;
+        const promptFn = window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : null) || window.reelsPrompt || window._bcPrompt;
         if (typeof promptFn === 'function') {
-            const res = await promptFn(`请输入选中的 ${selectedIndices.length} 个任务的副本版本说明（例如 Hook-B、短版）`, '副本');
-            if (res === null) return [];
-            versionTag = res.trim() || '副本';
-        } else if (typeof prompt === 'function') {
-            const res = prompt(`请输入选中的 ${selectedIndices.length} 个任务的副本版本说明（例如 Hook-B、短版）`, '副本');
+            const title = `为选中的 ${selectedIndices.length} 个任务设置版本说明`;
+            const res = promptFn === (window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : null))
+                ? await promptFn(title, '请输入副本版本说明（例如 Hook-B、短版）', '副本')
+                : await promptFn(`请输入选中的 ${selectedIndices.length} 个任务的副本版本说明（例如 Hook-B、短版）`, '副本');
             if (res === null) return [];
             versionTag = res.trim() || '副本';
         } else {
@@ -12672,6 +12795,7 @@ function reelsTogglePlay() {
         _reelsState.mockPausedTime = savedTime;
         if (hookVideo) hookVideo.pause();
         if (bgmAudio) bgmAudio.pause();
+        if (_reelsState._introAudioEl) _reelsState._introAudioEl.pause();
         if (btn) btn.textContent = '▶️';
         return;
     }
@@ -12683,6 +12807,9 @@ function reelsTogglePlay() {
     if (durT > 0 && curT >= durT - 0.05) {
         if (hasAudio) audio.currentTime = 0;
         if (hasVideo) video.currentTime = 0;
+        if (_reelsState._introAudioEl) {
+            try { _reelsState._introAudioEl.currentTime = 0; } catch (_) {}
+        }
         if (hasHook) {
             const trimStart = (task.hookTrimStart != null && task.hookTrimStart > 0) ? task.hookTrimStart : 0;
             hookVideo.currentTime = trimStart || 0.01;
@@ -12785,6 +12912,7 @@ function reelsTogglePlay() {
         bgmAudio.currentTime = bgmAudio.duration > 0 ? bgmTime % bgmAudio.duration : bgmTime;
         bgmAudio.play().catch(() => { });
     }
+    _syncIntroAudioElement(task, (durT > 0 && curT >= durT - 0.05) ? 0 : curT, true);
     _clearPreviewSeekLock();
     if (btn) btn.textContent = '⏸️';
 }
@@ -13263,6 +13391,8 @@ function _actualSeek(e) {
         const bgmTarget = (_getTaskBgmStart(task) + contentTarget) % bgmAudio.duration;
         _queuePreviewMediaSeek(seekedMedia, bgmAudio, bgmTarget);
     }
+    // ── 同步开场配乐 seek ──
+    _syncIntroAudioElement(task, target);
     _refreshPreviewAfterSeek(target, duration, seekedMedia, seekToken, { deferFramePrime });
 }
 
@@ -13413,7 +13543,7 @@ function reelsChoosePresetGroup(title, currentGroup = '我的预设', groups = [
         if (!options.includes(current)) options.unshift(current);
         const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[char]));
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2000000;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;';
         overlay.innerHTML = `<div style="width:min(420px,calc(100vw - 36px));box-sizing:border-box;padding:22px;border-radius:12px;background:var(--bg-primary,#1e1e2e);border:1px solid var(--border-color,#4b5563);box-shadow:0 14px 40px rgba(0,0,0,.45);color:var(--text-primary,#fff);"><div style="font-size:16px;font-weight:700;margin-bottom:14px;">${escape(title)}</div><label style="display:block;font-size:12px;color:var(--text-secondary,#aab);margin-bottom:5px;">已有分组</label><select class="rpg-select" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#28283b);color:var(--text-primary,#fff);font-size:14px;">${options.map(group => `<option value="${escape(group)}" ${group === current ? 'selected' : ''}>${escape(group)}</option>`).join('')}<option value="__new__">＋ 新建分组…</option></select><input class="rpg-new" type="text" placeholder="输入新分组名称" style="display:none;width:100%;box-sizing:border-box;margin-top:9px;padding:8px 10px;border-radius:6px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#28283b);color:var(--text-primary,#fff);font-size:14px;"><div style="display:flex;justify-content:flex-end;gap:9px;margin-top:18px;"><button class="rpg-cancel" style="padding:7px 16px;border-radius:6px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-secondary,#aab);cursor:pointer;">取消</button><button class="rpg-ok" style="padding:7px 16px;border:0;border-radius:6px;background:var(--accent-primary,#5b6abf);color:#fff;cursor:pointer;">确定</button></div></div>`;
         document.body.appendChild(overlay);
         const select = overlay.querySelector('.rpg-select');
@@ -13488,12 +13618,13 @@ function reelsSetDefaultPreset() {
 function _showInputDialog(title, placeholder, defaultValue = '') {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2000000;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;';
         const box = document.createElement('div');
         box.style.cssText = 'background:var(--bg-primary,#1e1e2e);border:1px solid var(--border-color,#444);border-radius:12px;padding:24px;min-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+        const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         box.innerHTML = `
-            <div style="font-size:15px;font-weight:600;margin-bottom:14px;color:var(--text-primary,#fff);">${title}</div>
-            <input type="text" id="_input_dialog_val" value="${String(defaultValue).replace(/"/g, '&quot;')}" placeholder="${placeholder || ''}"
+            <div style="font-size:15px;font-weight:600;margin-bottom:14px;color:var(--text-primary,#fff);">${escHtml(title)}</div>
+            <input type="text" id="_input_dialog_val" value="${escHtml(defaultValue)}" placeholder="${escHtml(placeholder || '')}"
                 style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:6px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--text-primary,#fff);font-size:14px;outline:none;">
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
                 <button id="_input_dialog_cancel" style="padding:6px 18px;border-radius:6px;border:1px solid var(--border-color,#555);background:transparent;color:var(--text-secondary,#aaa);cursor:pointer;font-size:13px;">取消</button>
@@ -13506,10 +13637,11 @@ function _showInputDialog(title, placeholder, defaultValue = '') {
         const okBtn = box.querySelector('#_input_dialog_ok');
         const cancelBtn = box.querySelector('#_input_dialog_cancel');
 
-        // 防止外层事件监听器抢焦点
+        // 防止外层事件监听器（如模板库快捷键/焦点锁定）抢焦点或拦截输入按键
         input.addEventListener('mousedown', (e) => e.stopPropagation());
         input.addEventListener('click', (e) => e.stopPropagation());
         box.addEventListener('mousedown', (e) => e.stopPropagation());
+        box.addEventListener('keydown', (e) => e.stopPropagation());
 
         const close = (val) => {
             if (overlay.parentNode) document.body.removeChild(overlay);
@@ -13520,12 +13652,13 @@ function _showInputDialog(title, placeholder, defaultValue = '') {
         cancelBtn.onclick = () => close(null);
         overlay.onclick = (e) => { if (e.target === overlay) close(null); };
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') close(input.value.trim() || null);
-            if (e.key === 'Escape') close(null);
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); close(input.value.trim() || null); }
+            if (e.key === 'Escape') { e.preventDefault(); close(null); }
         });
-        // 多次尝试 focus 确保 Electron 渲染完成后能获得焦点
-        setTimeout(() => input.focus(), 50);
-        setTimeout(() => { if (document.activeElement !== input) input.focus(); }, 150);
+        // 多次尝试 focus 并选中默认文本，确保 Electron 渲染完成后能立刻打字起名
+        setTimeout(() => { input.focus(); try { input.select(); } catch (_) {} }, 30);
+        setTimeout(() => { if (document.activeElement !== input) input.focus(); }, 120);
     });
 }
 window.reelsShowInputDialog = _showInputDialog;
@@ -15179,17 +15312,20 @@ function reelsUpdateCustomBitrateUI() {
     const quality = (document.getElementById('reels-quality') || {}).value || 'low';
     const settingsEl = document.getElementById('reels-custom-bitrate-settings');
     if (settingsEl) settingsEl.style.display = quality === 'custom' ? 'inline-flex' : 'none';
-    const presetRates = {
-        high: { target: 12, max: 12 },
-        medium: { target: 8, max: 11 },
-        low: { target: 2, max: 3 },
-        ultrafast: { target: 2.5, max: 3.5 },
-    };
-    const rates = quality === 'custom'
-        ? _readReelsCustomBitrate()
-        : (presetRates[quality] || presetRates.low);
     const label = document.getElementById('reels-quality-bitrate-label');
-    if (label) label.textContent = `目标 ${rates.target} / 最大 ${rates.max} Mbps`;
+    if (!label) return;
+    if (quality === 'custom') {
+        const rates = _readReelsCustomBitrate();
+        label.textContent = `目标 ${rates.target} / 最大 ${rates.max} Mbps (自定义 ABR)`;
+        return;
+    }
+    const presetLabels = {
+        high: '恒定质量 CRF 15 (动态码率无上限)',
+        medium: '恒定质量 CRF 18 (口播高清动态码率)',
+        low: '恒定质量 CRF 23 (口播默认动态码率)',
+        ultrafast: '恒定质量 CRF 26 (极速预览)',
+    };
+    label.textContent = presetLabels[quality] || presetLabels.low;
 }
 window.reelsUpdateCustomBitrateUI = reelsUpdateCustomBitrateUI;
 
@@ -17142,6 +17278,7 @@ async function _reelsStartExportImpl(options = {}) {
                                 style: taskStyle,
                                 segments: showSubtitle ? (task.segments || []) : [],
                                 overlays: _getTaskRenderOverlays(task),
+                                insertAudioClips: _getTaskInsertAudio(task),
                                 backgroundPath: bgPath,
                                 bgMode: task.bgMode || 'single',
                                 bgScale: task.bgScale || 100,
@@ -17291,6 +17428,7 @@ async function _reelsStartExportImpl(options = {}) {
                     audioFxTarget: _getReverbConfig().audioFxTarget,
                     useMemoryDecoder: memoryDecoderEnabled,
                     useGPU: gpuEnabled || exportEngine === 'hardware',
+                    fastAlphaEnabled,
                     crf,
                     qualityPreset,
                     targetBitrateMbps,
@@ -18884,6 +19022,7 @@ async function _pickSingleFile(title, extensions) {
         input.click();
     });
 }
+window.reelsPickSingleFile = _pickSingleFile;
 
 function _getTaskRenderOverlays(task, customOptions = {}) {
     const showOverlay = customOptions.showOverlay !== undefined
@@ -18927,8 +19066,15 @@ function _getTaskInsertAudio(task) {
     const mode = document.getElementById('reels-export-insert-audio-mode')?.value || 'keep-main';
     const configured = Number(document.getElementById('reels-export-insert-audio-volume')?.value);
     const volume = Math.max(0, Math.min(200, Number.isFinite(configured) ? configured : 0));
-    return (task?.insertClips || []).map(item => override ? { ...item, audioMode: mode, volume } : item)
+    const list = (task?.insertClips || []).map(item => override ? { ...item, audioMode: mode, volume } : item)
         .filter(item => item?.sourcePath && ['source-only', 'mix'].includes(item.audioMode));
+    const introClip = window.ReelsIntroAudio?.buildIntroAudioClipForTask?.({
+        task,
+        overlays: _getTaskLiveOverlays(task),
+        showIntro: _isReelsIntroToggleEnabled(),
+    });
+    if (introClip) list.push(introClip);
+    return list;
 }
 
 // ─── 每任务插入素材 ───
@@ -20797,7 +20943,14 @@ window.reelsSetSpeechWritingTip = function(kind, standardSubtitleMode = false) {
     const set = (id, value, check = false) => { const el=document.getElementById(id); if(el) {if(check)el.checked=value;else el.value=value;} };
     const subCursorEl = document.getElementById('reels-subtitle-cursor-enabled');
     const fpTwEl = document.getElementById('reels-fullpage-typewriter');
-    const useStandardTSubtitle = Boolean(standardSubtitleMode || (subCursorEl && subCursorEl.checked && (!fpTwEl || !fpTwEl.checked)));
+    const animInEl = document.getElementById('reels-anim-in-type');
+    const useStandardTSubtitle = Boolean(
+        standardSubtitleMode
+        || ((!fpTwEl || !fpTwEl.checked) && (
+            (subCursorEl && subCursorEl.checked)
+            || (animInEl && (animInEl.value === 'typewriter' || animInEl.value === 'zoom_typewriter'))
+        ))
+    );
     if (useStandardTSubtitle) {
         set('reels-subtitle-cursor-enabled', true, true);
         set('reels-fullpage-typewriter-cursor', true, true);
@@ -20806,13 +20959,12 @@ window.reelsSetSpeechWritingTip = function(kind, standardSubtitleMode = false) {
         set('reels-fullpage-typewriter-cursor-offset-x', 0);
         set('reels-fullpage-typewriter-cursor-offset-y', 0);
         set('reels-fullpage-typewriter-cursor-angle', 0);
-        // Ensure emerging word/char/sentence reveal is enabled together with the icon without clobbering user's sentence mode
-        const animInEl = document.getElementById('reels-anim-in-type');
+        // Ensure emerging word/char/sentence/line reveal is enabled together with the icon without clobbering user's choice
         if (animInEl && animInEl.value !== 'typewriter' && animInEl.value !== 'zoom_typewriter') {
             animInEl.value = 'typewriter';
         }
         const twRevEl = document.getElementById('reels-typewriter-reveal-type');
-        if (twRevEl && twRevEl.value !== 'sentence' && twRevEl.value !== 'char') {
+        if (twRevEl && twRevEl.value !== 'sentence' && twRevEl.value !== 'char' && twRevEl.value !== 'line') {
             twRevEl.value = 'word';
         }
         set('reels-hide-until-spoken', true, true);
@@ -20825,7 +20977,7 @@ window.reelsSetSpeechWritingTip = function(kind, standardSubtitleMode = false) {
         set('reels-fullpage-typewriter-cursor', true, true);
         set('reels-fullpage-typewriter-speech-sync', true, true);
         const fpRevEl = document.getElementById('reels-fullpage-typewriter-reveal-type');
-        if (fpRevEl && fpRevEl.value !== 'sentence' && fpRevEl.value !== 'word') {
+        if (fpRevEl && fpRevEl.value !== 'sentence' && fpRevEl.value !== 'word' && fpRevEl.value !== 'line') {
             fpRevEl.value = 'char';
         }
         set('reels-fullpage-typewriter-cursor-kind', kind);

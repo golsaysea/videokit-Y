@@ -705,7 +705,7 @@
         const currentAppliedStyle = (typeof _readStyleFromUI === 'function' ? _readStyleFromUI() : null)
             || window.ReelsStyleEngine.mergeStyle({});
 
-        const NEW_VIRAL_CODES = new Set(Array.from({ length: 100 }, (_, i) => `sub-${128 + i}`));
+        const NEW_VIRAL_CODES = new Set(Array.from({ length: 137 }, (_, i) => `sub-${128 + i}`));
 
         // Build flat item metadata array
         const items = [];
@@ -1264,7 +1264,12 @@
                 const card = moveBtn.closest('.rsp-card');
                 const currentGroup = String(card.dataset.group || '').replace(/^💾\s*/, '') || '我的预设';
                 const savedGroups = categorized.filter(g => g.category.startsWith('💾')).map(g => g.category.replace(/^💾\s*/, ''));
-                Promise.resolve(typeof reelsChoosePresetGroup === 'function' ? reelsChoosePresetGroup('移动预设分组', currentGroup, savedGroups) : prompt('输入目标分组名', currentGroup))
+                const promptGroup = typeof reelsChoosePresetGroup === 'function'
+                    ? reelsChoosePresetGroup('移动预设分组', currentGroup, savedGroups)
+                    : (typeof window.reelsShowInputDialog === 'function'
+                        ? window.reelsShowInputDialog('移动预设分组', '输入目标分组名', currentGroup)
+                        : Promise.resolve(currentGroup));
+                Promise.resolve(promptGroup)
                     .then(nextGroup => {
                         if (!nextGroup || !String(nextGroup).trim()) return;
                         window.ReelsStyleEngine.setSubtitlePresetGroup(card.dataset.name, String(nextGroup).trim());
@@ -1349,10 +1354,48 @@
                 applyPresetName(selectedItem.name);
             }
         });
-        modal.querySelector('.rsp-stage-save-copy').addEventListener('click', () => {
+        modal.querySelector('.rsp-stage-save-copy').addEventListener('click', async () => {
             const active = previewOverrideItem || selectedItem;
             if (!active) return;
-            const nextName = prompt('另存为我的字幕预设名称：', `${active.name}_副本`);
+            const defaultName = `${active.name}_副本`;
+            const promptFn = typeof window.reelsShowInputDialog === 'function'
+                ? window.reelsShowInputDialog
+                : ((title, placeholder, defVal) => new Promise((resolve) => {
+                    const ov = document.createElement('div');
+                    ov.style.cssText = 'position:fixed;inset:0;z-index:2000000;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;';
+                    const box = document.createElement('div');
+                    box.style.cssText = 'width:min(420px,calc(100vw - 36px));box-sizing:border-box;padding:20px;border-radius:12px;background:#1e1e2e;border:1px solid rgba(129,140,248,0.45);box-shadow:0 16px 40px rgba(0,0,0,.6);color:#f8fafc;';
+                    const tEl = document.createElement('div');
+                    tEl.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:12px;';
+                    tEl.textContent = title;
+                    const inp = document.createElement('input');
+                    inp.type = 'text';
+                    inp.placeholder = placeholder || '';
+                    inp.value = defVal == null ? '' : String(defVal);
+                    inp.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:13px;outline:none;';
+                    const row = document.createElement('div');
+                    row.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+                    const cBtn = document.createElement('button');
+                    cBtn.type = 'button'; cBtn.textContent = '取消';
+                    cBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;font-size:12px;';
+                    const oBtn = document.createElement('button');
+                    oBtn.type = 'button'; oBtn.textContent = '确定';
+                    oBtn.style.cssText = 'padding:6px 14px;border:0;border-radius:6px;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;font-weight:600;';
+                    row.appendChild(cBtn); row.appendChild(oBtn);
+                    box.appendChild(tEl); box.appendChild(inp); box.appendChild(row);
+                    ov.appendChild(box); document.body.appendChild(ov);
+                    const done = (v) => { ov.remove(); resolve(v); };
+                    cBtn.onclick = () => done(null);
+                    oBtn.onclick = () => done(inp.value);
+                    ov.onclick = (e) => { if (e.target === ov) done(null); };
+                    inp.addEventListener('keydown', (e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') { e.preventDefault(); done(inp.value); }
+                        else if (e.key === 'Escape') { e.preventDefault(); done(null); }
+                    });
+                    setTimeout(() => { inp.focus(); try { inp.select(); } catch (_) {} }, 25);
+                }));
+            const nextName = await promptFn('另存为我的字幕预设', '输入预设名称', defaultName);
             if (!nextName || !nextName.trim()) return;
             if (window.ReelsStyleEngine.saveNamedSubtitlePreset(nextName.trim(), active.style, '我的预设')) {
                 if (typeof showToast === 'function') showToast(`✅ 已保存为「${nextName.trim()}」`, 'success');

@@ -22116,8 +22116,8 @@ async function openAutoEditMissedSpeechFix(button) {
         close();
         showToast(`已保留完整原片段：0.000s – ${sourceDuration.toFixed(3)}s，请点击“剪后预览”确认`, 'success', 6000);
     };
-    modal.querySelector('.ae-missed-manual').onclick = () => {
-        const raw = prompt(
+    modal.querySelector('.ae-missed-manual').onclick = async () => {
+        const raw = await ((msg, def) => (window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : ((_, __, d) => Promise.resolve(d))))('手动指定声音结束秒数', msg, def))(
             `请输入声音实际结束的秒数${sourceDuration > 0 ? `（原片最长 ${sourceDuration.toFixed(3)} 秒）` : ''}：`,
             Number(endInput.value || 0).toFixed(3)
         );
@@ -32684,8 +32684,9 @@ function organizerResetPlan() {
     showToast('已重置并重新按规则分配所有文件', 'success');
 }
 
-function organizerRenameGroup(oldName) {
-    const newName = prompt(`将文件夹「${oldName}」重命名为：`, oldName);
+async function organizerRenameGroup(oldName) {
+    const _renPrompt = window.reelsShowInputDialog || (typeof _showInputDialog === 'function' ? _showInputDialog : null);
+    const newName = _renPrompt ? await _renPrompt('重命名文件夹', `将文件夹「${oldName}」重命名为：`, oldName) : (typeof window.reelsPrompt === 'function' ? await window.reelsPrompt(`将文件夹「${oldName}」重命名为：`, oldName) : null);
     if (!newName || newName.trim() === '' || newName.trim() === oldName) return;
 
     const group = organizerState.plan?.groups?.find(g => g.name === oldName);

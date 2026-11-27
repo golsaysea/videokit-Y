@@ -1025,13 +1025,13 @@ function _bcEsc(s) {
 }
 
 // Electron-safe prompt replacement
-function _bcPrompt(title, placeholder) {
+function _bcPrompt(title, placeholder, defaultValue = '') {
     return new Promise(resolve => {
         const m = document.createElement('div');
-        m.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:400000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
+        m.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;';
         m.innerHTML = `<div style="background:#1a1a2e;border:1px solid #333;border-radius:10px;width:400px;padding:20px;">
             <div style="color:#fff;font-size:13px;font-weight:600;margin-bottom:10px;">${_bcEsc(title)}</div>
-            <textarea id="bc-prompt-input" rows="3" placeholder="${_bcEsc(placeholder||'')}" style="width:100%;background:#0a0a14;border:1px solid #333;border-radius:6px;color:#ccc;font-size:12px;padding:8px;resize:vertical;box-sizing:border-box;"></textarea>
+            <textarea id="bc-prompt-input" rows="3" placeholder="${_bcEsc(placeholder||'')}" style="width:100%;background:#0a0a14;border:1px solid #333;border-radius:6px;color:#ccc;font-size:12px;padding:8px;resize:vertical;box-sizing:border-box;">${_bcEsc(defaultValue||'')}</textarea>
             <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:10px;">
                 <button id="bc-prompt-cancel" style="padding:4px 14px;background:rgba(255,255,255,0.05);border:1px solid #333;border-radius:5px;color:#888;cursor:pointer;font-size:11px;">取消</button>
                 <button id="bc-prompt-ok" style="padding:4px 14px;background:linear-gradient(135deg,#7c5cff,#a855f7);border:none;border-radius:5px;color:#fff;cursor:pointer;font-size:11px;font-weight:600;">确定</button>
@@ -1039,10 +1039,10 @@ function _bcPrompt(title, placeholder) {
         </div>`;
         document.body.appendChild(m);
         const inp = m.querySelector('#bc-prompt-input');
-        setTimeout(() => inp.focus(), 50);
+        setTimeout(() => { inp.focus(); try { inp.select(); } catch (_) {} }, 50);
         m.querySelector('#bc-prompt-cancel').onclick = () => { m.remove(); resolve(null); };
         m.querySelector('#bc-prompt-ok').onclick = () => { const v = inp.value; m.remove(); resolve(v); };
-        inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = inp.value; m.remove(); resolve(v); } });
+        inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = inp.value; m.remove(); resolve(v); } else if (e.key === 'Escape') { e.preventDefault(); m.remove(); resolve(null); } });
     });
 }
 window._bcPrompt = _bcPrompt;
@@ -2136,8 +2136,8 @@ function _bcEditTemplateOverlays(ti) {
         tplNameInput.onchange = syncTplName;
         tplNameInput.addEventListener('keydown', e => e.stopPropagation());
     }
-    get('[data-save-preset]').onclick = () => {
-        const name = prompt('输入预设名称：', tpl.label);
+    get('[data-save-preset]').onclick = async () => {
+        const name = await _bcPrompt('保存覆层预设', '输入预设名称', tpl.label);
         if (!name || !name.trim()) return;
         let presets = {};
         try { presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch(e) {}
@@ -2425,10 +2425,10 @@ function _bcPreviewGroup(key, initialRow = null, onClose = null) {
                 alert(`✅ 已同步更新到源模板「${sourceTpl.label}」`);
             }
         };
-        suiteHost.querySelector('#bc-suite-save-as-new').onclick = () => {
+        suiteHost.querySelector('#bc-suite-save-as-new').onclick = async () => {
             const sourceTpl = _bulkState.templates[entry.templateIndex];
             const defaultName = (sourceTpl?.label || '新模板') + '_已修改';
-            const newName = prompt('输入新模板名称：', defaultName);
+            const newName = await _bcPrompt('保存为新模板', '输入新模板名称', defaultName);
             if (newName && newName.trim()) {
                 const newTplTask = JSON.parse(JSON.stringify(sourceTpl ? sourceTpl.task : localTask));
                 newTplTask.overlays = JSON.parse(JSON.stringify(mgr.overlays));
@@ -2454,10 +2454,10 @@ function _bcPreviewGroup(key, initialRow = null, onClose = null) {
                 alert(`✅ 已另存为新模板「${newName.trim()}」并分配给本组`);
             }
         };
-        suiteHost.querySelector('#bc-suite-save-as-preset').onclick = () => {
+        suiteHost.querySelector('#bc-suite-save-as-preset').onclick = async () => {
             const sourceTpl = _bulkState.templates[entry.templateIndex];
             const defaultName = (sourceTpl?.label || '自定义覆层') + '_预设';
-            const presetName = prompt('输入要保存的覆层预设名称：', defaultName);
+            const presetName = await _bcPrompt('另存为覆层预设', '输入要保存的覆层预设名称', defaultName);
             if (presetName && presetName.trim()) {
                 let presets = {};
                 try { presets = JSON.parse(localStorage.getItem('reels_overlay_group_presets') || '{}'); } catch(e) {}

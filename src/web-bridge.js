@@ -347,7 +347,10 @@
             };
             goBtn.onclick = () => loadDir(pathInput.value.trim());
             mkdirBtn.onclick = async () => {
-                const name = window.prompt('请输入新建文件夹名称:', '新素材目录');
+                const promptFn = typeof window.reelsShowInputDialog === 'function' ? window.reelsShowInputDialog : null;
+                const name = promptFn
+                    ? await promptFn('新建文件夹', '输入新文件夹名称', '新素材目录')
+                    : (typeof window.prompt === 'function' ? window.prompt('请输入新建文件夹名称:', '新素材目录') : null);
                 if (!name) return;
                 try {
                     const res = await rpcAsync('webCreateDir', { parentDir: currentDir, name: name.trim() });

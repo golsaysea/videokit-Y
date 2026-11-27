@@ -557,11 +557,13 @@
                 let label = ov.name;
                 if (!label) {
                     if (ov.type === 'intro_countdown' || ov.is_intro_countdown) {
-                        label = ov.intro_layout === 'kinetic_stack'
-                            ? '⚡ 爆款白黄斜体开场'
-                            : (ov.intro_layout === 'curtain_reveal'
-                                ? '🎭 红色幕布拉开开场'
-                                : `🎬 开场: ${(ov.intro_bottom_text || ov.intro_top_text || 'Countdown').slice(0, 12)}`);
+                        label = ov.intro_layout === 'audio_only'
+                            ? '💥 纯音效冲击开场(无画面)'
+                            : (ov.intro_layout === 'kinetic_stack'
+                                ? '⚡ 爆款白黄斜体开场'
+                                : (ov.intro_layout === 'curtain_reveal'
+                                    ? '🎭 红色幕布拉开开场'
+                                    : `🎬 开场: ${(ov.intro_bottom_text || ov.intro_top_text || 'Countdown').slice(0, 12)}`));
                     } else if (ov.type === 'textcard') {
                         const txt = ov.title_text || ov.body_text || '';
                         label = txt ? `卡片: ${txt.slice(0, 10)}` : '文字卡片';

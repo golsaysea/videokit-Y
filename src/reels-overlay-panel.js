@@ -794,17 +794,21 @@ class ReelsOverlayPanel {
                 <!-- 🎄 圣诞/节日小图标贴纸属性 (sticker覆层独有) -->
                 <div id="rop-sticker-props" class="rop-group" style="display:none; background:linear-gradient(180deg, rgba(22,163,74,0.10), rgba(15,23,42,0.55)); border:1px solid rgba(250,204,21,0.38); border-radius:8px; padding:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
-                        <div class="rop-group-title" style="margin:0;color:#fde68a;">🎄 圣诞与红雀飞羽贴纸库 (40款 · 可直接画布拖拽缩放)</div>
+                        <div class="rop-group-title" style="margin:0;color:#fde68a;">🎄 全库统一矢量贴纸与书写笔尖 (91款 · 画布直接拖拽缩放)</div>
                         <button type="button" class="btn btn-secondary rop-btn" id="rop-sticker-add-more" style="padding:2px 8px;font-size:11px;background:rgba(22,163,74,0.28);color:#dcfce7;border:1px solid #4ade80;" title="保留当前小图标，再多放一个">+ 再放一个</button>
                     </div>
 
                     <div id="rop-sticker-category-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
-                        <button type="button" class="rop-btn rop-sticker-cat-tab active" data-cat="all" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">全部 (40)</button>
+                        <button type="button" class="rop-btn rop-sticker-cat-tab active" data-cat="all" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">全部 (91)</button>
                         <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="飞羽红雀" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🪶 红雀羽毛</button>
                         <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="圣诞经典" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🔔 圣诞经典</button>
                         <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="萌物人物" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">⛄ 萌物人物</button>
                         <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="圣夜信仰" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🌟 圣夜信仰</button>
                         <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="冬日美食" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🍪 冬日美食</button>
+                        <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="美加国旗" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🇺🇸 美加国旗</button>
+                        <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="美加花卉" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🌹 美加花卉</button>
+                        <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="感恩秋日" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">🦃 感恩秋日</button>
+                        <button type="button" class="rop-btn rop-sticker-cat-tab" data-cat="书写笔尖" style="padding:2px 8px;font-size:10.5px;border-radius:999px;">✏️ 书写笔尖</button>
                     </div>
 
                     <div id="rop-sticker-catalog-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;max-height:228px;overflow-y:auto;padding:4px;border-radius:6px;background:rgba(0,0,0,0.22);border:1px solid rgba(255,255,255,0.08);margin-bottom:8px;"></div>
@@ -855,7 +859,7 @@ class ReelsOverlayPanel {
                 <!-- ✨ 点缀装饰图层属性 (decor覆层独有) -->
                 <div id="rop-decor-props" class="rop-group" style="display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px;flex-wrap:wrap;">
-                        <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (34款黑色模板/粒子/电影颗粒/圣诞/退伍军人节)</div>
+                        <div class="rop-group-title" style="margin:0;color:#fde68a;">✨ 点缀与颗粒图层 (44款黑底/云雾穿云/粒子/电影颗粒/圣诞/退伍军人节)</div>
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-decor-save-preset-btn" style="padding:2px 8px;font-size:11px;background:rgba(168,85,247,0.22);color:#e9d5ff;border:1px solid rgba(192,132,252,0.5);border-radius:5px;cursor:pointer;" title="将当前点缀参数与叠加图层保存为“我的点缀预设”，方便以后一键复用">💾 存为点缀预设</button>
                             <button type="button" class="btn btn-secondary rop-btn" id="rop-open-dedicated-decor-tab" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:1px solid #a78bfa;border-radius:5px;cursor:pointer;">✨ 切换到【点缀与颗粒】独立大面板</button>
@@ -874,9 +878,15 @@ class ReelsOverlayPanel {
                     </div>
 
                     <div class="rop-grid" style="margin-bottom:6px;">
-                        <label>34款主题</label>
+                        <label>44款主题</label>
                         <select id="rop-decor-style" class="rop-select">
-                            <optgroup label="🖤 黑色氛围模板 & 飘浮粒子 (7款)">
+                            <optgroup label="☁️ 穿云转场 & 云雾噪波 (4款)">
+                                <option value="cloud_part_transition">☁️ 穿云而出_片中噪波云雾拨开转场(0:32同款)</option>
+                                <option value="cloud_part_gold_transition">🌅 金光云涌_片中暖金云雾散开转场</option>
+                                <option value="cloud_mist_ambient_drift">🌫️ 柔焦云雾慢飘_边缘灵动仙气薄纱</option>
+                                <option value="cloud_heavenly_top_wisps">⛅ 顶部天际流云_圣洁高空云霭慢涌</option>
+                            </optgroup>
+                            <optgroup label="🖤 黑色氛围模板 & 飘浮粒子 (8款)">
                                 <option value="dark_floating_dust">🖤 暗黑深邃模板 + 悬浮微尘</option>
                                 <option value="dark_gold_embers">🔥 黑金暗夜模板 + 升腾火星余烬</option>
                                 <option value="dark_starlight_mist">🌌 暗夜星空黑底 + 呼吸星芒微粒</option>
@@ -884,8 +894,9 @@ class ReelsOverlayPanel {
                                 <option value="dark_silver_snow_ash">🌨️ 暗黑冰原模板 + 银白灰烬细雪</option>
                                 <option value="dark_holy_halo_dust">🕯️ 暗夜烛光圣殿 + 鎏金圣尘</option>
                                 <option value="dark_cyber_neon_sparks">⚡ 暗黑赛博黑底 + 霓虹微光粒子</option>
+                                <option value="golden_petal_sanctuary">🕊️ 暗夜圣光金色花瓣微光漂浮</option>
                             </optgroup>
-                            <optgroup label="🎞️ 电影颗粒 & 回忆质感 (7款)">
+                            <optgroup label="🎞️ 电影颗粒 & 回忆质感 (10款)">
                                 <option value="cinema_35mm_grain">🎞️ 35mm 经典电影颗粒 + 宽银幕暗角</option>
                                 <option value="memory_sepia_grain">🕰️ 怀旧泛黄回忆颗粒 + 老照片柔光</option>
                                 <option value="vintage_8mm_scratches">📽️ 8mm 老电影划痕 + 闪烁噪点颗粒</option>
@@ -893,14 +904,18 @@ class ReelsOverlayPanel {
                                 <option value="dreamy_light_leak_grain">🌅 复古胶片漏光 + 柔焦回忆颗粒</option>
                                 <option value="vhs_retro_scanlines">📼 90年代 VHS 扫描线 + 磁带噪点</option>
                                 <option value="cinema_vignette_grain">🎥 电影取景框暗角 + 胶片星尘</option>
+                                <option value="anamorphic_cinema_streak">🎬 好莱坞变形宽银幕蓝金拉丝眩光 + 细颗粒</option>
+                                <option value="rec_camcorder_viewfinder">📹 Y2K 千禧DV摄像机红点REC取景器 + 扫描线</option>
+                                <option value="a24_warm_halation">🎞️ A24 柯达胶片暖调红晕漏光 + 柔焦尘埃</option>
                             </optgroup>
-                            <optgroup label="🌟 发光星芒 & 梦幻光斑 (6款)">
+                            <optgroup label="🌟 发光星芒 & 梦幻光斑 (7款)">
                                 <option value="glowing_starfield">🌟 璀璨发光星芒点缀</option>
                                 <option value="fairy_bokeh_lights">💡 梦幻暖金串灯与光斑</option>
                                 <option value="golden_meteor_dust">✨ 圣光鎏金星尘飘落</option>
                                 <option value="angelic_rays_stars">🕊️ 圣洁光芒与四角星辉</option>
                                 <option value="diamond_prism_sparkles">💎 钻石棱镜十字星芒闪烁</option>
                                 <option value="warm_sunset_bokeh">🌇 落日暖阳大光斑漂浮</option>
+                                <option value="prismatic_glass_refraction">💎 幻彩棱镜光学色散光斑 (Ins极简爆款)</option>
                             </optgroup>
                             <optgroup label="🎄 圣诞节限定点缀 (5款)">
                                 <option value="xmas_holly_pine_garland">🎄 圣诞松枝冬青花环框</option>
@@ -915,12 +930,13 @@ class ReelsOverlayPanel {
                                 <option value="vet_remembrance_poppies">🌺 致敬老兵纪念虞美人花框</option>
                                 <option value="vet_salute_fireworks_stars">🎆 爱国红白蓝星芒礼花点缀</option>
                             </optgroup>
-                            <optgroup label="⚜️ 复古画框 & 边缘雕花 (5款)">
+                            <optgroup label="⚜️ 复古画框 & 边缘雕花 (6款)">
                                 <option value="vintage_gold_filigree">⚜️ 古典烫金巴洛克雕花角框</option>
                                 <option value="newspaper_torn_tape_frame">📰 复古报刊手撕边与胶带点缀</option>
                                 <option value="rose_botanical_vine">🌹 复古玫瑰藤蔓边缘点缀</option>
                                 <option value="sacred_cathedral_arch">⛪ 圣经哥特拱窗烫金边框</option>
                                 <option value="polaroid_memory_border">🖼️ 拍立得回忆相纸框 + 胶片颗粒</option>
+                                <option value="editorial_dual_matte_frame">🖼️ 高级杂志双细线画框 + 胶片微粒</option>
                             </optgroup>
                         </select>
 
@@ -986,6 +1002,8 @@ class ReelsOverlayPanel {
                                     <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
                                     <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
                                     <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
+                                    <option value="prism_bokeh">🌈 幻彩棱镜色散光斑 (Prism Bokeh)</option>
+                                    <option value="gold_petals">🕊️ 圣光金色花瓣飘落 (Gold Petals)</option>
                                 </select>
                                 <label>发光闪烁星芒</label><input type="checkbox" id="rop-decor-glow-stars" checked>
                                 <label>飘落雪花/冰晶</label><input type="checkbox" id="rop-decor-snowflakes">
@@ -1062,8 +1080,8 @@ class ReelsOverlayPanel {
                         <div class="rop-scroll-acc-body">
                             <div class="rop-grid">
                                 <label>标题文字</label>
-                                <div style="display:flex;gap:6px;align-items:center;">
-                                    <input type="text" id="rop-scroll-title" class="rop-input" placeholder="留空=无标题" style="flex:1;">
+                                <div style="display:flex;gap:6px;align-items:flex-start;">
+                                    <textarea id="rop-scroll-title" class="rop-textarea" rows="2" placeholder="留空=无标题（可单独输入并显示，支持回车换行）" style="flex:1;margin-bottom:0;"></textarea>
                                     <button class="rop-richtext-btn" data-section="scroll_title" title="逐字样式编辑" style="padding:4px 8px;border:1px solid var(--border-color,#555);background:var(--bg-secondary,#2a2a3e);color:var(--accent-primary,#7b8bef);border-radius:6px;cursor:pointer;font-size:12px;white-space:nowrap;">✎ 富文本</button>
                                 </div>
                                 <label>固定标题</label>
@@ -1632,13 +1650,36 @@ class ReelsOverlayPanel {
                                         <option value="frost_crystal_feather">❄️ 冰晶银蓝雪羽</option>
                                         <option value="peacock_plumage">🦚 翡翠孔雀翎羽</option>
                                         <option value="dove_white_feather">🕊️ 圣洁鎏金白鸽羽</option>
+                                        <option value="us_waving_flag">🇺🇸 美国飘扬星条旗</option>
+                                        <option value="us_flag_heart">🇺🇸 星条旗爱心徽</option>
+                                        <option value="canada_maple_flag">🇨🇦 加拿大飘扬枫叶旗</option>
+                                        <option value="us_canada_friendship_flags">🏳️ 美加双旗飘扬结</option>
+                                        <option value="us_patriotic_rose">🌹 美国三色玫瑰花束</option>
+                                        <option value="us_texas_bluebonnet">🪻 美国德州蓝帽花</option>
+                                        <option value="us_sunflower_liberty">🌻 美国自由向日葵</option>
+                                        <option value="us_dogwood_blossom">🌸 美国山茱萸圣花</option>
+                                        <option value="canada_harvest_turkey">🦃 加拿大感恩火鸡</option>
+                                        <option value="roast_turkey_feast">🍗 感恩金色烤火鸡</option>
+                                        <option value="xmas_nutcracker_soldier">💂 圣诞胡桃夹子</option>
+                                        <option value="xmas_carousel_ornament">🎠 松枝双铃挂饰</option>
+                                        <option value="rudolph_animated_leap">🦌 欢跳红鼻驯鹿</option>
+                                        <option value="golden_cross_halo_rays">✝️ 圣光万丈金十字</option>
+                                        <option value="golden_cross_dove_bloom">🕊️ 白鸽金十字徽章</option>
+                                        <option value="cardinal_smile">😊 微笑开心红雀鸟</option>
+                                        <option value="cardinal_pray">🙏 虔诚祈祷红雀鸟</option>
+                                        <option value="cardinal_cry">😢 感动哭泣红雀鸟</option>
+                                        <option value="cardinal_sing">🎶 欢唱颂赞红雀鸟</option>
+                                        <option value="gentle_lamb_halo">🐑 圣光温柔小绵羊</option>
+                                        <option value="shepherd_lamb_heart">🐑 爱心祈祷小羊羔</option>
+                                        <option value="white_dove_flap_olive">🕊️ 振翅衔枝白鸽</option>
+                                        <option value="white_dove_pray_heart">🕊️ 祈祷圣光白鸽</option>
                                         <option value="image">🖼 自定义图片 (PNG/WebP/GIF)</option>
                                         <option value="char">| 文本光标</option>
                                     </select>
 
                                     <details class="rop-scroll-subacc" id="rop-scroll-acc-tw-icons">
                                         <summary>
-                                            <span>✒️ 内置笔尖小图标库 (41款 · 含红雀羽毛与自定义传图)</span>
+                                            <span>✒️ 内置笔尖小图标库 (91款 · 全库动画互通含美加国旗/花卉/火鸡/红雀/白鸽/小羊/驯鹿)</span>
                                             <span class="rop-acc-badge">点击展开</span>
                                         </summary>
                                         <div class="rop-scroll-subacc-body">
@@ -1684,6 +1725,29 @@ class ReelsOverlayPanel {
                                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="minimal_pumpkin" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="minimal_pumpkin" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>线条南瓜</span></button>
                                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="warm_mug" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="warm_mug" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>暖秋热饮</span></button>
                                                 <button type="button" class="rop-scroll-tw-icon-chip" data-kind="olive_branch" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="olive_branch" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>橄榄枝</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_waving_flag" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_waving_flag" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>美国国旗</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_flag_heart" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_flag_heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>星条爱心</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="canada_maple_flag" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="canada_maple_flag" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>加枫叶旗</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_canada_friendship_flags" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_canada_friendship_flags" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>美加双旗</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_patriotic_rose" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_patriotic_rose" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>美国玫瑰</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_texas_bluebonnet" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_texas_bluebonnet" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>蓝帽花</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_sunflower_liberty" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_sunflower_liberty" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>自由葵花</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="us_dogwood_blossom" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="us_dogwood_blossom" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>山茱萸花</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="canada_harvest_turkey" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="canada_harvest_turkey" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>加国火鸡</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="roast_turkey_feast" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="roast_turkey_feast" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>烤火鸡</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="xmas_nutcracker_soldier" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="xmas_nutcracker_soldier" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>胡桃夹子</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="xmas_carousel_ornament" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="xmas_carousel_ornament" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>双铃挂饰</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="rudolph_animated_leap" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="rudolph_animated_leap" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>欢跳驯鹿</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="golden_cross_halo_rays" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="golden_cross_halo_rays" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣光十字</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="golden_cross_dove_bloom" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="golden_cross_dove_bloom" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>鸽十字徽</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cardinal_smile" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cardinal_smile" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>微笑红雀</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cardinal_pray" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cardinal_pray" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>祈祷红雀</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cardinal_cry" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cardinal_cry" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>哭泣红雀</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="cardinal_sing" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="cardinal_sing" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>颂赞红雀</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="gentle_lamb_halo" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="gentle_lamb_halo" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>圣光小羊</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="shepherd_lamb_heart" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="shepherd_lamb_heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>爱心羊羔</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="white_dove_flap_olive" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="white_dove_flap_olive" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>振翅白鸽</span></button>
+                                                <button type="button" class="rop-scroll-tw-icon-chip" data-kind="white_dove_pray_heart" data-angle="0" style="display:flex;align-items:center;gap:4px;padding:3px 5px;font-size:10px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#eee;cursor:pointer;"><canvas class="rop-tw-icon-canvas" data-kind="white_dove_pray_heart" width="20" height="20" style="width:18px;height:18px;flex-shrink:0;"></canvas><span>祈祷白鸽</span></button>
                                             </div>
                                         </div>
                                     </details>
@@ -3531,9 +3595,9 @@ class ReelsOverlayPanel {
                     this._val('rop-scroll-bg-bookmark-height', 62);
                     this._val('rop-scroll-bg-bookmark-inset', 48);
                     this._val('rop-scroll-bg-top-mascot', meta.mascot);
-                    this._val('rop-scroll-bg-top-mascot-scale', 100);
+                    this._val('rop-scroll-bg-top-mascot-scale', 92);
                     this._val('rop-scroll-bg-top-mascot-offset-x', 0);
-                    this._val('rop-scroll-bg-top-mascot-offset-y', -68);
+                    this._val('rop-scroll-bg-top-mascot-offset-y', 0);
                     this._val('rop-scroll-bg-top-mascot-speed', 100);
                     this._val('rop-scroll-tw-enabled', true);
                     this._val('rop-scroll-tw-reveal-type', 'line');
@@ -3562,24 +3626,27 @@ class ReelsOverlayPanel {
                 const nextBgOp = (wasBgEnabled && Number.isFinite(curBgOp) && curBgOp > 0 && curBgOp < 96) ? curBgOp : 92;
                 this._val('rop-scroll-bg-enabled', true);
                 this._val('rop-scroll-bg-style', preset);
+                this._val('rop-scroll-bg-edge-feather', 0);
                 this._val('rop-scroll-bg-scroll-follow', true);
                 this._val('rop-scroll-bg-opacity', nextBgOp);
                 this._val('rop-scroll-bg-opacity-quick', nextBgOp);
                 this._val('rop-scroll-bg-opacity-quick-num', nextBgOp);
                 this._val('rop-scroll-bg-radius', 20);
                 if (this._getScrollBgStoredSize('width') <= 0 && (this._selectedOv?.w ?? 1080) >= 1020) {
-                    this._setScrollBgSizeField('width', 940, this._selectedOv);
+                    this._setScrollBgSizeField('width', 880, this._selectedOv);
                 }
                 if (!wasBgEnabled && this._selectedOv?.bg_body_only === undefined) {
                     this._val('rop-scroll-bg-body-only', true);
                     this._val('rop-scroll-bg-body-only-quick', true);
                 }
+                if (Number(this._get('rop-scroll-feather-top') ?? 80) > 48) this._val('rop-scroll-feather-top', 36);
+                if (Number(this._get('rop-scroll-feather-bottom') ?? 80) > 48) this._val('rop-scroll-feather-bottom', 36);
                 const curPadTop = Number(this._get('rop-scroll-bg-pad-top') ?? 55);
                 const curPadBot = Number(this._get('rop-scroll-bg-pad-bottom') ?? 55);
-                if (!wasBgEnabled || curPadTop === 55 || curPadTop === 48) this._val('rop-scroll-bg-pad-top', 18);
-                if (!wasBgEnabled || curPadBot === 55 || curPadBot === 48) this._val('rop-scroll-bg-pad-bottom', 18);
-                if (Number(this._get('rop-scroll-bg-pad-left') || 0) < 24) this._val('rop-scroll-bg-pad-left', 30);
-                if (Number(this._get('rop-scroll-bg-pad-right') || 0) < 24) this._val('rop-scroll-bg-pad-right', 30);
+                if (!wasBgEnabled || curPadTop === 55 || curPadTop === 48 || curPadTop < 22) this._val('rop-scroll-bg-pad-top', 26);
+                if (!wasBgEnabled || curPadBot === 55 || curPadBot === 48 || curPadBot < 22) this._val('rop-scroll-bg-pad-bottom', 26);
+                if (Number(this._get('rop-scroll-bg-pad-left') || 0) < 24) this._val('rop-scroll-bg-pad-left', 28);
+                if (Number(this._get('rop-scroll-bg-pad-right') || 0) < 24) this._val('rop-scroll-bg-pad-right', 28);
                 // 关闭单行剪报底衬，避免浅色报纸大背景与浅色单行剪报叠重（用户可随时再点下面一排开启）
                 this._val('rop-scroll-body-bg-enabled', false);
 
@@ -4011,9 +4078,9 @@ class ReelsOverlayPanel {
                     this._val('rop-scroll-bg-bookmark-height', 58);
                     this._val('rop-scroll-bg-bookmark-inset', 52);
                     this._val('rop-scroll-bg-top-mascot', 'peace_dove_rose');
-                    this._val('rop-scroll-bg-top-mascot-scale', 100);
+                    this._val('rop-scroll-bg-top-mascot-scale', 92);
                     this._val('rop-scroll-bg-top-mascot-offset-x', 0);
-                    this._val('rop-scroll-bg-top-mascot-offset-y', -68);
+                    this._val('rop-scroll-bg-top-mascot-offset-y', 0);
                     this._val('rop-scroll-bg-top-mascot-speed', 100);
                     this._val('rop-scroll-tw-reveal-type', 'line');
                     this._val('rop-scroll-tw-line-track-mode', 'focus_zone');
@@ -4236,7 +4303,7 @@ class ReelsOverlayPanel {
                 el.addEventListener(type, stopEditorEvent);
             });
         });
-        ['rop-title-text', 'rop-body-text', 'rop-footer-text'].forEach(id => {
+        ['rop-title-text', 'rop-body-text', 'rop-footer-text', 'rop-scroll-title', 'rop-scroll-content'].forEach(id => {
             const el = this.container.querySelector('#' + id);
             if (!el || el.dataset.ropTextcardTextGuard === '1') return;
             el.dataset.ropTextcardTextGuard = '1';
@@ -5125,6 +5192,8 @@ class ReelsOverlayPanel {
             ? window.HOLIDAY_ICON_CATALOG
             : [];
         const list = filterCat === 'all' ? catalog : catalog.filter((item) => item.category === filterCat);
+        const allTab = this.container?.querySelector('#rop-sticker-category-tabs .rop-sticker-cat-tab[data-cat="all"]');
+        if (allTab) allTab.textContent = `全部 (${catalog.length})`;
         grid.innerHTML = list.map((item) => {
             const isSel = item.id === activeKind;
             const safeId = this._esc(item.id);
@@ -5143,7 +5212,7 @@ class ReelsOverlayPanel {
             if (!c) return;
             c.clearRect(0, 0, cvs.width, cvs.height);
             if (drawHolidayFn) {
-                drawHolidayFn(c, cvs.dataset.kind, 20, 20, 34, { time: 0 });
+                drawHolidayFn(c, cvs.dataset.kind, 20, 20, 34, { time: 0.35 });
             }
         });
     }
@@ -6153,7 +6222,7 @@ class ReelsOverlayPanel {
                 else if (ov.type === 'sticker') label = window.HOLIDAY_ICON_MAP?.[ov.sticker_kind]?.label || '圣诞小图标';
                 else if (ov.type === 'textcard') label = (ov.title_text || '').slice(0, 15) || '文字卡片';
                 else if (ov.type === 'solid_mask') label = '纯色蒙版';
-                else if (ov.type === 'scroll') label = '滚动: ' + (ov.content || '').split('\n')[0].slice(0, 12);
+                else if (ov.type === 'scroll') label = '滚动: ' + (ov.content || ov.scroll_title || '').split('\n')[0].slice(0, 12);
                 else if (ov.type === 'decor') {
                     const stName = window.ReelsOverlay?.DECOR_OVERLAY_STYLES?.[ov.decor_style]?.name || '点缀图层';
                     label = stName.replace(/^[^\s]+\s*/, '');
@@ -8379,7 +8448,7 @@ class ReelsOverlayPanel {
                 if (!c) return;
                 c.clearRect(0, 0, cvs.width, cvs.height);
                 const k = cvs.dataset.kind || 'quill';
-                drawTipFn(c, k, 3, 17, 12.5, 0);
+                drawTipFn(c, k, 5, 16, 13, 0, 0.35);
                 cvs.dataset.rendered = '1';
             });
         }
@@ -9151,13 +9220,73 @@ class ReelsOverlayPanel {
         return true;
     }
 
-    _saveCustomScrollStylePreset() {
+    async _promptCustomPresetName(title, placeholder, defaultValue) {
+        const externalPrompt = (typeof window !== 'undefined' && typeof window.reelsShowInputDialog === 'function')
+            ? window.reelsShowInputDialog
+            : (typeof _showInputDialog === 'function' ? _showInputDialog : null);
+        if (typeof externalPrompt === 'function') {
+            return await externalPrompt(title, placeholder, defaultValue);
+        }
+        if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+            return defaultValue || null;
+        }
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:2000000;background:rgba(0,0,0,.66);display:flex;align-items:center;justify-content:center;';
+            const box = document.createElement('div');
+            box.style.cssText = 'width:min(420px,calc(100vw - 36px));box-sizing:border-box;padding:20px;border-radius:12px;background:#1e1e2e;border:1px solid rgba(129,140,248,0.45);box-shadow:0 16px 40px rgba(0,0,0,.6);color:#f8fafc;';
+            const heading = document.createElement('div');
+            heading.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:12px;';
+            heading.textContent = String(title || '请输入名称');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = String(placeholder || '');
+            input.value = defaultValue == null ? '' : String(defaultValue);
+            input.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border-radius:6px;border:1px solid #475569;background:#0f172a;color:#f8fafc;font-size:13px;outline:none;';
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:16px;';
+            const cancelBtn = document.createElement('button');
+            cancelBtn.type = 'button';
+            cancelBtn.textContent = '取消';
+            cancelBtn.style.cssText = 'padding:6px 14px;border-radius:6px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;font-size:12px;';
+            const okBtn = document.createElement('button');
+            okBtn.type = 'button';
+            okBtn.textContent = '确定';
+            okBtn.style.cssText = 'padding:6px 14px;border:0;border-radius:6px;background:#6366f1;color:#fff;cursor:pointer;font-size:12px;font-weight:600;';
+            actions.appendChild(cancelBtn);
+            actions.appendChild(okBtn);
+            box.appendChild(heading);
+            box.appendChild(input);
+            box.appendChild(actions);
+            overlay.appendChild(box);
+            document.body.appendChild(overlay);
+            let done = false;
+            const close = (val) => {
+                if (done) return;
+                done = true;
+                overlay.remove();
+                resolve(val);
+            };
+            cancelBtn.onclick = () => close(null);
+            okBtn.onclick = () => close(input.value);
+            overlay.onclick = (e) => { if (e.target === overlay) close(null); };
+            input.addEventListener('keydown', (e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') { e.preventDefault(); close(input.value); }
+                else if (e.key === 'Escape') { e.preventDefault(); close(null); }
+            });
+            setTimeout(() => {
+                input.focus();
+                try { input.select(); } catch (_) {}
+            }, 25);
+        });
+    }
+
+    async _saveCustomScrollStylePreset() {
         const ov = this._selectedOv;
         if (!ov || ov.type !== 'scroll') return;
         const defaultName = ov.name && ov.name !== '滚动字幕' ? ov.name : '我的滚动样式';
-        const name = (typeof window.prompt === 'function')
-            ? window.prompt('请输入要保存的滚动字幕样式名称：', defaultName)
-            : defaultName;
+        const name = await this._promptCustomPresetName('保存滚动字幕样式预设', '输入要保存的滚动字幕样式名称', defaultName);
         const trimmed = String(name || '').trim();
         if (!trimmed) return;
 
@@ -9323,6 +9452,7 @@ class ReelsOverlayPanel {
         let activeScriptKey = 'prayer_en';
         let customTitleText = this._selectedOv?.scroll_title || '';
         let customBodyText = '';
+        let titleOnlyMode = false;
         let stagePlaying = true;
         let stageTime = 3.2;
         let stageSpeed = 1.0;
@@ -9445,8 +9575,10 @@ class ReelsOverlayPanel {
                     </div>
                     <div class="rsl-row">
                         ${Object.entries(SAMPLE_SCRIPTS).map(([k, s], idx) => `<button type="button" class="rsl-btn-sm${idx === 0 ? ' active' : ''}" data-script="${esc(k)}">${esc(s.label)}</button>`).join('')}
+                        <label style="font-size:11px;color:#cbd5e1;display:flex;align-items:center;gap:4px;cursor:pointer;margin-left:auto;" title="清空正文仅预览滚动标题独立显示效果"><input type="checkbox" class="rsl-title-only-chk">仅测标题</label>
                     </div>
-                    <textarea class="rsl-text-input" rows="2" placeholder="输入自定义测试祷告文案实时预览..."></textarea>
+                    <textarea class="rsl-text-input rsl-title-input" rows="1" placeholder="输入自定义滚动标题（可单独编辑预览，留空=示例标题）..."></textarea>
+                    <textarea class="rsl-text-input rsl-body-input" rows="2" placeholder="输入自定义测试祷告文案实时预览..."></textarea>
                     <div class="rsl-specs"></div>
                     <button type="button" class="rsl-apply-cta">✅ 立即应用此滚动样式</button>
                 </aside>
@@ -9495,7 +9627,7 @@ class ReelsOverlayPanel {
         const buildSampleOverlay = (style) => {
             const presetScript = SAMPLE_SCRIPTS[activeScriptKey] || SAMPLE_SCRIPTS.prayer_en;
             const titleText = customTitleText || presetScript.title;
-            const bodyText = customBodyText || presetScript.body;
+            const bodyText = titleOnlyMode ? '' : (customBodyText || presetScript.body);
             const lines = bodyText.split('\n').filter(Boolean);
             const segDur = 12 / Math.max(1, lines.length);
             const mockSegments = lines.map((lineText, idx) => ({
@@ -9769,17 +9901,31 @@ class ReelsOverlayPanel {
                 if (selectedItem) renderPreviewToCanvas(stageCanvas, selectedItem.style, stageTime, stageScene);
             });
         });
-        const textArea = modal.querySelector('.rsl-text-input');
+        const titleArea = modal.querySelector('.rsl-title-input');
+        const textArea = modal.querySelector('.rsl-body-input') || modal.querySelector('.rsl-text-input');
+        const titleOnlyChk = modal.querySelector('.rsl-title-only-chk');
+        if (titleArea && customTitleText) titleArea.value = customTitleText;
         modal.querySelectorAll('[data-script]').forEach(btn => {
             btn.addEventListener('click', () => {
                 activeScriptKey = btn.dataset.script || 'prayer_en';
                 customBodyText = '';
+                titleOnlyMode = false;
+                if (titleOnlyChk) titleOnlyChk.checked = false;
                 if (textArea) textArea.value = '';
                 modal.querySelectorAll('[data-script]').forEach(b => b.classList.toggle('active', b === btn));
                 modal.querySelectorAll('.rsl-canvas[data-rendered="1"]').forEach(c => { c.dataset.rendered = '0'; lazyQueue.push(c); });
                 schedulePump();
                 syncStageDetails();
             });
+        });
+        titleArea?.addEventListener('input', () => {
+            customTitleText = titleArea.value;
+            syncStageDetails();
+        });
+        titleOnlyChk?.addEventListener('change', () => {
+            titleOnlyMode = Boolean(titleOnlyChk.checked);
+            if (textArea) textArea.disabled = titleOnlyMode;
+            syncStageDetails();
         });
         textArea?.addEventListener('input', () => {
             customBodyText = textArea.value.trim();
@@ -12311,9 +12457,7 @@ class ReelsOverlayPanel {
                         .map(([, preset]) => preset?.meta?.category || '我的预设');
                     const nextGroup = typeof window.reelsChoosePresetGroup === 'function'
                         ? await window.reelsChoosePresetGroup('移动覆层预设分组', currentGroup, savedGroups)
-                        : await (typeof _showInputDialog === 'function'
-                            ? _showInputDialog('移动覆层预设分组', '例如：祷告 / 媒体 / 金色字幕', currentGroup)
-                            : Promise.resolve(prompt('输入分组名称：', currentGroup)));
+                        : await this._promptCustomPresetName('移动覆层预设分组', '例如：祷告 / 媒体 / 金色字幕', currentGroup);
                     if (!nextGroup || !String(nextGroup).trim()) return;
                     const cleanedGroup = String(nextGroup).trim();
                     presets[name].meta = presets[name].meta || {};
@@ -13728,7 +13872,21 @@ function _updateScopeQuickBadgeUI(container, { pageBtnId, tabBtnId, badgeId, eff
         badgeEl.style.borderColor = effectiveScope === 'task' ? 'rgba(251, 191, 36, 0.45)' : 'rgba(52, 211, 153, 0.35)';
     }
 }
+function _stopIntroAudioAudition() {
+    try {
+        const el = typeof window !== 'undefined' ? window._reelsIntroAuditionAudio : null;
+        if (el) {
+            el.pause();
+            try { el.currentTime = 0; } catch (_) {}
+        }
+        document.querySelectorAll('#rdp-intro-audio-audition-btn').forEach(btn => {
+            btn.textContent = '🔊 试听';
+            btn.classList.remove('is-playing');
+        });
+    } catch (_) {}
+}
 function _previewIntroCountdownTarget() {
+    _stopIntroAudioAudition();
     try {
         const v2 = typeof window !== 'undefined' ? window.ReelsPreviewV2 : null;
         if (v2?.isOpen?.()) {
@@ -13912,6 +14070,7 @@ function _ensureIntroOverlayOnCanvas(videoCanvas, linkedOverlayPanel, opts = {})
 }
 const INTRO_REVEAL_LAYOUT_SET = new Set([
     'curtain_reveal', 'blinds_reveal', 'doors_reveal', 'frost_wipe', 'iris_spotlight', 'gift_scroll_reveal', 'black_reveal', 'eagle_ink_reveal', 'flag_reveal', 'cardinal_reveal', 'paper_reveal',
+    'glitch_reveal', 'film_burn_reveal', 'polaroid_reveal', 'prism_reveal', 'cloud_reveal',
 ]);
 const INTRO_REVEAL_STYLE_TO_LAYOUT = {
     part_center: 'curtain_reveal',
@@ -13960,6 +14119,19 @@ const INTRO_REVEAL_STYLE_TO_LAYOUT = {
     minimal_linen_slide: 'paper_reveal',
     minimal_glass_slide: 'paper_reveal',
     watercolor_wash: 'paper_reveal',
+    crt_power_on: 'glitch_reveal',
+    vhs_tracking_open: 'glitch_reveal',
+    cyber_rgb_slice: 'glitch_reveal',
+    film_burn_amber: 'film_burn_reveal',
+    dreamy_rose_leak: 'film_burn_reveal',
+    polaroid_toss_open: 'polaroid_reveal',
+    magazine_headline_peel: 'polaroid_reveal',
+    prism_three_strip: 'prism_reveal',
+    diagonal_prism_slice: 'prism_reveal',
+    cloud_part_iris: 'cloud_reveal',
+    cloud_part_golden: 'cloud_reveal',
+    cloud_part_rose: 'cloud_reveal',
+    cloud_part_iris_fast: 'cloud_reveal',
 };
 const INTRO_REVEAL_CAT_BY_LAYOUT = {
     curtain_reveal: 'curtain',
@@ -13973,6 +14145,11 @@ const INTRO_REVEAL_CAT_BY_LAYOUT = {
     flag_reveal: 'flag',
     cardinal_reveal: 'cardinal',
     paper_reveal: 'paper',
+    glitch_reveal: 'glitch',
+    film_burn_reveal: 'film_burn',
+    polaroid_reveal: 'polaroid',
+    prism_reveal: 'prism',
+    cloud_reveal: 'clouds',
 };
 const INTRO_BADGE_BY_LAYOUT = {
     kinetic_stack: '⚡白黄斜体',
@@ -13987,6 +14164,12 @@ const INTRO_BADGE_BY_LAYOUT = {
     flag_reveal: '🇺🇸国旗飘扬',
     cardinal_reveal: '🐦红雀划屏',
     paper_reveal: '📜纸张玻璃',
+    glitch_reveal: '📼CRT/故障',
+    film_burn_reveal: '🎞️胶片灼烧',
+    polaroid_reveal: '📸拍立得/杂志',
+    prism_reveal: '💎水晶棱镜',
+    cloud_reveal: '☁️穿云而出',
+    audio_only: '💥纯音效无画面',
     ring: '⏱️光环倒数',
 };
 
@@ -14011,7 +14194,7 @@ function _updateIntroBadgesOnContainer(container, target, isEnabled) {
     const styleTag = INTRO_BADGE_BY_LAYOUT[layout] || '🎬光环开场';
     const label = target
         ? `${styleTag} · ${dur.toFixed(1)}s · ${delayBody ? '延后朗读' : '0s开场'}`
-        : '54款北美开场 · 幕布/百叶/双门/光环';
+        : '热门开场 · 冲击音效/云雾/胶片/拍立得/幕布';
     _setAccBadge(container, 'rdp-acc-intro-badge', label, Boolean(isEnabled));
 }
 function _syncIntroUIOnPanel(panel, ov = undefined) {
@@ -14025,6 +14208,7 @@ function _syncIntroUIOnPanel(panel, ov = undefined) {
         const layout = target?.intro_layout || 'ring';
         const isKinetic = layout === 'kinetic_stack';
         const isReveal = INTRO_REVEAL_LAYOUT_SET.has(layout);
+        const isAudioOnly = layout === 'audio_only';
         _setPanelInputVal(c, null, 'rdp-intro-enable', isEnabled);
         if (!panel._hasSyncedIntroOnce && isEnabled) {
             panel._hasSyncedIntroOnce = true;
@@ -14059,10 +14243,12 @@ function _syncIntroUIOnPanel(panel, ov = undefined) {
         const curtainSec = c.querySelector('#rdp-intro-curtain-section');
         const ringSec = c.querySelector('#rdp-intro-ring-section');
         const sharedSec = c.querySelector('#rdp-intro-shared-layout-section');
+        const audioOnlyNote = c.querySelector('#rdp-intro-audio-only-note');
         if (kineticSec) kineticSec.style.display = isKinetic ? 'flex' : 'none';
         if (curtainSec) curtainSec.style.display = isReveal ? 'flex' : 'none';
-        if (ringSec) ringSec.style.display = (!isKinetic && !isReveal) ? 'flex' : 'none';
-        if (sharedSec) sharedSec.style.display = isReveal ? 'none' : '';
+        if (ringSec) ringSec.style.display = (!isKinetic && !isReveal && !isAudioOnly) ? 'flex' : 'none';
+        if (sharedSec) sharedSec.style.display = (isReveal || isAudioOnly) ? 'none' : '';
+        if (audioOnlyNote) audioOnlyNote.style.display = isAudioOnly ? 'flex' : 'none';
 
         const valanceWrap = c.querySelector('#rdp-intro-valance-wrap');
         if (valanceWrap) valanceWrap.style.display = layout === 'curtain_reveal' ? 'flex' : 'none';
@@ -14092,6 +14278,67 @@ function _syncIntroUIOnPanel(panel, ov = undefined) {
         });
 
         setIntroVal('rdp-intro-delay-body', target.intro_delay_body !== false);
+        const audioApi = window.ReelsIntroAudio;
+        const resolvedAudioPreset = audioApi?.resolveIntroAudioPresetId
+            ? audioApi.resolveIntroAudioPresetId(target)
+            : (target.intro_audio_preset || 'curtain_grand_fanfare');
+        const defaultAudioPreset = audioApi?.getDefaultIntroAudioForPreset
+            ? audioApi.getDefaultIntroAudioForPreset(target)
+            : resolvedAudioPreset;
+        const hasCustomAudio = Boolean(target.intro_audio_custom_path && String(target.intro_audio_custom_path).trim());
+        const selectVal = (target.intro_audio_preset === 'custom' && hasCustomAudio)
+            ? 'custom'
+            : (target.intro_audio_preset === 'none' ? 'none' : resolvedAudioPreset);
+        const audioSel = c.querySelector('#rdp-intro-audio-preset');
+        if (audioSel) {
+            const optsList = Array.from(audioSel.options || []);
+            const hasOpt = optsList.length === 0 || optsList.some(o => o.value === selectVal);
+            audioSel.value = hasOpt ? selectVal : defaultAudioPreset;
+        }
+        const audioBadge = c.querySelector('#rdp-intro-audio-badge');
+        if (audioBadge) {
+            if (selectVal === 'none') {
+                audioBadge.textContent = '🔕 无配乐';
+                audioBadge.style.background = 'rgba(148,163,184,0.18)';
+                audioBadge.style.color = '#cbd5e1';
+                audioBadge.style.borderColor = 'rgba(148,163,184,0.38)';
+            } else if (selectVal === 'custom') {
+                audioBadge.textContent = '🎵 自定义音频';
+                audioBadge.style.background = 'rgba(56,189,248,0.20)';
+                audioBadge.style.color = '#bae6fd';
+                audioBadge.style.borderColor = 'rgba(56,189,248,0.45)';
+            } else if (selectVal === defaultAudioPreset) {
+                audioBadge.textContent = '✨ 智能适配推荐';
+                audioBadge.style.background = 'rgba(245,158,11,0.22)';
+                audioBadge.style.color = '#fde68a';
+                audioBadge.style.borderColor = 'rgba(251,191,36,0.48)';
+            } else {
+                audioBadge.textContent = '♪ 已换配乐';
+                audioBadge.style.background = 'rgba(16,185,129,0.20)';
+                audioBadge.style.color = '#a7f3d0';
+                audioBadge.style.borderColor = 'rgba(52,211,153,0.45)';
+            }
+        }
+        const customRow = c.querySelector('#rdp-intro-audio-custom-row');
+        const customNameEl = c.querySelector('#rdp-intro-audio-custom-name');
+        if (customRow) customRow.style.display = (selectVal === 'custom' && hasCustomAudio) ? 'flex' : 'none';
+        if (customNameEl) {
+            const rawCustom = String(target.intro_audio_custom_path || '');
+            const cleanCustom = rawCustom.split(/[\\/]/).pop() || '自定义音频';
+            customNameEl.textContent = `🎵 ${cleanCustom}`;
+            customNameEl.title = rawCustom;
+        }
+        const defaultVol = audioApi?.getIntroAudioDefaultVolume
+            ? audioApi.getIntroAudioDefaultVolume(target)
+            : (target.intro_delay_body === false ? 55 : 85);
+        const audioVol = target.intro_audio_volume !== undefined && Number.isFinite(Number(target.intro_audio_volume))
+            ? Math.round(Number(target.intro_audio_volume))
+            : defaultVol;
+        const audioFade = target.intro_audio_fade_out !== undefined && Number.isFinite(Number(target.intro_audio_fade_out))
+            ? Number(target.intro_audio_fade_out)
+            : 0.45;
+        setIntroVal('rdp-intro-audio-volume', audioVol);
+        setIntroVal('rdp-intro-audio-fade-out', audioFade);
         setIntroVal('rdp-intro-hook-source', target.intro_hook_source || 'auto');
         setIntroVal('rdp-intro-hook-text', target.intro_hook_text ?? "Wait don't skip!\nYou need to\nhear this right now!");
         setIntroVal('rdp-intro-kinetic-font', target.intro_center_font_family || 'Montserrat');
@@ -14178,10 +14425,21 @@ function _syncIntroOverlayFromPanel(panel, options = {}) {
     const dur = Math.max(0.4, Math.min(15, Number(getVal('rdp-intro-duration') ?? ov.end ?? 3.0) || 3.0));
     ov.end = dur;
     ov.intro_delay_body = Boolean(getVal('rdp-intro-delay-body'));
+    const nextAudioPreset = getVal('rdp-intro-audio-preset');
+    if (nextAudioPreset) {
+        ov.intro_audio_preset = (nextAudioPreset === 'custom' && !ov.intro_audio_custom_path)
+            ? (window.ReelsIntroAudio?.getDefaultIntroAudioForPreset?.(ov) || 'curtain_grand_fanfare')
+            : nextAudioPreset;
+    }
+    const nextAudioVol = Number(getVal('rdp-intro-audio-volume'));
+    if (Number.isFinite(nextAudioVol)) ov.intro_audio_volume = Math.max(0, Math.min(150, nextAudioVol));
+    const nextAudioFade = Number(getVal('rdp-intro-audio-fade-out'));
+    if (Number.isFinite(nextAudioFade)) ov.intro_audio_fade_out = Math.max(0, Math.min(1.5, nextAudioFade));
 
     const layout = ov.intro_layout || 'ring';
     const isKinetic = layout === 'kinetic_stack';
     const isReveal = INTRO_REVEAL_LAYOUT_SET.has(layout);
+    const isAudioOnly = layout === 'audio_only';
     if (isKinetic) {
         ov.intro_hook_source = getVal('rdp-intro-hook-source') || 'auto';
         ov.intro_hook_text = String(getVal('rdp-intro-hook-text') ?? ov.intro_hook_text ?? '');
@@ -14203,7 +14461,7 @@ function _syncIntroOverlayFromPanel(panel, options = {}) {
         const c2El = c.querySelector('#rdp-intro-color2');
         ov.intro_color1 = (c1El?.dataset?.customized === '1' && c1El.value) ? c1El.value : (ov.intro_color1 || '');
         ov.intro_color2 = (c2El?.dataset?.customized === '1' && c2El.value) ? c2El.value : (ov.intro_color2 || '');
-    } else {
+    } else if (!isAudioOnly) {
         ov.intro_top_text = String(getVal('rdp-intro-top-text') ?? ov.intro_top_text ?? 'DAYS BEFORE');
         ov.intro_top_color = getVal('rdp-intro-top-color') || '#FFFFFF';
         ov.intro_center_mode = getVal('rdp-intro-center-mode') || 'fixed';
@@ -14233,7 +14491,7 @@ function _syncIntroOverlayFromPanel(panel, options = {}) {
         ov.intro_snow_density = Math.max(0, Number(getVal('rdp-intro-snow-density') ?? 32));
     }
 
-    if (INTRO_REVEAL_LAYOUT_SET.has(ov.intro_layout || 'ring')) {
+    if (INTRO_REVEAL_LAYOUT_SET.has(ov.intro_layout || 'ring') || isAudioOnly) {
         ov.intro_backdrop_scrim = 0;
         ov.intro_scale = 100;
         ov.intro_offset_y = 0;
@@ -14418,7 +14676,7 @@ function _bindIntroCardEventsOnPanel(panel) {
 
     const introStructuralIds = new Set(['rdp-intro-delay-body', 'rdp-intro-hook-source']);
     const introFieldIds = [
-        'rdp-intro-delay-body',
+        'rdp-intro-delay-body', 'rdp-intro-audio-fade-out',
         'rdp-intro-hook-source', 'rdp-intro-hook-text',
         'rdp-intro-kinetic-font', 'rdp-intro-kinetic-white', 'rdp-intro-kinetic-yellow',
         'rdp-intro-curtain-style', 'rdp-intro-curtain-text', 'rdp-intro-curtain-valance', 'rdp-intro-slat-count',
@@ -14444,6 +14702,166 @@ function _bindIntroCardEventsOnPanel(panel) {
             });
         }
     });
+
+    const audioPresetSel = q('#rdp-intro-audio-preset');
+    audioPresetSel?.addEventListener('change', async () => {
+        if (audioPresetSel.value === 'custom') {
+            const ov = panel._ensureIntroCountdownOverlay();
+            if (!ov?.intro_audio_custom_path) {
+                const picked = await _pickIntroCustomAudioFile();
+                if (picked && ov) {
+                    ov.intro_audio_custom_path = picked;
+                    ov.intro_audio_preset = 'custom';
+                } else {
+                    const fallback = window.ReelsIntroAudio?.getDefaultIntroAudioForPreset?.(ov) || 'curtain_grand_fanfare';
+                    audioPresetSel.value = ov?.intro_audio_preset && ov.intro_audio_preset !== 'custom' ? ov.intro_audio_preset : fallback;
+                    return;
+                }
+            }
+        }
+        panel._syncToIntroOverlay({ structuralChange: false });
+    });
+
+    ['rdp-intro-audio-volume', 'rdp-intro-audio-volume-num'].forEach(vid => {
+        q('#' + vid)?.addEventListener('input', () => {
+            const ov = panel._getIntroCountdown();
+            if (ov) ov.intro_audio_volume_custom = true;
+            const el = window._reelsIntroAuditionAudio;
+            const volVal = Number(q('#rdp-intro-audio-volume')?.value);
+            if (el && Number.isFinite(volVal)) {
+                el.volume = Math.max(0, Math.min(1, volVal / 100));
+            }
+        });
+    });
+
+    q('#rdp-intro-audio-audition-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        const btn = q('#rdp-intro-audio-audition-btn');
+        const existing = window._reelsIntroAuditionAudio;
+        if (existing && !existing.paused) {
+            _stopIntroAudioAudition();
+            return;
+        }
+        const url = window.ReelsIntroAudio?.resolveIntroAudioPlayableUrl?.(ov) || '';
+        if (!url) {
+            if (typeof showToast === 'function') showToast('当前开场设置为静音无配乐，或自定义音频尚未上传', 'info');
+            return;
+        }
+        try {
+            const audioEl = existing || new Audio();
+            window._reelsIntroAuditionAudio = audioEl;
+            audioEl.pause();
+            audioEl.src = url;
+            audioEl.currentTime = 0;
+            const volNum = Number(ov.intro_audio_volume ?? 85);
+            audioEl.volume = Math.max(0, Math.min(1, (Number.isFinite(volNum) ? volNum : 85) / 100));
+            audioEl.onended = () => _stopIntroAudioAudition();
+            audioEl.play().then(() => {
+                if (btn) {
+                    btn.textContent = '⏹ 停止';
+                    btn.classList.add('is-playing');
+                }
+            }).catch(() => _stopIntroAudioAudition());
+        } catch (_) {
+            _stopIntroAudioAudition();
+        }
+    });
+
+    q('#rdp-intro-audio-match-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        _stopIntroAudioAudition();
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        const defTrack = window.ReelsIntroAudio?.getDefaultIntroAudioForPreset?.(ov) || 'curtain_grand_fanfare';
+        const defVol = window.ReelsIntroAudio?.getIntroAudioDefaultVolume?.({ ...ov, intro_audio_preset: defTrack }) ?? 85;
+        ov.intro_audio_preset = defTrack;
+        ov.intro_audio_volume = defVol;
+        ov.intro_audio_volume_custom = false;
+        ov.intro_audio_fade_out = 0.45;
+        panel._syncIntroUI(ov);
+        panel._syncScopeAndRender(ov, { structuralChange: false });
+        if (typeof showToast === 'function') {
+            const meta = window.ReelsIntroAudio?.getIntroAudioTrackMeta?.(defTrack);
+            showToast(`✨ 已恢复当前开场推荐配乐：${meta?.name || defTrack}`, 'success');
+        }
+    });
+
+    const handleUploadCustomIntroAudio = async (fileObj = null) => {
+        const picked = fileObj ? await _resolveDroppedOrPickedAudioPath(fileObj) : await _pickIntroCustomAudioFile();
+        if (!picked) return;
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        if (typeof panel._ensureIntroMasterEnabled === 'function') panel._ensureIntroMasterEnabled();
+        ov.disabled = false;
+        ov.intro_audio_custom_path = picked;
+        ov.intro_audio_preset = 'custom';
+        panel._syncIntroUI(ov);
+        panel._syncScopeAndRender(ov, { structuralChange: false });
+        if (typeof showToast === 'function') showToast('🎵 已载入自定义开场配乐', 'success');
+    };
+
+    const audioFileInput = q('#rdp-intro-audio-file-input');
+    q('#rdp-intro-audio-upload-btn')?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (window.electronAPI && typeof window.electronAPI.selectFiles === 'function') {
+            await handleUploadCustomIntroAudio(null);
+        } else if (audioFileInput) {
+            audioFileInput.value = '';
+            audioFileInput.click();
+        }
+    });
+    audioFileInput?.addEventListener('change', async (e) => {
+        const f = e.target.files?.[0];
+        if (f) await handleUploadCustomIntroAudio(f);
+    });
+
+    q('#rdp-intro-audio-custom-clear')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        _stopIntroAudioAudition();
+        const ov = panel._ensureIntroCountdownOverlay();
+        if (!ov) return;
+        ov.intro_audio_custom_path = '';
+        ov.intro_audio_preset = window.ReelsIntroAudio?.getDefaultIntroAudioForPreset?.(ov) || 'curtain_grand_fanfare';
+        panel._syncIntroUI(ov);
+        panel._syncScopeAndRender(ov, { structuralChange: false });
+    });
+}
+async function _resolveDroppedOrPickedAudioPath(file) {
+    if (!file) return '';
+    try {
+        if (window.electronAPI && typeof window.electronAPI.getFilePath === 'function') {
+            const p = window.electronAPI.getFilePath(file);
+            if (p) return p;
+        }
+        if (typeof fetch === 'function') {
+            const buf = await file.arrayBuffer();
+            const res = await fetch(`/api/web-bridge/upload-raw?filename=${encodeURIComponent(file.name || 'intro-audio.mp3')}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: buf,
+            });
+            const data = await res.json().catch(() => null);
+            if (data?.ok && data.path) return data.path;
+        }
+        return URL.createObjectURL(file);
+    } catch (_) {
+        return '';
+    }
+}
+async function _pickIntroCustomAudioFile() {
+    if (window.electronAPI && typeof window.electronAPI.selectFiles === 'function') {
+        try {
+            const paths = await window.electronAPI.selectFiles({
+                title: '选择自定义开场配乐 / 音效',
+                multiple: false,
+                filters: [{ name: '音频文件', extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma'] }],
+            });
+            return Array.isArray(paths) && paths[0] ? paths[0] : '';
+        } catch (_) {}
+    }
+    return '';
 }
 function _applyPanelScopeMode(panel, targetScope, {
     scopeId, applyAllId, legacyChkId = '',
@@ -14512,6 +14930,12 @@ function _buildIntroCardHtml({ openAccordion = false } = {}) {
     });
     const introCategories = [
         ['all', '✨ 全部'],
+        ['sfx_only', '💥 纯音效冲击'],
+        ['clouds', '☁️ 云雾穿云'],
+        ['glitch', '📼 CRT/故障'],
+        ['film_burn', '🎞️ 胶片灼烧'],
+        ['polaroid', '📸 拍立得/杂志'],
+        ['prism', '💎 水晶棱镜'],
         ['flag', '🇺🇸 国旗迎风'],
         ['cardinal', '🐦 北美红雀'],
         ['paper', '📜 纸张报纸·莫兰迪水彩'],
@@ -14528,12 +14952,66 @@ function _buildIntroCardHtml({ openAccordion = false } = {}) {
     const introCatBarHtml = introCategories.map(([catId, label]) => `
         <button type="button" class="rdp-intro-cat-chip ${catId === 'all' ? 'is-active' : ''}" data-intro-cat="${catId}">${label} (${catCounts[catId] || 0})</button>
     `).join('');
+    const audioApi = typeof window !== 'undefined' ? window.ReelsIntroAudio : null;
+    const audioTracks = audioApi?.INTRO_AUDIO_TRACKS || [
+        { id: 'curtain_grand_fanfare', name: '🎭 剧院丝绒开幕·温暖弦乐号角', group: '剧场 / 典礼', mood: '大气 · 仪式感' },
+        { id: 'morning_sheer_harp', name: '🌬️ 晨曦微风纱帘·竖琴暖阳', group: '温馨 / 治愈', mood: '轻柔 · 居家晨光' },
+        { id: 'patriotic_freedom_anthem', name: '🇺🇸 北美礼赞·军鼓铜管荣耀开场', group: '爱国 / 国旗', mood: '庄严 · 荣耀感' },
+        { id: 'eagle_canyon_drum', name: '🦅 雄鹰峡谷战鼓·水墨破空声效', group: '震撼 / 自然', mood: '力量 · 破空冲击' },
+        { id: 'cardinal_woodland_chime', name: '🐦 红雀晨林清啼·灵动风铃竖琴', group: '灵动 / 红雀', mood: '清脆 · 天使信使' },
+        { id: 'parchment_paper_quill', name: '📜 羊皮书页翻响·温柔钢琴轻启', group: '极简 / 纸质', mood: '雅致 · 翻页质感' },
+        { id: 'dark_cinema_pulse', name: '🖤 深邃影院重低音·破黑聚光声效', group: '电影 / 黑场', mood: '深沉 · 高级感' },
+        { id: 'wooden_doors_sanctuary', name: '🚪 木门窗扇开启·圣光暖阳和弦', group: '木门 / 百叶窗', mood: '温暖 · 迎宾光束' },
+        { id: 'winter_crystal_bells', name: '❄️ 冰雪晶铃融霜·冬日奇幻音效', group: '冰雪 / 冬日', mood: '晶莹 · 加拿大冬雪' },
+        { id: 'countdown_321_tension', name: '⏱️ 电影胶片3·2·1机械读秒脉冲', group: '快门 / 读秒', mood: '紧迫 · 吸睛停顿' },
+        { id: 'xmas_wonder_glockenspiel', name: '🎄 圣诞钟琴奇缘·节日暖心序曲', group: '圣诞 / 节日', mood: '喜悦 · 温暖铃音' },
+        { id: 'sacred_prayer_organ', name: '✝️ 教堂圣光管风琴·晨祷阿们颂', group: '祷告 / 教堂', mood: '神圣 · 庄重平和' },
+        { id: 'holiday_gift_sparkle', name: '🎁 礼盒丝带拆封·欢快星芒拨弦', group: '礼盒 / 庆祝', mood: '惊喜 · 拆封期待' },
+        { id: 'viral_hook_punch', name: '⚡ 爆款斜体闪击·重击转场上升', group: '爆款 / 节奏', mood: '干脆 · 抓耳留存' },
+        { id: 'crt_glitch_powerup', name: '📼 CRT老电视开机·电流脉冲RGB扫频', group: '科技 / 复古', mood: '电流 · 赛博开机' },
+        { id: 'film_burn_whoosh', name: '🎞️ 35mm胶片灼烧·暖阳过曝转场音效', group: '胶片 / 电影', mood: '热烈 · 光影闪烁' },
+        { id: 'polaroid_shutter_snap', name: '📸 拍立得快门咔嚓·手账纸张滑出音', group: '拍立得 / 手账', mood: '清脆 · 怀旧记忆' },
+        { id: 'prism_glass_shimmer', name: '💎 水晶棱镜折射·空灵现代高频闪烁', group: '现代 / 奢华', mood: '通透 · 高级质感' },
+        { id: 'cloud_part_heavenly_breeze', name: '☁️ 穿云而出·圣洁风声空灵天籁微风', group: '云雾 / 天籁', mood: '澄澈 · 破云而出' },
+        { id: 'cloud_dawn_angelic_swoosh', name: '🌅 圣光金云拨雾·晨祷天籁竖琴', group: '云雾 / 天籁', mood: '温暖 · 晨曦圣光' },
+        { id: 'impact_cinema_boom', name: '💥 电影重低音轰击·史诗震慑开篇', group: '💥 冲击重音 / 纯音效开场', mood: '震撼 · 低频冲击' },
+        { id: 'impact_riser_slam', name: '⚡ 极速蓄力撞击·拉升重锤落地', group: '💥 冲击重音 / 纯音效开场', mood: '抓耳 · 蓄力重击' },
+        { id: 'impact_whip_whoosh', name: '💨 利落甩屏飓风·0.7s破空风声', group: '💥 冲击重音 / 纯音效开场', mood: '干脆 · 甩屏切入' },
+        { id: 'impact_sacred_cathedral_bell', name: '🔔 教堂沉钟一响·庄严灵魂震颤', group: '💥 冲击重音 / 纯音效开场', mood: '神圣 · 祷告敬畏' },
+        { id: 'impact_heartbeat_double', name: '💓 沉重双心跳声·走心悬念抓人', group: '💥 冲击重音 / 纯音效开场', mood: '揪心 · 情绪代入' },
+        { id: 'impact_thunder_crack', name: '⛈️ 惊雷震撼劈落·命运转折轰鸣', group: '💥 冲击重音 / 纯音效开场', mood: '轰鸣 · 强力醒脑' },
+        { id: 'impact_camera_flash_shutter', name: '📸 单反快门定格·瞬间吸睛咔嚓', group: '💥 冲击重音 / 纯音效开场', mood: '锐利 · 瞬间锁屏' },
+        { id: 'impact_piano_deep_chord', name: '🎹 深情钢琴重和弦·故事感共鸣', group: '💥 冲击重音 / 纯音效开场', mood: '深沉 · 催泪走心' },
+        { id: 'impact_sword_metallic_ring', name: '⚔️ 寒锋出鞘铿锵·破局锐利共鸣', group: '💥 冲击重音 / 纯音效开场', mood: '锋利 · 观点破局' },
+        { id: 'impact_news_breaking_hit', name: '🚨 突发快讯重击·节奏定调双响', group: '💥 冲击重音 / 纯音效开场', mood: '紧凑 · 权威开篇' },
+    ];
+    const audioTrackNameById = Object.create(null);
+    const groupedAudioHtml = (() => {
+        const groups = new Map();
+        audioTracks.forEach(t => {
+            if (!t?.id) return;
+            audioTrackNameById[t.id] = t.name;
+            const g = t.group || '精选配乐';
+            if (!groups.has(g)) groups.set(g, []);
+            groups.get(g).push(t);
+        });
+        let html = '<option value="none">🔕 无配乐（纯画面静音开场）</option>';
+        groups.forEach((items, groupName) => {
+            const opts = items.map(t => `<option value="${t.id}">${t.name} [${t.mood || ''}]</option>`).join('');
+            html += `<optgroup label="${groupName}">${opts}</optgroup>`;
+        });
+        html += '<option value="custom">🎵 自定义本地音频文件...</option>';
+        return html;
+    })();
     const introPresetButtonsHtml = visibleIntroEntries.map(([id, cfg]) => {
         const cat = cfg.intro_category || (cfg.intro_layout === 'ring' ? 'ring' : 'curtain');
+        const pairedId = cfg.intro_audio_preset || audioApi?.getDefaultIntroAudioForPreset?.(cfg) || '';
+        const pairedTitle = pairedId ? (audioTrackNameById[pairedId] || '') : '';
+        const titleAttr = pairedTitle ? ` title="推荐配乐: ${pairedTitle.replace(/"/g, '&quot;')}"` : '';
         return `
-        <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}" data-intro-cat="${cat}">
+        <button type="button" class="rdp-intro-preset-btn" data-intro-preset="${id}" data-intro-cat="${cat}"${titleAttr}>
             <span class="rdp-intro-preset-title">${cfg.name}</span>
-            <span class="rdp-intro-preset-tag">${cfg.tag || ''}</span>
+            <span class="rdp-intro-preset-tag">${cfg.tag || ''}${pairedTitle ? ` · ♪` : ''}</span>
         </button>
     `;
     }).join('');
@@ -14587,12 +15065,51 @@ function _buildIntroCardHtml({ openAccordion = false } = {}) {
                         </div>
                         <div class="rop-row" style="gap:4px;flex-wrap:wrap;">
                             <span style="font-size:10.5px;color:var(--text-secondary);">快选:</span>
-                            ${[2.0, 2.5, 3.0, 3.5, 4.0].map(sec => `<button type="button" class="rop-btn rdp-intro-dur-chip" data-sec="${sec}" style="padding:2px 6px;font-size:10px;border-radius:4px;">${sec}s</button>`).join('')}
+                            ${[0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 3.5].map(sec => `<button type="button" class="rop-btn rdp-intro-dur-chip" data-sec="${sec}" style="padding:2px 6px;font-size:10px;border-radius:4px;">${sec}s</button>`).join('')}
                         </div>
                         <label style="display:flex;align-items:flex-start;gap:6px;font-size:11px;line-height:1.35;color:#fef3c7;cursor:pointer;margin-top:2px;">
                             <input type="checkbox" id="rdp-intro-delay-body" checked style="margin-top:2px;accent-color:#f59e0b;cursor:pointer;flex-shrink:0;">
                             <span><b>开场后才开始朗读/字幕/滚动</b>（底片与BGM从0s连续播放；不勾选则0s直接叠加同步）</span>
                         </label>
+                    </div>
+
+                    <div id="rdp-intro-audio-only-note" class="rdp-card-section" style="display:none;flex-direction:column;gap:4px;border:1px solid rgba(251,146,60,0.45);background:rgba(249,115,22,0.12);color:#fed7aa;font-size:11px;line-height:1.4;">
+                        <div style="font-weight:700;color:#fde68a;">💥 纯音效开场模式 · 零画面遮挡</div>
+                        <div>画面保持 100% 原片纯净透出（不加任何幕布、边框或文字）。先以冲击音效抓住注意力，上方默认已开启「开场后才开始朗读/字幕」，音效峰值一过即丝滑接入人声与字幕！下方可一键试听或自由切换 30 款音效/配乐。</div>
+                    </div>
+
+                    <div id="rdp-intro-audio-section" class="rdp-card-section" style="border:1px solid rgba(251,191,36,0.32);background:rgba(245,158,11,0.08);gap:6px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:5px;flex-wrap:wrap;">
+                            <div style="display:flex;align-items:center;gap:5px;min-width:0;">
+                                <span style="font-weight:700;font-size:11.5px;color:#fde68a;white-space:nowrap;">🎵 开场配乐 / 音效</span>
+                                <span id="rdp-intro-audio-badge" style="font-size:9.5px;padding:1px 6px;border-radius:999px;background:rgba(245,158,11,0.22);color:#fde68a;border:1px solid rgba(251,191,36,0.45);font-weight:700;white-space:nowrap;">✨ 智能适配推荐</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:4px;">
+                                <button type="button" id="rdp-intro-audio-audition-btn" class="rop-btn" style="padding:2px 7px;font-size:10px;font-weight:700;background:rgba(245,158,11,0.24);color:#fef3c7;border:1px solid rgba(251,191,36,0.5);border-radius:4px;cursor:pointer;" title="单独试听当前所选开场音乐或音效">🔊 试听</button>
+                                <button type="button" id="rdp-intro-audio-match-btn" class="rop-btn" style="padding:2px 6px;font-size:10px;background:rgba(255,255,255,0.08);color:#fde68a;border:1px solid rgba(251,191,36,0.35);border-radius:4px;cursor:pointer;" title="一键恢复为当前开场效果的推荐配乐">✨ 推荐</button>
+                                <button type="button" id="rdp-intro-audio-upload-btn" class="rop-btn" style="padding:2px 6px;font-size:10px;background:rgba(56,189,248,0.16);color:#bae6fd;border:1px solid rgba(56,189,248,0.42);border-radius:4px;cursor:pointer;" title="上传自己的 MP3 / WAV / M4A 开场音乐或音效">📤 上传</button>
+                            </div>
+                        </div>
+                        <div class="rop-row">
+                            <select id="rdp-intro-audio-preset" class="rop-select" style="flex:1;min-width:0;font-size:11px;" title="选择开场专属配乐（点击任意开场预设会自动匹配对应音效）">${groupedAudioHtml}</select>
+                        </div>
+                        <input type="file" id="rdp-intro-audio-file-input" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg" style="display:none;">
+                        <div id="rdp-intro-audio-custom-row" style="display:none;align-items:center;justify-content:space-between;gap:6px;padding:3px 6px;border-radius:4px;background:rgba(2,6,23,0.45);font-size:10px;color:#bae6fd;">
+                            <span id="rdp-intro-audio-custom-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">未选择自定义文件</span>
+                            <button type="button" id="rdp-intro-audio-custom-clear" class="rop-btn" style="padding:1px 5px;font-size:9.5px;border-radius:3px;cursor:pointer;" title="清除自定义文件并恢复推荐配乐">✖</button>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>配乐音量</label>
+                            <input type="range" id="rdp-intro-audio-volume" class="rop-range" min="0" max="150" step="2" value="85">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-audio-volume" id="rdp-intro-audio-volume-num" min="0" max="150" step="2" value="85">
+                            <span style="font-size:10px;color:var(--text-muted);">%</span>
+                        </div>
+                        <div class="rop-row rop-num-row">
+                            <label>结尾淡出</label>
+                            <input type="range" id="rdp-intro-audio-fade-out" class="rop-range" min="0" max="1.5" step="0.05" value="0.45">
+                            <input type="number" class="rop-num-readout rop-num-short" data-intro-link="rdp-intro-audio-fade-out" id="rdp-intro-audio-fade-out-num" min="0" max="1.5" step="0.05" value="0.45">
+                            <span style="font-size:10px;color:var(--text-muted);">秒</span>
+                        </div>
                     </div>
 
                     <div id="rdp-intro-kinetic-section" class="rdp-card-section" style="display:none;flex-direction:column;gap:7px;">
@@ -14628,6 +15145,29 @@ function _buildIntroCardHtml({ openAccordion = false } = {}) {
                         <div class="rop-row">
                             <label>揭幕方式</label>
                             <select id="rdp-intro-curtain-style" class="rop-select" style="flex:1;min-width:0;">
+                                <optgroup label="☁️ 穿云而出 · 2D分形云雾噪波 (FB同款)">
+                                    <option value="cloud_part_iris">☁️ 穿云而出_白灰云雾中心拨开(FB同款)</option>
+                                    <option value="cloud_part_golden">🌅 圣光金云拨雾_晨祷旭日开屏</option>
+                                    <option value="cloud_part_rose">🌸 玫瑰粉霞穿云_温柔治愈开场</option>
+                                    <option value="cloud_part_iris_fast">🌤️ 拨云见日_蓝调云雾急速散开</option>
+                                </optgroup>
+                                <optgroup label="📼 CRT电子管 / VHS故障 / 赛博切片">
+                                    <option value="crt_power_on">📺 CRT老电视电子束开机</option>
+                                    <option value="vhs_tracking_open">📼 VHS磁带信号抖动解码</option>
+                                    <option value="cyber_rgb_slice">⚡ 赛博RGB错位切片开场</option>
+                                </optgroup>
+                                <optgroup label="🎞️ 35mm 柯达胶片灼烧漏光">
+                                    <option value="film_burn_amber">🔥 35mm琥珀胶片灼烧闪白</option>
+                                    <option value="dreamy_rose_leak">🌺 浪漫玫瑰红晕胶片漏光</option>
+                                </optgroup>
+                                <optgroup label="📸 拍立得显影 / 美式杂志拼贴">
+                                    <option value="polaroid_toss_open">📸 拍立得相纸快门显影滑开</option>
+                                    <option value="magazine_headline_peel">✂️ 美式杂志头版拼贴揭幕</option>
+                                </optgroup>
+                                <optgroup label="💎 水晶棱镜多格 / 斜切镜面">
+                                    <option value="prism_three_strip">💎 三格水晶棱镜错落拉幕</option>
+                                    <option value="diagonal_prism_slice">🔷 钻石45°棱镜镜面对角劈开</option>
+                                </optgroup>
                                 <optgroup label="🇺🇸 国旗飘扬开场">
                                     <option value="flag_usa_sweep">🇺🇸 美国星条旗迎风拂开</option>
                                     <option value="flag_usa_part">🗽 美国双开星条旗礼堂揭幕</option>
@@ -15288,6 +15828,7 @@ class ReelsDecorPanel {
             dark_particles: { bg: 'linear-gradient(135deg,#090d16,#1e293b)', border: '#475569', text: '#e2e8f0', tag: '🖤黑色' },
             film_grain:     { bg: 'linear-gradient(135deg,#271c12,#451a03)', border: '#d97706', text: '#fde68a', tag: '🎞️胶片' },
             stars:          { bg: 'linear-gradient(135deg,#1e1b4b,#3b0764)', border: '#eab308', text: '#fef08a', tag: '🌟星芒' },
+            clouds:         { bg: 'linear-gradient(135deg,#0c4a6e,#38bdf8)', border: '#bae6fd', text: '#f0f9ff', tag: '☁️穿云' },
             xmas:           { bg: 'linear-gradient(135deg,#14532d,#7f1d1d)', border: '#f87171', text: '#fef9c3', tag: '🎄圣诞' },
             veterans:       { bg: 'linear-gradient(135deg,#0a1931,#7f1d1d)', border: '#fbbf24', text: '#fef08a', tag: '🇺🇸退伍' },
             frame:          { bg: 'linear-gradient(135deg,#292524,#44403c)', border: '#d4af37', text: '#fde68a', tag: '⚜️画框' },
@@ -15414,13 +15955,14 @@ class ReelsDecorPanel {
                             <div id="rdp-custom-preset-grid" class="rdp-custom-preset-grid"></div>
                         </div>
                         <div class="rdp-cat-bar">
-                            <button type="button" class="rdp-cat-btn active" data-cat="all" style="border:1px solid #6366f1;background:#4f46e5;color:#fff;font-weight:700;">全部 (34)</button>
-                            <button type="button" class="rdp-cat-btn" data-cat="dark_particles" style="border:1px solid #475569;background:#1e293b;color:#e2e8f0;">🖤 黑色&粒子 (7)</button>
-                            <button type="button" class="rdp-cat-btn" data-cat="film_grain" style="border:1px solid #b45309;background:#271c12;color:#fde68a;">🎞️ 电影颗粒 (7)</button>
-                            <button type="button" class="rdp-cat-btn" data-cat="stars" style="border:1px solid #a16207;background:#1e1b4b;color:#fef08a;">🌟 星芒光斑 (6)</button>
+                            <button type="button" class="rdp-cat-btn active" data-cat="all" style="border:1px solid #6366f1;background:#4f46e5;color:#fff;font-weight:700;">全部 (44)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="clouds" style="border:1px solid #38bdf8;background:linear-gradient(135deg,#0c4a6e,#0284c7);color:#f0f9ff;">☁️ 穿云/云雾 (4)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="dark_particles" style="border:1px solid #475569;background:#1e293b;color:#e2e8f0;">🖤 黑色&粒子 (8)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="film_grain" style="border:1px solid #b45309;background:#271c12;color:#fde68a;">🎞️ 电影颗粒 (10)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="stars" style="border:1px solid #a16207;background:#1e1b4b;color:#fef08a;">🌟 星芒光斑 (7)</button>
                             <button type="button" class="rdp-cat-btn" data-cat="xmas" style="border:1px solid #15803d;background:#14532d;color:#fef9c3;">🎄 圣诞 (5)</button>
                             <button type="button" class="rdp-cat-btn" data-cat="veterans" style="border:1px solid #fbbf24;background:linear-gradient(135deg,#0a1931,#7f1d1d);color:#fef08a;">🇺🇸 退伍军人节 (4)</button>
-                            <button type="button" class="rdp-cat-btn" data-cat="frame" style="border:1px solid #a16207;background:#292524;color:#fde68a;">⚜️ 复古画框 (5)</button>
+                            <button type="button" class="rdp-cat-btn" data-cat="frame" style="border:1px solid #a16207;background:#292524;color:#fde68a;">⚜️ 复古画框 (6)</button>
                         </div>
                         <div id="rdp-preset-grid" class="rdp-preset-grid">
                             ${cardsHtml}
@@ -15446,6 +15988,8 @@ class ReelsDecorPanel {
                                 <option value="neon">⚡ 赛博霓虹微粒 (Neon)</option>
                                 <option value="sunset_bokeh">🌇 落日暖阳大光斑 (Bokeh)</option>
                                 <option value="prism">💎 钻石棱镜星芒 (Prism)</option>
+                                <option value="prism_bokeh">🌈 幻彩棱镜色散光斑 (Prism Bokeh)</option>
+                                <option value="gold_petals">🕊️ 圣光金色花瓣飘落 (Gold Petals)</option>
                             </select>
                             <label>🌟 启用发光闪烁星芒</label><input type="checkbox" id="rdp-glow-stars">
                             <label>❄️ 启用漫天飘雪与冰晶</label><input type="checkbox" id="rdp-snowflakes">
@@ -17281,7 +17825,7 @@ class ReelsDecorPanel {
         const decors = this._getDecorOverlays();
         const styles = window.ReelsOverlay?.DECOR_OVERLAY_STYLES || {};
         if (!decors.length) {
-            listEl.innerHTML = `<div style="padding:5px 8px;border-radius:6px;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);color:#c7d2fe;font-size:11px;">💡 暂未添加点缀层，点击下方 ${Object.keys(styles).length || 34} 款预设卡片即可一键叠加预览！</div>`;
+            listEl.innerHTML = `<div style="padding:5px 8px;border-radius:6px;background:rgba(99,102,241,0.12);border:1px dashed rgba(99,102,241,0.4);color:#c7d2fe;font-size:11px;">💡 暂未添加点缀层，点击下方 ${Object.keys(styles).length || 40} 款预设卡片即可一键叠加预览！</div>`;
             return;
         }
         const selected = this._getSelectedDecor();
@@ -18028,7 +18572,7 @@ class ReelsStickerPanel {
 
                 <details class="rop-scroll-accordion rdp-accordion" id="rsp-acc-catalog" open>
                     <summary>
-                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎄 40款节日/圣诞小图标</span></span>
+                        <span class="rop-acc-title-wrap"><span class="rop-acc-caret">▸</span><span>🎄 91款全库动画小图标 (美加花卉/国旗/火鸡/红雀/白鸽/小羊/驯鹿/十字架)</span></span>
                         <div style="display:flex;gap:3px;" onclick="event.stopPropagation()">
                             <button type="button" id="rsp-mode-replace" class="rop-btn is-active" style="padding:1px 6px;font-size:10px;border-radius:999px;border:1px solid #facc15;background:rgba(250,204,21,0.22);color:#fef08a;cursor:pointer;">切换当前</button>
                             <button type="button" id="rsp-mode-add" class="rop-btn" style="padding:1px 6px;font-size:10px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">➕叠加新图标</button>
@@ -18036,12 +18580,16 @@ class ReelsStickerPanel {
                     </summary>
                     <div class="rop-scroll-acc-body" style="gap:6px;">
                         <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="all" style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(250,204,21,0.22);border:1px solid #facc15;color:#fef08a;cursor:pointer;">全部 (40)</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="all" style="font-size:10px;padding:2px 7px;border-radius:999px;background:rgba(250,204,21,0.22);border:1px solid #facc15;color:#fef08a;cursor:pointer;">全部 (91)</button>
                             <button type="button" class="rop-btn rsp-cat-chip" data-cat="飞羽红雀" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🪶 红雀羽毛</button>
                             <button type="button" class="rop-btn rsp-cat-chip" data-cat="圣诞经典" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🔔 圣诞经典</button>
                             <button type="button" class="rop-btn rsp-cat-chip" data-cat="萌物人物" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">⛄ 萌物人物</button>
                             <button type="button" class="rop-btn rsp-cat-chip" data-cat="圣夜信仰" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🌟 圣夜信仰</button>
                             <button type="button" class="rop-btn rsp-cat-chip" data-cat="冬日美食" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🍪 冬日美食</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="美加国旗" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🇺🇸 美加国旗</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="美加花卉" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🌹 美加花卉</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="感恩秋日" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">🦃 感恩秋日</button>
+                            <button type="button" class="rop-btn rsp-cat-chip" data-cat="书写笔尖" style="font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer;">✏️ 书写笔尖</button>
                         </div>
                         <div id="rsp-catalog-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;max-height:240px;overflow-y:auto;padding-right:2px;"></div>
                     </div>

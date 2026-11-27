@@ -1571,36 +1571,64 @@ function buildFFmpegArgs(plan, tmpOutputPath) {
     }
 
     // 2. Audio Inputs
+    const introAudioHelper = (() => {
+        try { return require('../src/reels-intro-audio.js'); } catch (_) { return null; }
+    })();
+    const introAudioClip = introAudioHelper?.buildIntroAudioClipForTask?.({
+        overlays: plan.overlays || [],
+        showIntro: true,
+    }) || null;
+
     const introDelayMs = Math.max(0, Math.round((Number(introDelaySec) || 0) * 1000));
     const voiceDelayFilter = introDelayMs > 0 ? `adelay=${introDelayMs}|${introDelayMs},` : '';
     const voiceVolFilter = (Number.isFinite(Number(voiceVolume)) && Number(voiceVolume) !== 1)
         ? `,volume=${Number(voiceVolume).toFixed(2)}`
         : '';
     const effectiveBgmVol = Number.isFinite(Number(bgmVolume)) ? Math.max(0, Number(bgmVolume)) : 0.20;
+    const audioMixLabels = [];
 
-    if (audioPath && bgmPath) {
-        inputs.push('-i', audioPath);
-        const voiceIdx = inputIdx++;
-        inputs.push('-stream_loop', '-1', '-t', durStr, '-i', bgmPath);
-        const bgmIdx = inputIdx++;
-        filterParts.push(
-            `[${voiceIdx}:a]aresample=48000,${voiceDelayFilter}apad=whole_dur=${durStr},atrim=0:${durStr},asetpts=PTS-STARTPTS${voiceVolFilter}[voice];` +
-            `[${bgmIdx}:a]aresample=48000,volume=${effectiveBgmVol.toFixed(2)},atrim=0:${durStr},asetpts=PTS-STARTPTS[bgm];` +
-            `[voice][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]`
-        );
-    } else if (audioPath) {
+    if (audioPath) {
         inputs.push('-i', audioPath);
         const voiceIdx = inputIdx++;
         filterParts.push(
-            `[${voiceIdx}:a]aresample=48000,${voiceDelayFilter}apad=whole_dur=${durStr},atrim=0:${durStr},asetpts=PTS-STARTPTS${voiceVolFilter}[aout]`
+            `[${voiceIdx}:a]aresample=48000,${voiceDelayFilter}apad=whole_dur=${durStr},atrim=0:${durStr},asetpts=PTS-STARTPTS${voiceVolFilter}[voice]`
         );
-    } else if (bgmPath) {
+        audioMixLabels.push('[voice]');
+    }
+    if (bgmPath) {
         inputs.push('-stream_loop', '-1', '-t', durStr, '-i', bgmPath);
         const bgmIdx = inputIdx++;
-        const soloBgmVolFilter = Number.isFinite(Number(bgmVolume)) ? `,volume=${effectiveBgmVol.toFixed(2)}` : '';
+        const bgmVolFilter = (audioPath || Number.isFinite(Number(bgmVolume)))
+            ? `,volume=${effectiveBgmVol.toFixed(2)}`
+            : '';
         filterParts.push(
-            `[${bgmIdx}:a]aresample=48000${soloBgmVolFilter},atrim=0:${durStr},asetpts=PTS-STARTPTS[aout]`
+            `[${bgmIdx}:a]aresample=48000${bgmVolFilter},atrim=0:${durStr},asetpts=PTS-STARTPTS[bgm]`
         );
+        audioMixLabels.push('[bgm]');
+    }
+    if (introAudioClip && introAudioClip.sourcePath && fs.existsSync(introAudioClip.sourcePath)) {
+        inputs.push('-i', introAudioClip.sourcePath);
+        const introIdx = inputIdx++;
+        const gain = Math.max(0, Math.min(2, Number(introAudioClip.volume ?? 85) / 100));
+        const durIntro = Math.max(0.4, Number(introAudioClip.duration) || 2.5);
+        const delayMs = Math.max(0, Math.round((Number(introAudioClip.timelineStart) || 0) * 1000));
+        const metaDur = introAudioClip.trackId && introAudioHelper?.getIntroAudioTrackMeta?.(introAudioClip.trackId)?.durationSec;
+        const effDur = metaDur ? Math.min(durIntro, metaDur) : durIntro;
+        const fadeOut = Math.max(0, Math.min(effDur * 0.75, Number(introAudioClip.fadeOut ?? 0.45)));
+        const fadeFilter = fadeOut > 0.02
+            ? `,afade=t=out:st=${Math.max(0, effDur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
+            : '';
+        filterParts.push(
+            `[${introIdx}:a]aresample=48000,atrim=start=0:duration=${durIntro.toFixed(3)},asetpts=PTS-STARTPTS${fadeFilter},volume=${gain.toFixed(3)},adelay=${delayMs}|${delayMs},apad=whole_dur=${durStr},atrim=0:${durStr},asetpts=PTS-STARTPTS[introa]`
+        );
+        audioMixLabels.push('[introa]');
+    }
+    if (audioMixLabels.length > 1) {
+        filterParts.push(
+            `${audioMixLabels.join('')}amix=inputs=${audioMixLabels.length}:duration=first:dropout_transition=0:normalize=0,atrim=0:${durStr},asetpts=PTS-STARTPTS[aout]`
+        );
+    } else if (audioMixLabels.length === 1) {
+        filterParts.push(`${audioMixLabels[0]}acopy[aout]`);
     } else {
         inputs.push('-f', 'lavfi', '-t', durStr, '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
         const silentIdx = inputIdx++;
@@ -1668,6 +1696,14 @@ function runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir) {
     const qualityCrfMap = { high: 15, medium: 18, low: 23 };
     const qualityPresetMap = { high: 'slow', medium: 'medium', low: 'faster' };
 
+    const cliIntroHelper = (() => {
+        try { return require('../src/reels-intro-audio.js'); } catch (_) { return null; }
+    })();
+    const cliIntroAudioClip = cliIntroHelper?.buildIntroAudioClipForTask?.({
+        overlays: plan.overlays || [],
+        showIntro: true,
+    }) || null;
+
     const jobPayload = {
         taskId: plan.taskId,
         timeoutSec: Number(cliArgs.timeout || 600),
@@ -1678,8 +1714,10 @@ function runElectronWysiwygWorker(plan, cliArgs, tmpOutputPath, tempDir) {
                 font_family: plan.fontInfo.fontFamily,
             },
             showSubtitle: plan.showSubtitle !== false,
+            showIntro: true,
             segments: segmentsWithWords,
             overlays: plan.overlays || [],
+            insertAudioClips: cliIntroAudioClip ? [cliIntroAudioClip] : [],
             backgroundPath: plan.bgPath || '',
             bgMode: (plan.bgClipPool && plan.bgClipPool.length > 0) ? 'multi' : 'single',
             bgClipPool: plan.bgClipPool || [],

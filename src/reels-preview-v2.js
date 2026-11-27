@@ -21,6 +21,7 @@
         bgFadeVideo: null,
         audio: null,
         bgmAudio: null,
+        introAudio: null,
         contentVideo: null,
         hookVideo: null,
         coverVideo: null,
@@ -40,6 +41,7 @@
         bgSig: '',
         audioSig: '',
         bgmSig: '',
+        introAudioSig: '',
         contentSig: '',
         hookSig: '',
         coverSig: '',
@@ -331,6 +333,7 @@
                     <video class="rpv2-media" data-role="cover-video" playsinline preload="auto" crossorigin="anonymous" muted></video>
                     <audio class="rpv2-media" data-role="audio" preload="auto" crossorigin="anonymous"></audio>
                     <audio class="rpv2-media" data-role="bgm-audio" preload="auto" crossorigin="anonymous" loop></audio>
+                    <audio class="rpv2-media" data-role="intro-audio" preload="auto" crossorigin="anonymous"></audio>
                 </div>
                 <div class="rpv2-controls">
                     <span class="rpv2-pill" data-role="title">V2 预览</span>
@@ -361,6 +364,7 @@
         state.bgFadeVideo = root.querySelector('[data-role="bg-fade-video"]');
         state.audio = root.querySelector('[data-role="audio"]');
         state.bgmAudio = root.querySelector('[data-role="bgm-audio"]');
+        state.introAudio = root.querySelector('[data-role="intro-audio"]');
         state.contentVideo = root.querySelector('[data-role="content-video"]');
         state.hookVideo = root.querySelector('[data-role="hook-video"]');
         state.coverVideo = root.querySelector('[data-role="cover-video"]');
@@ -402,7 +406,7 @@
         setupPanZoomHandlers();
         setupFitObserver();
 
-        for (const media of [state.bgVideo, state.bgFadeVideo, state.audio, state.bgmAudio, state.contentVideo, state.hookVideo, state.coverVideo]) {
+        for (const media of [state.bgVideo, state.bgFadeVideo, state.audio, state.bgmAudio, state.introAudio, state.contentVideo, state.hookVideo, state.coverVideo]) {
             media.addEventListener('loadedmetadata', () => {
                 const activeTask = getTask();
                 const rs = window._reelsState;
@@ -637,6 +641,7 @@
         loadBackground(task, force);
         loadAudio(task, force);
         loadBgm(task, force);
+        loadIntroAudio(task, force);
         loadContent(task, force);
         loadHook(task, force);
         loadCover(task, force);
@@ -1126,6 +1131,56 @@
         }
     }
 
+    function getIntroAudioStateForPhase(task, phase) {
+        const api = window.ReelsIntroAudio;
+        if (!task || !api?.computeIntroAudioPlaybackState) {
+            return { url: '', active: false, localTime: 0, gain: 0 };
+        }
+        const showIntro = isLayerEnabled('intro', '_isReelsIntroToggleEnabled');
+        const mainTime = phase && !phase.inCover && !phase.inHook ? phase.mainTime : -1;
+        return api.computeIntroAudioPlaybackState(getLiveOverlays(task), mainTime, { showIntro });
+    }
+
+    function loadIntroAudio(task, force) {
+        if (!state.introAudio) return;
+        const api = window.ReelsIntroAudio;
+        const showIntro = isLayerEnabled('intro', '_isReelsIntroToggleEnabled');
+        const st = (task && api?.computeIntroAudioPlaybackState)
+            ? api.computeIntroAudioPlaybackState(getLiveOverlays(task), 0, { showIntro })
+            : { url: '' };
+        const sig = st.url || '';
+        if (!force && sig === state.introAudioSig) return;
+        state.introAudioSig = sig;
+        state.introAudio.pause();
+        state.introAudio.removeAttribute('src');
+        if (sig) {
+            state.introAudio.src = sig;
+            state.introAudio.load();
+        }
+    }
+
+    function syncIntroAudioPlayback(task, phase) {
+        if (!state.introAudio) return;
+        loadIntroAudio(task, false);
+        const st = getIntroAudioStateForPhase(task, phase);
+        if (!st.url || !st.active || !state.isPlaying) {
+            if (!state.introAudio.paused) state.introAudio.pause();
+            if (!st.active && Math.abs((state.introAudio.currentTime || 0) - st.localTime) > 0.25) {
+                try { state.introAudio.currentTime = st.localTime; } catch (_) {}
+            }
+            return;
+        }
+        if (!state.introAudio.seeking) {
+            const diff = Math.abs((state.introAudio.currentTime || 0) - st.localTime);
+            if (diff > 0.28 || (state.introAudio.paused && st.localTime < 0.08)) {
+                try { state.introAudio.currentTime = st.localTime; } catch (_) {}
+            }
+        }
+        if (state.introAudio.paused && st.gain > 0.001) {
+            state.introAudio.play().catch(() => {});
+        }
+    }
+
     function loadContent(task, force) {
         const contentPath = task && task.contentVideoPath ? task.contentVideoPath : '';
         const sig = contentPath;
@@ -1233,6 +1288,7 @@
     function pauseMedia() {
         state.audio?.pause();
         state.bgmAudio?.pause();
+        state.introAudio?.pause();
         state.bgVideo?.pause();
         state.bgFadeVideo?.pause();
         state.contentVideo?.pause();
@@ -1347,6 +1403,11 @@
             const bgmStart = Math.max(0, numberOr(task && task.bgmStart, 0));
             setMediaTime(state.bgmAudio, loopMediaTime(bgmStart + mainTime, bgmDur, atTimelineEnd), bgmDur);
         }
+        loadIntroAudio(task, false);
+        if (state.introAudio && state.introAudio.src) {
+            const introSt = getIntroAudioStateForPhase(task, phase);
+            setMediaTime(state.introAudio, introSt.active ? introSt.localTime : 0);
+        }
         if (state.contentVideo.src && contentDur > 0) {
             const trimStart = parseFloat((task || {}).contentVideoTrimStart) || 0;
             const trimEnd = parseFloat((task || {}).contentVideoTrimEnd) || 0;
@@ -1428,6 +1489,7 @@
             setMediaTime(state.contentVideo, trimStart + positiveModulo(mainTime, usableDur), usableDur);
         }
         syncPhasePlayback(phase, task);
+        syncIntroAudioPlayback(task, phase);
         state._wasIntroRestricted = introRestricted;
     }
 
@@ -1436,23 +1498,27 @@
         if (phase.inCover) {
             if (state.coverVideo.src) state.coverVideo.play().catch(() => {});
             state.hookVideo?.pause();
+            state.introAudio?.pause();
             pauseMainMedia();
             return;
         }
         if (phase.inHook) {
             state.coverVideo?.pause();
             if (state.hookVideo.src) state.hookVideo.play().catch(() => {});
+            state.introAudio?.pause();
             pauseMainMedia();
             return;
         }
         state.coverVideo?.pause();
         state.hookVideo?.pause();
         playMainMedia(task, phase);
+        syncIntroAudioPlayback(task, phase);
     }
 
     function pauseMainMedia() {
         state.audio?.pause();
         state.bgmAudio?.pause();
+        state.introAudio?.pause();
         state.bgVideo?.pause();
         state.bgFadeVideo?.pause();
         state.contentVideo?.pause();
@@ -3055,6 +3121,12 @@
         applyVolume(state.bgFadeVideo, bgFadePct, routed);
         applyVolume(state.bgmAudio, bgmPct, routed);
         applyVolume(state.contentVideo, contentPct, routed);
+        if (state.introAudio) {
+            loadIntroAudio(task, false);
+            const activePhase = phase || getPhaseInfo(getCurrentTime(), task);
+            const introSt = getIntroAudioStateForPhase(task, activePhase);
+            applyVolume(state.introAudio, (introSt.gain || 0) * 100, routed);
+        }
     }
 
     function applyPlaybackRates(task) {
@@ -3102,7 +3174,7 @@
         const needsFx = cfg.enabled || cfg.stereoWidth > 1.05;
         if (!needsFx && !state.audioCtx) return false;
 
-        const els = [state.audio, state.bgVideo, state.bgFadeVideo, state.contentVideo, state.bgmAudio].filter(Boolean);
+        const els = [state.audio, state.bgVideo, state.bgFadeVideo, state.contentVideo, state.bgmAudio, state.introAudio].filter(Boolean);
         if (!els.length) return false;
 
         if (!state.audioCtx) {
@@ -3143,6 +3215,7 @@
             state.bgFadeVideo.src ? 'bg2' : '',
             state.contentVideo.src ? 'content' : '',
             state.bgmAudio.src ? 'bgm' : '',
+            state.introAudio?.src ? 'intro' : '',
         ].join('|');
         if (sig === state.audioFxSig) return true;
         state.audioFxSig = sig;
@@ -3563,7 +3636,13 @@
             const height = numberOr(source && (source.videoHeight || source.naturalHeight || source.height), 0);
             return width > 0 && height > 0 ? { width, height } : null;
         },
-        syncAudio: () => applyAudioVolumes(getTask()),
+        syncAudio: () => {
+            const task = getTask();
+            const phase = task ? getPhaseInfo(getCurrentTime(), task) : null;
+            if (task) loadIntroAudio(task, false);
+            applyAudioVolumes(task, phase);
+            if (state.isPlaying && task && phase) syncIntroAudioPlayback(task, phase);
+        },
     };
 
     if (document.readyState === 'loading') {

@@ -212,41 +212,53 @@ function stableJpegEncoderArgs(platform = process.platform) {
     ];
 }
 
-function h264RateControlArgs(crf = 23, targetBitrateMbps = null, maxBitrateMbps = null) {
+function parseCustomBitratePair(targetBitrateMbps = null, maxBitrateMbps = null) {
     const requestedTarget = Number(targetBitrateMbps);
+    if (!Number.isFinite(requestedTarget) || requestedTarget <= 0) return null;
     const requestedMax = Number(maxBitrateMbps);
-    if (Number.isFinite(requestedTarget) && requestedTarget > 0) {
-        const target = Math.max(1, Math.min(30, requestedTarget));
-        const maxrate = Number.isFinite(requestedMax) && requestedMax > 0
-            ? Math.max(target, Math.min(50, requestedMax))
-            : Math.min(50, target * 1.4);
+    const target = Math.max(1, Math.min(30, requestedTarget));
+    const maxrate = Number.isFinite(requestedMax) && requestedMax > 0
+        ? Math.max(target, Math.min(50, requestedMax))
+        : Math.min(50, target * 1.4);
+    return { target, maxrate };
+}
+
+function clampCrfValue(crf = 23) {
+    const numericCrf = Number(crf);
+    const base = Number.isFinite(numericCrf) ? numericCrf : 23;
+    return Math.max(12, Math.min(35, Math.round(base)));
+}
+
+function h264RateControlArgs(crf = 23, targetBitrateMbps = null, maxBitrateMbps = null) {
+    const custom = parseCustomBitratePair(targetBitrateMbps, maxBitrateMbps);
+    if (custom) {
         return [
-            '-b:v', `${target}M`,
-            '-maxrate', `${maxrate}M`,
-            '-bufsize', `${target * 2}M`,
+            '-b:v', `${custom.target}M`,
+            '-maxrate', `${custom.maxrate}M`,
+            '-bufsize', `${custom.target * 2}M`,
         ];
     }
 
-    const numericCrf = Number.isFinite(Number(crf)) ? Number(crf) : 23;
-    let bitrate = '2M';
-    let maxrate = '3M';
-    let bufsize = '4M';
+    // 预设画质档位使用恒定质量 CRF，允许复杂动作/过渡/粒子画面按需突发码率，
+    // 避免 1-pass ABR (-b:v/-maxrate) 把高质量片段压糊。
+    return ['-crf', String(clampCrfValue(crf))];
+}
 
-    if (numericCrf <= 15) {
-        bitrate = '12M';
-        maxrate = '12M';
-        bufsize = '24M';
-    } else if (numericCrf <= 18) {
-        bitrate = '8M';
-        maxrate = '11M';
-        bufsize = '16M';
-    } else if (numericCrf >= 26) {
-        bitrate = '2500k';
-        maxrate = '3500k';
-        bufsize = '5M';
+function videotoolboxRateArgs(crf = 23, targetBitrateMbps = null, maxBitrateMbps = null) {
+    const custom = parseCustomBitratePair(targetBitrateMbps, maxBitrateMbps);
+    if (custom) {
+        return [
+            '-b:v', `${custom.target}M`,
+            '-maxrate', `${custom.maxrate}M`,
+            '-bufsize', `${custom.target * 2}M`,
+        ];
     }
 
-    return ['-b:v', bitrate, '-maxrate', maxrate, '-bufsize', bufsize];
+    const safeCrf = clampCrfValue(crf);
+    if (safeCrf <= 15) return ['-b:v', '20M', '-maxrate', '30M', '-bufsize', '40M'];
+    if (safeCrf <= 18) return ['-b:v', '14M', '-maxrate', '22M', '-bufsize', '28M'];
+    if (safeCrf >= 26) return ['-b:v', '4M', '-maxrate', '6M', '-bufsize', '8M'];
+    return ['-b:v', '6M', '-maxrate', '10M', '-bufsize', '12M'];
 }
 
 function cpuH264EncoderArgs(
@@ -270,30 +282,51 @@ function gpuH264EncoderCandidates(
     targetBitrateMbps = null,
     maxBitrateMbps = null
 ) {
-    const rateArgs = h264RateControlArgs(crf, targetBitrateMbps, maxBitrateMbps);
+    const custom = parseCustomBitratePair(targetBitrateMbps, maxBitrateMbps);
+    const safeCrf = clampCrfValue(crf);
     if (platform === 'darwin') {
         return [{
             codec: 'h264_videotoolbox',
             label: 'VideoToolbox',
-            args: ['-c:v', 'h264_videotoolbox', ...rateArgs],
+            args: ['-c:v', 'h264_videotoolbox', ...videotoolboxRateArgs(safeCrf, targetBitrateMbps, maxBitrateMbps)],
         }];
     }
     if (platform === 'win32') {
+        if (custom) {
+            const rateArgs = h264RateControlArgs(safeCrf, targetBitrateMbps, maxBitrateMbps);
+            return [
+                {
+                    codec: 'h264_nvenc',
+                    label: 'NVENC',
+                    args: ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', ...rateArgs],
+                },
+                {
+                    codec: 'h264_amf',
+                    label: 'AMF',
+                    args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'vbr_peak', ...rateArgs],
+                },
+                {
+                    codec: 'h264_qsv',
+                    label: 'QSV',
+                    args: ['-c:v', 'h264_qsv', '-preset', 'medium', ...rateArgs],
+                },
+            ];
+        }
         return [
             {
                 codec: 'h264_nvenc',
                 label: 'NVENC',
-                args: ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', ...rateArgs],
+                args: ['-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', String(safeCrf), '-b:v', '0'],
             },
             {
                 codec: 'h264_amf',
                 label: 'AMF',
-                args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'vbr_peak', ...rateArgs],
+                args: ['-c:v', 'h264_amf', '-quality', 'balanced', '-rc', 'cqp', '-qp_i', String(safeCrf), '-qp_p', String(safeCrf)],
             },
             {
                 codec: 'h264_qsv',
                 label: 'QSV',
-                args: ['-c:v', 'h264_qsv', '-preset', 'medium', ...rateArgs],
+                args: ['-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', String(safeCrf)],
             },
         ];
     }
@@ -1577,6 +1610,8 @@ async function startSession(opts) {
         bgDurScale = 100,
         audioDurScale = 100,
         reverbEnabled = false, reverbPreset = 'hall', reverbMix = 30, stereoWidth = 100, audioFxTarget = 'all',
+        overlays = [],
+        showIntro = true,
         insertAudioClips = [],
         voiceDelay = 0,
         renderedAudioPath = null,
@@ -1824,6 +1859,8 @@ async function startSession(opts) {
         bgDurScale,
         audioDurScale,
         reverbEnabled, reverbPreset, reverbMix, stereoWidth, audioFxTarget,
+        overlays,
+        showIntro,
         insertAudioClips,
         voiceDelay: Math.max(0, Number(voiceDelay) || 0),
         renderedAudioPath,
@@ -2257,6 +2294,59 @@ function _buildStereoFilter(session, inputLabel, outputLabel) {
         `[ld___][rd___]amerge=inputs=2${outputLabel}`;
 }
 
+function _getIntroAudioHelper() {
+    const candidates = [
+        path.resolve(__dirname, '..', '..', 'src', 'reels-intro-audio.js'),
+        path.resolve(__dirname, '..', '..', 'dist', 'reels-intro-audio.js'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return require(p);
+        } catch (_) {}
+    }
+    return null;
+}
+
+function _resolveSessionInsertAudioClips(session) {
+    const helper = _getIntroAudioHelper();
+    const clips = Array.isArray(session?.insertAudioClips)
+        ? session.insertAudioClips.map(c => ({ ...(c || {}) }))
+        : [];
+    if (!clips.some(c => c && c.isIntroAudio) && Array.isArray(session?.overlays) && helper?.buildIntroAudioClipForTask) {
+        const autoIntro = helper.buildIntroAudioClipForTask({
+            overlays: session.overlays,
+            showIntro: session.showIntro !== false,
+        });
+        if (autoIntro) clips.push(autoIntro);
+    }
+    return clips.map((item) => {
+        if (!item) return item;
+        let p = String(item.sourcePath || '');
+        if (helper?.normalizeMediaFilePath && p) {
+            p = helper.normalizeMediaFilePath(p);
+        }
+        if ((!p || !fs.existsSync(p)) && item.trackId && helper?.resolveIntroAudioFsPath) {
+            const resolved = helper.resolveIntroAudioFsPath(item.trackId);
+            if (resolved && fs.existsSync(resolved)) p = resolved;
+        }
+        return { ...item, sourcePath: p };
+    });
+}
+
+function _buildInsertAudioFilterChain({ item, inputIdx, padTail = '', label = '[insa0]', introAudioHelper = null }) {
+    const gain = Math.max(0, Math.min(2, Number(item.volume ?? 100) / 100));
+    const trimStart = Math.max(0, Number(item.sourceTrimStart) || 0);
+    const duration = Math.max(.05, Number(item.duration) || 1.5);
+    const delay = Math.max(0, Math.round((Number(item.timelineStart) || 0) * 1000));
+    const metaDur = item.trackId && introAudioHelper?.getIntroAudioTrackMeta?.(item.trackId)?.durationSec;
+    const effDur = metaDur ? Math.min(duration, metaDur) : duration;
+    const fadeOut = Math.max(0, Math.min(effDur * 0.75, Number(item.fadeOut) || 0));
+    const fadeFilter = fadeOut > 0.02
+        ? `,afade=t=out:st=${Math.max(0, effDur - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)}`
+        : '';
+    return `[${inputIdx}:a]atrim=start=${trimStart.toFixed(3)}:duration=${duration.toFixed(3)},asetpts=PTS-STARTPTS${fadeFilter},volume=${gain.toFixed(3)},adelay=${delay}|${delay}${padTail}${label}`;
+}
+
 async function mixAudio(session) {
     const ffmpeg = findFFmpeg();
 
@@ -2341,6 +2431,9 @@ async function mixAudio(session) {
     const renderedBgAudio = session._renderedBgAudioPath && fs.existsSync(session._renderedBgAudioPath)
         ? session._renderedBgAudioPath : null;
 
+    const resolvedInsertClips = _resolveSessionInsertAudioClips(session);
+    const introAudioHelper = _getIntroAudioHelper();
+
     let args;
 
     if (!voicePath) {
@@ -2364,11 +2457,18 @@ async function mixAudio(session) {
             audioInputs.push({ path: cvPath, volume: cvVol, loop: true });
         }
 
-        if (audioInputs.length === 0) {
+        const insertInputs = [];
+        for (const item of resolvedInsertClips) {
+            if (!item?.sourcePath || !fs.existsSync(item.sourcePath) || item.audioMode === 'keep-main' || item.audioMode === 'mute') continue;
+            if (!(await hasAudioTrack(item.sourcePath))) continue;
+            insertInputs.push(item);
+        }
+
+        if (audioInputs.length === 0 && insertInputs.length === 0) {
             console.log('[WYSIWYG] 无配音且无音频源，直接拷贝视频');
             args = ['-y', '-i', tempVideo, '-c:v', 'copy', '-an', ...outputDurationArgs(session), '-movflags', '+faststart', ...(String(outputPath || '').toLowerCase().endsWith('.tmp') ? ['-f', 'mp4'] : []), outputPath];
         } else {
-            console.log(`[WYSIWYG] 无配音，混合 ${audioInputs.length} 个音频源`);
+            console.log(`[WYSIWYG] 无配音，混合 ${audioInputs.length} 个底音 + ${insertInputs.length} 个插入/开场音频源`);
             args = ['-y', '-i', tempVideo];
             let nextIdx = 1;
             for (const ai of audioInputs) {
@@ -2377,6 +2477,22 @@ async function mixAudio(session) {
                 args.push('-i', ai.path);
                 nextIdx++;
             }
+            const indexedInsertInputs = [];
+            for (const item of insertInputs) {
+                args.push('-i', item.sourcePath);
+                indexedInsertInputs.push({ item, inputIdx: nextIdx++ });
+            }
+            const sourceOnlyWindows = resolvedInsertClips
+                .filter(item => item?.audioMode === 'source-only')
+                .map(item => {
+                    const start = Math.max(0, Number(item.timelineStart) || 0);
+                    const end = start + Math.max(.05, Number(item.duration) || 1.5);
+                    return `between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})`;
+                });
+            const mainAudioGate = sourceOnlyWindows.length
+                ? `*if(${sourceOnlyWindows.join('+')}\\,0\\,1):eval=frame`
+                : '';
+
             let filterParts = [];
             let labels = [];
             audioInputs.forEach((ai, i) => {
@@ -2384,12 +2500,23 @@ async function mixAudio(session) {
                 const label = `[a${i}]`;
                 const atempoChain = buildAtempoChainForDurationScale(ai.durationScale || 100);
                 const filter = atempoChain
-                    ? `volume=${ai.volume.toFixed(3)},${atempoChain}`
-                    : `volume=${ai.volume.toFixed(3)}`;
+                    ? `volume=${ai.volume.toFixed(3)}${mainAudioGate},${atempoChain}`
+                    : `volume=${ai.volume.toFixed(3)}${mainAudioGate}`;
                 filterParts.push(`[${idx}:a]${filter}${label}`);
                 labels.push(label);
             });
-            const padTail = getSessionVideoDuration(session) > 0 ? ',apad' : '';
+            const padTail = (getSessionVideoDuration(session) > 0 || audioInputs.length === 0) ? ',apad' : '';
+            indexedInsertInputs.forEach(({ item, inputIdx }, index) => {
+                const label = `[insa${index}]`;
+                filterParts.push(_buildInsertAudioFilterChain({
+                    item,
+                    inputIdx,
+                    padTail,
+                    label,
+                    introAudioHelper,
+                }));
+                labels.push(label);
+            });
             if (labels.length > 1) {
                 filterParts.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:dropout_transition=0:normalize=0${padTail}[aout]`);
             } else {
@@ -2441,7 +2568,7 @@ async function mixAudio(session) {
             nextInputIdx++;
         }
         const insertInputs = [];
-        for (const item of (session.insertAudioClips || [])) {
+        for (const item of resolvedInsertClips) {
             if (!item?.sourcePath || !fs.existsSync(item.sourcePath) || item.audioMode === 'keep-main' || item.audioMode === 'mute') continue;
             if (!(await hasAudioTrack(item.sourcePath))) continue;
             const inputIdx = nextInputIdx++;
@@ -2468,7 +2595,7 @@ async function mixAudio(session) {
         // “仅素材原声”不是简单地额外加一轨：在插入片段覆盖的时间段，主音轨
         // 必须静音，否则听起来仍会有配音/BGM 混入。音量表达式按帧求值，片段
         // 之外保持原来的主音量。
-        const sourceOnlyWindows = (session.insertAudioClips || [])
+        const sourceOnlyWindows = resolvedInsertClips
             .filter(item => item?.audioMode === 'source-only')
             .map(item => {
                 const start = Math.max(0, Number(item.timelineStart) || 0);
@@ -2566,12 +2693,14 @@ async function mixAudio(session) {
             mixLabels.push('[cva]');
         }
         insertInputs.forEach((item, index) => {
-            const gain = Math.max(0, Math.min(2, Number(item.volume ?? 100) / 100));
-            const trimStart = Math.max(0, Number(item.sourceTrimStart) || 0);
-            const duration = Math.max(.05, Number(item.duration) || 1.5);
-            const delay = Math.max(0, Math.round((Number(item.timelineStart) || 0) * 1000));
             const label = `[insa${index}]`;
-            filterParts.push(`[${item.inputIdx}:a]atrim=start=${trimStart.toFixed(3)}:duration=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${gain.toFixed(3)},adelay=${delay}|${delay}${voicePadTail}${label}`);
+            filterParts.push(_buildInsertAudioFilterChain({
+                item,
+                inputIdx: item.inputIdx,
+                padTail: voicePadTail,
+                label,
+                introAudioHelper,
+            }));
             mixLabels.push(label);
         });
 
@@ -2814,6 +2943,7 @@ async function parallelExport(opts, mainWindow) {
         animEngine: path.join(scriptBase, 'reels-anim-engine.js'),
         richText: path.join(scriptBase, 'reels-rich-text.js'),
         introAssets: path.join(scriptBase, 'reels-intro-assets.js'),
+        introAudio: path.join(scriptBase, 'reels-intro-audio.js'),
         overlay: path.join(scriptBase, 'reels-overlay.js'),
         compositeMask: path.join(scriptBase, 'reels-composite-mask.js'),
         canvasRenderer: path.join(scriptBase, 'reels-canvas-renderer.js'),
@@ -3039,6 +3169,10 @@ async function parallelExport(opts, mainWindow) {
         audioFxTarget: params.audioFxTarget || 'all',
         contentVideoPath: params.contentVideoPath || '',
         contentVideoVolume: params.contentVideoVolume ?? 1.0,
+        overlays: params.overlays || [],
+        showIntro: params.showIntro !== false,
+        insertAudioClips: params.insertAudioClips || [],
+        voiceDelay: Math.max(0, Number(params.voiceDelay) || 0),
         width: targetWidth,
         height: targetHeight,
         fps,

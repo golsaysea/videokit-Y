@@ -136,6 +136,7 @@ function getSpeechWritingTokens(seg, text, syncSpeech) {
 }
 
 const HOLIDAY_ICON_CATALOG = [
+    // ── 原有 41 款圣诞 / 红雀 / 飞羽核心图标（保持顺序与 ID 兼容） ──
     { id: 'jingle_bell', emoji: '🔔', label: '鎏金双铃结', category: '圣诞经典', accent: '#F59E0B' },
     { id: 'christmas_tree', emoji: '🎄', label: '金星圣诞树', category: '圣诞经典', accent: '#16A34A' },
     { id: 'holly_berry', emoji: '🍒', label: '冬青红果叶', category: '圣诞经典', accent: '#DC2626' },
@@ -150,8 +151,13 @@ const HOLIDAY_ICON_CATALOG = [
     { id: 'xmas_poinsettia', emoji: '🌺', label: '圣诞一品红花', category: '圣诞经典', accent: '#DC2626' },
     { id: 'xmas_velvet_bow', emoji: '🎀', label: '红丝绒大结', category: '圣诞经典', accent: '#B91C1C' },
     { id: 'xmas_fairy_lights', emoji: '💡', label: '暖金圣诞彩灯', category: '圣诞经典', accent: '#FBBF24' },
+    { id: 'xmas_nutcracker_soldier', emoji: '💂', label: '圣诞胡桃夹子', category: '圣诞经典', accent: '#DC2626' },
+    { id: 'xmas_carousel_ornament', emoji: '🎠', label: '松枝双铃挂饰', category: '圣诞经典', accent: '#F59E0B' },
     { id: 'santa_feather', emoji: '🎅', label: '红丝绒圣诞帽', category: '萌物人物', accent: '#DC2626' },
     { id: 'xmas_reindeer_rudolph', emoji: '🦌', label: '红鼻驯鹿鲁道夫', category: '萌物人物', accent: '#92400E' },
+    { id: 'rudolph_animated_leap', emoji: '🦌', label: '欢跳红鼻驯鹿', category: '萌物人物', accent: '#B45309' },
+    { id: 'gentle_lamb_halo', emoji: '🐑', label: '圣光温柔小绵羊', category: '萌物人物', accent: '#FDE047' },
+    { id: 'shepherd_lamb_heart', emoji: '🐑', label: '爱心祈祷小羊羔', category: '萌物人物', accent: '#F472B6' },
     { id: 'xmas_snowman_scarf', emoji: '⛄', label: '红围巾雪人', category: '萌物人物', accent: '#38BDF8' },
     { id: 'xmas_sleigh_gold', emoji: '🛷', label: '金饰圣诞雪橇', category: '萌物人物', accent: '#DC2626' },
     { id: 'xmas_mitten_knit', emoji: '🧤', label: '雪花针织手套', category: '萌物人物', accent: '#DC2626' },
@@ -163,7 +169,16 @@ const HOLIDAY_ICON_CATALOG = [
     { id: 'xmas_church_steeple', emoji: '🕍', label: '雪顶圣诞钟楼', category: '圣夜信仰', accent: '#F59E0B' },
     { id: 'xmas_carol_music', emoji: '🎼', label: '平安夜圣诗音符', category: '圣夜信仰', accent: '#F59E0B' },
     { id: 'xmas_peace_dove_holly', emoji: '🕊️', label: '冬青和平白鸽', category: '圣夜信仰', accent: '#22C55E' },
+    { id: 'white_dove_flap_olive', emoji: '🕊️', label: '振翅衔枝白鸽', category: '圣夜信仰', accent: '#F8FAFC' },
+    { id: 'white_dove_pray_heart', emoji: '🕊️', label: '祈祷圣光白鸽', category: '圣夜信仰', accent: '#FDE047' },
     { id: 'golden_cross_3d_spin', emoji: '✝️', label: '3D旋转纯金十字架', category: '圣夜信仰', accent: '#FFDB62' },
+    { id: 'golden_cross_halo_rays', emoji: '✝️', label: '圣光万丈金十字', category: '圣夜信仰', accent: '#FACC15' },
+    { id: 'golden_cross_dove_bloom', emoji: '🕊️', label: '白鸽金十字徽章', category: '圣夜信仰', accent: '#FDE047' },
+    { id: 'cross_light', emoji: '✝️', label: '光芒十字架', category: '圣夜信仰', accent: '#FBBF24' },
+    { id: 'dove', emoji: '🕊️', label: '圣洁和平白鸽', category: '圣夜信仰', accent: '#E2E8F0' },
+    { id: 'crown', emoji: '👑', label: '璀璨金色皇冠', category: '圣夜信仰', accent: '#FBBF24' },
+    { id: 'heart', emoji: '❤️', label: '立体发光红心', category: '圣夜信仰', accent: '#E11D48' },
+    { id: 'music_note', emoji: '🎵', label: '律动金色音符', category: '圣夜信仰', accent: '#F59E0B' },
     { id: 'xmas_gingerbread', emoji: '🍪', label: '糖霜姜饼人', category: '冬日美食', accent: '#B45309' },
     { id: 'xmas_snow_globe', emoji: '🔮', label: '雪景水晶球', category: '冬日美食', accent: '#38BDF8' },
     { id: 'xmas_hot_cocoa', emoji: '☕', label: '棉花糖热可可', category: '冬日美食', accent: '#991B1B' },
@@ -171,22 +186,54 @@ const HOLIDAY_ICON_CATALOG = [
     { id: 'xmas_cookie_star', emoji: '⭐', label: '糖霜星形饼干', category: '冬日美食', accent: '#D97706' },
     { id: 'cardinal_feather', emoji: '🪶', label: '红雀红褐羽毛', category: '飞羽红雀', accent: '#B93827' },
     { id: 'northern_cardinal', emoji: '🐦', label: '红雀鸟松枝', category: '飞羽红雀', accent: '#DC2626' },
+    { id: 'cardinal_smile', emoji: '😊', label: '微笑开心红雀鸟', category: '飞羽红雀', accent: '#EF4444' },
+    { id: 'cardinal_pray', emoji: '🙏', label: '虔诚祈祷红雀鸟', category: '飞羽红雀', accent: '#DC2626' },
+    { id: 'cardinal_cry', emoji: '😢', label: '感动哭泣红雀鸟', category: '飞羽红雀', accent: '#B91C1C' },
+    { id: 'cardinal_sing', emoji: '🎶', label: '欢唱颂赞红雀鸟', category: '飞羽红雀', accent: '#EA580C' },
     { id: 'cardinal_quill_gold', emoji: '✒️', label: '红雀棕羽金笔', category: '飞羽红雀', accent: '#9A3412' },
     { id: 'amber_autumn_feather', emoji: '🍂', label: '焦糖琥珀金羽', category: '飞羽红雀', accent: '#D97706' },
     { id: 'crimson_rose_feather', emoji: '🥀', label: '绯红玫瑰金羽', category: '飞羽红雀', accent: '#E11D48' },
     { id: 'frost_crystal_feather', emoji: '❄️', label: '冰晶银蓝雪羽', category: '飞羽红雀', accent: '#38BDF8' },
     { id: 'peacock_plumage', emoji: '🦚', label: '翡翠孔雀翎羽', category: '飞羽红雀', accent: '#14B8A6' },
     { id: 'dove_white_feather', emoji: '🕊️', label: '圣洁鎏金白羽', category: '飞羽红雀', accent: '#E0F2FE' },
+    // ── 新增：美加花卉 & 国旗 & 感恩火鸡 & 全部 T 字幕/滚动字幕手写笔尖互通图标 ──
+    { id: 'us_waving_flag', emoji: '🇺🇸', label: '美国飘扬星条旗', category: '美加国旗', accent: '#DC2626' },
+    { id: 'us_flag_heart', emoji: '🇺🇸', label: '星条旗爱心徽', category: '美加国旗', accent: '#1D4ED8' },
+    { id: 'us_flag_shield', emoji: '🇺🇸', label: '星条旗荣耀盾徽', category: '美加国旗', accent: '#1E3A8A' },
+    { id: 'canada_maple_flag', emoji: '🇨🇦', label: '加拿大飘扬枫叶旗', category: '美加国旗', accent: '#DC2626' },
+    { id: 'us_canada_friendship_flags', emoji: '🏳️', label: '美加双旗飘扬结', category: '美加国旗', accent: '#B91C1C' },
+    { id: 'purple_heart_medal', emoji: '🎖️', label: '紫心英勇勋章', category: '美加国旗', accent: '#7E22CE' },
+    { id: 'bald_eagle_crest', emoji: '🦅', label: '白头海雕金章', category: '美加国旗', accent: '#D97706' },
+    { id: 'military_dog_tag', emoji: '🏷️', label: '美军银色铭牌', category: '美加国旗', accent: '#94A3B8' },
+    { id: 'us_patriotic_rose', emoji: '🌹', label: '美国三色玫瑰花束', category: '美加花卉', accent: '#E11D48' },
+    { id: 'us_texas_bluebonnet', emoji: '🪻', label: '美国德州蓝帽花', category: '美加花卉', accent: '#2563EB' },
+    { id: 'us_sunflower_liberty', emoji: '🌻', label: '美国自由向日葵', category: '美加花卉', accent: '#FACC15' },
+    { id: 'us_dogwood_blossom', emoji: '🌸', label: '美国山茱萸圣花', category: '美加花卉', accent: '#FDE68A' },
+    { id: 'rose', emoji: '🌹', label: '红玫瑰花', category: '美加花卉', accent: '#E11D48' },
+    { id: 'sakura', emoji: '🌸', label: '浪漫樱花瓣', category: '美加花卉', accent: '#F472B6' },
+    { id: 'veteran_poppy', emoji: '🌺', label: '纪念红罂粟花', category: '美加花卉', accent: '#DC2626' },
+    { id: 'leaf', emoji: '🍃', label: '清新翠绿嫩叶', category: '美加花卉', accent: '#22C55E' },
+    { id: 'butterfly', emoji: '🦋', label: '灵动金粉蝴蝶', category: '美加花卉', accent: '#60A5FA' },
+    { id: 'canada_harvest_turkey', emoji: '🦃', label: '加拿大感恩火鸡', category: '感恩秋日', accent: '#B45309' },
+    { id: 'roast_turkey_feast', emoji: '🍗', label: '感恩金色烤火鸡', category: '感恩秋日', accent: '#C2410C' },
+    { id: 'maple_leaf', emoji: '🍁', label: '北美赤陶秋枫叶', category: '感恩秋日', accent: '#B85A3A' },
+    { id: 'wheat_stalk', emoji: '🌾', label: '感恩丰收金麦穗', category: '感恩秋日', accent: '#DFB67E' },
+    { id: 'acorn', emoji: '🌰', label: '森系简约橡果', category: '感恩秋日', accent: '#92400E' },
+    { id: 'minimal_pumpkin', emoji: '🎃', label: '奶油赤陶南瓜', category: '感恩秋日', accent: '#C96D44' },
+    { id: 'warm_mug', emoji: '☕', label: '暖秋手冲咖啡杯', category: '感恩秋日', accent: '#6B5344' },
+    { id: 'olive_branch', emoji: '🌿', label: '静谧和平橄榄枝', category: '感恩秋日', accent: '#788972' },
+    { id: 'pencil', emoji: '✏️', label: '经典木质铅笔', category: '书写笔尖', accent: '#FBBF24' },
+    { id: 'quill', emoji: '🪶', label: '复古羽毛笔', category: '书写笔尖', accent: '#D4AF37' },
+    { id: 'fountain_pen', emoji: '🖋️', label: '复古黑金钢笔', category: '书写笔尖', accent: '#F5C542' },
+    { id: 'brush', emoji: '🖌️', label: '东方水墨毛笔', category: '书写笔尖', accent: '#C89D54' },
+    { id: 'sparkle_wand', emoji: '✨', label: '星光魔法棒', category: '书写笔尖', accent: '#FDE047' },
+    { id: 'candle_flame', emoji: '🕯️', label: '温暖摇曳烛火', category: '书写笔尖', accent: '#F97316' },
+    { id: 'feather_gold', emoji: '🪽', label: '鎏金神圣金羽', category: '书写笔尖', accent: '#FDE047' },
 ];
 const HOLIDAY_ICON_SET = new Set(HOLIDAY_ICON_CATALOG.map((item) => item.id));
 const HOLIDAY_ICON_MAP = Object.fromEntries(HOLIDAY_ICON_CATALOG.map((item) => [item.id, item]));
 
 const BUILTIN_WRITING_TIP_KINDS = new Set([
-    'quill', 'rose', 'fountain_pen', 'brush', 'pencil', 'sparkle_wand',
-    'butterfly', 'candle_flame', 'dove', 'heart', 'leaf', 'sakura',
-    'crown', 'music_note', 'cross_light', 'feather_gold',
-    'us_flag_shield', 'purple_heart_medal', 'bald_eagle_crest', 'veteran_poppy', 'military_dog_tag',
-    'maple_leaf', 'wheat_stalk', 'acorn', 'minimal_pumpkin', 'warm_mug', 'olive_branch',
     ...HOLIDAY_ICON_CATALOG.map((item) => item.id),
 ]);
 function isImageOrVectorWritingTip(kind) {
@@ -413,7 +460,7 @@ function drawHolidayStickerIcon(ctx, rawKind, cx, cy, size = 120, opts = {}) {
     const kind = String(rawKind).trim();
     if (!HOLIDAY_ICON_SET.has(kind)) return false;
 
-    const t = Number(opts.time) || 0;
+    const t = Number(opts.time ?? opts.timeSec) || 0;
     const angleDeg = Number(opts.angleDeg) || 0;
     ctx.save();
     ctx.translate(cx, cy);
@@ -1450,6 +1497,837 @@ function drawHolidayStickerIcon(ctx, rawKind, cx, cy, size = 120, opts = {}) {
             ctx.restore();
             break;
         }
+        case 'us_patriotic_rose': {
+            // 🌹 American Tricolor Patriotic Rose Bouquet w/ gentle sway & sparkles
+            const sway = Math.sin(t * 2.6) * 0.06;
+            ctx.save();
+            ctx.rotate(sway);
+            // Green stems & leaves
+            ctx.strokeStyle = '#15803d';
+            ctx.lineWidth = 0.032;
+            ctx.beginPath();
+            ctx.moveTo(0, 0.36); ctx.quadraticCurveTo(-0.04, 0.14, -0.14, -0.06);
+            ctx.moveTo(0, 0.36); ctx.quadraticCurveTo(0.02, 0.12, 0.0, -0.18);
+            ctx.moveTo(0, 0.36); ctx.quadraticCurveTo(0.08, 0.14, 0.17, -0.04);
+            ctx.stroke();
+            for (const [lx, ly, lr] of [[-0.12, 0.18, -0.7], [0.13, 0.19, 0.75]]) {
+                ctx.save();
+                ctx.translate(lx, ly); ctx.rotate(lr);
+                ctx.fillStyle = '#22c55e';
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 0.09, 0.042, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            const drawLayeredRose = (rx, ry, rRad, cOuter, cInner, cRim) => {
+                ctx.save();
+                ctx.translate(rx, ry);
+                for (let k = 0; k < 5; k++) {
+                    const a = (k * Math.PI * 2) / 5 + 0.2;
+                    circle(Math.cos(a) * rRad * 0.38, Math.sin(a) * rRad * 0.38, rRad * 0.56, cOuter, cRim, 0.01);
+                }
+                circle(0, 0, rRad * 0.55, cInner, cRim, 0.01);
+                ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+                ctx.lineWidth = 0.012;
+                ctx.beginPath();
+                ctx.arc(0, 0, rRad * 0.26, 0.3, Math.PI * 1.65);
+                ctx.stroke();
+                ctx.restore();
+            };
+            // Royal navy blue rose (left), pure ivory white rose (top), crimson red rose (right)
+            drawLayeredRose(-0.16, -0.08, 0.135, '#1e3a8a', '#2563eb', '#172554');
+            drawLayeredRose(0.16, -0.06, 0.135, '#be123c', '#f43f5e', '#881337');
+            drawLayeredRose(0.0, -0.20, 0.155, '#e2e8f0', '#ffffff', '#94a3b8');
+            // Golden ribbon bow at base
+            _holidayVelvetBow(ctx, 0, 0.24, 0.78);
+            const tw = 0.65 + 0.35 * Math.sin(t * 5.0);
+            ctx.fillStyle = `rgba(253, 224, 71, ${tw.toFixed(2)})`;
+            _holidayStarPolygon(ctx, -0.22, -0.26, 5, 0.048, 0.018, -Math.PI / 2);
+            ctx.fill();
+            _holidayStarPolygon(ctx, 0.24, -0.24, 5, 0.042, 0.016, -Math.PI / 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'us_texas_bluebonnet': {
+            // 🪻 US Wildflower / Texas Bluebonnet cluster gently swaying
+            const sway = Math.sin(t * 2.4) * 0.065;
+            ctx.save();
+            ctx.rotate(sway);
+            ctx.strokeStyle = '#15803d';
+            ctx.lineWidth = 0.026;
+            ctx.beginPath();
+            ctx.moveTo(0, 0.38); ctx.quadraticCurveTo(0.03, 0.12, 0, -0.28);
+            ctx.moveTo(-0.08, 0.36); ctx.quadraticCurveTo(-0.14, 0.16, -0.18, -0.06);
+            ctx.stroke();
+            for (const [lx, ly, rot] of [[0.10, 0.22, 0.55], [-0.14, 0.24, -0.6]]) {
+                ctx.save(); ctx.translate(lx, ly); ctx.rotate(rot);
+                ctx.fillStyle = '#4ade80';
+                ctx.beginPath(); ctx.ellipse(0, 0, 0.095, 0.032, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+            const florets = [
+                [0, -0.34, '#e0f2fe', 0.042], [-0.045, -0.27, '#60a5fa', 0.048], [0.045, -0.26, '#3b82f6', 0.048],
+                [-0.065, -0.18, '#2563eb', 0.056], [0.065, -0.17, '#1d4ed8', 0.056], [0, -0.20, '#93c5fd', 0.045],
+                [-0.075, -0.08, '#1e40af', 0.062], [0.075, -0.08, '#2563eb', 0.062], [0, -0.08, '#60a5fa', 0.05],
+                [-0.065, 0.02, '#1e3a8a', 0.058], [0.065, 0.02, '#1d4ed8', 0.058],
+                [-0.19, -0.08, '#3b82f6', 0.048], [-0.16, -0.01, '#1d4ed8', 0.052], [-0.17, -0.14, '#bfdbfe', 0.038],
+            ];
+            for (const [fx, fy, col, fr] of florets) {
+                circle(fx, fy, fr, col, '#172554', 0.008);
+                circle(fx + 0.006, fy - 0.008, fr * 0.35, 'rgba(255,255,255,0.65)');
+            }
+            ctx.restore();
+            break;
+        }
+        case 'us_sunflower_liberty': {
+            // 🌻 American Golden Sunflower w/ rotating warm corona & patriotic bow
+            const rot = t * 0.35;
+            ctx.strokeStyle = '#15803d';
+            ctx.lineWidth = 0.034;
+            ctx.beginPath();
+            ctx.moveTo(0, 0.05); ctx.quadraticCurveTo(0.03, 0.24, -0.02, 0.42);
+            ctx.stroke();
+            ctx.save();
+            ctx.translate(0, -0.08);
+            ctx.rotate(rot);
+            for (let i = 0; i < 16; i++) {
+                ctx.save();
+                ctx.rotate((i * Math.PI * 2) / 16);
+                ctx.fillStyle = _holidayLinGrad(ctx, 0, -0.10, 0, -0.34, [
+                    [0, '#f59e0b'], [0.65, '#facc15'], [1, '#fef08a'],
+                ], '#facc15');
+                ctx.beginPath();
+                ctx.ellipse(0, -0.22, 0.044, 0.115, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.restore();
+            circle(0, -0.08, 0.12, '#451a03', '#78350f', 0.014);
+            circle(0, -0.08, 0.078, '#78350f');
+            // Seed golden sparkles
+            for (let i = 0; i < 6; i++) {
+                const a = (i * Math.PI) / 3 + rot;
+                circle(Math.cos(a) * 0.055, -0.08 + Math.sin(a) * 0.055, 0.012, '#fde047');
+            }
+            // Patriotic blue/red bow under bloom
+            ctx.fillStyle = '#1e3a8a';
+            ctx.beginPath(); ctx.ellipse(-0.08, 0.22, 0.075, 0.042, -0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath(); ctx.ellipse(0.08, 0.22, 0.075, 0.042, 0.3, 0, Math.PI * 2); ctx.fill();
+            circle(0, 0.22, 0.028, '#facc15');
+            break;
+        }
+        case 'us_dogwood_blossom': {
+            // 🌸 American Dogwood 4-bract Blossom w/ soft spring shimmer
+            const pulse = 1 + Math.sin(t * 2.5) * 0.035;
+            ctx.save();
+            ctx.scale(pulse, pulse);
+            _holidayPineSprig(ctx, -0.18, 0.22, -0.7, 0.28);
+            for (let i = 0; i < 4; i++) {
+                ctx.save();
+                ctx.rotate((i * Math.PI) / 2 + Math.PI / 4);
+                ctx.fillStyle = _holidayLinGrad(ctx, 0, 0, 0, -0.36, [
+                    [0, '#fef2f2'], [0.7, '#ffffff'], [1, '#fbcfe8'],
+                ], '#ffffff');
+                ctx.strokeStyle = '#f472b6';
+                ctx.lineWidth = 0.012;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-0.16, -0.08, -0.18, -0.32, -0.04, -0.35);
+                ctx.lineTo(0, -0.31);
+                ctx.lineTo(0.04, -0.35);
+                ctx.bezierCurveTo(0.18, -0.32, 0.16, -0.08, 0, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+            circle(0, 0, 0.075, '#4ade80', '#16a34a', 0.012);
+            for (let i = 0; i < 8; i++) {
+                const a = (i * Math.PI) / 4;
+                circle(Math.cos(a) * 0.05, Math.sin(a) * 0.05, 0.016, '#facc15');
+            }
+            ctx.restore();
+            break;
+        }
+        case 'us_waving_flag': {
+            // 🇺🇸 Animated Waving US Stars & Stripes Flag on Brass Pole
+            const poleX = -0.34;
+            ctx.strokeStyle = '#d4af37';
+            ctx.lineWidth = 0.032;
+            ctx.beginPath(); ctx.moveTo(poleX, -0.38); ctx.lineTo(poleX, 0.42); ctx.stroke();
+            circle(poleX, -0.40, 0.042, '#fde047', '#92400e', 0.012);
+            const flagW = 0.68, flagH = 0.42, topY = -0.34, strips = 18;
+            for (let s = 0; s < strips; s++) {
+                const u0 = s / strips, u1 = (s + 1) / strips;
+                const x0 = poleX + 0.02 + u0 * flagW;
+                const x1 = poleX + 0.02 + u1 * flagW;
+                const wy0 = Math.sin(u0 * 4.5 - t * 5.2) * 0.036 * u0;
+                const wy1 = Math.sin(u1 * 4.5 - t * 5.2) * 0.036 * u1;
+                for (let stripe = 0; stripe < 7; stripe++) {
+                    const yA = topY + (stripe / 7) * flagH;
+                    const yB = topY + ((stripe + 1) / 7) * flagH;
+                    ctx.fillStyle = stripe % 2 === 0 ? '#dc2626' : '#f8fafc';
+                    ctx.beginPath();
+                    ctx.moveTo(x0, yA + wy0);
+                    ctx.lineTo(x1 + 0.004, yA + wy1);
+                    ctx.lineTo(x1 + 0.004, yB + wy1);
+                    ctx.lineTo(x0, yB + wy0);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                if (u0 < 0.44) {
+                    const cBot = topY + flagH * (4 / 7);
+                    ctx.fillStyle = '#1e3a8a';
+                    ctx.beginPath();
+                    ctx.moveTo(x0, topY + wy0);
+                    ctx.lineTo(x1 + 0.004, topY + wy1);
+                    ctx.lineTo(x1 + 0.004, cBot + wy1);
+                    ctx.lineTo(x0, cBot + wy0);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            }
+            // Stars inside navy canton
+            ctx.fillStyle = '#ffffff';
+            for (const [sx, sy] of [[0.11, -0.26], [0.21, -0.26], [0.16, -0.19], [0.11, -0.13], [0.21, -0.13]]) {
+                const wy = Math.sin((sx / flagW) * 4.5 - t * 5.2) * 0.024;
+                _holidayStarPolygon(ctx, poleX + sx, sy + wy, 5, 0.024, 0.010, -Math.PI / 2);
+                ctx.fill();
+            }
+            break;
+        }
+        case 'us_flag_heart': {
+            // 🇺🇸 Heart Shaped US Flag Emblem w/ gentle pulse & orbit stars
+            const beat = 1 + 0.055 * Math.sin(t * 4.2);
+            ctx.save();
+            ctx.scale(beat, beat);
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(0, 0.34);
+            ctx.bezierCurveTo(-0.42, 0.08, -0.44, -0.34, -0.16, -0.34);
+            ctx.bezierCurveTo(-0.04, -0.34, 0, -0.24, 0, -0.20);
+            ctx.bezierCurveTo(0, -0.24, 0.04, -0.34, 0.16, -0.34);
+            ctx.bezierCurveTo(0.44, -0.34, 0.42, 0.08, 0, 0.34);
+            ctx.closePath();
+            if (typeof ctx.clip === 'function') {
+                ctx.clip();
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(-0.45, -0.40, 0.90, 0.80);
+                for (let i = 0; i < 7; i += 2) {
+                    ctx.fillStyle = '#dc2626';
+                    ctx.fillRect(-0.45, -0.36 + i * 0.105, 0.90, 0.058);
+                }
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fillRect(-0.45, -0.38, 0.44, 0.38);
+            } else {
+                ctx.fillStyle = '#f8fafc';
+                ctx.fill();
+                for (let i = 0; i < 6; i += 2) {
+                    ctx.fillStyle = '#dc2626';
+                    ctx.fillRect(-0.28, -0.22 + i * 0.085, 0.56, 0.05);
+                }
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fillRect(-0.28, -0.24, 0.27, 0.23);
+            }
+            ctx.fillStyle = '#ffffff';
+            for (const [sx, sy] of [[-0.24, -0.24], [-0.11, -0.24], [-0.18, -0.15], [-0.26, -0.08], [-0.10, -0.08]]) {
+                _holidayStarPolygon(ctx, sx, sy, 5, 0.032, 0.014, -Math.PI / 2);
+                ctx.fill();
+            }
+            ctx.restore();
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 0.026;
+            ctx.beginPath();
+            ctx.moveTo(0, 0.34);
+            ctx.bezierCurveTo(-0.42, 0.08, -0.44, -0.34, -0.16, -0.34);
+            ctx.bezierCurveTo(-0.04, -0.34, 0, -0.24, 0, -0.20);
+            ctx.bezierCurveTo(0, -0.24, 0.04, -0.34, 0.16, -0.34);
+            ctx.bezierCurveTo(0.44, -0.34, 0.42, 0.08, 0, 0.34);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+            break;
+        }
+        case 'canada_maple_flag': {
+            // 🇨🇦 Animated Waving Canadian Maple Leaf Flag
+            const poleX = -0.34;
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 0.030;
+            ctx.beginPath(); ctx.moveTo(poleX, -0.38); ctx.lineTo(poleX, 0.42); ctx.stroke();
+            circle(poleX, -0.40, 0.038, '#facc15', '#92400e', 0.010);
+            const flagW = 0.68, flagH = 0.42, topY = -0.34, strips = 18;
+            for (let s = 0; s < strips; s++) {
+                const u0 = s / strips, u1 = (s + 1) / strips;
+                const x0 = poleX + 0.02 + u0 * flagW;
+                const x1 = poleX + 0.02 + u1 * flagW;
+                const wy0 = Math.sin(u0 * 4.5 - t * 5.2) * 0.036 * u0;
+                const wy1 = Math.sin(u1 * 4.5 - t * 5.2) * 0.036 * u1;
+                ctx.fillStyle = (u0 < 0.25 || u0 >= 0.75) ? '#dc2626' : '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(x0, topY + wy0);
+                ctx.lineTo(x1 + 0.004, topY + wy1);
+                ctx.lineTo(x1 + 0.004, topY + flagH + wy1);
+                ctx.lineTo(x0, topY + flagH + wy0);
+                ctx.closePath();
+                ctx.fill();
+            }
+            const midY = topY + flagH * 0.5 + Math.sin(2.25 - t * 5.2) * 0.018;
+            ctx.save();
+            ctx.translate(poleX + 0.02 + flagW * 0.5, midY);
+            ctx.scale(0.16, 0.16);
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.moveTo(0, -0.82); ctx.lineTo(0.20, -0.42); ctx.lineTo(0.55, -0.52);
+            ctx.lineTo(0.42, -0.10); ctx.lineTo(0.76, 0.04); ctx.lineTo(0.45, 0.32);
+            ctx.lineTo(0.50, 0.54); ctx.lineTo(0.10, 0.44); ctx.lineTo(0.06, 0.85);
+            ctx.lineTo(-0.06, 0.85); ctx.lineTo(-0.10, 0.44); ctx.lineTo(-0.50, 0.54);
+            ctx.lineTo(-0.45, 0.32); ctx.lineTo(-0.76, 0.04); ctx.lineTo(-0.42, -0.10);
+            ctx.lineTo(-0.55, -0.52); ctx.lineTo(-0.20, -0.42);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+            break;
+        }
+        case 'us_canada_friendship_flags': {
+            // Crossed US & Canada Flags w/ wave shimmer
+            const drawMiniFlag = (dir, isCanada) => {
+                ctx.save();
+                ctx.rotate(dir * 0.42 + Math.sin(t * 3.8 + dir) * 0.04);
+                ctx.strokeStyle = '#eab308';
+                ctx.lineWidth = 0.024;
+                ctx.beginPath(); ctx.moveTo(0, -0.34); ctx.lineTo(0, 0.36); ctx.stroke();
+                const fw = 0.34 * dir;
+                if (isCanada) {
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, -0.32, fw, 0.22);
+                    ctx.fillStyle = '#dc2626'; ctx.fillRect(0, -0.32, fw * 0.25, 0.22); ctx.fillRect(fw * 0.75, -0.32, fw * 0.25, 0.22);
+                    circle(fw * 0.5, -0.21, 0.048, '#dc2626');
+                } else {
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, -0.32, fw, 0.22);
+                    for (let i = 0; i < 4; i += 2) {
+                        ctx.fillStyle = '#dc2626'; ctx.fillRect(0, -0.32 + i * 0.055, fw, 0.032);
+                    }
+                    ctx.fillStyle = '#1e3a8a'; ctx.fillRect(0, -0.32, fw * 0.45, 0.12);
+                }
+                ctx.restore();
+            };
+            drawMiniFlag(-1, false);
+            drawMiniFlag(1, true);
+            circle(0, 0.16, 0.052, '#facc15', '#92400e', 0.014);
+            break;
+        }
+        case 'canada_harvest_turkey': {
+            // 🦃 Animated Canadian Harvest Turkey w/ fanned maple tail bob & blink
+            const tailSway = Math.sin(t * 3.5) * 0.05;
+            const blink = Math.sin(t * 2.2) > 0.94;
+            ctx.save();
+            ctx.rotate(tailSway);
+            const fanColors = ['#b91c1c', '#d97706', '#eab308', '#c2410c', '#991b1b', '#f59e0b', '#b91c1c'];
+            for (let i = 0; i < fanColors.length; i++) {
+                ctx.save();
+                ctx.rotate((i - 3) * 0.34);
+                ctx.fillStyle = fanColors[i];
+                ctx.strokeStyle = '#451a03';
+                ctx.lineWidth = 0.012;
+                ctx.beginPath();
+                ctx.ellipse(0, -0.18, 0.068, 0.20, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+                circle(0, -0.33, 0.025, '#fef08a');
+                ctx.restore();
+            }
+            ctx.restore();
+            // Plump mahogany body
+            ctx.fillStyle = _holidayRadGrad(ctx, 0, 0.08, 0.02, 0, 0.08, 0.20, [
+                [0, '#b45309'], [0.65, '#78350f'], [1, '#451a03'],
+            ], '#78350f');
+            ctx.beginPath(); ctx.ellipse(0, 0.10, 0.19, 0.16, 0, 0, Math.PI * 2); ctx.fill();
+            // Neck & head
+            ctx.fillStyle = '#92400e';
+            ctx.beginPath(); ctx.ellipse(0.0, -0.08, 0.082, 0.11, 0, 0, Math.PI * 2); ctx.fill();
+            circle(0, -0.17, 0.075, '#78350f', '#451a03', 0.01);
+            // Red wattle & golden beak
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath(); ctx.ellipse(-0.025, -0.10, 0.022, 0.048, 0.15, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#facc15';
+            ctx.beginPath(); ctx.moveTo(-0.03, -0.17); ctx.lineTo(0.06, -0.14); ctx.lineTo(-0.03, -0.11); ctx.closePath(); ctx.fill();
+            // Eyes
+            if (blink) {
+                ctx.strokeStyle = '#111827'; ctx.lineWidth = 0.014;
+                ctx.beginPath(); ctx.moveTo(-0.055, -0.19); ctx.lineTo(-0.02, -0.19); ctx.moveTo(0.02, -0.19); ctx.lineTo(0.055, -0.19); ctx.stroke();
+            } else {
+                circle(-0.038, -0.195, 0.018, '#ffffff'); circle(-0.035, -0.195, 0.009, '#0f172a');
+                circle(0.038, -0.195, 0.018, '#ffffff'); circle(0.035, -0.195, 0.009, '#0f172a');
+            }
+            // Canadian maple accent & claws
+            ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 0.022;
+            ctx.beginPath(); ctx.moveTo(-0.08, 0.25); ctx.lineTo(-0.08, 0.34); ctx.moveTo(0.08, 0.25); ctx.lineTo(0.08, 0.34); ctx.stroke();
+            circle(-0.18, 0.14, 0.042, '#dc2626');
+            circle(0.18, 0.14, 0.042, '#dc2626');
+            break;
+        }
+        case 'roast_turkey_feast': {
+            // 🍗 Golden Roast Turkey Platter w/ rising warm steam animation
+            const steamWave = Math.sin(t * 4.2) * 0.035;
+            // Porcelain serving platter
+            ctx.fillStyle = '#e2e8f0'; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.014;
+            ctx.beginPath(); ctx.ellipse(0, 0.22, 0.38, 0.11, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.ellipse(0, 0.20, 0.32, 0.08, 0, 0, Math.PI * 2); ctx.fill();
+            // Crisp herbs & cranberries on rim
+            circle(-0.22, 0.20, 0.026, '#16a34a'); circle(0.22, 0.20, 0.026, '#dc2626');
+            circle(0.17, 0.23, 0.022, '#16a34a'); circle(-0.16, 0.23, 0.022, '#dc2626');
+            // Caramelized golden-brown roast turkey body
+            ctx.fillStyle = _holidayRadGrad(ctx, -0.04, 0.02, 0.02, 0, 0.08, 0.24, [
+                [0, '#f59e0b'], [0.55, '#c2410c'], [1, '#7c2d12'],
+            ], '#c2410c');
+            ctx.beginPath(); ctx.ellipse(-0.02, 0.08, 0.23, 0.14, -0.05, 0, Math.PI * 2); ctx.fill();
+            // Drumstick bone & frill
+            ctx.fillStyle = '#d97706';
+            ctx.beginPath(); ctx.ellipse(0.18, 0.04, 0.09, 0.052, -0.42, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#fffbeb'; ctx.lineWidth = 0.032;
+            ctx.beginPath(); ctx.moveTo(0.24, -0.01); ctx.lineTo(0.32, -0.06); ctx.stroke();
+            circle(0.33, -0.06, 0.028, '#fffbeb');
+            // Animated rising steam curls
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)'; ctx.lineWidth = 0.018;
+            for (const sx of [-0.10, 0.02, 0.14]) {
+                ctx.beginPath();
+                ctx.moveTo(sx, -0.08);
+                ctx.quadraticCurveTo(sx + steamWave, -0.18, sx - steamWave, -0.28);
+                ctx.stroke();
+            }
+            break;
+        }
+        case 'xmas_nutcracker_soldier': {
+            // 💂 Christmas Nutcracker Guard w/ subtle rhythmic jaw salute
+            const jaw = Math.abs(Math.sin(t * 4.5)) * 0.028;
+            roundBox(-0.15, -0.36, 0.30, 0.18, 0.04, '#1e293b', '#facc15', 0.016);
+            roundBox(-0.17, -0.21, 0.34, 0.04, 0.01, '#facc15');
+            circle(0, -0.27, 0.035, '#fde047');
+            // Peach face + pink cheeks
+            roundBox(-0.13, -0.17, 0.26, 0.20, 0.05, '#fed7aa', '#9a3412', 0.012);
+            circle(-0.075, -0.08, 0.024, '#f87171');
+            circle(0.075, -0.08, 0.024, '#f87171');
+            circle(-0.055, -0.115, 0.016, '#0f172a');
+            circle(0.055, -0.115, 0.016, '#0f172a');
+            // White mustache & animated jaw teeth
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.ellipse(-0.05, -0.045, 0.055, 0.02, -0.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0.05, -0.045, 0.055, 0.02, 0.2, 0, Math.PI * 2); ctx.fill();
+            roundBox(-0.06, -0.01 + jaw, 0.12, 0.055, 0.01, '#ffffff', '#1e293b', 0.01);
+            // Red royal tunic & golden epaulets
+            roundBox(-0.16, 0.06, 0.32, 0.26, 0.03, '#dc2626', '#7f1d1d', 0.014);
+            circle(-0.16, 0.10, 0.045, '#facc15'); circle(0.16, 0.10, 0.045, '#facc15');
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(-0.16, 0.24, 0.32, 0.045);
+            roundBox(-0.04, 0.235, 0.08, 0.055, 0.01, '#fde047');
+            break;
+        }
+        case 'xmas_carousel_ornament': {
+            // Twin swaying golden Christmas bells under arched pine swag
+            const swing = Math.sin(t * 3.8) * 0.12;
+            _holidayPineSprig(ctx, -0.02, -0.18, -0.95, 0.34);
+            _holidayPineSprig(ctx, 0.02, -0.18, 0.95, 0.34);
+            _holidayGoldBellBody(ctx, -0.13, 0.10, 0.88, 0.18 + swing);
+            _holidayGoldBellBody(ctx, 0.13, 0.10, 0.88, -0.18 - swing);
+            _holidayVelvetBow(ctx, 0, -0.18, 0.96);
+            _holidayGlossyBerry(ctx, -0.06, -0.11, 0.034);
+            _holidayGlossyBerry(ctx, 0.06, -0.11, 0.034);
+            break;
+        }
+        case 'golden_cross_halo_rays': {
+            // ✨✝️ Pulsing Divine Light Rays + Luxury Metallic Gold Cross
+            const pulse = 0.88 + 0.12 * Math.sin(t * 3.2);
+            ctx.save();
+            ctx.rotate(t * 0.28);
+            for (let i = 0; i < 12; i++) {
+                ctx.save();
+                ctx.rotate((i * Math.PI) / 6);
+                const rayGrad = _holidayLinGrad(ctx, 0, 0, 0, -0.44 * pulse, [
+                    [0, 'rgba(253, 224, 71, 0.65)'], [1, 'rgba(253, 224, 71, 0)'],
+                ], 'rgba(253, 224, 71, 0.35)');
+                ctx.fillStyle = rayGrad;
+                ctx.beginPath();
+                ctx.moveTo(-0.022, 0); ctx.lineTo(0.022, 0);
+                ctx.lineTo(0.008, -0.44 * pulse); ctx.lineTo(-0.008, -0.44 * pulse);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            ctx.restore();
+            circle(0, -0.06, 0.24 * pulse, 'rgba(254, 240, 138, 0.24)');
+            const gold = _holidayLinGrad(ctx, -0.16, -0.34, 0.18, 0.36, [
+                [0, '#fef9c3'], [0.42, '#facc15'], [0.8, '#d97706'], [1, '#92400e'],
+            ], '#facc15');
+            roundBox(-0.065, -0.34, 0.13, 0.68, 0.028, gold, '#fffbeb', 0.014);
+            roundBox(-0.23, -0.17, 0.46, 0.12, 0.028, gold, '#fffbeb', 0.014);
+            // Specular highlight center
+            ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+            ctx.lineWidth = 0.014;
+            ctx.beginPath();
+            ctx.moveTo(-0.028, -0.30); ctx.lineTo(-0.028, 0.30);
+            ctx.stroke();
+            break;
+        }
+        case 'golden_cross_dove_bloom': {
+            // 🕊️✝️ Golden Cross crowned with fluttering white dove & olive leaves
+            const flap = Math.sin(t * 7.2) * 0.25;
+            const gold = _holidayLinGrad(ctx, -0.15, -0.25, 0.15, 0.35, [
+                [0, '#fef08a'], [0.5, '#eab308'], [1, '#a16207'],
+            ], '#eab308');
+            roundBox(-0.055, -0.24, 0.11, 0.58, 0.024, gold, '#fef9c3', 0.012);
+            roundBox(-0.20, -0.09, 0.40, 0.105, 0.024, gold, '#fef9c3', 0.012);
+            // Tiny hovering white dove at cross crown
+            ctx.save();
+            ctx.translate(0, -0.25 + Math.sin(t * 3.6) * 0.02);
+            ctx.save();
+            ctx.rotate(-0.2 + flap);
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 0.01;
+            ctx.beginPath(); ctx.ellipse(-0.09, -0.05, 0.11, 0.048, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            ctx.save();
+            ctx.rotate(0.2 - flap);
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 0.01;
+            ctx.beginPath(); ctx.ellipse(0.09, -0.05, 0.11, 0.048, 0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            circle(0, -0.02, 0.055, '#ffffff', '#cbd5e1', 0.01);
+            circle(0.032, -0.03, 0.008, '#0f172a');
+            ctx.restore();
+            break;
+        }
+        case 'cardinal_smile':
+        case 'cardinal_pray':
+        case 'cardinal_cry':
+        case 'cardinal_sing': {
+            // 🐦 Expressive Animated Northern Cardinals (Smile / Pray / Cry / Sing)
+            const bounce = Math.sin(t * 5.2) * (kind === 'cardinal_cry' ? 0.012 : 0.028);
+            const tilt = kind === 'cardinal_cry'
+                ? (0.08 + Math.sin(t * 3.0) * 0.035)
+                : Math.sin(t * 3.5) * 0.045;
+            ctx.save();
+            ctx.translate(0, bounce);
+            ctx.rotate(tilt);
+
+            // Halo glow above praying cardinal
+            if (kind === 'cardinal_pray') {
+                const haloGlow = 0.72 + 0.28 * Math.sin(t * 3.6);
+                ctx.save();
+                ctx.strokeStyle = `rgba(253, 224, 71, ${haloGlow.toFixed(2)})`;
+                ctx.lineWidth = 0.026;
+                ctx.beginPath();
+                ctx.ellipse(0.04, -0.34, 0.14, 0.042, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // Pine perch behind body
+            _holidayPineSprig(ctx, -0.26, 0.28, 1.35, 0.44);
+
+            // Long scarlet tail feathers (wag smoothly!)
+            ctx.save();
+            ctx.translate(-0.08, 0.08);
+            ctx.rotate(Math.sin(t * 6.0) * 0.08);
+            ctx.fillStyle = '#991b1b';
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(-0.24, 0.24); ctx.lineTo(-0.14, 0.28); ctx.lineTo(0.04, 0.04);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+
+            // Plump scarlet body
+            ctx.fillStyle = _holidayRadGrad(ctx, 0.02, 0.02, 0.02, 0.02, 0.04, 0.24, [
+                [0, '#ef4444'], [0.65, '#dc2626'], [1, '#991b1b'],
+            ], '#dc2626');
+            ctx.strokeStyle = '#7f1d1d';
+            ctx.lineWidth = 0.015;
+            ctx.beginPath();
+            ctx.ellipse(0.0, 0.06, 0.19, 0.17, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Head & expressive Scarlet crest
+            circle(0.02, -0.14, 0.135, '#dc2626', '#7f1d1d', 0.014);
+            ctx.fillStyle = '#dc2626';
+            ctx.beginPath();
+            ctx.moveTo(-0.06, -0.22);
+            ctx.lineTo(-0.12 + Math.sin(t * 5) * 0.015, -0.36);
+            ctx.lineTo(0.05, -0.26);
+            ctx.closePath();
+            ctx.fill();
+
+            // Cardinal black mask around face
+            ctx.fillStyle = '#111827';
+            ctx.beginPath();
+            ctx.ellipse(0.055, -0.125, 0.095, 0.072, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Mood-specific eyes & cheeks & beak & wings!
+            if (kind === 'cardinal_smile') {
+                // Happy smiling crescent eyes + warm rosy blush
+                circle(-0.025, -0.095, 0.032, 'rgba(251, 113, 133, 0.72)');
+                circle(0.115, -0.095, 0.032, 'rgba(251, 113, 133, 0.72)');
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 0.018;
+                ctx.beginPath();
+                ctx.arc(0.01, -0.145, 0.026, Math.PI * 1.12, Math.PI * 1.88);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(0.10, -0.145, 0.026, Math.PI * 1.12, Math.PI * 1.88);
+                ctx.stroke();
+                // Happy waving wings
+                const flap = Math.sin(t * 8.0) * 0.18;
+                ctx.save(); ctx.translate(-0.16, 0.02); ctx.rotate(-0.4 + flap);
+                ctx.fillStyle = '#9a3412'; ctx.beginPath(); ctx.ellipse(0, 0, 0.09, 0.045, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+                ctx.save(); ctx.translate(0.16, 0.02); ctx.rotate(0.4 - flap);
+                ctx.fillStyle = '#9a3412'; ctx.beginPath(); ctx.ellipse(0, 0, 0.09, 0.045, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+            } else if (kind === 'cardinal_pray') {
+                // Peaceful closed downward crescent eyes + folded wings pressed together in prayer!
+                ctx.strokeStyle = '#fde68a';
+                ctx.lineWidth = 0.016;
+                ctx.beginPath();
+                ctx.arc(0.01, -0.155, 0.024, 0.2, Math.PI - 0.2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(0.10, -0.155, 0.024, 0.2, Math.PI - 0.2);
+                ctx.stroke();
+                // Folded wings touching in front breast
+                ctx.fillStyle = '#9a3412'; ctx.strokeStyle = '#7f1d1d'; ctx.lineWidth = 0.012;
+                ctx.beginPath(); ctx.ellipse(-0.045, 0.07, 0.055, 0.10, 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(0.065, 0.07, 0.055, 0.10, -0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            } else if (kind === 'cardinal_cry') {
+                // Tender sad eyes + animated shimmering falling teardrops
+                circle(0.01, -0.145, 0.024, '#ffffff'); circle(0.014, -0.145, 0.012, '#0f172a');
+                circle(0.10, -0.145, 0.024, '#ffffff'); circle(0.096, -0.145, 0.012, '#0f172a');
+                const tearDropY = (t * 0.22) % 0.14;
+                const drawTear = (tx, ty) => {
+                    ctx.fillStyle = '#7dd3fc';
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty - 0.025);
+                    ctx.quadraticCurveTo(tx + 0.025, ty + 0.015, tx, ty + 0.032);
+                    ctx.quadraticCurveTo(tx - 0.025, ty + 0.015, tx, ty - 0.025);
+                    ctx.fill();
+                    circle(tx - 0.006, ty + 0.005, 0.006, '#ffffff');
+                };
+                drawTear(-0.01, -0.09 + tearDropY);
+                drawTear(0.12, -0.09 + ((tearDropY + 0.06) % 0.14));
+                ctx.fillStyle = '#9a3412';
+                ctx.beginPath(); ctx.ellipse(-0.14, 0.08, 0.05, 0.09, -0.25, 0, Math.PI * 2); ctx.fill();
+            } else {
+                // cardinal_sing: cheerful eye + floating golden music notes!
+                circle(0.06, -0.148, 0.022, '#ffffff'); circle(0.065, -0.148, 0.011, '#0f172a');
+                ctx.fillStyle = '#9a3412';
+                ctx.beginPath(); ctx.ellipse(-0.08, 0.06, 0.11, 0.065, -0.35 + Math.sin(t * 9) * 0.12, 0, Math.PI * 2); ctx.fill();
+                const ny = -0.26 - ((t * 0.14) % 0.12);
+                circle(0.24, ny, 0.026, '#facc15', '#92400e', 0.008);
+                ctx.strokeStyle = '#facc15'; ctx.lineWidth = 0.016;
+                ctx.beginPath(); ctx.moveTo(0.26, ny); ctx.lineTo(0.26, ny - 0.08); ctx.lineTo(0.32, ny - 0.06); ctx.stroke();
+            }
+
+            // Conical coral-orange beak (open slightly for singing, smiling curve for smile)
+            ctx.fillStyle = '#fb923c'; ctx.strokeStyle = '#c2410c'; ctx.lineWidth = 0.01;
+            if (kind === 'cardinal_sing') {
+                const open = 0.02 + Math.abs(Math.sin(t * 7)) * 0.03;
+                ctx.beginPath(); ctx.moveTo(0.08, -0.13); ctx.lineTo(0.20, -0.14 - open); ctx.lineTo(0.08, -0.10); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(0.08, -0.10); ctx.lineTo(0.19, -0.07 + open); ctx.lineTo(0.08, -0.08); ctx.closePath(); ctx.fill();
+            } else {
+                ctx.beginPath(); ctx.moveTo(0.07, -0.135); ctx.lineTo(0.165, -0.11); ctx.lineTo(0.07, -0.085); ctx.closePath(); ctx.fill(); ctx.stroke();
+            }
+            ctx.restore();
+            break;
+        }
+        case 'gentle_lamb_halo':
+        case 'shepherd_lamb_heart': {
+            // 🐑 Fluffy Gentle Little Lamb w/ animated ear wiggle, tail wag, blink & halo/heart
+            const bob = Math.sin(t * 3.4) * 0.024;
+            const earWag = Math.sin(t * 4.5) * 0.12;
+            const blink = Math.sin(t * 2.1) > 0.94;
+            ctx.save();
+            ctx.translate(0, bob);
+
+            if (kind === 'gentle_lamb_halo') {
+                const haloA = 0.72 + 0.28 * Math.sin(t * 3.4);
+                ctx.strokeStyle = `rgba(253, 224, 71, ${haloA.toFixed(2)})`;
+                ctx.lineWidth = 0.026;
+                ctx.beginPath(); ctx.ellipse(-0.08, -0.32, 0.13, 0.038, 0, 0, Math.PI * 2); ctx.stroke();
+            }
+            // Four slender warm hooves
+            ctx.fillStyle = '#78350f';
+            roundBox(-0.14, 0.18, 0.055, 0.15, 0.02, '#92400e');
+            roundBox(-0.04, 0.18, 0.055, 0.15, 0.02, '#78350f');
+            roundBox(0.08, 0.18, 0.055, 0.15, 0.02, '#92400e');
+            roundBox(0.17, 0.18, 0.055, 0.15, 0.02, '#78350f');
+            // Wagging puff tail
+            circle(0.24, 0.04 + Math.sin(t * 9) * 0.025, 0.065, '#f8fafc', '#cbd5e1', 0.012);
+            // Fluffy cloud wool puffs
+            for (const [wx, wy, wr] of [
+                [-0.08, 0.04, 0.13], [0.04, 0.02, 0.15], [0.16, 0.05, 0.13],
+                [-0.02, 0.13, 0.12], [0.10, 0.13, 0.12], [-0.14, 0.12, 0.10],
+            ]) {
+                circle(wx, wy, wr, '#ffffff', '#e2e8f0', 0.01);
+            }
+            // Floppy ears
+            ctx.save(); ctx.translate(-0.22, -0.14); ctx.rotate(-0.4 - earWag);
+            ctx.fillStyle = '#fef3c7'; ctx.strokeStyle = '#d97706'; ctx.lineWidth = 0.012;
+            ctx.beginPath(); ctx.ellipse(0, 0, 0.09, 0.042, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            ctx.save(); ctx.translate(-0.02, -0.14); ctx.rotate(0.4 + earWag);
+            ctx.fillStyle = '#fef3c7'; ctx.strokeStyle = '#d97706'; ctx.lineWidth = 0.012;
+            ctx.beginPath(); ctx.ellipse(0, 0, 0.09, 0.042, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            // Sweet cream face
+            ctx.fillStyle = '#fef3c7'; ctx.strokeStyle = '#d97706'; ctx.lineWidth = 0.014;
+            ctx.beginPath(); ctx.ellipse(-0.12, -0.07, 0.115, 0.105, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            // Fluffy wool crown bang on forehead
+            for (const [hx, hy] of [[-0.17, -0.16], [-0.12, -0.185], [-0.07, -0.16]]) {
+                circle(hx, hy, 0.052, '#ffffff');
+            }
+            circle(-0.18, -0.04, 0.024, 'rgba(251, 113, 133, 0.55)');
+            circle(-0.06, -0.04, 0.024, 'rgba(251, 113, 133, 0.55)');
+            if (blink) {
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 0.014;
+                ctx.beginPath(); ctx.moveTo(-0.18, -0.08); ctx.lineTo(-0.14, -0.08); ctx.moveTo(-0.09, -0.08); ctx.lineTo(-0.05, -0.08); ctx.stroke();
+            } else {
+                circle(-0.16, -0.085, 0.018, '#0f172a'); circle(-0.165, -0.092, 0.006, '#ffffff');
+                circle(-0.08, -0.085, 0.018, '#0f172a'); circle(-0.085, -0.092, 0.006, '#ffffff');
+            }
+            ctx.fillStyle = '#fb7185';
+            ctx.beginPath(); ctx.moveTo(-0.135, -0.035); ctx.lineTo(-0.105, -0.035); ctx.lineTo(-0.12, -0.015); ctx.closePath(); ctx.fill();
+
+            if (kind === 'shepherd_lamb_heart') {
+                const hp = 1 + 0.12 * Math.sin(t * 4.5);
+                ctx.save(); ctx.translate(0.18, -0.18); ctx.scale(0.32 * hp, 0.32 * hp);
+                ctx.fillStyle = '#e11d48';
+                ctx.beginPath();
+                ctx.moveTo(0, 0.3); ctx.bezierCurveTo(-0.4, 0.04, -0.4, -0.32, 0, -0.12);
+                ctx.bezierCurveTo(0.4, -0.32, 0.4, 0.04, 0, 0.3); ctx.fill();
+                ctx.restore();
+            }
+            ctx.restore();
+            break;
+        }
+        case 'rudolph_animated_leap': {
+            // 🦌 Animated Prancing / Jumping Rudolph w/ glowing pulsing red nose
+            const jump = Math.abs(Math.sin(t * 4.8)) * 0.08;
+            const noseGlow = 0.45 + 0.55 * Math.abs(Math.sin(t * 5.6));
+            ctx.save();
+            ctx.translate(0, -jump);
+            ctx.rotate(-0.12 + Math.sin(t * 4.8) * 0.08);
+            // Galloping legs
+            ctx.strokeStyle = '#78350f'; ctx.lineWidth = 0.036;
+            const stride = Math.sin(t * 9.6) * 0.08;
+            ctx.beginPath();
+            ctx.moveTo(-0.14, 0.10); ctx.lineTo(-0.22 - stride, 0.28);
+            ctx.moveTo(0.14, 0.10); ctx.lineTo(0.24 + stride, 0.24);
+            ctx.stroke();
+            // Body & chest cream puff
+            ctx.fillStyle = '#92400e';
+            ctx.beginPath(); ctx.ellipse(0, 0.05, 0.20, 0.11, -0.1, 0, Math.PI * 2); ctx.fill();
+            circle(-0.16, 0.02, 0.075, '#fef3c7');
+            // Head & antlers
+            ctx.fillStyle = '#b45309';
+            ctx.beginPath(); ctx.ellipse(-0.18, -0.13, 0.105, 0.082, -0.25, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#451a03'; ctx.lineWidth = 0.022;
+            ctx.beginPath();
+            ctx.moveTo(-0.15, -0.20); ctx.lineTo(-0.10, -0.36); ctx.moveTo(-0.12, -0.28); ctx.lineTo(-0.04, -0.30);
+            ctx.moveTo(-0.20, -0.20); ctx.lineTo(-0.25, -0.35);
+            ctx.stroke();
+            // Golden bell collar
+            ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 0.032;
+            ctx.beginPath(); ctx.moveTo(-0.18, -0.03); ctx.lineTo(-0.09, 0.04); ctx.stroke();
+            circle(-0.16, 0.04, 0.032, '#facc15');
+            // Bright glowing ruby Rudolph nose!
+            circle(-0.28, -0.14, 0.068, `rgba(239, 68, 68, ${(noseGlow * 0.42).toFixed(2)})`);
+            circle(-0.28, -0.14, 0.042, '#ef4444', '#7f1d1d', 0.01);
+            circle(-0.292, -0.152, 0.012, '#ffffff');
+            circle(-0.19, -0.16, 0.018, '#0f172a'); circle(-0.195, -0.165, 0.006, '#ffffff');
+            ctx.restore();
+            break;
+        }
+        case 'white_dove_flap_olive':
+        case 'white_dove_pray_heart': {
+            // 🕊️ Luminous Flapping White Dove w/ Olive Branch OR Prayer Gold Heart
+            const flap = Math.sin(t * 8.5);
+            const bobY = Math.sin(t * 3.4) * 0.03;
+            ctx.save();
+            ctx.translate(0, bobY);
+            circle(0, -0.04, 0.34, 'rgba(255, 250, 230, 0.22)');
+            // Far wing
+            ctx.save();
+            ctx.translate(0.02, -0.06);
+            ctx.rotate(-0.35 - flap * 0.42);
+            ctx.fillStyle = '#e2e8f0'; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.012;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.bezierCurveTo(0.06, -0.24, 0.22, -0.34, 0.32, -0.30);
+            ctx.bezierCurveTo(0.28, -0.12, 0.14, 0.02, 0, 0.04);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            // Fanned tail
+            ctx.fillStyle = '#f1f5f9'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 0.01;
+            ctx.beginPath(); ctx.moveTo(0.10, 0.04); ctx.lineTo(0.36, -0.02); ctx.lineTo(0.34, 0.12); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // Plump dove breast & head
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 0.014;
+            ctx.beginPath(); ctx.ellipse(0.0, 0.02, 0.18, 0.11, -0.18, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            circle(-0.15, -0.08, 0.075, '#ffffff', '#cbd5e1', 0.012);
+            circle(-0.17, -0.095, 0.014, '#0f172a'); circle(-0.175, -0.10, 0.005, '#ffffff');
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath(); ctx.moveTo(-0.22, -0.08); ctx.lineTo(-0.30, -0.055); ctx.lineTo(-0.22, -0.04); ctx.closePath(); ctx.fill();
+            // Foreground flapping primary wing
+            ctx.save();
+            ctx.translate(0.0, -0.02);
+            ctx.rotate(-0.15 - flap * 0.52);
+            ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 0.013;
+            ctx.beginPath();
+            ctx.moveTo(-0.04, 0); ctx.bezierCurveTo(-0.02, -0.26, 0.14, -0.38, 0.28, -0.36);
+            ctx.bezierCurveTo(0.24, -0.14, 0.12, 0.04, -0.02, 0.05);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+            if (kind === 'white_dove_flap_olive') {
+                // Held olive twig
+                ctx.save(); ctx.translate(-0.27, -0.05); ctx.rotate(Math.sin(t * 3.8) * 0.08);
+                ctx.strokeStyle = '#3f6212'; ctx.lineWidth = 0.018;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-0.06, 0.08, -0.14, 0.18); ctx.stroke();
+                ctx.fillStyle = '#65a30d';
+                for (const [ox, oy, oa] of [[-0.06, 0.06, -0.5], [-0.09, 0.12, 0.8], [-0.14, 0.16, -0.4]]) {
+                    ctx.save(); ctx.translate(ox, oy); ctx.rotate(oa);
+                    ctx.beginPath(); ctx.ellipse(0, 0, 0.042, 0.018, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+                }
+                ctx.restore();
+            } else {
+                // Radiant golden heart beneath dove
+                const hp = 1 + 0.10 * Math.sin(t * 4.5);
+                ctx.save(); ctx.translate(-0.24, 0.12); ctx.scale(0.32 * hp, 0.32 * hp);
+                ctx.fillStyle = '#facc15'; ctx.strokeStyle = '#b45309'; ctx.lineWidth = 0.04;
+                ctx.beginPath();
+                ctx.moveTo(0, 0.3); ctx.bezierCurveTo(-0.4, 0.04, -0.4, -0.32, 0, -0.12);
+                ctx.bezierCurveTo(0.4, -0.32, 0.4, 0.04, 0, 0.3); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
+            ctx.restore();
+            break;
+        }
+        default: {
+            // Sync any classic T-subtitle / scroll-subtitle writing-tip ID directly into centered animated sticker
+            if (typeof _drawClassicWritingTipLocal === 'function') {
+                const isTall = kind === 'quill' || kind === 'feather_gold';
+                const bob = Math.sin(t * 2.8) * 0.028;
+                const sway = Math.sin(t * 2.2) * 0.035;
+                ctx.save();
+                ctx.translate(0, bob);
+                ctx.rotate(sway);
+                if (isTall) {
+                    ctx.scale(0.62, 0.62);
+                    ctx.translate(-0.50, 0.72);
+                } else {
+                    ctx.scale(0.76, 0.76);
+                    ctx.translate(-0.46, 0.50);
+                }
+                _drawClassicWritingTipLocal(ctx, kind);
+                ctx.restore();
+                break;
+            }
+            ctx.restore();
+            return false;
+        }
     }
     ctx.restore();
     return true;
@@ -1462,11 +2340,10 @@ if (typeof window !== 'undefined') {
     window.isImageOrVectorWritingTip = isImageOrVectorWritingTip;
 }
 
-// The origin is the writing tip. Size/rotation always pivot around that point.
-function drawSpeechWritingTip(ctx, kind, x, y, size, angle) {
-    ctx.save();
-    ctx.translate(x, y);ctx.rotate(angle * Math.PI / 180);ctx.scale(size, size);
-    ctx.lineCap = 'round';ctx.lineJoin = 'round';
+// Shared local-space classic writing tip vector shapes (origin is at nib tip (0, 0)).
+function _drawClassicWritingTipLocal(ctx, kind) {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     const shape = (data, fill, stroke, width = .025) => {
         const p = typeof Path2D !== 'undefined' ? new Path2D(data) : null;
         if (fill) { ctx.fillStyle = fill; p ? ctx.fill(p) : ctx.fill(); }
@@ -1583,51 +2460,41 @@ function drawSpeechWritingTip(ctx, kind, x, y, size, angle) {
             shape(`M${a} ${b} l-.035 -.18 M${a} ${b} l.19 -.025`, null, '#b45309', .012);
         }
     } else if (kind === 'candy_cane') {
-        // 🍬 圣诞红白拐杖糖笔 (金笔尖 + 红白斜纹弯钩糖杆 + 翠绿蝴蝶结与红果)
         shape('M0 0 L.08-.20 L.20-.08 Z', '#fbbf24', '#92400e', .016);
         const canePath = 'M.11-.11 L.66-.78 C.82-.98 .60-1.22 .40-1.04 C.30-.95 .26-.84 .32-.78';
         shape(canePath, null, '#7f1d1d', .17);
         shape(canePath, null, '#fffdf9', .13);
-        ctx.save();
-        ctx.strokeStyle = '#dc2626';
-        ctx.lineWidth = .055;
-        ctx.setLineDash([.075, .075]);
-        ctx.stroke(new Path2D(canePath));
-        ctx.restore();
-        // 翠绿圣诞蝴蝶结与冬青果
+        if (typeof Path2D !== 'undefined') {
+            ctx.save();
+            ctx.strokeStyle = '#dc2626';
+            ctx.lineWidth = .055;
+            ctx.setLineDash([.075, .075]);
+            ctx.stroke(new Path2D(canePath));
+            ctx.restore();
+        }
         shape('M.36-.44 C.20-.56 .18-.38 .34-.38 Z M.40-.44 C.58-.34 .56-.54 .40-.46 Z', '#16a34a', '#14532d', .016);
         shape('M.35-.44 A.04 .04 0 1 1 .43-.44 A.04 .04 0 1 1 .35-.44 Z', '#ef4444', '#7f1d1d', .012);
     } else if (kind === 'christmas_tree') {
-        // 🎄 璀璨金星圣诞树 (三层覆雪松林 + 彩球 + 伯利恒金星)
         shape('M0 0 L.14-.18 L.22-.10 Z', '#92400e', '#451a03', .016);
-        // 三层松枝
         shape('M.04-.20 L.46-.04 L.42-.38 Z', '#14532d', '#052e16', .018);
         shape('M.16-.36 L.58-.20 L.54-.60 Z', '#15803d', '#052e16', .018);
         shape('M.30-.54 L.70-.38 L.68-.84 Z', '#16a34a', '#052e16', .018);
-        // 树梢雪边与金色缠绕彩带
         shape('M.08-.19 Q.24-.26 .43-.08 M.20-.35 Q.38-.42 .55-.24 M.34-.53 Q.48-.58 .67-.42', null, '#f8fafc', .026);
-        // 树顶璀璨金星
         shape('M.68-.98 L.73-.86 L.86-.86 L.75-.78 L.79-.66 L.68-.74 L.57-.66 L.61-.78 L.50-.86 L.63-.86 Z', '#fde047', '#b45309', .016);
-        // 圣诞彩球装饰
         shape('M.26-.22 A.038 .038 0 1 1 .33-.22 A.038 .038 0 1 1 .26-.22 Z', '#ef4444', '#7f1d1d', .01);
         shape('M.41-.42 A.036 .036 0 1 1 .48-.42 A.036 .036 0 1 1 .41-.42 Z', '#fde047', '#a16207', .01);
         shape('M.50-.60 A.034 .034 0 1 1 .57-.60 A.034 .034 0 1 1 .50-.60 Z', '#38bdf8', '#0369a1', .01);
     } else if (kind === 'holly_berry') {
-        // 🍒 圣诞冬青红果叶 (金枝笔尖 + 双片锯齿冬青翠叶 + 三颗红果)
         shape('M0 0 L.18-.18', null, '#b45309', .036);
-        // 左侧冬青叶
         shape('M.16-.22 C.02-.42 .08-.68 .24-.88 C.34-.70 .38-.44 .22-.22 Z', '#15803d', '#052e16', .02);
         shape('M.19-.24 L.23-.82', null, '#86efac', .016);
-        // 右侧冬青叶
         shape('M.22-.18 C.44-.34 .72-.30 .90-.46 C.76-.20 .50-.08 .22-.18 Z', '#16a34a', '#052e16', .02);
         shape('M.24-.19 L.82-.42', null, '#86efac', .016);
-        // 三颗饱满红果 + 高光
         shape('M.12-.18 A.065 .065 0 1 1 .25-.18 A.065 .065 0 1 1 .12-.18 Z', '#dc2626', '#7f1d1d', .016);
         shape('M.22-.28 A.065 .065 0 1 1 .35-.28 A.065 .065 0 1 1 .22-.28 Z', '#ef4444', '#7f1d1d', .016);
         shape('M.24-.13 A.062 .062 0 1 1 .36-.13 A.062 .062 0 1 1 .24-.13 Z', '#b91c1c', '#7f1d1d', .016);
         shape('M.26-.30 A.018 .018 0 1 1 .29-.30 Z M.16-.20 A.018 .018 0 1 1 .19-.20 Z', '#ffffff', null);
     } else if (kind === 'snowflake_wand') {
-        // ❄️ 晶莹冰雪魔杖 (冰蓝银杖杆 + 六角晶莹雪花 + 星芒)
         shape('M0 0 L.48-.52', null, '#0284c7', .05);
         shape('M0 0 L.48-.52', null, '#e0f2fe', .024);
         const cx = .62, cy = -.68, r = .28;
@@ -1643,90 +2510,59 @@ function drawSpeechWritingTip(ctx, kind, x, y, size, angle) {
         }
         shape(`M${cx - .06} ${cy} L${cx} ${cy - .06} L${cx + .06} ${cy} L${cx} ${cy + .06} Z`, '#fef08a', '#0284c7', .015);
     } else if (kind === 'santa_feather') {
-        // 🎅 圣诞红金绒毛笔 (金尖 + 雪白绒毛护圈 + 圣诞红羽 + 绒球顶)
         shape('M0 0 L.06-.20 L.20-.06 Z', '#fbbf24', '#92400e', .016);
-        // 圣诞红羽干
         shape('M.14-.16 C.24-.54 .34-.88 .66-1.12 C.82-.84 .72-.44 .38-.22 Z', '#dc2626', '#7f1d1d', .02);
         shape('M.16-.18 Q.42-.58 .72-1.04', null, '#fde047', .028);
-        // 底部雪白毛绒护圈
         shape('M.08-.18 C.06-.28 .18-.32 .24-.24 C.32-.28 .36-.16 .26-.10 C.18-.06 .08-.10 .08-.18 Z', '#ffffff', '#cbd5e1', .016);
-        // 顶部雪白绒球
         shape('M.64-1.10 A.095 .095 0 1 1 .83-1.10 A.095 .095 0 1 1 .64-1.10 Z', '#ffffff', '#cbd5e1', .018);
-    } else if (kind === 'jingle_bell') {
-        // 🔔 圣诞金铃铛 (3D渐变双金铃铛 + 红丝绒蝴蝶结 + 霜雪冬青红果)
-        drawHolidayStickerIcon(ctx, 'jingle_bell', 0.44, -0.46, 0.96, { angleDeg: 0, time: 0 });
     } else if (kind === 'us_flag_shield') {
-        // 🇺🇸 美国星条旗荣耀盾徽笔 (金尖 + 红白竖纹盾底 + 海军蓝星区 + 璀璨五角金星顶)
         shape('M0 0 L.09-.20 L.20-.09 Z', '#fbbf24', '#92400e', .016);
-        // 盾牌主体外框与白底
         const shieldPath = 'M.10-.14 C.08-.44 .14-.78 .28-.92 L.82-.92 C.84-.56 .68-.22 .10-.14 Z';
         shape(shieldPath, '#ffffff', '#d4af37', .032);
-        // 红白相间条纹
         shape('M.24-.18 L.38-.66 L.48-.66 L.32-.16 Z', '#dc2626', null);
         shape('M.46-.22 L.58-.66 L.68-.66 L.54-.26 Z', '#dc2626', null);
         shape('M.64-.34 L.76-.66 L.81-.66 L.71-.42 Z', '#dc2626', null);
-        // 顶部深海蓝星区横幅
         shape('M.22-.64 L.81-.64 L.82-.92 L.28-.92 Z', '#1e3a8a', '#d4af37', .022);
-        // 星区内三颗白星与顶部荣耀金星
         shape('M.34-.78 A.032 .032 0 1 1 .40-.78 Z M.50-.78 A.032 .032 0 1 1 .56-.78 Z M.66-.78 A.032 .032 0 1 1 .72-.78 Z', '#ffffff', null);
         shape('M.55-1.08 L.59-.98 L.70-.98 L.61-.91 L.64-.81 L.55-.87 L.46-.81 L.49-.91 L.40-.98 L.51-.98 Z', '#fde047', '#b45309', .015);
     } else if (kind === 'purple_heart_medal') {
-        // 🎖️ 紫心英勇勋章笔 (金笔尖 + 紫白绶带挂牌 + 烫金边紫心勋章 + 华盛顿金盾徽)
         shape('M0 0 L.08-.18 L.18-.08 Z', '#fbbf24', '#92400e', .016);
-        // 顶部紫白军功绶带
         shape('M.38-.78 L.82-.78 L.76-1.04 L.44-1.04 Z', '#581c87', '#d4af37', .02);
         shape('M.38-.78 L.45-.78 L.49-1.04 L.44-1.04 Z M.75-.78 L.82-.78 L.76-1.04 L.71-1.04 Z', '#ffffff', null);
-        // 金色连接环
         shape('M.54-.74 A.05 .05 0 1 1 .64-.74 A.05 .05 0 1 1 .54-.74 Z', '#fde047', '#92400e', .016);
-        // 烫金外缘心形勋章与皇家紫内芯
         shape('M.12-.12 C.04-.40 -.14-.64 .04-.80 C.18-.92 .36-.80 .40-.64 C.54-.80 .78-.82 .86-.62 C.94-.38 .52-.16 .12-.12 Z', '#facc15', '#854d0e', .024);
         shape('M.18-.18 C.11-.40 -.03-.58 .10-.71 C.21-.81 .35-.71 .39-.58 C.50-.71 .69-.72 .75-.56 C.82-.37 .49-.21 .18-.18 Z', '#6b21a8', '#3b0764', .016);
-        // 中心金色浮雕剪影
         shape('M.35-.44 A.08 .09 0 1 1 .51-.44 A.08 .09 0 1 1 .35-.44 Z', '#fde047', '#a16207', .012);
     } else if (kind === 'bald_eagle_crest') {
-        // 🦅 美国白头海雕金章笔 (金尖 + 展翅黄金羽翼 + 洁白鹰首与金喙 + 星条盾徽)
         shape('M0 0 L.10-.18 L.18-.10 Z', '#fbbf24', '#92400e', .016);
-        // 黄金展翅双翼
         shape('M.14-.20 C.02-.52 .10-.88 .42-1.06 C.40-.76 .34-.48 .24-.22 Z', '#f59e0b', '#78350f', .02);
         shape('M.22-.14 C.54-.04 .90-.12 1.06-.44 C.76-.42 .48-.36 .24-.22 Z', '#fbbf24', '#78350f', .02);
         shape('M.18-.32 L.36-.92 M.24-.40 L.40-.78 M.34-.20 L.92-.38 M.42-.26 L.78-.40', null, '#fef08a', .018);
-        // 胸前星条小盾牌
         shape('M.16-.18 L.38-.32 L.44-.18 L.22-.08 Z', '#dc2626', '#1e3a8a', .02);
-        // 白头海雕雪白头部与威严金喙
         shape('M.30-.42 C.28-.62 .46-.78 .66-.72 C.68-.56 .54-.40 .30-.42 Z', '#ffffff', '#475569', .018);
         shape('M.64-.68 C.78-.68 .86-.56 .74-.48 L.60-.54 Z', '#facc15', '#92400e', .016);
         shape('M.52-.60 A.022 .022 0 1 1 .56-.60 Z', '#0f172a', null);
     } else if (kind === 'veteran_poppy') {
-        // 🌺 阵亡将士纪念红罂粟花 (翠绿花茎笔尖 + 四瓣丝绒深红虞美人花 + 黑金花蕊)
         shape('M0 0 Q.18-.18 .42-.52', null, '#15803d', .042);
         shape('M.14-.18 C.02-.30 .06-.46 .22-.42 C.24-.28 .20-.20 .14-.18 Z', '#22c55e', '#14532d', .015);
-        // 四片饱满红色虞美人花瓣
         shape('M.48-.58 C.22-.68 .18-.98 .44-1.04 C.64-1.08 .72-.82 .48-.58 Z', '#b91c1c', '#450a0a', .018);
         shape('M.48-.58 C.66-.82 .96-.76 .98-.50 C1.00-.28 .72-.32 .48-.58 Z', '#dc2626', '#450a0a', .018);
         shape('M.48-.58 C.70-.36 .66-.08 .40-.12 C.20-.16 .26-.42 .48-.58 Z', '#ef4444', '#450a0a', .018);
         shape('M.48-.58 C.26-.42 .02-.48 .06-.72 C.10-.92 .34-.78 .48-.58 Z', '#dc2626', '#450a0a', .018);
-        // 乌黑花芯与金色雄蕊圈
         shape('M.38-.58 A.11 .11 0 1 1 .60-.58 A.11 .11 0 1 1 .38-.58 Z', '#111827', '#fde047', .024);
         shape('M.45-.58 A.04 .04 0 1 1 .53-.58 A.04 .04 0 1 1 .45-.58 Z', '#fde047', null);
     } else if (kind === 'military_dog_tag') {
-        // 🏷️ 美军银色纪念狗牌 (银珠链笔尖 + 双层拉丝不锈钢铭牌 + 压印刻线与荣耀金星)
         shape('M0 0 L.08-.10 M.12-.15 L.18-.22 M.22-.27 L.28-.34', null, '#cbd5e1', .042);
-        // 后层微偏银灰副牌
         shape('M.36-.34 L.76-.74 C.84-.82 .96-.70 .88-.62 L.48-.22 C.40-.14 .28-.26 .36-.34 Z', '#94a3b8', '#334155', .018);
-        // 前层拉丝不锈钢主铭牌
         shape('M.22-.26 L.66-.70 C.76-.80 .92-.64 .82-.54 L.38-.10 C.28 0 .12-.16 .22-.26 Z', '#e2e8f0', '#475569', .022);
-        // 狗牌挂孔与钢印横线
         shape('M.28-.24 A.028 .028 0 1 1 .34-.24 A.028 .028 0 1 1 .28-.24 Z', '#1e293b', null);
         shape('M.38-.36 L.64-.62 M.44-.30 L.70-.56', null, '#64748b', .022);
-        // 铭牌中心荣耀五角金星
         shape('M.56-.48 L.59-.41 L.66-.41 L.60-.36 L.62-.29 L.56-.34 L.50-.29 L.52-.36 L.46-.41 L.53-.41 Z', '#facc15', '#854d0e', .012);
     } else if (kind === 'maple_leaf') {
-        // 🍁 极简北美秋枫叶 (Pinterest 低饱和赤陶赤褐 + 亚麻叶脉)
         shape('M0 0 Q.14-.14 .28-.28', null, '#6b3a28', .028);
         shape('M.26-.26 L.08-.46 L.22-.50 L.14-.72 L.34-.64 L.46-.96 L.58-.64 L.78-.72 L.70-.50 L.86-.46 L.66-.26 L.74-.14 L.48-.20 L.34-.10 Z', '#b85a3a', '#7c3822', .018);
         shape('M.28-.28 L.46-.78 M.36-.36 L.22-.58 M.42-.38 L.66-.58 M.32-.32 L.56-.36', null, '#f3e7d8', .014);
     } else if (kind === 'wheat_stalk') {
-        // 🌾 感恩节金麦穗 (丰收琥珀金 + 极简麦芒)
         shape('M0 0 Q.36-.36 .88-.92', null, '#9c6635', .024);
         const grains = [
             ['.24-.26', '.14-.42', '.30-.40', '.22-.22'],
@@ -1742,26 +2578,22 @@ function drawSpeechWritingTip(ctx, kind, x, y, size, angle) {
         shape('M.76-.78 Q.70-.96 .88-1.02 Q.92-.82 .74-.74 Z', '#e8c997', '#8c5a2b', .014);
         shape('M.48-.58 L.44-.74 M.66-.76 L.62-.94 M.88-1.02 L.96-1.14 M.82-.66 L.96-.72', null, '#b5814b', .01);
     } else if (kind === 'acorn') {
-        // 🌰 森系简约橡果 (奶油胡桃棕 + 暖蜜橡实)
         shape('M.64-.78 Q.76-.92 .88-.98', null, '#5e3c28', .026);
         shape('M.12-.14 C-.04-.32 .04-.62 .30-.66 L.62-.34 C.58-.08 .28 0 .12-.14 Z', '#d29b65', '#7c4e28', .018);
         shape('M0-.02 L.14-.16', null, '#7c4e28', .022);
         shape('M.26-.68 C.44-.84 .72-.82 .80-.62 C.88-.42 .68-.22 .58-.30 L.26-.68 Z', '#6b4732', '#472c1d', .018);
         shape('M.42-.58 L.52-.68 M.54-.46 L.66-.56 M.40-.68 L.60-.50', null, '#9a6e52', .011);
     } else if (kind === 'minimal_pumpkin') {
-        // 🎃 北美极简陶土南瓜 (低饱和赤陶暖橙 + 鼠尾草藤梗)
         shape('M.46-.76 Q.54-.94 .66-.98', null, '#7c8363', .032);
         shape('M.12-.36 C.02-.64 .28-.80 .50-.72 C.72-.80 .98-.64 .88-.36 C.82-.08 .62 0 .50-.06 C.38 0 .18-.08 .12-.36 Z', '#c96d44', '#7a3b22', .018);
         shape('M.32-.38 C.28-.64 .40-.76 .50-.74 C.60-.76 .72-.64 .68-.38 C.64-.12 .56-.04 .50-.06 C.44-.04 .36-.12 .32-.38 Z', '#d8835b', '#7a3b22', .014);
         shape('M.46-.72 Q.50-.38 .48-.06', null, '#7a3b22', .012);
     } else if (kind === 'warm_mug') {
-        // ☕ 秋日手冲陶瓷咖啡杯 (奶白陶杯 + 袅袅热气 + 可可醇香)
         shape('M.68-.52 C.92-.52 .94-.22 .68-.22', null, '#6b5344', .032);
         shape('M.16-.58 L.70-.58 L.66-.10 C.65-.02 .58 .02 .43 .02 C.28 .02 .21-.02 .20-.10 Z', '#f3ece1', '#6b5344', .018);
         shape('M.18-.58 A.25 .07 0 1 0 .68-.58 A.25 .07 0 1 0 .18-.58 Z', '#6b4732', '#6b5344', .014);
         shape('M.32-.74 Q.24-.88 .34-.98 M.50-.72 Q.42-.86 .52-.98', null, 'rgba(255,252,246,0.85)', .018);
     } else if (kind === 'olive_branch') {
-        // 🌿 静谧感恩橄榄枝 (莫兰迪鼠尾草绿 + 祈祷和平枝条)
         shape('M0 0 Q.38-.36 .88-.88', null, '#5a6b54', .022);
         const leaves = [
             'M.22-.24 C.08-.34 .06-.52 .20-.54 C.30-.48 .30-.32 .22-.24 Z',
@@ -1773,18 +2605,46 @@ function drawSpeechWritingTip(ctx, kind, x, y, size, angle) {
         for (const ld of leaves) {
             shape(ld, '#8a9a86', '#4f5e4a', .014);
         }
-    } else if (HOLIDAY_ICON_SET.has(kind)) {
-        drawHolidayStickerIcon(ctx, kind, 0.44, -0.46, 0.94, { angleDeg: 0, time: 0 });
     } else {
         // 🪶 默认复古羽毛笔 (quill)
         shape('M.05-.07 C.2-.48 .23-.87 .54-1.15 C.66-1.32 .82-1.4 .97-1.44 C1.04-1.02 .81-.55 .43-.3 Z', '#eee8d9', '#7e7264', .018);
         shape('M.08-.1 Q.43-.54 .91-1.36', null, '#a78d61', .027);
-        for (let i=0;i<6;i++) {
-            const a=.22+i*.09,b=-.34-i*.145;
+        for (let i = 0; i < 6; i++) {
+            const a = .22 + i * .09, b = -.34 - i * .145;
             shape(`M${a} ${b} l-.035 -.18 M${a} ${b} l.19 -.025`, null, '#baa98b', .01);
         }
         shape('M0 0 L.04-.19 L.17-.13 Z', '#c99c47', '#71572f', .012);
         shape('M0 0 L.11-.16', null, '#30291f', .012);
+    }
+}
+
+const CLASSIC_TIP_DIRECT_SET = new Set([
+    'quill', 'rose', 'fountain_pen', 'brush', 'pencil', 'sparkle_wand',
+    'butterfly', 'candle_flame', 'dove', 'heart', 'leaf', 'sakura',
+    'crown', 'music_note', 'cross_light', 'feather_gold',
+    'candy_cane', 'christmas_tree', 'holly_berry', 'snowflake_wand', 'santa_feather',
+    'us_flag_shield', 'purple_heart_medal', 'bald_eagle_crest', 'veteran_poppy', 'military_dog_tag',
+    'maple_leaf', 'wheat_stalk', 'acorn', 'minimal_pumpkin', 'warm_mug', 'olive_branch',
+]);
+
+// The origin is the writing tip. Size/rotation always pivot around that point.
+function drawSpeechWritingTip(ctx, kind, x, y, size, angle, time = 0) {
+    const t = Number(time) || 0;
+    ctx.save();
+    ctx.translate(x, y);
+    const liveTilt = (t > 0 && (kind === 'pencil' || kind === 'quill' || kind === 'fountain_pen' || kind === 'brush'))
+        ? Math.sin(t * 9.5) * 2.5
+        : 0;
+    ctx.rotate((angle + liveTilt) * Math.PI / 180);
+    ctx.scale(size, size);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (CLASSIC_TIP_DIRECT_SET.has(kind)) {
+        _drawClassicWritingTipLocal(ctx, kind);
+    } else if (HOLIDAY_ICON_SET.has(kind)) {
+        drawHolidayStickerIcon(ctx, kind, 0.44, -0.46, 0.94, { angleDeg: 0, time: t });
+    } else {
+        _drawClassicWritingTipLocal(ctx, 'quill');
     }
     ctx.restore();
 }
@@ -2988,7 +3848,29 @@ class ReelsCanvasRenderer {
         let twRevealedCount = -1;
         let zoomTwState = null;
         let twWordSentenceGroup = null;
-        if (isTypewriter && typewriterRevealType === 'sentence' && words.length > 0) {
+        if (isTypewriter && typewriterRevealType === 'line' && visibleLines.length > 0 && words.length > 0) {
+            twWordSentenceGroup = new Array(words.length);
+            const lineCount = Math.max(1, visibleLines.length);
+            let prevLineStart = segStart;
+            for (let li = 0; li < visibleLines.length; li++) {
+                const lr = lineWordRanges[li];
+                const gStartRaw = (lr && lr.endWordIdx > lr.startWordIdx)
+                    ? (resolvedWordTimings[lr.startWordIdx]?.start ?? (segStart + segDur * (li / lineCount)))
+                    : (segStart + segDur * (li / lineCount));
+                const gStart = Math.max(prevLineStart, gStartRaw);
+                const gEndRaw = (lr && lr.endWordIdx > lr.startWordIdx)
+                    ? (resolvedWordTimings[lr.endWordIdx - 1]?.end ?? (segStart + segDur * ((li + 1) / lineCount)))
+                    : (segStart + segDur * ((li + 1) / lineCount));
+                const gEnd = Math.max(gStart + 0.05, gEndRaw);
+                prevLineStart = gStart;
+                const grpObj = { groupIdx: li, start: gStart, end: gEnd };
+                if (lr) {
+                    for (let wi = lr.startWordIdx; wi < lr.endWordIdx; wi++) {
+                        twWordSentenceGroup[wi] = grpObj;
+                    }
+                }
+            }
+        } else if (isTypewriter && typewriterRevealType === 'sentence' && words.length > 0) {
             twWordSentenceGroup = new Array(words.length);
             let grpWords = [];
             let gIdx = 0;
@@ -3032,17 +3914,18 @@ class ReelsCanvasRenderer {
                 ctx.translate(-cx, -cy);
             }
         } else if (isTypewriter && anim) {
+            const isGroupedTw = (typewriterRevealType === 'sentence' || typewriterRevealType === 'line') && twWordSentenceGroup;
             const totalUnits = typewriterRevealType === 'char'
                 ? words.reduce((count, word) => count + Array.from(word).length, 0)
-                : (typewriterRevealType === 'sentence' && twWordSentenceGroup
-                    ? ((twWordSentenceGroup[words.length - 1]?.groupIdx ?? 0) + 1)
+                : (isGroupedTw
+                    ? ((twWordSentenceGroup[words.length - 1]?.groupIdx ?? visibleLines.length - 1) + 1)
                     : words.length);
             twRevealedCount = anim.computeTypewriterProgress(
                 currentTime, segStart, segEnd, totalUnits
             );
-            if (typewriterRevealType === 'sentence' && activeSpokenIdx >= 0 && twWordSentenceGroup?.[activeSpokenIdx]) {
+            if (isGroupedTw && activeSpokenIdx >= 0 && twWordSentenceGroup?.[activeSpokenIdx]) {
                 twRevealedCount = Math.max(twRevealedCount, twWordSentenceGroup[activeSpokenIdx].groupIdx + 1);
-            } else if (typewriterRevealType !== 'char' && typewriterRevealType !== 'sentence' && activeSpokenIdx >= 0) {
+            } else if (!isGroupedTw && typewriterRevealType !== 'char' && activeSpokenIdx >= 0) {
                 twRevealedCount = Math.max(twRevealedCount, activeSpokenIdx + 1);
             }
         }
@@ -3324,7 +4207,7 @@ class ReelsCanvasRenderer {
                         if (s.only_show_active_word) {
                             isVis = currentTime == null || (currentTime >= wordStart && (wordIdx === totalWordCount - 1 ? currentTime <= wordEnd : currentTime < wordEnd));
                         } else if (progressiveTw) {
-                            if (typewriterRevealType === 'sentence' && twWordSentenceGroup) {
+                            if ((typewriterRevealType === 'sentence' || typewriterRevealType === 'line') && twWordSentenceGroup) {
                                 isVis = isTwSentenceRevealed(wordIdx);
                             } else {
                                 const chars = Array.from(wordStr);
@@ -3913,7 +4796,7 @@ class ReelsCanvasRenderer {
                     );
                 }
 
-                const effectiveWordGateStart = (isTypewriter && typewriterRevealType === 'sentence' && twWordSentenceGroup?.[wordIdx])
+                const effectiveWordGateStart = (isTypewriter && (typewriterRevealType === 'sentence' || typewriterRevealType === 'line') && twWordSentenceGroup?.[wordIdx])
                     ? twWordSentenceGroup[wordIdx].start
                     : wordStart;
                 let wordOpacity = lineAlpha;
@@ -3934,7 +4817,7 @@ class ReelsCanvasRenderer {
                     const chars = Array.from(wordStr);
                     const wordUnits = typewriterRevealType === 'char' ? chars.length : 1;
                     const wordStartCharIdx = twCharCounter;
-                    const revealedUnits = (typewriterRevealType === 'sentence' && twWordSentenceGroup)
+                    const revealedUnits = ((typewriterRevealType === 'sentence' || typewriterRevealType === 'line') && twWordSentenceGroup)
                         ? (isTwSentenceRevealed(wordIdx) ? wordUnits : 0)
                         : (twRevealedCount < 0 ? wordUnits
                             : Math.max(0, Math.min(wordUnits, twRevealedCount - twCharCounter)));
@@ -4417,7 +5300,17 @@ class ReelsCanvasRenderer {
                                 : (drawX + wordW * lineScale * wp);
                             subCursorY = wordY;
                             subCursorSize = fontSize * lineScale;
-                        } else if (isTypewriter && typewriterRevealType === 'sentence' && twWordSentenceGroup?.[wordIdx] && currentTime >= twWordSentenceGroup[wordIdx].start) {
+                        } else if (isTypewriter && (typewriterRevealType === 'sentence' || typewriterRevealType === 'line') && twWordSentenceGroup?.[wordIdx] && currentTime >= twWordSentenceGroup[wordIdx].start) {
+                            if (typewriterRevealType === 'sentence') {
+                                subCursorX = textDirection === 'rtl' ? drawX : (drawX + wordW * lineScale);
+                                subCursorY = wordY;
+                                subCursorSize = fontSize * lineScale;
+                            } else if (subCursorX === null) {
+                                subCursorX = textDirection === 'rtl' ? (drawX + wordW * lineScale) : drawX;
+                                subCursorY = wordY;
+                                subCursorSize = fontSize * lineScale;
+                            }
+                        } else if (isBullet && lineAlpha > 0.01) {
                             subCursorX = textDirection === 'rtl' ? drawX : (drawX + wordW * lineScale);
                             subCursorY = wordY;
                             subCursorSize = fontSize * lineScale;
@@ -4469,9 +5362,10 @@ class ReelsCanvasRenderer {
             const offY = Number(s.fullpage_typewriter_cursor_offset_y) || 0;
             const angle = Number(s.fullpage_typewriter_cursor_angle) || 0;
             if (imageTip) {
+                const liveTime = currentTime ?? 0;
                 const drawTip = tipKind === 'image'
-                    ? (c, k, x, y, sz, ang) => this._drawWritingCursorImage(c, s, x, y, sz, ang, currentTime ?? 0)
-                    : drawSpeechWritingTip;
+                    ? (c, k, x, y, sz, ang) => this._drawWritingCursorImage(c, s, x, y, sz, ang, liveTime)
+                    : (c, k, x, y, sz, ang) => drawSpeechWritingTip(c, k, x, y, sz, ang, liveTime);
                 drawTip(
                     ctx,
                     tipKind,
@@ -6225,9 +7119,9 @@ class ReelsCanvasRenderer {
             const angle = Number(s.fullpage_typewriter_cursor_angle) || 0;
             if (isImageOrVectorWritingTip(tipKind)) {
                 const drawTip = tipKind === 'image'
-                    ? (c, k, x, y, sz, ang) => this._drawWritingCursorImage(c, s, x, y, sz, ang, currentTime)
+                    ? (c, k, x, y, sz, ang, t) => this._drawWritingCursorImage(c, s, x, y, sz, ang, t)
                     : drawSpeechWritingTip;
-                drawTip(ctx, tipKind, richBoxWipeCursorX + offX, richBoxWipeCursorY + richBoxWipeCursorSize * 0.9 + offY, richBoxWipeCursorSize * scale, angle);
+                drawTip(ctx, tipKind, richBoxWipeCursorX + offX, richBoxWipeCursorY + richBoxWipeCursorSize * 0.9 + offY, richBoxWipeCursorSize * scale, angle, currentTime);
             } else {
                 ctx.save();
                 ctx.fillStyle = s.fullpage_typewriter_cursor_color || '#FFD700';
@@ -6286,7 +7180,7 @@ class ReelsCanvasRenderer {
             const y=position.y+position.size*.9+(Number(style.fullpage_typewriter_cursor_offset_y)||0);
             const size=position.size*scale,angle=Number(style.fullpage_typewriter_cursor_angle)||0;
             if(kind==='image')this._drawWritingCursorImage(ctx,style,x,y,size,angle,time);
-            else drawSpeechWritingTip(ctx,kind,x,y,size,angle);
+            else drawSpeechWritingTip(ctx,kind,x,y,size,angle,time);
         } else if(Math.floor(time*2)%2===0) {
             ctx.save();ctx.fillStyle=style.fullpage_typewriter_cursor_color||'#FFD700';
             ctx.font=position.font;ctx.fillText(style.fullpage_typewriter_cursor_char||'|',position.x,position.y);ctx.restore();
@@ -6605,6 +7499,22 @@ class ReelsCanvasRenderer {
 
         if (lines.length === 0) return;
 
+        const fpLineReveal = s.fullpage_typewriter_reveal_type === 'line';
+        const fpLineRanges = fpLineReveal ? lines.map((lineTokens) => {
+            let start = Infinity;
+            let end = -Infinity;
+            for (const tok of lineTokens) {
+                if (!tok || !tok.text || !tok.text.trim()) continue;
+                const ts = Number(tok.start);
+                const te = Number(tok.end);
+                if (Number.isFinite(ts) && ts < start) start = ts;
+                if (Number.isFinite(te) && te > end) end = te;
+            }
+            if (!Number.isFinite(start)) start = 0;
+            if (!Number.isFinite(end) || end <= start) end = start + 0.08;
+            return { start, end };
+        }) : null;
+
         const parsePadding = (val, fallback) => {
             if (val === undefined || val === null || val === '') return fallback;
             const parsed = parseFloat(val);
@@ -6759,7 +7669,9 @@ class ReelsCanvasRenderer {
                     for (const tok of lineTokens) {
                         const tokW = this._measureTextWithSpacing(ctx, tok.text, letterSpacing);
                         const tokenX = textDirection === 'rtl' ? currX - tokW : currX;
-                        const isVisibleTok = !hideUnrevealedBacking || (effectiveTime >= tok.start);
+                        const isVisibleTok = !hideUnrevealedBacking || (fpLineReveal
+                            ? effectiveTime >= (fpLineRanges[globalLi]?.start ?? Infinity)
+                            : (effectiveTime >= tok.start));
                         if (isVisibleTok) {
                             revealedText += tok.text;
                             if (tok.text.trim()) {
@@ -6887,26 +7799,49 @@ class ReelsCanvasRenderer {
             }
 
             ctx.font = getLineFontStr(globalLi);
+            const lineRange = fpLineReveal ? fpLineRanges[globalLi] : null;
+            const lineStarted = lineRange ? effectiveTime >= lineRange.start : false;
+            const lineFinished = lineRange ? effectiveTime >= lineRange.end : false;
+            let lastLineNonSpaceEndX = null;
 
             for (const tok of lineTokens) {
                 const tokW = this._measureTextWithSpacing(ctx, tok.text, letterSpacing);
                 const tokenX = textDirection === 'rtl' ? currX - tokW : currX;
+                if (!/^\s+$/.test(tok.text)) {
+                    lastLineNonSpaceEndX = textDirection === 'rtl' ? tokenX : tokenX + tokW;
+                }
 
+                const baseColor = (globalLi === 0)
+                    ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF')
+                    : (s.color_text || '#FFFFFF');
                 let color, opacity;
                 let isHighlight = false;
-                if (effectiveTime >= tok.end) {
-                    color = (globalLi === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
+                if (fpLineReveal) {
+                    if (lineFinished) {
+                        color = baseColor;
+                        opacity = 1.0;
+                    } else if (lineStarted) {
+                        const tokActive = (effectiveTime >= tok.start && effectiveTime < tok.end);
+                        color = (!imageTip && tokActive) ? (s.color_high || '#FFD700') : baseColor;
+                        opacity = 1.0;
+                        isHighlight = !imageTip && tokActive;
+                    } else {
+                        color = baseColor;
+                        opacity = s.fullpage_typewriter_unrevealed_opacity ?? s.tw_unrevealed_opacity ?? 0.0;
+                    }
+                } else if (effectiveTime >= tok.end) {
+                    color = baseColor;
                     opacity = 1.0;
                 } else if (effectiveTime >= tok.start && effectiveTime < tok.end) {
                     color = imageTip ? ((globalLi === 0 ? s.fullpage_typewriter_first_line_color : '') || s.color_text || '#FFFFFF') : (s.color_high || '#FFD700');
                     opacity = 1.0;
                     isHighlight = true;
                 } else {
-                    color = (globalLi === 0) ? (s.fullpage_typewriter_first_line_color || firstSegStyle.color_text || s.color_text || '#FFFFFF') : (s.color_text || '#FFFFFF');
+                    color = baseColor;
                     opacity = s.fullpage_typewriter_unrevealed_opacity ?? s.tw_unrevealed_opacity ?? 0.0;
                 }
 
-                if (effectiveTime >= tok.start && !/^\s+$/.test(tok.text)) {
+                if (!fpLineReveal && effectiveTime >= tok.start && !/^\s+$/.test(tok.text)) {
                     const p = imageTip && !tok._sentenceToken && tok.end > tok.start
                         ? Math.max(0, Math.min(1, (effectiveTime - tok.start) / (tok.end - tok.start))) : 1;
                     cursorX = textDirection === 'rtl' ? tokenX + tokW * (1-p) : tokenX + tokW * p;
@@ -6937,6 +7872,19 @@ class ReelsCanvasRenderer {
 
                 currX += textDirection === 'rtl' ? -tokW : tokW;
             }
+
+            if (fpLineReveal && lineStarted) {
+                if (lineFinished && lastLineNonSpaceEndX !== null) {
+                    cursorX = lastLineNonSpaceEndX;
+                } else {
+                    const spanDur = Math.max(0.05, lineRange.end - lineRange.start);
+                    const lp = Math.max(0, Math.min(1, (effectiveTime - lineRange.start) / spanDur));
+                    cursorX = textDirection === 'rtl' ? (startX + lineW * (1 - lp)) : (startX + lineW * lp);
+                }
+                cursorY = y;
+                cursorLineIdx = globalLi;
+                hasWritingStarted = true;
+            }
         }
 
         // Decorative tips hold during speech pauses and never blink out.
@@ -6945,11 +7893,11 @@ class ReelsCanvasRenderer {
             if (imageTip && hasWritingStarted) {
                 const activeSize = getLineHeight(cursorLineIdx) / 1.2;
                 const scale = Math.max(.2, Math.min(4, Number(s.fullpage_typewriter_cursor_scale) || 1));
-                const drawTip=tipKind==='image' ? (ctx,kind,x,y,size,angle)=>this._drawWritingCursorImage(ctx,s,x,y,size,angle,currentTime) : drawSpeechWritingTip;
+                const drawTip=tipKind==='image' ? (ctx,kind,x,y,size,angle,t)=>this._drawWritingCursorImage(ctx,s,x,y,size,angle,t) : drawSpeechWritingTip;
                 drawTip(ctx, tipKind,
                     cursorX + (Number(s.fullpage_typewriter_cursor_offset_x) || 0),
                     cursorY + activeSize * .9 + (Number(s.fullpage_typewriter_cursor_offset_y) || 0),
-                    activeSize * scale, Number(s.fullpage_typewriter_cursor_angle) || 0);
+                    activeSize * scale, Number(s.fullpage_typewriter_cursor_angle) || 0, currentTime);
             } else if (!imageTip && Math.floor(currentTime * 2) % 2 === 0) {
                 ctx.save();
                 ctx.fillStyle = s.fullpage_typewriter_cursor_color || '#FFD700';

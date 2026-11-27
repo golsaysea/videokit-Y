@@ -6424,6 +6424,92 @@ const REELS_VIRAL_100_CODES = {};
             anim_in_type: 'rolling_word_escalator', anim_in_duration: 0.11, anim_in_easing: 'ease_out_back',
             anim_out_type: 'none', anim_out_duration: 0,
         })],
+
+        // ── 14. 2026欧美短视频新锐趋势字幕：Abdaal极简/Iman轻奢/Y2K复古/棱镜极光 (sub-256 .. sub-263) ──
+        ['sub-256', '💼 Abdaal极简知识胶囊_深墨圆角白青高亮', mk({
+            font_family: 'Inter', font_weight: 700, fontsize: 56, bold: true,
+            color_text: '#F8FAFC', color_high: '#38BDF8', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: false, use_box: true, box_adaptive_width: true, box_connected: true,
+            color_bg: '#111827', opacity_bg: 235, box_radius: 18, box_padding_x: 26, box_padding_y: 12,
+            pos_y: 0.74, line_spacing: 14, max_words_per_segment: 6, max_words_per_line: 3,
+            anim_in_type: 'slide_up', anim_in_duration: 0.18, anim_in_easing: 'ease_out',
+        })],
+        ['sub-257', '🪙 Iman轻奢衬线流金渐变_无边框大字', mk({
+            font_family: 'Cormorant Garamond', font_weight: 700, fontsize: 72, bold: true, italic: false,
+            color_text: '#FFFDF7', color_high: '#FDE68A', highlight_enabled: true, karaoke_highlight: true,
+            high_gradient_enabled: true, high_gradient_colors: '#FEF9C3,#F59E0B', high_gradient_direction: 'vertical',
+            holy_glow_color: '#FDE68A', holy_glow_radius: 10,
+            use_stroke: true, color_outline: '#0A0703', opacity_outline: 210, border_width: 2.5,
+            shadow_blur: 14, shadow_offset_x: 0, shadow_offset_y: 5, color_shadow: '#000000', opacity_shadow: 215, shadow: true,
+            pos_y: 0.65, line_spacing: 10, max_words_per_segment: 5, max_words_per_line: 3,
+            anim_in_type: 'holy_glow', anim_in_duration: 0.28, anim_in_easing: 'ease_out',
+        })],
+        ['sub-258', '🖊️ 荧光马克笔横刷高亮_科普口播爆款', mk({
+            font_family: 'Manrope', font_weight: 700, fontsize: 58, bold: true,
+            color_text: '#F8FAFC', color_high: '#BEF264', highlight_enabled: true, karaoke_highlight: true,
+            use_underline: true, underline_sweep_enabled: true, underline_color: '#84CC16', underline_thickness: 5, underline_offset_y: 8,
+            use_stroke: true, color_outline: '#09090B', opacity_outline: 245, border_width: 4,
+            shadow_blur: 8, shadow_offset_x: 0, shadow_offset_y: 3, color_shadow: '#000000', opacity_shadow: 185, shadow: true,
+            pos_y: 0.72, line_spacing: 16, max_words_per_segment: 6, max_words_per_line: 3,
+            anim_in_type: 'underline_sweep', anim_in_duration: 0.34, anim_in_easing: 'ease_out',
+        })],
+        ['sub-259', '📼 千禧Y2K_DV机荧光黄白机打字幕', mk({
+            font_family: 'DM Sans', font_weight: 700, fontsize: 56, bold: true,
+            color_text: '#FEF9C3', color_high: '#FDE047', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: false, use_box: true, box_adaptive_width: true, box_connected: false,
+            color_bg: '#090D16', opacity_bg: 215, box_radius: 6, box_padding_x: 20, box_padding_y: 10,
+            pos_y: 0.75, line_spacing: 16, letter_spacing: 0.6, max_words_per_segment: 6, max_words_per_line: 3,
+            anim_in_type: 'typewriter', anim_in_duration: 0.36, anim_in_easing: 'linear',
+        })],
+        ['sub-260', '⚡ 三词赛博青粉霓虹_高留存堆叠闪击', mk({
+            font_family: 'Montserrat', font_weight: 900, fontsize: 78, bold: true, italic: true,
+            color_text: '#FFFFFF', color_high: '#22D3EE', highlight_enabled: true, karaoke_highlight: true,
+            high_gradient_enabled: true, high_gradient_colors: '#22D3EE,#F472B6', high_gradient_direction: 'horizontal',
+            kinetic_group_words: 3, kinetic_scale_min: 0.78, kinetic_scale_max: 1.32,
+            kinetic_pop_duration: 0.14, kinetic_old_word_opacity: 1, kinetic_line_gap: 0.12,
+            kinetic_glow_blur: 14, kinetic_glow_color: '#22D3EE', kinetic_old_glow_opacity: 0.35,
+            use_stroke: true, color_outline: '#040814', opacity_outline: 255, border_width: 8,
+            pos_y: 0.50, wrap_width_percent: 84, wrap_lines: 3, max_words_per_segment: 6,
+            anim_in_type: 'kinetic_glow_stack', anim_in_duration: 0.14, anim_in_easing: 'ease_out_back',
+            anim_out_type: 'none', anim_out_duration: 0,
+        })],
+        ['sub-261', '🎧 Apple歌词柔光聚焦_治愈漫散跟读', mk({
+            font_family: 'TikTok Sans', font_weight: 600, fontsize: 60, bold: false,
+            color_text: '#E2E8F0', color_high: '#FFFFFF', highlight_enabled: true, karaoke_highlight: true,
+            ambient_lighting_enabled: true, ambient_dark_color: '#070A14', ambient_dark_opacity: 0.42, ambient_dark_radius: 0.78,
+            blur_sharp_max: 14, blur_sharp_clear_frac: 0.38,
+            use_stroke: false, shadow_blur: 16, shadow_offset_x: 0, shadow_offset_y: 4, color_shadow: '#000000', opacity_shadow: 205, shadow: true,
+            pos_y: 0.62, line_spacing: 18, max_words_per_segment: 7, max_words_per_line: 4,
+            anim_in_type: 'blur_sharp', anim_in_duration: 0.34, anim_in_easing: 'ease_out',
+        })],
+        ['sub-262', '📰 纽约客编辑部_极黑锐角条青柠词', mk({
+            font_family: 'Oswald', font_weight: 700, fontsize: 68, bold: true, uppercase: true, text_transform: 'uppercase',
+            color_text: '#FFFFFF', color_high: '#A3E635', highlight_enabled: true, karaoke_highlight: true,
+            use_stroke: false, use_box: true, box_wipe_enabled: true, box_adaptive_width: true, box_connected: false,
+            color_bg: '#09090B', opacity_bg: 248, box_radius: 4, box_padding_x: 24, box_padding_y: 11,
+            pos_y: 0.72, line_spacing: 14, max_words_per_segment: 6, max_words_per_line: 3,
+            anim_in_type: 'box_wipe', anim_in_duration: 0.28, anim_in_easing: 'ease_out',
+        })],
+        ['sub-263', '🌈 极光棱镜渐彩_逐字Q弹卡拉OK', mk({
+            font_family: 'Poppins', font_weight: 800, fontsize: 68, bold: true,
+            color_text: '#F8FAFC', color_high: '#67E8F9', highlight_enabled: true, karaoke_highlight: true,
+            high_gradient_enabled: true, high_gradient_colors: '#67E8F9,#C084FC,#F472B6', high_gradient_direction: 'horizontal',
+            use_stroke: true, color_outline: '#090910', opacity_outline: 255, border_width: 7,
+            shadow_blur: 8, shadow_offset_x: 0, shadow_offset_y: 4, color_shadow: '#000000', opacity_shadow: 210, shadow: true,
+            pos_y: 0.60, wrap_width_percent: 82, wrap_lines: 3, max_words_per_segment: 7, max_words_per_line: 3,
+            anim_in_type: 'char_pop_elastic', anim_in_duration: 0.42, anim_in_easing: 'ease_out_back',
+            char_anim_duration: 0.15, char_anim_stagger: 0.03, char_anim_intensity: 0.34,
+        })],
+        ['sub-264', '☁️ 穿云金句_森林绿胶囊斜体白黄(FB同款)', mk({
+            font_family: 'Montserrat', font_weight: 800, fontsize: 64, bold: true, italic: true,
+            uppercase: true, text_transform: 'uppercase',
+            color_text: '#FFFFFF', color_high: '#FACC15', highlight_enabled: true, karaoke_highlight: true,
+            dynamic_box: true, color_high_bg: '#166534', opacity_high_bg: 242, dynamic_radius: 16, high_padding: 10,
+            use_stroke: true, color_outline: '#000000', opacity_outline: 255, border_width: 7,
+            shadow_blur: 6, shadow_offset_x: 0, shadow_offset_y: 4, color_shadow: '#000000', opacity_shadow: 210, shadow: true,
+            pos_y: 0.68, wrap_width_percent: 82, wrap_lines: 2, max_words_per_segment: 6, max_words_per_line: 3,
+            anim_in_type: 'word_pop_random', anim_in_duration: 0.16, anim_in_easing: 'ease_out_back',
+        })],
     ];
     for (const [code, name, styleObj] of entries) {
         REELS_BUILTIN_PRESETS[name] = styleObj;
@@ -8086,6 +8172,135 @@ const REELS_BUILTIN_OVERLAY_GROUP_PRESETS = {
             scroll_typewriter_enabled: false,
         }
     ],
+
+    // ════════════════════════════════════════════════════════════════
+    // 37. 拍立得回忆相纸_暖阳漏光+极简奶油杂志祷告卡
+    // ════════════════════════════════════════════════════════════════
+    "37-拍立得回忆_暖阳漏光+奶油极简祷告滚动": [
+        {
+            type: "decor_overlay",
+            name: "🖼️ 拍立得暖调颗粒点缀",
+            decor_style: "a24_warm_halation",
+            x: 0, y: 0, w: 1080, h: 1920,
+            opacity: 230, start: 0, end: 9999,
+            decor_grain_intensity: 34, decor_light_leak: true, decor_dark_vignette: 38,
+        },
+        {
+            type: "scroll",
+            name: "📸 拍立得极简奶油祷告卡",
+            content: "Lord, slow my steps today.\nTeach my heart to notice the quiet miracles hidden inside ordinary moments.\nWhen anxiety whispers loudly, remind me that Your peace guards my home, my family, and every step ahead. Amen.",
+            x: 90, y: 600, w: 900, h: 860,
+            rotation: 0, opacity: 255, start: 0, end: 9999, scroll_end_auto: true,
+            font_family: "Cormorant Garamond", fontsize: 52, font_weight: 700, bold: true, italic: false,
+            color: "#1C1917", text_align: "center", text_width: 780, line_spacing: 24,
+            bg_enabled: true, bg_style: "minimal_ivory_stationery", bg_color: "#FAF6EE", bg_opacity: 245, bg_radius: 16,
+            bg_bookmark_enabled: true, bg_bookmark_style: "quote_mark_badge", bg_bookmark_pos: "top-left",
+            bg_bookmark_color: "#D97706", bg_bookmark_width: 44, bg_bookmark_height: 80, bg_bookmark_inset: 40,
+            feather_mode: "clip", feather_top: 75, feather_bottom: 75,
+            scroll_x_anchor: "center", scroll_from_x: 540, scroll_from_y: 860, scroll_to_x: 540, scroll_to_y: -360,
+            scroll_speed: 0.72, scroll_end_y_auto: true, scroll_auto_stop: true,
+            scroll_focus_flow_enabled: true, scroll_focus_start_pct: 42, scroll_focus_end_pct: 55,
+            scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "line",
+            scroll_tw_active_highlight: true, scroll_tw_active_color: "#B45309",
+            scroll_tw_underline_enabled: true, scroll_tw_underline_color: "#D97706", scroll_tw_underline_thickness: 2.5,
+        }
+    ],
+
+    // ════════════════════════════════════════════════════════════════
+    // 38. 35mm柯达灼烧_黑金曜石杂志流金祷告卡
+    // ════════════════════════════════════════════════════════════════
+    "38-35mm琥珀灼烧_黑金曜石杂志祈祷卡": [
+        {
+            type: "decor_overlay",
+            name: "🎬 好莱坞变形宽银幕颗粒",
+            decor_style: "anamorphic_cinema_streak",
+            x: 0, y: 0, w: 1080, h: 1920,
+            opacity: 225, start: 0, end: 9999,
+        },
+        {
+            type: "scroll",
+            name: "❝ 黑金曜石杂志流金经文卡",
+            content: "Be still and know that God is already working behind closed doors.\nNo weapon formed against your peace shall prosper today.\nWalk forward in quiet confidence and gratitude. Amen.",
+            x: 90, y: 620, w: 900, h: 860,
+            rotation: 0, opacity: 255, start: 0, end: 9999, scroll_end_auto: true,
+            font_family: "Lora", fontsize: 50, font_weight: 700, bold: true,
+            color: "#F8FAFC", text_align: "center", text_width: 780, line_spacing: 25,
+            bg_enabled: true, bg_style: "editorial_quote_obsidian", bg_color: "#16181F", bg_opacity: 226, bg_radius: 14, bg_edge_feather: 38,
+            bg_bookmark_enabled: true, bg_bookmark_style: "quote_mark_badge", bg_bookmark_pos: "top-left",
+            bg_bookmark_color: "#E5C165", bg_bookmark_width: 46, bg_bookmark_height: 84, bg_bookmark_inset: 42,
+            bg_top_mascot: "peace_dove_olive",
+            feather_mode: "clip", feather_top: 75, feather_bottom: 75,
+            scroll_x_anchor: "center", scroll_from_x: 540, scroll_from_y: 860, scroll_to_x: 540, scroll_to_y: -360,
+            scroll_speed: 0.72, scroll_end_y_auto: true, scroll_auto_stop: true,
+            scroll_focus_flow_enabled: true, scroll_focus_start_pct: 42, scroll_focus_end_pct: 55,
+            scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "line",
+            scroll_tw_active_highlight: true, scroll_tw_active_color: "#FDE047",
+            scroll_tw_underline_enabled: true, scroll_tw_underline_color: "#E5C165", scroll_tw_underline_thickness: 2.5,
+        }
+    ],
+
+    // ════════════════════════════════════════════════════════════════
+    // 39. 水晶棱镜幻彩_鼠尾草极简金线晨祷卷轴
+    // ════════════════════════════════════════════════════════════════
+    "39-水晶棱镜幻彩_鼠尾草金线晨祷卷轴": [
+        {
+            type: "decor_overlay",
+            name: "💎 幻彩棱镜色散光斑",
+            decor_style: "prismatic_glass_refraction",
+            x: 0, y: 0, w: 1080, h: 1920,
+            opacity: 225, start: 0, end: 9999,
+        },
+        {
+            type: "scroll",
+            name: "🌿 莫兰迪鼠尾草清晨祝福卡",
+            content: "New mercies meet you at sunrise.\nMay wisdom guide your decisions, grace soften every conversation, and quiet joy fill your house from morning until night. Amen.",
+            x: 90, y: 620, w: 900, h: 860,
+            rotation: 0, opacity: 255, start: 0, end: 9999, scroll_end_auto: true,
+            font_family: "Playfair Display", fontsize: 50, font_weight: 700, bold: true,
+            color: "#1A2E23", text_align: "center", text_width: 780, line_spacing: 24,
+            bg_enabled: true, bg_style: "minimal_sage_linen", bg_color: "#E5EEE6", bg_opacity: 242, bg_radius: 16,
+            bg_bookmark_enabled: true, bg_bookmark_style: "olive_wreath_tag", bg_bookmark_pos: "top-left",
+            bg_bookmark_color: "#166534", bg_bookmark_width: 44, bg_bookmark_height: 82, bg_bookmark_inset: 40,
+            feather_mode: "clip", feather_top: 75, feather_bottom: 75,
+            scroll_x_anchor: "center", scroll_from_x: 540, scroll_from_y: 860, scroll_to_x: 540, scroll_to_y: -360,
+            scroll_speed: 0.72, scroll_end_y_auto: true, scroll_auto_stop: true,
+            scroll_focus_flow_enabled: true, scroll_focus_start_pct: 42, scroll_focus_end_pct: 55,
+            scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "line",
+            scroll_tw_active_highlight: true, scroll_tw_active_color: "#15803D",
+            scroll_tw_underline_enabled: true, scroll_tw_underline_color: "#166534", scroll_tw_underline_thickness: 2.5,
+        }
+    ],
+
+    // ════════════════════════════════════════════════════════════════
+    // 40. Y2K 复古DV取景框 + 暗夜深邃胶囊条金句卡
+    // ════════════════════════════════════════════════════════════════
+    "40-Y2K_DV取景框+深墨极简胶囊金句": [
+        {
+            type: "decor_overlay",
+            name: "📹 Y2K DV红点REC取景器",
+            decor_style: "rec_camcorder_viewfinder",
+            x: 0, y: 0, w: 1080, h: 1920,
+            opacity: 235, start: 0, end: 9999,
+        },
+        {
+            type: "scroll",
+            name: "💬 深墨高亮胶囊滚动金句",
+            content: "Don't rush the season God is using to grow you.\nWhat feels delayed today is being prepared with purpose.\nKeep praying, keep building, keep trusting.",
+            x: 70, y: 740, w: 940, h: 660,
+            rotation: 0, opacity: 255, start: 0, end: 9999, scroll_end_auto: true,
+            font_family: "Inter", fontsize: 56, font_weight: 700, bold: true,
+            color: "#F8FAFC", text_align: "center", text_width: 820, line_spacing: 28,
+            scroll_body_bg_enabled: true, scroll_body_bg_style: "solid", scroll_body_bg_mode: "inline",
+            scroll_body_bg_color: "#0F172A", scroll_body_bg_opacity: 84, scroll_body_bg_radius: 18,
+            scroll_body_bg_pad_h: 26, scroll_body_bg_pad_top: 10, scroll_body_bg_pad_bottom: 10,
+            bg_enabled: false, feather_mode: "clip", feather_top: 120, feather_bottom: 120,
+            scroll_x_anchor: "center", scroll_from_x: 540, scroll_from_y: 900, scroll_to_x: 540, scroll_to_y: -360,
+            scroll_speed: 0.72, scroll_end_y_auto: true, scroll_auto_stop: true,
+            scroll_focus_flow_enabled: true, scroll_focus_start_pct: 42, scroll_focus_end_pct: 58,
+            scroll_typewriter_enabled: true, scroll_tw_speech_sync: true, scroll_tw_reveal_type: "line",
+            scroll_tw_active_highlight: true, scroll_tw_active_color: "#38BDF8",
+        }
+    ],
 };
 
 // 暴露到全局供面板读取
@@ -8372,6 +8587,10 @@ const REELS_OVERLAY_PRESET_ID_MAP = {
     "ov-34": "34-Muse_FB14_全屏黑幕60%_窄体橙标",
     "ov-35": "35-Muse_FB28_纯黑高光标题+半透黑条正文",
     "ov-36": "36-FB爆款_3D旋转金十字架+奶油条祈祷滚词",
+    "ov-37": "37-拍立得回忆_暖阳漏光+奶油极简祷告滚动",
+    "ov-38": "38-35mm琥珀灼烧_黑金曜石杂志祈祷卡",
+    "ov-39": "39-水晶棱镜幻彩_鼠尾草金线晨祷卷轴",
+    "ov-40": "40-Y2K_DV取景框+深墨极简胶囊金句",
 };
 
 function _buildScrollPreset(presetId, category, overrides = {}) {
@@ -9369,6 +9588,24 @@ const _SCROLL_ARCHETYPES = {
         scroll_title_color: '#843A22', scroll_tw_active_color: '#4F614A', scroll_tw_underline_color: '#9E472A',
         bg_bookmark_color: '#9E472A', font_family: 'Handlee', fontsize: 44, materialTag: '牛皮纸',
     },
+    polaroid_memory_cream: {
+        bg_style: 'old_photo_polaroid_frame', bg_color: '#231E1B', bg_opacity: 242, bg_radius: 14, bg_edge_feather: 0,
+        color: '#FAF6EE', use_stroke: false, stroke_width: 0, shadow_enabled: true, shadow_color: 'rgba(0,0,0,0.65)', shadow_blur: 6,
+        scroll_title_color: '#FDE68A', scroll_tw_active_color: '#FBBF24', scroll_tw_underline_color: '#D97706',
+        bg_bookmark_color: '#D97706', font_family: 'Cormorant Garamond', fontsize: 46, materialTag: '拍立得杂志',
+    },
+    obsidian_magazine_gold: {
+        bg_style: 'editorial_quote_obsidian', bg_color: '#16181F', bg_opacity: 228, bg_radius: 16, bg_edge_feather: 38,
+        color: '#F8FAFC', use_stroke: false, stroke_width: 0, shadow_enabled: true, shadow_color: 'rgba(0,0,0,0.65)', shadow_blur: 6,
+        scroll_title_color: '#E5C165', scroll_tw_active_color: '#FDE047', scroll_tw_underline_color: '#E5C165',
+        bg_bookmark_color: '#E5C165', font_family: 'Playfair Display', fontsize: 45, materialTag: '拍立得杂志',
+    },
+    herbarium_botanical_press: {
+        bg_style: 'vintage_botanical_herbarium', bg_color: '#F2EBD9', bg_opacity: 248, bg_radius: 14, bg_edge_feather: 0,
+        color: '#1F2A1E', use_stroke: false, stroke_width: 0, shadow_enabled: false,
+        scroll_title_color: '#14532D', scroll_tw_active_color: '#8C2D19', scroll_tw_underline_color: '#166534',
+        bg_bookmark_color: '#166534', font_family: 'Lora', fontsize: 44, materialTag: '拍立得杂志',
+    },
 };
 
 // [id, category, name, archetype, emblemId, mode ('badge'|'mascot'|'both'), fontOverride, cursorKind]
@@ -9560,6 +9797,16 @@ const _NA_PRAYER_STYLE_SPECS = [
     ['sc-212', '🍂 感恩节 · 极简秋日与祈祷卡', '✝️ 深萃可可极简烫金卡+十字架感恩祈祷守望卡', 'thx_espresso_gold', 'na_cross_gold', 'both', 'Lora', 'cross_light'],
     ['sc-213', '🍂 感恩节 · 极简秋日与祈祷卡', '🎃 极简牛皮麻绳信札+奶油南瓜乡村秋日手帐', 'thx_kraft_harvest', 'na_thx_heirloom_pumpkin', 'both', 'Handlee', 'minimal_pumpkin'],
     ['sc-214', '🍂 感恩节 · 极简秋日与祈祷卡', '🌰 极简牛皮麻绳信札+胡桃橡果秋日丰收手写祷文', 'thx_kraft_harvest', 'na_thx_acorn', 'both', 'Merriweather', 'quill'],
+
+    // ── 十二、2026新锐 INS风拍立得 / 黑金杂志 / 植物标本馆祈祷卡 (sc-215 ~ sc-222, 8款) ──
+    ['sc-215', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '📸 拍立得白边胶片框+暖棕怀旧信仰回忆日记', 'polaroid_memory_cream', 'na_open_book', 'both', 'Cormorant Garamond', 'fountain_pen'],
+    ['sc-216', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '🕊️ 拍立得白边胶片框+和平白鸽日常见证长信', 'polaroid_memory_cream', 'na_peace_dove', 'mascot', 'Lora', 'dove'],
+    ['sc-217', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '❝ 曜石黑杂志引号流金卡+深夜安静灵修祷词', 'obsidian_magazine_gold', 'na_stars_moon', 'both', 'Playfair Display', 'feather_gold'],
+    ['sc-218', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '✝️ 曜石黑杂志引号流金卡+鎏金十字架应许宣读', 'obsidian_magazine_gold', 'na_cross_gold', 'badge', 'DM Serif Display', 'cross_light'],
+    ['sc-219', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '🙏 曜石黑杂志引号流金卡+虔诚祈祷手主日代祷', 'obsidian_magazine_gold', 'na_praying_hands', 'both', 'Libre Baskerville', 'candle_flame'],
+    ['sc-220', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '🌿 植物标本馆旧奶油档案纸+橄榄枝平安应许卡', 'herbarium_botanical_press', 'na_thx_olive_wreath', 'both', 'Lora', 'olive_branch'],
+    ['sc-221', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '🌹 植物标本馆旧奶油档案纸+玫瑰恩典晨间赞美', 'herbarium_botanical_press', 'na_rose', 'mascot', 'Cormorant Garamond', 'quill'],
+    ['sc-222', '📸 2026新锐·拍立得/黑金杂志祈祷卡', '☕ 极简莫兰迪燕麦卡片+清晨咖啡灵修伴读笔记', 'thx_oat_minimal', 'na_coffee_cup', 'both', 'Gelasio', 'fountain_pen'],
 ];
 
 const REELS_SCROLL_PRESET_ID_MAP = {
@@ -9618,12 +9865,16 @@ for (const [id, cat, name, archKey, emblemId, mode, fontOverride, cursorKind] of
     const useBadge = (mode === 'badge' || mode === 'both');
     const useMascot = (mode === 'mascot' || mode === 'both');
     REELS_BUILTIN_SCROLL_STYLE_PRESETS[name] = _buildScrollPreset(id, cat, {
+        x: 100,
+        y: 640,
+        w: 880,
+        h: 860,
         font_family: fontOverride || a.font_family,
-        fontsize: a.fontsize,
+        fontsize: Math.max(46, Math.min(54, a.fontsize || 48)),
         bold: true,
         color: a.color,
-        text_width: 780,
-        line_spacing: 12,
+        text_width: 740,
+        line_spacing: 22,
         scroll_uppercase: false,
         use_stroke: Boolean(a.use_stroke),
         stroke_color: a.stroke_color || '#000000',
@@ -9636,10 +9887,10 @@ for (const [id, cat, name, archKey, emblemId, mode, fontOverride, cursorKind] of
         bg_color: a.bg_color,
         bg_opacity: a.bg_opacity,
         bg_radius: a.bg_radius,
-        bg_padding_top: 52,
-        bg_padding_bottom: 44,
-        bg_padding_left: 28,
-        bg_padding_right: 28,
+        bg_padding_top: 28,
+        bg_padding_bottom: 28,
+        bg_padding_left: 24,
+        bg_padding_right: 24,
         bg_width: 0,
         bg_height: 0,
         bg_scroll_follow: true,
@@ -9648,29 +9899,29 @@ for (const [id, cat, name, archKey, emblemId, mode, fontOverride, cursorKind] of
         bg_bookmark_style: useBadge ? emblemId : 'swallowtail',
         bg_bookmark_pos: 'top-left',
         bg_bookmark_color: a.bg_bookmark_color,
-        bg_bookmark_width: 40,
-        bg_bookmark_height: 62,
-        bg_bookmark_inset: 26,
+        bg_bookmark_width: 38,
+        bg_bookmark_height: 60,
+        bg_bookmark_inset: 30,
         bg_top_mascot: useMascot ? emblemId : 'none',
-        bg_top_mascot_scale: 94,
+        bg_top_mascot_scale: 88,
         bg_top_mascot_offset_x: 0,
-        bg_top_mascot_offset_y: 8,
+        bg_top_mascot_offset_y: 0,
         scroll_title_fixed: true,
         scroll_title_font_family: fontOverride || a.font_family,
-        scroll_title_fontsize: 46,
+        scroll_title_fontsize: 48,
         scroll_title_color: a.scroll_title_color,
         scroll_title_uppercase: true,
         scroll_title_stroke_width: 0,
-        scroll_title_gap: 18,
+        scroll_title_gap: 20,
         feather_mode: 'clip',
-        feather_top: 75,
-        feather_bottom: 75,
+        feather_top: a.bg_edge_feather > 0 ? 64 : 36,
+        feather_bottom: a.bg_edge_feather > 0 ? 64 : 36,
         scroll_focus_flow_enabled: true,
         scroll_focus_start_pct: 42,
         scroll_focus_end_pct: 55,
         scroll_typewriter_enabled: true,
         scroll_tw_speech_sync: true,
-        scroll_tw_reveal_type: 'char',
+        scroll_tw_reveal_type: a.bg_edge_feather > 0 ? 'line' : 'word',
         scroll_tw_hide_unread: false,
         scroll_tw_unrevealed_opacity: 100,
         scroll_tw_active_highlight: true,
@@ -9681,12 +9932,12 @@ for (const [id, cat, name, archKey, emblemId, mode, fontOverride, cursorKind] of
         scroll_tw_underline_thickness: 2.5,
         scroll_tw_underline_width_mode: 'card_ratio',
         scroll_tw_underline_width_ratio: 84,
-        scroll_tw_underline_offset_y: 13,
+        scroll_tw_underline_offset_y: 12,
         scroll_tw_underline_opacity: 90,
         scroll_tw_line_track_mode: 'speech_or_progress',
         scroll_tw_cursor_enabled: true,
         scroll_tw_cursor_kind: cursorKind || 'quill',
-        scroll_tw_cursor_scale: 1.05,
+        scroll_tw_cursor_scale: 0.95,
         scroll_tw_cursor_angle: -8,
     });
     REELS_SCROLL_PRESET_ID_MAP[id] = name;

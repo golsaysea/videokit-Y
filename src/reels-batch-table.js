@@ -11583,9 +11583,11 @@ function _openStyledPresetPicker(anchorEl, currentVal, onSelect) {
             e.stopPropagation();
             const oldName = btn.dataset.presetName;
             if (!oldName || !window.ReelsStyleEngine) return;
-            const newName = await (typeof _showInputDialog === 'function'
-                ? _showInputDialog('重命名预设', oldName)
-                : prompt('请输入新名称：', oldName));
+            const newName = await (typeof window.reelsShowInputDialog === 'function'
+                ? window.reelsShowInputDialog('重命名预设', '输入新的预设名称', oldName)
+                : (typeof _showInputDialog === 'function'
+                    ? _showInputDialog('重命名预设', '输入新的预设名称', oldName)
+                    : Promise.resolve(oldName)));
             if (!newName || !newName.trim() || newName.trim() === oldName) return;
             const success = ReelsStyleEngine.renameSubtitlePreset(oldName, newName.trim());
             if (success) {
@@ -22012,47 +22014,141 @@ function _revealPathInFolder(targetPath) {
 }
 window.reelsRevealPathInFolder = _revealPathInFolder;
 
-function _showLocationContextMenu(x, y, items) {
+function _closeAllLocationMenus() {
+    document.getElementById('reels-location-submenu')?.remove();
     document.getElementById('reels-location-context-menu')?.remove();
-    const validItems = (items || []).filter(item => item && (item.path || typeof item.onClick === 'function'));
-    if (!validItems.length) return false;
+    if (typeof window !== 'undefined' && typeof window._reelsLocationMenuCleanup === 'function') {
+        try { window._reelsLocationMenuCleanup(); } catch (_) {}
+        window._reelsLocationMenuCleanup = null;
+    }
+}
 
+function _buildMenuListElement(menuId, items, { isSubmenu = false, onOpenSubmenu = null, onHideSubmenu = null } = {}) {
     const menu = document.createElement('div');
-    menu.id = 'reels-location-context-menu';
+    menu.id = menuId;
     menu.style.cssText = `
-        position:fixed; z-index:999999; min-width:230px; max-width:420px;
+        position:fixed; z-index:${isSubmenu ? 1000001 : 999999}; min-width:${isSubmenu ? 215 : 235}px; max-width:360px;
+        max-height:82vh; overflow-y:auto;
         background:#181a24; border:1px solid #383e54; border-radius:8px;
-        padding:6px; box-shadow:0 10px 30px rgba(0,0,0,0.75);
+        padding:5px; box-shadow:0 12px 32px rgba(0,0,0,0.78);
         color:#eee; font-size:12px; user-select:none;
     `;
 
-    validItems.forEach((item, idx) => {
+    items.forEach((item, idx) => {
         if (item.dividerBefore && idx > 0) {
             const hr = document.createElement('div');
             hr.style.cssText = 'height:1px;background:#2d3246;margin:4px 2px;';
             menu.appendChild(hr);
         }
+        if (item.type === 'header') {
+            const hdr = document.createElement('div');
+            hdr.style.cssText = 'padding:4px 9px 5px;font-size:10.5px;font-weight:700;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            hdr.textContent = String(item.label || '');
+            if (item.title) hdr.title = String(item.title);
+            menu.appendChild(hdr);
+            return;
+        }
+        const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+        const shortFile = item.subtitle !== undefined
+            ? String(item.subtitle || '')
+            : (item.path ? String(item.path).split(/[/\\]/).pop() : '');
         const btn = document.createElement('div');
+        btn.className = 'rbt-ctx-row';
         btn.style.cssText = `
-            display:flex; flex-direction:column; gap:2px; padding:7px 10px;
-            border-radius:5px; cursor:pointer; transition:background 0.12s;
+            display:flex; flex-direction:column; gap:2px; padding:6px 10px;
+            border-radius:5px; cursor:${item.disabled ? 'not-allowed' : 'pointer'};
+            opacity:${item.disabled ? '0.45' : '1'}; transition:background 0.12s;
         `;
-        const shortFile = item.path ? String(item.path).split(/[/\\]/).pop() : '';
         btn.innerHTML = `
-            <div style="display:flex;align-items:center;gap:6px;font-weight:600;color:#f1f5f9;">
-                <span>${_escHtml(item.label || '📂 打开文件所在位置')}</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600;color:${item.danger ? '#fca5a5' : '#f1f5f9'};">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escHtml(item.label || '📂 打开文件所在位置')}</span>
+                ${hasChildren ? '<span style="font-size:11px;color:#94a3b8;flex-shrink:0;">▶</span>' : ''}
             </div>
-            ${item.path ? `<div style="font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_escHtml(item.path)}">${_escHtml(shortFile || item.path)}</div>` : ''}
+            ${shortFile ? `<div style="font-size:10px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${_escHtml(item.path || shortFile)}">${_escHtml(shortFile)}</div>` : ''}
         `;
-        btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(0, 212, 255, 0.16)'; });
-        btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; });
+        btn.addEventListener('mouseenter', () => {
+            if (!item.disabled) btn.style.background = item.danger ? 'rgba(239, 68, 68, 0.16)' : 'rgba(0, 212, 255, 0.16)';
+            if (hasChildren && typeof onOpenSubmenu === 'function') {
+                onOpenSubmenu(btn, item.children);
+            } else if (!isSubmenu && typeof onHideSubmenu === 'function') {
+                onHideSubmenu();
+            }
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.background = 'transparent';
+        });
         btn.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            menu.remove();
+            if (item.disabled) return;
+            if (hasChildren) {
+                if (typeof onOpenSubmenu === 'function') onOpenSubmenu(btn, item.children, { immediate: true });
+                return;
+            }
+            _closeAllLocationMenus();
             if (typeof item.onClick === 'function') item.onClick();
             else if (item.path) _revealPathInFolder(item.path);
         });
         menu.appendChild(btn);
+    });
+    return menu;
+}
+
+function _showLocationContextMenu(x, y, items) {
+    _closeAllLocationMenus();
+    const isRenderable = (it) => it && (
+        it.type === 'header'
+        || it.path
+        || typeof it.onClick === 'function'
+        || (Array.isArray(it.children) && it.children.some(isRenderable))
+    );
+    const validItems = (items || []).filter(isRenderable);
+    if (!validItems.some(it => it.type !== 'header')) return false;
+
+    let submenuTimer = null;
+    const hideSubmenu = (immediate = false) => {
+        if (submenuTimer) { clearTimeout(submenuTimer); submenuTimer = null; }
+        if (immediate) {
+            document.getElementById('reels-location-submenu')?.remove();
+            return;
+        }
+        submenuTimer = setTimeout(() => {
+            const sub = document.getElementById('reels-location-submenu');
+            if (sub && !sub.matches(':hover')) sub.remove();
+        }, 140);
+    };
+
+    const openSubmenu = (anchorEl, childItems, opts = {}) => {
+        if (submenuTimer) { clearTimeout(submenuTimer); submenuTimer = null; }
+        const filteredChildren = (childItems || []).filter(isRenderable);
+        if (!filteredChildren.length) return;
+        const build = () => {
+            document.getElementById('reels-location-submenu')?.remove();
+            const subMenu = _buildMenuListElement('reels-location-submenu', filteredChildren, { isSubmenu: true });
+            subMenu.addEventListener('mouseenter', () => {
+                if (submenuTimer) { clearTimeout(submenuTimer); submenuTimer = null; }
+            });
+            subMenu.addEventListener('mouseleave', () => hideSubmenu(false));
+            document.body.appendChild(subMenu);
+
+            const anchorRect = anchorEl.getBoundingClientRect();
+            const subRect = subMenu.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+            const spaceRight = window.innerWidth - menuRect.right - 8;
+            const left = spaceRight >= subRect.width
+                ? menuRect.right + 4
+                : Math.max(8, menuRect.left - subRect.width - 4);
+            const top = Math.max(8, Math.min(anchorRect.top - 4, window.innerHeight - subRect.height - 8));
+            subMenu.style.left = `${left}px`;
+            subMenu.style.top = `${top}px`;
+        };
+        if (opts.immediate) build();
+        else build();
+    };
+
+    const menu = _buildMenuListElement('reels-location-context-menu', validItems, {
+        isSubmenu: false,
+        onOpenSubmenu: openSubmenu,
+        onHideSubmenu: () => hideSubmenu(false),
     });
 
     document.body.appendChild(menu);
@@ -22063,15 +22159,23 @@ function _showLocationContextMenu(x, y, items) {
     menu.style.top = `${Math.max(8, top)}px`;
 
     const closeMenu = (ev) => {
-        if (!menu.contains(ev.target)) {
-            menu.remove();
-            document.removeEventListener('mousedown', closeMenu, true);
-            document.removeEventListener('contextmenu', closeMenu, true);
-        }
+        const sub = document.getElementById('reels-location-submenu');
+        if (menu.contains(ev.target) || (sub && sub.contains(ev.target))) return;
+        _closeAllLocationMenus();
+    };
+    const onKeyDown = (ev) => {
+        if (ev.key === 'Escape') _closeAllLocationMenus();
+    };
+    window._reelsLocationMenuCleanup = () => {
+        if (submenuTimer) { clearTimeout(submenuTimer); submenuTimer = null; }
+        document.removeEventListener('mousedown', closeMenu, true);
+        document.removeEventListener('contextmenu', closeMenu, true);
+        document.removeEventListener('keydown', onKeyDown, true);
     };
     setTimeout(() => {
         document.addEventListener('mousedown', closeMenu, true);
         document.addEventListener('contextmenu', closeMenu, true);
+        document.addEventListener('keydown', onKeyDown, true);
     }, 0);
     return true;
 }
@@ -22168,6 +22272,392 @@ window.reelsRevealActiveTaskMedia = function(kind = 'bg') {
     }
     return false;
 };
+
+const _TASK_ASSET_PICK_SPECS = {
+    bg: {
+        title: '替换背景视频 / 图片',
+        label: '背景素材',
+        extensions: ['mp4', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'webm', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+    },
+    audio: {
+        title: '替换人声配音文件',
+        label: '人声配音',
+        extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma', 'mp4', 'mov'],
+    },
+    contentvideo: {
+        title: '替换内容视频 (画中画 / 分屏)',
+        label: '内容视频',
+        extensions: ['mp4', 'mov', 'mkv', 'avi', 'wmv', 'flv', 'webm', 'jpg', 'jpeg', 'png', 'webp', 'gif'],
+    },
+    bgm: {
+        title: '替换背景音乐 (BGM)',
+        label: '配乐 BGM',
+        extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'wma'],
+    },
+    srt: {
+        title: '替换 SRT / VTT / ASS 字幕文件',
+        label: 'SRT 字幕',
+        extensions: ['srt', 'vtt', 'ass'],
+    },
+    hook: {
+        title: '替换前置 Hook 视频',
+        label: '前置 Hook',
+        extensions: ['mp4', 'mov', 'mkv', 'webm', 'm4v'],
+    },
+    cover: {
+        title: '替换封面图片 / 视频',
+        label: '封面素材',
+        extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'mp4', 'mov', 'webm'],
+    },
+};
+
+function _shortBaseName(p) {
+    const clean = String(p || '').trim();
+    if (!clean) return '';
+    return clean.split(/[/\\]/).pop() || clean;
+}
+
+async function _pickTaskAssetFile(kind) {
+    const spec = _TASK_ASSET_PICK_SPECS[kind] || _TASK_ASSET_PICK_SPECS.bg;
+    if (window.electronAPI && typeof window.electronAPI.selectFiles === 'function') {
+        try {
+            const paths = await window.electronAPI.selectFiles({
+                title: spec.title,
+                multiple: false,
+                filters: [{ name: spec.label, extensions: spec.extensions }],
+            });
+            return Array.isArray(paths) && paths[0] ? paths[0] : '';
+        } catch (err) {
+            console.warn('[ContextReplace] selectFiles failed:', err);
+        }
+    }
+    if (typeof window.reelsPickSingleFile === 'function') {
+        try {
+            const picked = await window.reelsPickSingleFile(spec.title, spec.extensions);
+            if (picked) return picked;
+        } catch (_) {}
+    }
+    return '';
+}
+
+async function _mutateSingleTaskAssetField(task, kind, cleanPath) {
+    if (!task) return false;
+    if (kind === 'bg') {
+        const oldPaths = [task.bgPath, task.videoPath, task.concatVideoPath].filter(Boolean);
+        _setTaskSingleBackground(task, cleanPath, { clearBgSrcUrl: true, detectImage: true, keepSubtitles: true });
+        if (typeof window.reelsPurgeTaskBackgroundMedia === 'function') {
+            window.reelsPurgeTaskBackgroundMedia(task, { extraPaths: cleanPath ? [...oldPaths, cleanPath] : oldPaths });
+        }
+    } else if (kind === 'audio') {
+        const oldAudio = task.audioPath || '';
+        window.ReelsRenderPlan?.setVoice?.(task, cleanPath);
+        if (!window.ReelsRenderPlan?.setVoice) task.audioPath = cleanPath;
+        if (oldAudio && oldAudio !== cleanPath) _rbtPurgeMediaCaches([oldAudio]);
+    } else if (kind === 'contentvideo') {
+        task.contentVideoPath = cleanPath;
+        if (cleanPath) {
+            if (task.contentVideoScale == null) task.contentVideoScale = 100;
+            if (task.contentVideoX == null) task.contentVideoX = 'center';
+            if (task.contentVideoY == null) task.contentVideoY = 'center';
+        }
+        window.ReelsRenderPlan?.syncLegacyFields?.(task);
+    } else if (kind === 'bgm') {
+        task.bgmMode = 'single';
+        task.bgmPath = cleanPath;
+        task.bgmClipPool = [];
+        window.ReelsRenderPlan?.syncLegacyFields?.(task);
+    } else if (kind === 'srt') {
+        task.srtPath = cleanPath;
+        if (cleanPath && window.electronAPI?.readFileText) {
+            try {
+                const rawSrt = window.electronAPI.readFileText(cleanPath);
+                const content = (rawSrt && typeof rawSrt.then === 'function') ? await rawSrt : rawSrt;
+                if (content) _parseSrtContent(task, content);
+            } catch (err) {
+                console.warn('[ContextReplace] read SRT failed:', err);
+            }
+        } else if (!cleanPath) {
+            task.segments = [];
+            task.aligned = false;
+        }
+    } else if (kind === 'hook') {
+        task.hookFile = cleanPath;
+    } else if (kind === 'cover') {
+        if (!task.cover) task.cover = {};
+        task.cover.bgPath = cleanPath;
+        if (cleanPath && task.cover.enabled === false) task.cover.enabled = true;
+    }
+    return true;
+}
+
+async function _applyTaskAssetReplacement(taskIdx, kind, chosenPath) {
+    const state = window._reelsState;
+    const task = state?.tasks?.[taskIdx];
+    if (!task) return false;
+    const cleanPath = String(chosenPath || '').trim();
+    const spec = _TASK_ASSET_PICK_SPECS[kind] || { label: '素材' };
+
+    if (kind === 'insertFolder') {
+        if (typeof window.reelsSetInsertFolderForTasks === 'function') {
+            await window.reelsSetInsertFolderForTasks([task]);
+            return true;
+        }
+        return false;
+    }
+
+    await _mutateSingleTaskAssetField(task, kind, cleanPath);
+    _syncAfterTaskAssetMutation([taskIdx], { focusIdx: taskIdx });
+    const shortName = _shortBaseName(cleanPath);
+    if (typeof showToast === 'function') {
+        const msg = cleanPath
+            ? `✅ 已替换 #${taskIdx + 1} 的${spec.label}：${shortName}`
+            : `🧹 已清空 #${taskIdx + 1} 的${spec.label}`;
+        showToast(msg, 'success');
+    }
+    return true;
+}
+
+function _syncAfterTaskAssetMutation(touchedIndices = [], { focusIdx = -1 } = {}) {
+    const state = window._reelsState;
+    if (!state) return;
+    const isFocusSelected = focusIdx >= 0 && focusIdx === state.selectedIdx;
+    if (focusIdx >= 0 && typeof window.reelsSelectTask === 'function') {
+        window.reelsSelectTask(focusIdx, { autoplay: false });
+    } else if (isFocusSelected) {
+        if (typeof window._updateTimelineForTask === 'function') window._updateTimelineForTask(state.tasks?.[focusIdx]);
+        if (typeof window.reelsUpdatePreview === 'function') window.reelsUpdatePreview(true);
+    }
+    if (typeof window._renderTaskList === 'function') {
+        window._renderTaskList({ preserveScroll: true });
+    }
+    if (typeof _renderBatchTable === 'function' && typeof _batchTableState !== 'undefined' && _batchTableState.visible) {
+        if (typeof _skipNextApply !== 'undefined') _skipNextApply = true;
+        _renderBatchTable({ preserveScroll: true });
+    } else if (typeof _syncTasksToActiveTab === 'function') {
+        _syncTasksToActiveTab();
+    }
+    if (window.ReelsPreviewV2?.isOpen?.() && touchedIndices.includes(state.selectedIdx)) {
+        window.ReelsPreviewV2.reload?.();
+    }
+    if (typeof _batchAutoSave === 'function') _batchAutoSave({ skipSync: true });
+    if (typeof window.reelsSaveHistory === 'function') window.reelsSaveHistory();
+}
+
+async function _pickAndReplaceTaskAsset(taskIdx, kind) {
+    const chosen = await _pickTaskAssetFile(kind);
+    if (!chosen) return false;
+    return _applyTaskAssetReplacement(taskIdx, kind, chosen);
+}
+
+async function _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, kind) {
+    if (!Array.isArray(scopeTasks) || !scopeTasks.length) return false;
+    if (!window.electronAPI?.selectDirectory || !window.electronAPI?.scanDirectory) {
+        if (typeof showToast === 'function') showToast('请在桌面客户端中使用按文件夹批量替换', 'warning');
+        return false;
+    }
+    const dir = await window.electronAPI.selectDirectory();
+    if (!dir) return false;
+    const files = await window.electronAPI.scanDirectory(dir);
+    const spec = _TASK_ASSET_PICK_SPECS[kind] || _TASK_ASSET_PICK_SPECS.bg;
+    const extSet = new Set(spec.extensions);
+    const matched = (files || [])
+        .filter(f => extSet.has(String(f.name || '').split('.').pop().toLowerCase()))
+        .sort(_naturalSortByName);
+
+    if (!matched.length) {
+        if (typeof showToast === 'function') showToast(`文件夹内未找到可用的${spec.label}文件`, 'warning');
+        return false;
+    }
+
+    const stemMap = new Map();
+    for (const f of matched) {
+        const stem = String(f.name || '').replace(/\.[^.]+$/, '').toLowerCase();
+        if (stem && !stemMap.has(stem)) stemMap.set(stem, f);
+    }
+
+    const state = window._reelsState;
+    const touchedIndices = [];
+    for (let i = 0; i < scopeTasks.length; i++) {
+        const task = scopeTasks[i];
+        const taskIdx = state?.tasks ? state.tasks.indexOf(task) : -1;
+        if (taskIdx < 0) continue;
+        const candidateStems = [
+            task.baseName,
+            String(task.fileName || '').replace(/\.[^.]+$/, ''),
+            String(task.exportName || '').replace(/\.[^.]+$/, ''),
+        ].map(s => String(s || '').trim().toLowerCase()).filter(Boolean);
+        let chosenFile = null;
+        for (const s of candidateStems) {
+            if (stemMap.has(s)) { chosenFile = stemMap.get(s); break; }
+        }
+        if (!chosenFile) {
+            chosenFile = matched[i % matched.length];
+        }
+        if (chosenFile?.path) {
+            await _mutateSingleTaskAssetField(task, kind, chosenFile.path);
+            touchedIndices.push(taskIdx);
+        }
+    }
+
+    const focusIdx = touchedIndices.includes(state?.selectedIdx) ? state.selectedIdx : -1;
+    _syncAfterTaskAssetMutation(touchedIndices, { focusIdx });
+    if (typeof showToast === 'function') {
+        showToast(`✅ 已用 ${matched.length} 个文件批量替换「${scopeLabel}」共 ${touchedIndices.length} 条视频的${spec.label}`, 'success', 4500);
+    }
+    return true;
+}
+
+function _buildTaskContextMenuItems(task, idx) {
+    if (!task) return [];
+    const bgCur = task.bgMode === 'multi' && task.bgClipPool?.length
+        ? `多段背景池 (${task.bgClipPool.length}个)`
+        : (_shortBaseName(task.bgPath || task.videoPath) || '未设置');
+    const audioCur = _shortBaseName(task.audioPath) || '未设置';
+    const cvCur = _shortBaseName(task.contentVideoPath) || '未设置';
+    const bgmCur = task.bgmMode === 'multi' && task.bgmClipPool?.length
+        ? `配乐池 (${task.bgmClipPool.length}首)`
+        : (_shortBaseName(task.bgmPath) || '未设置');
+    const srtCur = _shortBaseName(task.srtPath) || (task.segments?.length ? `已对齐 (${task.segments.length}条)` : '未设置');
+    const hookCur = _shortBaseName(task.hookFile) || '未设置';
+    const coverCur = _shortBaseName(task.cover?.bgPath) || '未设置';
+    const displayName = task.exportName || _shortBaseName(task.bgPath || task.videoPath) || task.fileName || task.baseName || `任务 ${idx + 1}`;
+
+    const otherReplaceChildren = [
+        { label: '📹 替换内容视频 (画中画)...', subtitle: `当前: ${cvCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'contentvideo') },
+        { label: '🎵 替换背景音乐 (BGM)...', subtitle: `当前: ${bgmCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'bgm') },
+        { label: '📝 替换 SRT 字幕文件...', subtitle: `当前: ${srtCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'srt') },
+        { label: '🪝 替换前置 Hook 视频...', subtitle: `当前: ${hookCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'hook') },
+        { label: '🖼️ 替换封面图片 / 视频...', subtitle: `当前: ${coverCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'cover') },
+        { label: '⏱️ 设置停顿插播文件夹...', subtitle: task.insertMediaFolder ? `当前: ${_shortBaseName(task.insertMediaFolder)}` : '未设置', onClick: () => _applyTaskAssetReplacement(idx, 'insertFolder', '') },
+    ];
+    if (typeof window.reelsShowBgPoolDialog === 'function') {
+        otherReplaceChildren.push({ label: '🎞️ 管理多图 / 多视频背景池...', dividerBefore: true, onClick: () => window.reelsShowBgPoolDialog(idx) });
+    }
+    if (typeof window.reelsShowBgmPoolDialog === 'function') {
+        otherReplaceChildren.push({ label: '🎶 管理多首配乐池...', onClick: () => window.reelsShowBgmPoolDialog(idx) });
+    }
+    const clearActions = [];
+    if (task.bgPath || task.videoPath || task.bgClipPool?.length) {
+        clearActions.push({ label: '🧹 清空当前背景素材', danger: true, dividerBefore: true, onClick: () => _applyTaskAssetReplacement(idx, 'bg', '') });
+    }
+    if (task.audioPath) {
+        clearActions.push({ label: '🧹 清空当前人声配音', danger: true, dividerBefore: clearActions.length === 0, onClick: () => _applyTaskAssetReplacement(idx, 'audio', '') });
+    }
+    if (task.contentVideoPath) {
+        clearActions.push({ label: '🧹 清空内容视频', danger: true, dividerBefore: clearActions.length === 0, onClick: () => _applyTaskAssetReplacement(idx, 'contentvideo', '') });
+    }
+    if (task.bgmPath || task.bgmClipPool?.length) {
+        clearActions.push({ label: '🧹 清空 BGM 配乐', danger: true, dividerBefore: clearActions.length === 0, onClick: () => _applyTaskAssetReplacement(idx, 'bgm', '') });
+    }
+    otherReplaceChildren.push(...clearActions);
+
+    const locationItems = _buildTaskLocationItems(task);
+    const moreTaskChildren = [
+        { label: '▶️ 选中并播放预览', onClick: () => window.reelsSelectTask?.(idx, { autoplay: true }) },
+    ];
+    if (typeof window.reelsDuplicateTask === 'function') {
+        moreTaskChildren.push({ label: '📋 复制此任务为新副本', onClick: () => window.reelsDuplicateTask(idx) });
+    }
+    moreTaskChildren.push({
+        label: task._exportSelected === false ? '✅ 勾选参与批量导出' : '☑️ 取消勾选导出',
+        onClick: () => {
+            if (typeof window.reelsToggleExportSelect === 'function') {
+                window.reelsToggleExportSelect(idx, task._exportSelected === false);
+            } else {
+                task._exportSelected = task._exportSelected === false;
+                window._renderTaskList?.({ preserveScroll: true });
+            }
+        },
+    });
+    if (typeof window.reelsRemoveTask === 'function') {
+        moreTaskChildren.push({ label: '🗑️ 删除此任务', danger: true, dividerBefore: true, onClick: () => window.reelsRemoveTask(idx) });
+    }
+
+    const menu = [
+        { type: 'header', label: `🎬 #${idx + 1} ${_shortBaseName(displayName)}` },
+        { label: '🎬 替换背景视频 / 图片...', subtitle: `当前: ${bgCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'bg') },
+        { label: '🎙️ 替换人声配音...', subtitle: `当前: ${audioCur}`, onClick: () => _pickAndReplaceTaskAsset(idx, 'audio') },
+        { label: '📁 替换其他素材（分类）', subtitle: '内容视频 / BGM / 字幕 / Hook / 封面', children: otherReplaceChildren },
+    ];
+    if (locationItems.length > 0) {
+        menu.push({ label: '📂 打开素材所在位置', subtitle: `共 ${locationItems.length} 项文件`, children: locationItems });
+    }
+    menu.push({ label: '⚙️ 更多任务操作', dividerBefore: true, children: moreTaskChildren });
+    return menu;
+}
+
+function _buildGroupContextMenuItems({ tabId = '', queueId = '', tabName = '', queueName = '' } = {}) {
+    const tasks = window._reelsState?.tasks || [];
+    let scopeTasks = [];
+    let scopeLabel = '';
+    const locationItems = [];
+
+    if (tabId) {
+        const isLegacy = tabId === '__legacy__';
+        scopeTasks = tasks.filter(t => isLegacy ? !t?._batchTabId : t?._batchTabId === tabId);
+        const tab = isLegacy ? null : (_batchTableState.tabs || []).find(t => t.id === tabId);
+        scopeLabel = tab?.name || tabName || (isLegacy ? '已有任务（未归档）' : '当前分组');
+        if (tab?.materialDir) locationItems.push({ label: `📁 打开分组「${scopeLabel}」素材目录`, path: tab.materialDir });
+        if (scopeTasks[0]) locationItems.push(..._buildTaskLocationItems(scopeTasks[0]));
+    } else if (queueId) {
+        scopeTasks = tasks.filter(t => t?._folderQueueId === queueId);
+        const queue = (window._reelsState?.folderQueues || []).find(q => q.id === queueId);
+        scopeLabel = queue?.name || queueName || '文件夹队列';
+        if (queue?.dirPath) locationItems.push({ label: `📁 打开队列「${scopeLabel}」文件夹`, path: queue.dirPath });
+        if (scopeTasks[0]) locationItems.push(..._buildTaskLocationItems(scopeTasks[0]));
+    }
+
+    if (!locationItems.length) {
+        const projPath = _getCurrentBatchProjectFilePath();
+        if (projPath) locationItems.push({ label: '📦 打开当前工程存储位置', path: projPath });
+    }
+
+    const otherBatchChildren = [
+        { label: '🎵 批量替换 BGM 配乐（选文件夹）...', onClick: () => _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, 'bgm') },
+        { label: '📹 批量替换内容视频（选文件夹）...', onClick: () => _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, 'contentvideo') },
+        { label: '📝 批量替换 SRT 字幕（选文件夹）...', onClick: () => _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, 'srt') },
+    ];
+    const groupActionsChildren = [
+        {
+            label: '✅ 本组全选参与导出',
+            onClick: () => {
+                if (tabId && typeof window.reelsToggleBatchGroupExport === 'function') window.reelsToggleBatchGroupExport(tabId, true);
+                else if (queueId && typeof window.reelsToggleFolderQueueExport === 'function') window.reelsToggleFolderQueueExport(queueId, true);
+            },
+        },
+        {
+            label: '⬜ 取消本组全部导出',
+            onClick: () => {
+                if (tabId && typeof window.reelsToggleBatchGroupExport === 'function') window.reelsToggleBatchGroupExport(tabId, false);
+                else if (queueId && typeof window.reelsToggleFolderQueueExport === 'function') window.reelsToggleFolderQueueExport(queueId, false);
+            },
+        },
+        {
+            label: '📂 展开 / 折叠本组列表',
+            onClick: () => {
+                if (tabId && typeof window.reelsToggleBatchGroup === 'function') window.reelsToggleBatchGroup(tabId);
+                else if (queueId && typeof window.reelsToggleFolderQueue === 'function') window.reelsToggleFolderQueue(queueId);
+            },
+        },
+    ];
+
+    const menu = [
+        { type: 'header', label: `📑 ${scopeLabel}（共 ${scopeTasks.length} 条视频）` },
+        { label: '🎬 批量替换本组背景（选文件夹）...', onClick: () => _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, 'bg') },
+        { label: '🎙️ 批量替换本组人声（选文件夹）...', onClick: () => _batchReplaceScopeAssetsFromFolder(scopeTasks, scopeLabel, 'audio') },
+        { label: '📁 批量替换本组其他素材', subtitle: 'BGM / 内容视频 / SRT 字幕', children: otherBatchChildren },
+    ];
+    if (locationItems.length > 0) {
+        menu.push({ label: '📂 打开目录 / 素材位置', children: locationItems });
+    }
+    menu.push({ label: '⚙️ 本组快捷操作', dividerBefore: true, children: groupActionsChildren });
+    return menu;
+}
+
+window.reelsReplaceTaskAsset = _applyTaskAssetReplacement;
+window.reelsBuildTaskContextMenuItems = _buildTaskContextMenuItems;
+window.reelsBuildGroupContextMenuItems = _buildGroupContextMenuItems;
+window.reelsBatchReplaceGroupAssets = _batchReplaceScopeAssetsFromFolder;
 
 if (typeof document !== 'undefined' && !window._reelsGlobalContextMenuBound) {
     window._reelsGlobalContextMenuBound = true;
@@ -22266,12 +22756,12 @@ if (typeof document !== 'undefined' && !window._reelsGlobalContextMenuBound) {
         }
 
         // 5. Left Task List in Main Reels View (`.reels-task-item`, `.reels-batch-group-header`, `.reels-folder-queue-header`)
-        const taskItemEl = target.closest('.reels-task-item[data-idx]');
+        const taskItemEl = target.closest('.reels-task-item[data-task-idx], .reels-task-item[data-idx]');
         if (taskItemEl) {
-            const idx = parseInt(taskItemEl.dataset.idx, 10);
+            const idx = parseInt(taskItemEl.dataset.taskIdx ?? taskItemEl.dataset.idx, 10);
             const task = window._reelsState?.tasks?.[idx];
             if (task) {
-                const items = _buildTaskLocationItems(task);
+                const items = _buildTaskContextMenuItems(task, idx);
                 if (items.length > 0) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -22283,32 +22773,16 @@ if (typeof document !== 'undefined' && !window._reelsGlobalContextMenuBound) {
 
         const groupHeaderEl = target.closest('.reels-batch-group-header[data-tab-id], .reels-folder-queue-header[data-queue-id]');
         if (groupHeaderEl) {
-            const tabId = groupHeaderEl.dataset.tabId;
-            const queueId = groupHeaderEl.dataset.queueId;
-            const menuItems = [];
-            if (tabId) {
-                const tab = (_batchTableState.tabs || []).find(t => t.id === tabId);
-                if (tab?.materialDir) menuItems.push({ label: `📁 打开分组「${tab.name}」素材目录`, path: tab.materialDir });
-                const firstTask = (window._reelsState?.tasks || []).find(t => t?._batchTabId === tabId) || tab?.tasks?.[0];
-                if (firstTask) {
-                    menuItems.push(..._buildTaskLocationItems(firstTask));
-                }
-            } else if (queueId) {
-                const queue = (window._reelsState?.folderQueues || []).find(q => q.id === queueId);
-                if (queue?.dirPath) menuItems.push({ label: `📁 打开队列「${queue.name}」文件夹`, path: queue.dirPath });
-                const firstTask = (window._reelsState?.tasks || []).find(t => t?._folderQueueId === queueId);
-                if (firstTask) {
-                    menuItems.push(..._buildTaskLocationItems(firstTask));
-                }
-            }
-            if (!menuItems.length) {
-                const projPath = _getCurrentBatchProjectFilePath();
-                if (projPath) menuItems.push({ label: '📦 打开当前工程存储位置', path: projPath });
-            }
-            if (menuItems.length > 0) {
+            const items = _buildGroupContextMenuItems({
+                tabId: groupHeaderEl.dataset.tabId || '',
+                queueId: groupHeaderEl.dataset.queueId || '',
+                tabName: groupHeaderEl.dataset.tabName || '',
+                queueName: groupHeaderEl.dataset.queueName || '',
+            });
+            if (items.length > 0) {
                 e.preventDefault();
                 e.stopPropagation();
-                _showLocationContextMenu(e.clientX, e.clientY, menuItems);
+                _showLocationContextMenu(e.clientX, e.clientY, items);
                 return;
             }
         }

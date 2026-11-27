@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -2192,11 +2193,11 @@ test('Christmas writing pens, subtitle ribbon bands, ornaments, and presets are 
     const previewV2Src = fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8');
     assert.ok(previewV2Src.includes('hitTestOverlayHandle'), 'Preview V2 must support interactive 8-handle overlay resizing on canvas');
 
-    // Verify Decor Overlay (30款点缀图层: 黑色氛围模板 / 飘浮粒子 / 电影颗粒 / 回忆颗粒感 / 发光星星 / 圣诞装饰 / 复古角框)
+    // Verify Decor Overlay (44款点缀图层: 云雾穿云 / 黑色氛围模板 / 飘浮粒子 / 电影颗粒 / 回忆颗粒感 / 发光星星 / 圣诞装饰 / 复古角框)
     assert.equal(typeof sandbox.window.ReelsOverlay.createDecorOverlay, 'function', 'ReelsOverlay.createDecorOverlay must exist');
     assert.equal(typeof sandbox.window.ReelsOverlay.applyDecorStylePreset, 'function', 'ReelsOverlay.applyDecorStylePreset must exist');
     const decorStyles = sandbox.window.ReelsOverlay.DECOR_OVERLAY_STYLES;
-    assert.equal(Object.keys(decorStyles).length, 34, 'DECOR_OVERLAY_STYLES must provide 34 built-in embellishment & grain styles (including 4 Veterans Day styles)');
+    assert.equal(Object.keys(decorStyles).length, 44, 'DECOR_OVERLAY_STYLES must provide 44 built-in embellishment, cloud & grain styles');
     for (const styleKey of Object.keys(decorStyles)) {
         const decorOv = sandbox.window.ReelsOverlay.createDecorOverlay({
             decor_style: styleKey,
@@ -4938,7 +4939,7 @@ test('Scroll subtitle inspector organizes controls into clean collapsibles while
     assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-corner-badge-quick/g) || []).length, 13);
     assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-body-bg-preset/g) || []).length, 13);
     assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-tw-style-preset/g) || []).length, 14);
-    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-tw-icon-chip/g) || []).length, 41);
+    assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-tw-icon-chip/g) || []).length, 64);
     assert.strictEqual((scrollBlock.match(/class="[^"]*rop-scroll-feather-preset/g) || []).length, 5);
 
     // Critical DOM element IDs remain identically addressable
@@ -5114,7 +5115,7 @@ test('Decor panel & inline decor inspector organize controls into collapsibles w
     ]) {
         assert.ok(rdpBlock.includes(`id="${id}"`), `Preserved ReelsDecorPanel control missing: #${id}`);
     }
-    assert.strictEqual((rdpBlock.match(/class="rdp-cat-btn/g) || []).length, 7, 'All 7 decor category filter pills must remain');
+    assert.strictEqual((rdpBlock.match(/class="rdp-cat-btn/g) || []).length, 8, 'All 8 decor category filter pills (including clouds) must remain');
     assert.strictEqual((rdpBlock.match(/class="rdp-tint-chip"/g) || []).length, 5, 'All 5 dark tint chips must remain');
     assert.strictEqual((rdpBlock.match(/class="rop-btn rdp-cta-pos-btn"/g) || []).length, 5, 'All 5 Phone CTA position quick buttons must remain');
     assert.strictEqual((rdpBlock.match(/class="rop-btn rdp-cta-time-chip"/g) || []).length, 9, 'All 9 Phone CTA quick timing chips must remain');
@@ -7679,7 +7680,7 @@ test('Decor panel supports explicit apply-this-page (task) and apply-this-tab (t
     assert.strictEqual(tB1.overlays.find(o => o.type === 'decor')?.decor_style, 'cinema_35mm_grain', 'In task mode, tabB must remain untouched');
 });
 
-test('All 214 scroll presets (sc-01..sc-214) + all 31 boards & 78 emblems render cleanly without collapsing variants', () => {
+test('All 222 scroll presets (sc-01..sc-222) + all 31 boards & 78 emblems render cleanly without collapsing variants', () => {
     const sandbox = loadBrowserScript('src/reels-anim-engine.js', {
         window: { addEventListener() {} },
     });
@@ -7694,8 +7695,8 @@ test('All 214 scroll presets (sc-01..sc-214) + all 31 boards & 78 emblems render
 
     const { ReelsOverlay, ReelsBrushEngine, REELS_BUILTIN_SCROLL_STYLE_PRESETS, REELS_SCROLL_PRESET_ID_MAP, resolveBuiltinPreset } = sandbox.window;
 
-    assert.strictEqual(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 214, 'Expected all 214 built-in scroll style presets');
-    assert.strictEqual(Object.keys(REELS_SCROLL_PRESET_ID_MAP).length, 428, 'Expected all 428 scroll preset ID mappings (sc-01..214 & scroll-01..214)');
+    assert.strictEqual(Object.keys(REELS_BUILTIN_SCROLL_STYLE_PRESETS).length, 222, 'Expected all 222 built-in scroll style presets');
+    assert.strictEqual(Object.keys(REELS_SCROLL_PRESET_ID_MAP).length, 444, 'Expected all 444 scroll preset ID mappings (sc-01..222 & scroll-01..222)');
 
     const newBoardIds = [
         'kraft_torn_note', 'kraft_stamped_letter', 'kraft_espresso_prayer',
@@ -7762,12 +7763,12 @@ test('All 214 scroll presets (sc-01..sc-214) + all 31 boards & 78 emblems render
         createPattern() { return null; },
     };
 
-    // 1. Validate & render all 214 scroll presets sc-01..sc-214 directly without alias collapsing
+    // 1. Validate & render all 222 scroll presets sc-01..sc-222 directly without alias collapsing
     const seenNames = new Set();
     const seenCardBoardsInNaSpecs = new Set();
     const seenCategories = new Set();
     const seenXmasEmblems = new Set();
-    for (let num = 1; num <= 214; num++) {
+    for (let num = 1; num <= 222; num++) {
         const pad = num < 10 ? `0${num}` : `${num}`;
         const scId = `sc-${pad}`;
         const aliasId = `scroll-${pad}`;
@@ -8086,7 +8087,7 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     const modal = appendedById['rop-scroll-style-picker-popover'];
     assert.ok(modal && modal.classList.contains('rsl-backdrop'), 'Modal #rop-scroll-style-picker-popover must use rsl-backdrop class');
     assert.ok(modal.innerHTML.includes('rsl-dialog'), 'Modal must render centered .rsl-dialog');
-    assert.strictEqual(modal.querySelectorAll('.rsl-card').length, 214, 'All 214 scroll cards must render inside studio grid');
+    assert.strictEqual(modal.querySelectorAll('.rsl-card').length, 222, 'All 222 scroll cards must render inside studio grid');
     assert.ok(modal.querySelectorAll('.rsl-chip').length >= 12, 'Expected full material/element filter chips including life and christmas');
     assert.ok(rafQueue.length > 0, 'Lazy canvas thumbnail & stage RAF loops must be scheduled');
 
@@ -8100,8 +8101,8 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     assert.ok(oldPhotoChip, 'Expected 老照片 filter chip');
     oldPhotoChip.dispatchEvent({ type: 'click' });
     const visibleAfterChip = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
-    assert.ok(visibleAfterChip.length > 0 && visibleAfterChip.length < 214, 'Selecting oldphoto chip should filter cards');
-    assert.ok(modal.querySelector('.rsl-count-readout').textContent.includes(`显示 ${visibleAfterChip.length} / 214`));
+    assert.ok(visibleAfterChip.length > 0 && visibleAfterChip.length < 222, 'Selecting oldphoto chip should filter cards');
+    assert.ok(modal.querySelector('.rsl-count-readout').textContent.includes(`显示 ${visibleAfterChip.length} / 222`));
 
     // Verify Christmas chip shows all 50 Christmas cards sc-149..sc-198 (and does NOT include sc-199..sc-214 Thanksgiving cards)
     oldPhotoChip.dispatchEvent({ type: 'click' });
@@ -8109,7 +8110,7 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     assert.ok(xmasChip, 'Expected 🎄 圣诞贺卡 filter chip');
     xmasChip.dispatchEvent({ type: 'click' });
     const xmasCards = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
-    assert.ok(xmasCards.length >= 50 && xmasCards.length < 214, `Expected >= 50 Christmas scroll cards without overflowing into sc-199..214, got ${xmasCards.length}`);
+    assert.ok(xmasCards.length >= 50 && xmasCards.length < 222, `Expected >= 50 Christmas scroll cards without overflowing into sc-199..214, got ${xmasCards.length}`);
 
     // Verify Thanksgiving chip shows all 16 Thanksgiving cards sc-199..sc-214 minimalist autumn/prayer cards
     xmasChip.dispatchEvent({ type: 'click' });
@@ -8117,7 +8118,7 @@ test('Atmospheric Scroll Style Preview Studio Modal (.rsl-dialog): categories, m
     assert.ok(thxChip, 'Expected 🍂 感恩节极简 filter chip');
     thxChip.dispatchEvent({ type: 'click' });
     const thxCards = modal.querySelectorAll('.rsl-card').filter(c => c.style.display !== 'none');
-    assert.ok(thxCards.length >= 16 && thxCards.length < 214, `Expected >= 16 Thanksgiving scroll cards without leaking Christmas deck, got ${thxCards.length}`);
+    assert.ok(thxCards.length >= 16 && thxCards.length < 222, `Expected >= 16 Thanksgiving scroll cards without leaking Christmas deck, got ${thxCards.length}`);
 
     // Clear chip & search for 白头鹰
     thxChip.dispatchEvent({ type: 'click' });
@@ -10965,8 +10966,13 @@ test('Festival Countdown Ring Intro (cp-01 style): presets, canvas render, font 
             assert.ok(drawnTexts.length >= 2, `Paused snapshot for ${presetId} must draw kinetic stacked intro words`);
         } else if (['curtain_reveal', 'blinds_reveal', 'doors_reveal', 'gift_scroll_reveal', 'black_reveal', 'flag_reveal'].includes(presetOv.intro_layout)) {
             assert.ok(rectCalls.length >= 1, `Paused snapshot for ${presetId} must draw reveal panels/slats/doors/black/flag`);
-        } else if (['frost_wipe', 'iris_spotlight', 'eagle_ink_reveal', 'cardinal_reveal', 'paper_reveal'].includes(presetOv.intro_layout)) {
-            assert.ok(fillCalls >= 1 || rectCalls.length >= 1, `Paused snapshot for ${presetId} must draw mask/ink/paper overlay`);
+        } else if (presetOv.intro_layout === 'audio_only') {
+            assert.equal(fillCalls + rectCalls.length + arcCalls.length + drawnTexts.length, 0, `Audio-only opener ${presetId} must draw zero visual overlays`);
+        } else if ([
+            'frost_wipe', 'iris_spotlight', 'eagle_ink_reveal', 'cardinal_reveal', 'paper_reveal',
+            'glitch_reveal', 'film_burn_reveal', 'polaroid_reveal', 'prism_reveal', 'cloud_reveal',
+        ].includes(presetOv.intro_layout)) {
+            assert.ok(fillCalls >= 1 || rectCalls.length >= 1, `Paused snapshot for ${presetId} must draw mask/ink/paper/novel/cloud overlay`);
         } else {
             assert.ok(arcCalls.length >= 2, `Paused snapshot for ${presetId} must draw base ring and sweep arc`);
         }
@@ -11240,10 +11246,10 @@ test('Christian devotional creative card presets (ov-16..ov-35) & Muse template 
     const { resolveFontFamily } = require('../bin/videokit-cli.cjs');
 
     const ovKeys = Object.keys(REELS_OVERLAY_PRESET_ID_MAP);
-    assert.equal(ovKeys.length, 36);
+    assert.equal(ovKeys.length, 40);
     const sigs = new Set();
     const newStructuralSigs = new Set();
-    for (let n = 1; n <= 36; n++) {
+    for (let n = 1; n <= 40; n++) {
         const code = `ov-${n < 10 ? '0' + n : n}`;
         const name = REELS_OVERLAY_PRESET_ID_MAP[code];
         assert.ok(name, `${code} must exist in REELS_OVERLAY_PRESET_ID_MAP`);
@@ -11285,7 +11291,7 @@ test('Christian devotional creative card presets (ov-16..ov-35) & Muse template 
     roSandbox.ReelsBrushEngine = roSandbox.window.ReelsBrushEngine;
     const RO = roSandbox.window.ReelsOverlay;
 
-    for (let n = 16; n <= 36; n++) {
+    for (let n = 16; n <= 40; n++) {
         const code = `ov-${n}`;
         const layers = resolveBuiltinPreset(code).overlays;
         for (const layer of layers) {
@@ -15145,6 +15151,1336 @@ test('ReelsDecorPanel supports saving, persisting, applying, updating, renaming,
     assert.equal(imported.added, 1);
     assert.equal(panelAfterRestart.getCustomPresets()['黑金精调正式版'].layers[1].decor_style, 'vintage_gold_filigree');
 });
+
+test('Unified 91 animated sticker/cursor icons, pencil + line-by-line (逐行) across T & Scroll subtitles, and framed Prayer Card layout', () => {
+    const rendererSrc = fs.readFileSync(path.join(ROOT, 'src/reels-canvas-renderer.js'), 'utf8');
+    const styleEngineSrc = fs.readFileSync(path.join(ROOT, 'src/reels-style-engine.js'), 'utf8');
+    const presetsSrc = fs.readFileSync(path.join(ROOT, 'src/reels-presets-init.js'), 'utf8');
+    const overlaySrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay.js'), 'utf8');
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    const indexHtmlSrc = fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8');
+    const batchSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+
+    // 1. UI selects & unified sticker pickers expose 'line' (逐行) and all new category tabs
+    assert.match(indexHtmlSrc, /id="reels-typewriter-reveal-type"[\s\S]*?<option value="line">/);
+    assert.match(indexHtmlSrc, /id="reels-fullpage-typewriter-reveal-type"[\s\S]*?<option value="line">/);
+    assert.match(indexHtmlSrc, /id="reels-fullpage-typewriter-title-reveal"[\s\S]*?<option value="line">/);
+    assert.match(indexHtmlSrc, /id="reels-fullpage-typewriter-body-reveal"[\s\S]*?<option value="line">/);
+    assert.match(panelSrc, /id="rop-sticker-category-tabs"[\s\S]*?data-cat="美加国旗"/);
+    assert.match(panelSrc, /data-cat="美加花卉"/);
+    assert.match(panelSrc, /data-cat="感恩秋日"/);
+    assert.match(panelSrc, /data-cat="书写笔尖"/);
+
+    // 2. Load renderer, overlay & presets in VM and verify all 91 icons + animation delta
+    const makeCtx = () => {
+        const calls = [];
+        const ctx = {
+            font: 'bold 48px Arial',
+            fillStyle: '#FFFFFF',
+            strokeStyle: '#000000',
+            lineWidth: 1,
+            lineCap: 'butt',
+            lineJoin: 'miter',
+            textAlign: 'left',
+            textBaseline: 'alphabetic',
+            direction: 'ltr',
+            globalAlpha: 1,
+            globalCompositeOperation: 'source-over',
+            shadowColor: '',
+            shadowBlur: 0,
+            shadowOffsetX: 0,
+            shadowOffsetY: 0,
+            _calls: calls,
+            save() { calls.push(['save']); },
+            restore() { calls.push(['restore']); },
+            translate(x, y) { calls.push(['translate', Math.round(x * 100) / 100, Math.round(y * 100) / 100]); },
+            rotate(a) { calls.push(['rotate', Math.round(a * 1000) / 1000]); },
+            scale(sx, sy) { calls.push(['scale', Math.round(sx * 1000) / 1000, Math.round(sy * 1000) / 1000]); },
+            beginPath() {},
+            closePath() {},
+            moveTo(x, y) { calls.push(['moveTo', Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]); },
+            lineTo(x, y) { calls.push(['lineTo', Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]); },
+            quadraticCurveTo(a, b, x, y) { calls.push(['qCurve', Math.round(a * 1000) / 1000, Math.round(y * 1000) / 1000]); },
+            bezierCurveTo(a, b, c, d, x, y) { calls.push(['bCurve', Math.round(a * 1000) / 1000, Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000]); },
+            arc(x, y) { calls.push(['arc', Math.round(x * 100) / 100, Math.round(y * 100) / 100]); },
+            ellipse() {},
+            rect(x, y, w, h) { calls.push(['rect', Math.round(x), Math.round(y), Math.round(w), Math.round(h)]); },
+            clip() {},
+            setLineDash() {},
+            clearRect() {},
+            drawImage() {},
+            fill() { calls.push(['fill']); },
+            stroke() { calls.push(['stroke']); },
+            fillRect() { calls.push(['fillRect']); },
+            strokeRect() {},
+            setTransform() {},
+            roundRect() {},
+            fillText(t, x, y) { calls.push(['fillText', String(t), Math.round(x), Math.round(y), Number(ctx.globalAlpha.toFixed(2))]); },
+            strokeText() {},
+            measureText(t) { return { width: String(t || '').length * 22, actualBoundingBoxAscent: 36, actualBoundingBoxDescent: 10 }; },
+            createLinearGradient: () => ({ addColorStop() {} }),
+            createRadialGradient: () => ({ addColorStop() {} }),
+            createPattern: () => ({}),
+        };
+        return ctx;
+    };
+
+    const offscreenOps = [];
+    const allFillTexts = [];
+    const makeCanvas = (w = 1080, h = 1920) => {
+        const ctx = makeCtx();
+        const origFillRect = ctx.fillRect.bind(ctx);
+        const origFillText = ctx.fillText.bind(ctx);
+        ctx.fillRect = () => {
+            offscreenOps.push(ctx.globalCompositeOperation);
+            origFillRect();
+        };
+        ctx.fillText = (t, x, y) => {
+            allFillTexts.push([String(t), Math.round(x), Math.round(y)]);
+            origFillText(t, x, y);
+        };
+        return { width: w, height: h, getContext: () => ctx };
+    };
+
+    const sandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error,
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+        document: {
+            getElementById: () => null,
+            querySelector: () => null,
+            createElement: () => makeCanvas(),
+        },
+        window: {},
+    };
+    sandbox.window.localStorage = sandbox.localStorage;
+    sandbox.window.devicePixelRatio = 1;
+    sandbox.globalThis = sandbox;
+    vm.createContext(sandbox);
+    vm.runInContext(styleEngineSrc, sandbox);
+    vm.runInContext(presetsSrc, sandbox);
+    vm.runInContext(rendererSrc, sandbox);
+    vm.runInContext(overlaySrc, sandbox);
+
+    const catalog = sandbox.window.HOLIDAY_ICON_CATALOG;
+    assert.strictEqual(catalog.length, 91, `Expected unified 91-item icon catalog, got ${catalog.length}`);
+    const newAnimatedIds = [
+        'us_patriotic_rose', 'us_texas_bluebonnet', 'us_sunflower_liberty', 'us_dogwood_blossom',
+        'us_waving_flag', 'us_flag_heart', 'canada_maple_flag', 'us_canada_friendship_flags',
+        'canada_harvest_turkey', 'roast_turkey_feast', 'xmas_nutcracker_soldier', 'xmas_carousel_ornament',
+        'rudolph_animated_leap', 'golden_cross_halo_rays', 'golden_cross_dove_bloom',
+        'cardinal_smile', 'cardinal_pray', 'cardinal_cry', 'cardinal_sing',
+        'gentle_lamb_halo', 'shepherd_lamb_heart', 'white_dove_flap_olive', 'white_dove_pray_heart',
+    ];
+    for (const id of newAnimatedIds) {
+        assert.ok(catalog.some(i => i.id === id), `Missing new animated icon ${id}`);
+        assert.equal(sandbox.window.isImageOrVectorWritingTip(id), true, `${id} must work as T/Scroll writing cursor`);
+        const ctxT0 = makeCtx();
+        const ctxT1 = makeCtx();
+        assert.equal(sandbox.window.drawHolidayStickerIcon(ctxT0, id, 100, 100, 120, { time: 0 }), true);
+        assert.equal(sandbox.window.drawHolidayStickerIcon(ctxT1, id, 100, 100, 120, { time: 0.42 }), true);
+        assert.notDeepEqual(ctxT0._calls, ctxT1._calls, `Icon ${id} should animate across time=0 vs time=0.42`);
+
+        const tipCtx0 = makeCtx();
+        const tipCtx1 = makeCtx();
+        sandbox.window.drawSpeechWritingTip(tipCtx0, id, 50, 80, 42, -8, 0);
+        sandbox.window.drawSpeechWritingTip(tipCtx1, id, 50, 80, 42, -8, 0.42);
+        assert.ok(tipCtx1._calls.some(c => c[0] === 'fill' || c[0] === 'stroke' || c[0] === 'fillRect'), `drawSpeechWritingTip should render ${id}`);
+        assert.notDeepEqual(tipCtx0._calls, tipCtx1._calls, `drawSpeechWritingTip(${id}) should animate over time`);
+    }
+
+    // 3. T-subtitle standard + fullpage typewriter 'line' (逐行) + 'pencil' cursor render & pass live time
+    const mainCanvas = makeCanvas();
+    const mainCtx = mainCanvas.getContext();
+    const renderer = new sandbox.window.ReelsCanvasRenderer(mainCanvas);
+    const tipTimes = [];
+    const origDrawTip = sandbox.window.drawSpeechWritingTip;
+    sandbox.window.drawSpeechWritingTip = function(ctx, kind, x, y, size, angle, time) {
+        tipTimes.push({ kind, x, time });
+        return origDrawTip.apply(this, arguments);
+    };
+    renderer._contextSegments = [
+        {
+            start: 0,
+            end: 4,
+            text: 'First prayer line',
+            words: [
+                { word: 'First', start: 0.0, end: 0.9 },
+                { word: 'prayer', start: 1.0, end: 2.2 },
+                { word: 'line', start: 2.3, end: 3.8 },
+            ],
+        },
+        {
+            start: 4,
+            end: 8,
+            text: 'Second prayer line',
+            words: [
+                { word: 'Second', start: 4.0, end: 5.2 },
+                { word: 'prayer', start: 5.3, end: 6.5 },
+                { word: 'line', start: 6.6, end: 7.8 },
+            ],
+        },
+    ];
+    mainCtx._calls.length = 0;
+    renderer.renderSubtitle({
+        anim_in_type: 'typewriter',
+        tw_reveal_type: 'line',
+        tw_unrevealed_opacity: 0,
+        subtitle_cursor_enabled: true,
+        fullpage_typewriter: false,
+        fullpage_typewriter_cursor: true,
+        fullpage_typewriter_cursor_kind: 'pencil',
+        wrap_width_percent: 45,
+        fontsize: 52,
+    }, renderer._contextSegments[0], 0.3, 1080, 1920);
+    const stdT0Texts = mainCtx._calls.filter(c => c[0] === 'fillText').map(c => c[1]).join(' ');
+    const stdT0Calls = mainCtx._calls.slice();
+    assert.ok(stdT0Texts.includes('line'), `Standard T-subtitle line mode should reveal whole line at t=0.3 (got "${stdT0Texts}")`);
+
+    mainCtx._calls.length = 0;
+    renderer.renderSubtitle({
+        anim_in_type: 'typewriter',
+        tw_reveal_type: 'line',
+        tw_unrevealed_opacity: 0,
+        subtitle_cursor_enabled: true,
+        fullpage_typewriter: false,
+        fullpage_typewriter_cursor: true,
+        fullpage_typewriter_cursor_kind: 'pencil',
+        wrap_width_percent: 45,
+        fontsize: 52,
+    }, renderer._contextSegments[0], 1.4, 1080, 1920);
+    const stdT1Calls = mainCtx._calls.slice();
+    assert.notDeepEqual(stdT0Calls, stdT1Calls, 'Standard T-subtitle line mode pencil cursor must advance & animate over time');
+
+    mainCtx._calls.length = 0;
+    renderer._renderFullpageTypewriter({
+        fullpage_typewriter: true,
+        fullpage_typewriter_reveal_type: 'line',
+        fullpage_typewriter_unrevealed_opacity: 0,
+        fullpage_typewriter_cursor: true,
+        fullpage_typewriter_cursor_kind: 'pencil',
+        wrap_width_percent: 40,
+        fontsize: 50,
+    }, 0.4, 1080, 1920);
+    const drawnTextsFp = mainCtx._calls.filter(c => c[0] === 'fillText').map(c => c[1]).join('');
+    const fpCallsT0 = mainCtx._calls.slice();
+    assert.ok(drawnTextsFp.includes('line'), 'Fullpage typewriter line-reveal should reveal later words of line 0 at line start');
+
+    mainCtx._calls.length = 0;
+    renderer._renderFullpageTypewriter({
+        fullpage_typewriter: true,
+        fullpage_typewriter_reveal_type: 'line',
+        fullpage_typewriter_unrevealed_opacity: 0,
+        fullpage_typewriter_cursor: true,
+        fullpage_typewriter_cursor_kind: 'pencil',
+        wrap_width_percent: 40,
+        fontsize: 50,
+    }, 1.5, 1080, 1920);
+    assert.notDeepEqual(fpCallsT0, mainCtx._calls, 'Fullpage typewriter line mode pencil cursor must advance & animate over time');
+
+    // 4. reelsSetSpeechWritingTip preserves 'line' and respects standard T-subtitle mode
+    const domIds = new Map();
+    const makeDomInput = (id, props) => {
+        const el = { id, value: '', checked: false, style: {}, dispatchEvent() {}, ...props };
+        domIds.set(id, el);
+        return el;
+    };
+    makeDomInput('reels-subtitle-cursor-enabled', { checked: false });
+    makeDomInput('reels-fullpage-typewriter', { checked: false });
+    makeDomInput('reels-anim-in-type', { value: 'typewriter' });
+    makeDomInput('reels-typewriter-reveal-type', { value: 'line' });
+    makeDomInput('reels-fullpage-typewriter-reveal-type', { value: 'line' });
+    makeDomInput('reels-fullpage-typewriter-cursor', { checked: false });
+    makeDomInput('reels-fullpage-typewriter-cursor-kind', { value: 'quill' });
+    const uiSandbox = {
+        console, Math, Date, JSON, Set, Map, Array, Object, String, Number, Boolean, RegExp, Error, Event: function() {},
+        document: {
+            getElementById: (id) => domIds.get(id) || null,
+            querySelector: () => null,
+            querySelectorAll: () => [],
+        },
+        window: {},
+    };
+    uiSandbox.window = uiSandbox;
+    uiSandbox.reelsRefreshSpeechWritingPreview = () => {};
+    uiSandbox.reelsSyncChristmasIconAdjustUI = () => {};
+    const tipFnMatch = batchSrc.match(/window\.reelsSetSpeechWritingTip\s*=\s*function[\s\S]*?\n\};/);
+    assert.ok(tipFnMatch, 'reelsSetSpeechWritingTip should exist in src/batch-reels.js');
+    vm.createContext(uiSandbox);
+    vm.runInContext(tipFnMatch[0], uiSandbox);
+    uiSandbox.reelsSetSpeechWritingTip('pencil');
+    assert.equal(domIds.get('reels-fullpage-typewriter').checked, false, 'Clicking pencil when standard typewriter is active must not hijack-enable fullpage typewriter');
+    assert.equal(domIds.get('reels-typewriter-reveal-type').value, 'line', 'Must preserve line-by-line (逐行) reveal in T-subtitle');
+    assert.equal(domIds.get('reels-fullpage-typewriter-cursor-kind').value, 'pencil');
+
+    // 5. Scroll subtitle static preview with hideUnread=false moves cursor off char 0, and framed candy card keeps crisp borders + interior clip + aligned top mascot
+    const RO = sandbox.window.ReelsOverlay;
+    sandbox.window.drawSpeechWritingTip = origDrawTip;
+    const scrollTipCalls = [];
+    sandbox.drawSpeechWritingTip = function(ctx, kind, x, y, size, angle, time) {
+        scrollTipCalls.push({ kind, x, y, time });
+        return origDrawTip(ctx, kind, x, y, size, angle, time);
+    };
+    sandbox.window.drawSpeechWritingTip = sandbox.drawSpeechWritingTip;
+
+    offscreenOps.length = 0;
+    allFillTexts.length = 0;
+    const candyCfg = {
+        scroll_title: 'PRAYER CARD',
+        content: 'If you don\'t need God, keep going.\nMay God bless your home today.\nAmen.',
+        x: 100, y: 640, w: 880, h: 860,
+        fontsize: 48, line_spacing: 20, text_width: 820,
+        scroll_uppercase: false,
+        bg_enabled: true, bg_style: 'xmas_candy_frame',
+        bg_top_mascot: 'na_xmas_wreath', bg_top_mascot_scale: 90,
+        feather_top: 200, feather_bottom: 200,
+        scroll_typewriter_enabled: true,
+        scroll_tw_reveal_type: 'char',
+        scroll_tw_hide_unread: false,
+        scroll_tw_unrevealed_opacity: 100,
+        scroll_tw_cursor_enabled: true,
+        scroll_tw_cursor_kind: 'pencil',
+        start: 0, end: 9,
+        _taskSegments: [
+            { start: 0, end: 3, text: 'If you don\'t need God, keep going.', words: [
+                { word: 'If', start: 0, end: 0.4 }, { word: 'you', start: 0.4, end: 0.9 },
+                { word: 'don\'t', start: 0.9, end: 1.4 }, { word: 'need', start: 1.4, end: 1.9 },
+            ] },
+            { start: 3, end: 6, text: 'May God bless your home today.' },
+            { start: 6, end: 9, text: 'Amen.' },
+        ],
+    };
+    const candyOv = RO.createScrollOverlay(candyCfg);
+    const scrollCanvas = makeCanvas();
+    const scrollCtx = scrollCanvas.getContext();
+    RO.drawOverlay(scrollCtx, candyOv, 0.0, 1080, 1920);
+    const ifTextDraw = allFillTexts.find(f => f[0].includes('If'));
+    assert.ok(ifTextDraw, 'First line should draw "If" text');
+    assert.ok(scrollTipCalls.length >= 1 && scrollTipCalls[0].time >= 0.35, `Static scroll preview should pass lively icon animation time >= 0.35 (got time=${scrollTipCalls[0]?.time})`);
+    assert.ok(scrollTipCalls[0].x > ifTextDraw[1] + 44, `Static preview pencil (${scrollTipCalls[0]?.x}) must sit past "If" (${ifTextDraw[1]}) instead of overlapping "I"`);
+    // Framed card xmas_candy_frame must have <= 1 destination-in pass (only inner text if feathered, NEVER on card border canvas)
+    assert.ok(offscreenOps.filter(op => op === 'destination-in').length <= 1, 'Framed xmas_candy_frame board must never feather/dissolve its own top/bottom border');
+    // Body clip rect emitted before drawing scroll body text must sit strictly inside card border insets
+    const interiorClipRects = scrollCtx._calls.filter(c => c[0] === 'rect' && c[3] < candyOv._renderedW && c[4] < candyOv._renderedH && c[1] > candyOv._renderedX && c[2] > candyOv._renderedY);
+    assert.ok(interiorClipRects.length >= 1, 'Framed xmas_candy_frame body clip must sit strictly inside border insets');
+    // Top mascot crowns near _renderedY (~52*scale = ~47px above _renderedY, not 150px detached)
+    const mascotTranslates = scrollCtx._calls.filter(c => c[0] === 'translate' && Math.abs(c[1] - (candyOv._renderedX + candyOv._renderedW / 2)) < 5 && c[2] < candyOv._renderedY);
+    assert.ok(mascotTranslates.some(tr => candyOv._renderedY - tr[2] <= 75), `Top mascot should crown card top near _renderedY (gap <= 75px, got ${mascotTranslates.map(t => candyOv._renderedY - t[2])})`);
+    // Scroll line-by-line (逐行) mode also sweeps writing tip cleanly along active line
+    scrollTipCalls.length = 0;
+    const lineScrollOv = RO.createScrollOverlay({
+        ...candyCfg,
+        scroll_tw_reveal_type: 'line',
+        scroll_tw_hide_unread: true,
+        scroll_tw_unrevealed_opacity: 0,
+    });
+    RO.drawOverlay(scrollCtx, lineScrollOv, 1.1, 1080, 1920);
+    assert.ok(scrollTipCalls.some(c => c.kind === 'pencil' && Math.abs(c.time - 1.1) < 1e-6), 'Scroll line-by-line (逐行) mode should render animated pencil tip at live time');
+
+    // 6. Refined NA prayer presets sc-49..sc-214 geometry & spacing
+    for (const checkId of ['sc-49', 'sc-149', 'sc-214']) {
+        const res = sandbox.window.resolveBuiltinPreset(checkId);
+        assert.ok(res && res.style, `Preset ${checkId} must resolve`);
+        assert.equal(res.style.x, 100);
+        assert.equal(res.style.w, 880);
+        assert.equal(res.style.h, 860);
+        assert.ok(res.style.line_spacing >= 20, `${checkId} should have spacious line_spacing >= 20`);
+        assert.equal(res.style.bg_top_mascot_offset_y, 0);
+    }
+});
+
+test('Opening effects curated audio tracks: asset validation, auto-pairing across all presets, UI controls, preview fade envelope, and real FFmpeg/CLI mixing', async () => {
+    const os = require('os');
+    const { spawnSync } = require('child_process');
+    const ReelsIntroAudio = require('../src/reels-intro-audio.js');
+    const { _test: { mixAudio } } = require('../electron/services/ffmpeg-rawvideo.js');
+    const { buildFFmpegArgs } = require('../bin/videokit-cli.cjs');
+
+    // 1. Every built-in track must exist in assets/intro-audio/*.mp3 and decode via ffprobe as 48kHz stereo >= 3s
+    assert.ok(ReelsIntroAudio.INTRO_AUDIO_TRACKS.length >= 14, 'Should define all 14 curated intro tracks');
+    for (const track of ReelsIntroAudio.INTRO_AUDIO_TRACKS) {
+        const fsPath = ReelsIntroAudio.resolveIntroAudioFsPath(track.id);
+        assert.ok(fsPath && fs.existsSync(fsPath), `Missing audio asset for ${track.id}`);
+        assert.ok(fs.statSync(fsPath).size > 20 * 1024, `Audio asset ${track.id} must be non-trivial > 20KB`);
+        const probe = spawnSync('ffprobe', [
+            '-v', 'error', '-show_entries', 'stream=codec_type,codec_name,sample_rate,channels:format=duration',
+            '-of', 'json', fsPath,
+        ], { encoding: 'utf8' });
+        assert.equal(probe.status, 0, `ffprobe failed for ${track.id}`);
+        const parsed = JSON.parse(probe.stdout || '{}');
+        const audioStream = (parsed.streams || []).find(s => s.codec_type === 'audio');
+        assert.ok(audioStream, `Audio stream missing in ${track.id}`);
+        assert.equal(Number(audioStream.sample_rate), 48000);
+        assert.equal(Number(audioStream.channels), 2);
+        assert.ok(Number(parsed.format?.duration) >= 3.0, `Audio duration should be >= 3s for ${track.id}`);
+    }
+
+    // 2. Every single INTRO_COUNTDOWN_PRESETS entry must auto-pair to a valid built-in track
+    const ovSandbox = loadBrowserScript('src/reels-intro-audio.js', {
+        window: { addEventListener() {} },
+    });
+    loadBrowserScript('src/reels-overlay.js', ovSandbox);
+    const RO = ovSandbox.window.ReelsOverlay;
+    const presetIds = Object.keys(RO.INTRO_COUNTDOWN_PRESETS);
+    assert.ok(presetIds.length >= 70, 'Expected full catalog of intro presets');
+    for (const pid of presetIds) {
+        const created = RO.createIntroCountdownOverlay({ intro_style: pid });
+        assert.ok(created.intro_audio_preset && created.intro_audio_preset !== 'none', `Preset ${pid} must auto-pair non-empty audio track`);
+        assert.ok(ReelsIntroAudio.getIntroAudioTrackMeta(created.intro_audio_preset), `Preset ${pid} mapped unknown track "${created.intro_audio_preset}"`);
+        assert.ok(created.intro_audio_volume > 0, `Preset ${pid} should have audible default volume`);
+    }
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'flag_usa_wave' }).intro_audio_preset, 'patriotic_freedom_anthem');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'eagle_ink_slash' }).intro_audio_preset, 'eagle_canyon_drum');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'cardinal_snow_pine' }).intro_audio_preset, 'cardinal_woodland_chime');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'curtain_red_reveal' }).intro_audio_preset, 'curtain_grand_fanfare');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'curtain_sheer_white' }).intro_audio_preset, 'morning_sheer_harp');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'paper_parchment_turn' }).intro_audio_preset, 'parchment_paper_quill');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'black_slit_fb' }).intro_audio_preset, 'dark_cinema_pulse');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'doors_rustic_barn_cedar' }).intro_audio_preset, 'wooden_doors_sanctuary');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'frost_canadian_thaw' }).intro_audio_preset, 'winter_crystal_bells');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'ready_321' }).intro_audio_preset, 'countdown_321_tension');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'xmas_cp01' }).intro_audio_preset, 'xmas_wonder_glockenspiel');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'morning_prayer_gold' }).intro_audio_preset, 'sacred_prayer_organ');
+    assert.equal(RO.createIntroCountdownOverlay({ intro_style: 'gift_xmas_red_gold' }).intro_audio_preset, 'holiday_gift_sparkle');
+
+    // 3. Shared timeline + fade envelope math
+    const cardinalOv = RO.createIntroCountdownOverlay({ intro_style: 'cardinal_snow_pine', end: 2.4, intro_audio_volume: 100, intro_audio_fade_out: 0.4 });
+    const midSt = ReelsIntroAudio.computeIntroAudioPlaybackState([cardinalOv], 1.0, { showIntro: true });
+    assert.equal(midSt.active, true);
+    assert.equal(midSt.trackId, 'cardinal_woodland_chime');
+    assert.ok(midSt.gain > 0.99, 'Gain should stay at full level before fade window');
+    const tailSt = ReelsIntroAudio.computeIntroAudioPlaybackState([cardinalOv], 2.2, { showIntro: true });
+    assert.equal(tailSt.active, true);
+    assert.ok(tailSt.gain > 0.45 && tailSt.gain < 0.55, `Gain at halfway through 0.4s fade should be ~0.5, got ${tailSt.gain}`);
+    const afterSt = ReelsIntroAudio.computeIntroAudioPlaybackState([cardinalOv], 2.5, { showIntro: true });
+    assert.equal(afterSt.active, false);
+    assert.equal(afterSt.gain, 0);
+    const mutedSt = ReelsIntroAudio.computeIntroAudioPlaybackState([{ ...cardinalOv, intro_audio_preset: 'none' }], 0.5, { showIntro: true });
+    assert.equal(mutedSt.url, '');
+    assert.equal(mutedSt.gain, 0);
+
+    // 4. UI controls & HTML/Vite/Electron wiring checks
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    for (const domId of [
+        'rdp-intro-audio-section',
+        'rdp-intro-audio-badge',
+        'rdp-intro-audio-preset',
+        'rdp-intro-audio-audition-btn',
+        'rdp-intro-audio-match-btn',
+        'rdp-intro-audio-upload-btn',
+        'rdp-intro-audio-file-input',
+        'rdp-intro-audio-volume',
+        'rdp-intro-audio-fade-out',
+    ]) {
+        assert.ok(panelSrc.includes(`id="${domId}"`), `Intro panel must render control #${domId}`);
+    }
+    assert.ok(fs.readFileSync(path.join(ROOT, 'src/index.html'), 'utf8').includes('reels-intro-audio.js'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8').includes('src/reels-intro-audio.js'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'vite.config.js'), 'utf8').includes('intro-audio'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'electron/main.js'), 'utf8').includes('reels-intro-audio.js'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'src/reels-preview-v2.js'), 'utf8').includes('data-role="intro-audio"'));
+    assert.ok(fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8').includes('reels-preview-intro-audio'));
+
+    // 5. Real FFmpeg mixing via mixAudio() (unvoiced + voiced delayed) & CLI buildFFmpegArgs
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vk-intro-audio-'));
+    try {
+        const silentVid = path.join(tmpDir, 'silent_bg.mp4');
+        const voiceWav = path.join(tmpDir, 'voice.wav');
+        const outUnvoiced = path.join(tmpDir, 'out_unvoiced.mp4');
+        const outVoiced = path.join(tmpDir, 'out_voiced.mp4');
+
+        let mk = spawnSync('ffmpeg', [
+            '-y', '-f', 'lavfi', '-i', 'color=c=black:s=160x280:r=15:d=3.6',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', silentVid,
+        ], { encoding: 'utf8' });
+        assert.equal(mk.status, 0, `Failed creating temp silent video: ${mk.stderr}`);
+
+        mk = spawnSync('ffmpeg', [
+            '-y', '-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=1.2',
+            '-ac', '2', '-c:a', 'pcm_s16le', voiceWav,
+        ], { encoding: 'utf8' });
+        assert.equal(mk.status, 0, `Failed creating temp voice wav: ${mk.stderr}`);
+
+        // Case A: no voicePath, no BGM, active flag intro -> output MP4 must contain non-silent intro audio!
+        await mixAudio({
+            tempVideo: silentVid,
+            outputPath: outUnvoiced,
+            voicePath: '',
+            voiceVolume: 1.0,
+            bgVolume: 0,
+            backgroundPath: silentVid,
+            bgHasAudio: false,
+            bgmPath: '',
+            bgmVolume: 0,
+            targetDuration: 3.6,
+            overlays: [RO.createIntroCountdownOverlay({ intro_style: 'flag_usa_wave', end: 2.3 })],
+            showIntro: true,
+        });
+        assert.ok(fs.existsSync(outUnvoiced), 'Unvoiced output MP4 must be written');
+        const volA = spawnSync('ffmpeg', ['-v', 'info', '-i', outUnvoiced, '-t', '2.0', '-af', 'volumedetect', '-f', 'null', os.platform() === 'win32' ? 'NUL' : '/dev/null'], { encoding: 'utf8' });
+        const maxVolA = Number((volA.stderr.match(/max_volume:\s*(-?[\d.]+)/) || [])[1] ?? -99);
+        assert.ok(maxVolA > -25, `Unvoiced intro MP4 should have audible intro anthem (got max_volume=${maxVolA} dB)`);
+
+        // Case B: voiced with 2.2s introDelay + eagle drum -> both intro (0..2.0s) and delayed voice (2.2..3.4s) audible!
+        await mixAudio({
+            tempVideo: silentVid,
+            outputPath: outVoiced,
+            voicePath: voiceWav,
+            voiceVolume: 1.0,
+            bgVolume: 0,
+            backgroundPath: silentVid,
+            bgHasAudio: false,
+            bgmPath: '',
+            bgmVolume: 0,
+            targetDuration: 3.6,
+            voiceDelay: 2.2,
+            overlays: [RO.createIntroCountdownOverlay({ intro_style: 'eagle_ink_slash', end: 2.2 })],
+            showIntro: true,
+        });
+        assert.ok(fs.existsSync(outVoiced), 'Voiced delayed output MP4 must be written');
+        const volBIntro = spawnSync('ffmpeg', ['-v', 'info', '-i', outVoiced, '-ss', '0', '-t', '1.8', '-af', 'volumedetect', '-f', 'null', os.platform() === 'win32' ? 'NUL' : '/dev/null'], { encoding: 'utf8' });
+        const maxVolBIntro = Number((volBIntro.stderr.match(/max_volume:\s*(-?[\d.]+)/) || [])[1] ?? -99);
+        assert.ok(maxVolBIntro > -25, `Voiced MP4 0..1.8s must contain eagle intro audio (got max_volume=${maxVolBIntro} dB)`);
+        const volBBody = spawnSync('ffmpeg', ['-v', 'info', '-i', outVoiced, '-ss', '2.35', '-t', '0.9', '-af', 'volumedetect', '-f', 'null', os.platform() === 'win32' ? 'NUL' : '/dev/null'], { encoding: 'utf8' });
+        const maxVolBBody = Number((volBBody.stderr.match(/max_volume:\s*(-?[\d.]+)/) || [])[1] ?? -99);
+        assert.ok(maxVolBBody > -10, `Voiced MP4 2.35..3.25s must preserve delayed voiceover loudness (got max_volume=${maxVolBBody} dB)`);
+
+        // Case C: CLI buildFFmpegArgs includes intro audio with fade-out & normalize=0 amix
+        const cliArgs = buildFFmpegArgs({
+            width: 1080,
+            height: 1920,
+            fps: 30,
+            quality: 'medium',
+            bgPath: silentVid,
+            audioPath: voiceWav,
+            bgmPath: '',
+            segments: [],
+            subtitle: {},
+            introDelaySec: 2.4,
+            voiceVolume: 1.0,
+            bgmVolume: 0.2,
+            targetDuration: 4.0,
+            overlays: [cardinalOv],
+            binaries: { ffprobe: 'ffprobe', ffmpeg: 'ffmpeg' },
+        }, path.join(tmpDir, 'cli_out.mp4'));
+        assert.ok(cliArgs.some(a => String(a).includes('cardinal_woodland_chime.mp3')), 'CLI FFmpeg args should include cardinal_woodland_chime.mp3');
+        const cliFcIdx = cliArgs.indexOf('-filter_complex');
+        assert.ok(cliFcIdx >= 0);
+        const cliFc = cliArgs[cliFcIdx + 1];
+        assert.match(cliFc, /afade=t=out/, 'CLI FFmpeg filter_complex should fade out intro audio smoothly');
+        assert.match(cliFc, /amix=inputs=2:.*normalize=0/, 'CLI FFmpeg filter_complex should mix without halving volume');
+    } finally {
+        try { await require('../resources/export-cpu-budget.js').close(); } catch (_) {}
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+});
+
+test('Left task sidebar 2-level categorized right-click menu replaces single task & group assets while keeping subtitles/styles intact', async () => {
+    // 1. Verify batch-reels.js emits data-tab-id and data-queue-id on group/folder headers alongside data-task-idx
+    const batchSrc = fs.readFileSync(path.join(ROOT, 'src/batch-reels.js'), 'utf8');
+    assert.match(batchSrc, /tabIdAttr[\s\S]{0,160}data-tab-id[\s\S]{0,160}reels-batch-group-header/, 'Group headers must emit data-tab-id for left-sidebar context menu');
+    assert.match(batchSrc, /reels-folder-queue-header[^>]*data-queue-id/, 'Folder queue headers must emit data-queue-id for left-sidebar context menu');
+
+    // 2. Build lightweight DOM sandbox for reels-batch-table.js context menu & replacement helpers
+    const bodyChildren = [];
+    const byId = new Map();
+    const docListeners = [];
+    const makeDomNode = (tag) => {
+        const listeners = {};
+        const node = {
+            tagName: tag.toUpperCase(),
+            _id: '',
+            className: '',
+            style: {},
+            children: [],
+            textContent: '',
+            title: '',
+            get id() { return this._id; },
+            set id(v) {
+                if (this._id && byId.get(this._id) === this) byId.delete(this._id);
+                this._id = String(v || '');
+                if (this._id) byId.set(this._id, this);
+            },
+            set innerHTML(v) { this._html = String(v || ''); },
+            get innerHTML() { return this._html || ''; },
+            appendChild(child) {
+                this.children.push(child);
+                child.parentNode = this;
+                if (child.id) byId.set(child.id, child);
+                return child;
+            },
+            remove() {
+                if (this._id && byId.get(this._id) === this) byId.delete(this._id);
+                const idx = bodyChildren.indexOf(this);
+                if (idx >= 0) bodyChildren.splice(idx, 1);
+            },
+            contains: (target) => target === node || node.children.some(c => c.contains?.(target)),
+            matches: () => false,
+            closest: () => null,
+            getBoundingClientRect: () => ({ left: 100, top: 100, right: 335, width: 235, height: 220 }),
+            addEventListener(type, fn) { (listeners[type] ||= []).push(fn); },
+            trigger(type, ev = {}) {
+                for (const fn of (listeners[type] || [])) fn({ stopPropagation() {}, preventDefault() {}, target: this, ...ev });
+            },
+        };
+        return node;
+    };
+
+    const preservedSegs = [{ start: 0, end: 2.5, text: 'Lord bless your home', words: [{ word: 'Lord', start: 0, end: 0.5 }] }];
+    const preservedOverlays = [{ id: 'ov_pray_1', type: 'scroll', bg_style: 'xmas_candy_frame', intro_audio_preset: 'sacred_prayer_organ' }];
+    const tasks = [
+        {
+            id: 't1', baseName: 'prayer_01', fileName: 'prayer_01.mp4',
+            _batchTabId: 'tab_cloud_1', _batchTabName: '祈祷工程',
+            bgPath: 'C:/cloud/old_bg_1.mp4', videoPath: 'C:/cloud/old_bg_1.mp4',
+            audioPath: 'C:/cloud/old_vo_1.mp3', bgmPath: 'C:/cloud/old_bgm.mp3',
+            srtPath: 'C:/cloud/prayer_01.srt', segments: preservedSegs, aligned: true,
+            overlays: preservedOverlays, _exportSelected: true,
+        },
+        {
+            id: 't2', baseName: 'prayer_02', fileName: 'prayer_02.mp4',
+            _batchTabId: 'tab_cloud_1', _batchTabName: '祈祷工程',
+            bgPath: 'C:/cloud/old_bg_2.mp4', videoPath: 'C:/cloud/old_bg_2.mp4',
+            audioPath: 'C:/cloud/old_vo_2.mp3', srtPath: 'C:/cloud/prayer_02.srt',
+            segments: preservedSegs, aligned: true, overlays: preservedOverlays,
+        },
+    ];
+
+    let selectCalls = [];
+    let taskListRenders = 0;
+    let savedHistory = 0;
+    let v2Reloaded = 0;
+    const scannedFiles = [
+        { name: 'prayer_02.mp4', path: 'D:/NewBgs/prayer_02.mp4' },
+        { name: 'prayer_01.mp4', path: 'D:/NewBgs/prayer_01.mp4' },
+    ];
+
+    const sandbox = loadBrowserScript('src/reels-render-plan.js', {
+        window: { addEventListener() {}, requestAnimationFrame: () => 0 },
+    });
+    const fakeBody = makeDomNode('body');
+    fakeBody.appendChild = (ch) => {
+        bodyChildren.push(ch);
+        ch.parentNode = fakeBody;
+        if (ch.id) byId.set(ch.id, ch);
+        return ch;
+    };
+    const localDoc = {
+        head: makeDomNode('head'),
+        body: fakeBody,
+        createElement: (tag) => makeDomNode(tag),
+        getElementById: (id) => byId.get(id) || null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener(type, fn, cap) { docListeners.push({ type, fn, cap }); },
+        removeEventListener() {},
+    };
+    const btSandbox = {
+        window: sandbox.window,
+        document: localDoc,
+        localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+        parseSRT: (raw) => [{ start: 0, end: 1.5, text: String(raw || '').trim().split(/\r?\n/).pop() }],
+        ReelsSubtitleProcessor: { srtToSegmentsWithWords: (s) => s },
+        showToast: () => {},
+        confirm: () => true,
+        setTimeout: (fn) => { if (typeof fn === 'function') fn(); return 0; },
+        clearTimeout: () => {},
+    };
+    btSandbox.window._reelsState = { tasks, selectedIdx: 0, _mediaDurations: {} };
+    btSandbox.window.innerWidth = 1440;
+    btSandbox.window.innerHeight = 900;
+    btSandbox.window.ReelsRenderPlan = sandbox.window.ReelsRenderPlan;
+    btSandbox.window.reelsSelectTask = (idx, opts) => selectCalls.push({ idx, opts });
+    btSandbox.window.reelsDuplicateTask = () => {};
+    btSandbox.window.reelsRemoveTask = () => {};
+    btSandbox.window._renderTaskList = () => { taskListRenders++; };
+    btSandbox.window.reelsSaveHistory = () => { savedHistory++; };
+    btSandbox.window.ReelsPreviewV2 = { isOpen: () => true, reload: () => { v2Reloaded++; } };
+    btSandbox.window.electronAPI = {
+        selectDirectory: async () => 'D:/NewBgs',
+        scanDirectory: async () => scannedFiles,
+        readFileText: async () => '1\n00:00:00,000 --> 00:00:01,500\nNew subtitle line\n',
+    };
+
+    loadBrowserScript('src/reels-batch-table.js', btSandbox);
+
+    // 3. Verify 2-level task context menu keeps root concise and nests categories cleanly
+    const taskMenu = btSandbox.window.reelsBuildTaskContextMenuItems(tasks[0], 0);
+    const rootActions = taskMenu.filter(it => it.type !== 'header');
+    assert.ok(rootActions.length <= 5, `Top-level task menu must stay compact (<=5 rows, got ${rootActions.length})`);
+    assert.ok(rootActions[0].label.includes('替换背景'));
+    assert.ok(rootActions[1].label.includes('替换人声'));
+    const otherSub = rootActions.find(it => it.label.includes('替换其他素材'));
+    assert.ok(otherSub && Array.isArray(otherSub.children) && otherSub.children.length >= 6, 'Secondary assets & clears must be tucked inside 替换其他素材 submenu');
+    assert.ok(otherSub.children.some(c => c.label.includes('内容视频')));
+    assert.ok(otherSub.children.some(c => c.label.includes('BGM')));
+    assert.ok(otherSub.children.some(c => c.label.includes('SRT')));
+    assert.ok(otherSub.children.some(c => c.label.includes('清空当前背景')));
+    const locSub = rootActions.find(it => it.label.includes('打开素材所在位置'));
+    assert.ok(locSub && Array.isArray(locSub.children) && locSub.children.length >= 3, 'File locations must be grouped in submenu');
+    const moreSub = rootActions.find(it => it.label.includes('更多任务操作'));
+    assert.ok(moreSub && Array.isArray(moreSub.children) && moreSub.children.length >= 3, 'Task utility actions must be grouped in submenu');
+
+    // Verify rendering root menu + opening submenu on hover/click
+    const opened = btSandbox.window.reelsShowLocationContextMenu(120, 140, taskMenu);
+    assert.equal(opened, true);
+    const rootMenuEl = byId.get('reels-location-context-menu');
+    assert.ok(rootMenuEl, 'Root context menu element must render');
+    const subTriggerRow = rootMenuEl.children.find(el => el._html && el._html.includes('替换其他素材'));
+    assert.ok(subTriggerRow, 'Submenu parent row must render');
+    subTriggerRow.trigger('mouseenter');
+    const subMenuEl = byId.get('reels-location-submenu');
+    assert.ok(subMenuEl && subMenuEl.children.length >= 6, 'Hovering submenu trigger must open #reels-location-submenu with categorized items');
+
+    // Verify single-task background replacement preserves subtitles + styles and syncs UI/V2
+    await btSandbox.window.reelsReplaceTaskAsset(0, 'bg', 'D:/UserFootage/new_sunset.mp4');
+    assert.equal(tasks[0].bgPath, 'D:/UserFootage/new_sunset.mp4');
+    assert.equal(tasks[0].videoPath, 'D:/UserFootage/new_sunset.mp4');
+    assert.equal(tasks[0].srtPath, 'C:/cloud/prayer_01.srt', 'Replacing background must NOT wipe existing SRT path');
+    assert.equal(tasks[0].segments.length, 1, 'Replacing background must preserve existing subtitle segments');
+    assert.equal(tasks[0].overlays[0].intro_audio_preset, 'sacred_prayer_organ', 'Must preserve intro/style overlays');
+    assert.ok(selectCalls.some(c => c.idx === 0 && c.opts?.autoplay === false), 'Should refresh selected task preview without autoplaying loudly');
+    assert.ok(taskListRenders >= 1 && savedHistory >= 1 && v2Reloaded >= 1);
+
+    // Replacing audio, contentvideo, and srt cleanly updates respective fields
+    await btSandbox.window.reelsReplaceTaskAsset(0, 'audio', 'D:/UserVoices/new_voice.mp3');
+    assert.equal(tasks[0].audioPath, 'D:/UserVoices/new_voice.mp3');
+    await btSandbox.window.reelsReplaceTaskAsset(0, 'srt', 'D:/UserSrts/new_sub.srt');
+    assert.equal(tasks[0].srtPath, 'D:/UserSrts/new_sub.srt');
+    assert.equal(tasks[0].segments[0].text, 'New subtitle line');
+
+    // 4. Verify group header 2-level menu + stem-matched folder batch replacement
+    const groupMenu = btSandbox.window.reelsBuildGroupContextMenuItems({ tabId: 'tab_cloud_1', tabName: '祈祷工程' });
+    const groupRootActions = groupMenu.filter(it => it.type !== 'header');
+    assert.ok(groupRootActions.length <= 5, 'Top-level group context menu must stay compact');
+    assert.ok(groupRootActions[0].label.includes('批量替换本组背景'));
+    assert.ok(groupRootActions.find(it => it.label.includes('批量替换本组其他素材'))?.children?.length === 3);
+
+    await btSandbox.window.reelsBatchReplaceGroupAssets(tasks, '祈祷工程', 'bg');
+    assert.equal(tasks[0].bgPath, 'D:/NewBgs/prayer_01.mp4', 'Stem match must pair prayer_01 -> prayer_01.mp4');
+    assert.equal(tasks[1].bgPath, 'D:/NewBgs/prayer_02.mp4', 'Stem match must pair prayer_02 -> prayer_02.mp4');
+});
+
+test('2026 Novel Viral Openers, Audio Tracks, Decor FX, T-Subtitles & Scroll Cards render cleanly', () => {
+    const ReelsIntroAudio = require('../src/reels-intro-audio');
+    const PresetsInit = require('../src/reels-presets-init');
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+
+    assert.equal(ReelsIntroAudio.INTRO_AUDIO_TRACKS.length, 30, 'Expected 30 curated intro audio tracks');
+    for (const trackId of [
+        'crt_glitch_powerup', 'film_burn_whoosh', 'polaroid_shutter_snap', 'prism_glass_shimmer',
+        'cloud_part_heavenly_breeze', 'cloud_dawn_angelic_swoosh',
+        'impact_cinema_boom', 'impact_riser_slam', 'impact_whip_whoosh', 'impact_sacred_cathedral_bell',
+        'impact_heartbeat_double', 'impact_thunder_crack', 'impact_camera_flash_shutter',
+        'impact_piano_deep_chord', 'impact_sword_metallic_ring', 'impact_news_breaking_hit',
+    ]) {
+        assert.ok(ReelsIntroAudio.getIntroAudioTrackMeta(trackId), `Missing new audio track ${trackId}`);
+        assert.ok(ReelsIntroAudio.resolveIntroAudioFsPath(trackId), `Missing MP3 file on disk for ${trackId}`);
+    }
+
+    const sandbox = loadBrowserScript('src/reels-intro-audio.js', {
+        window: { addEventListener() {} },
+    });
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+    const RO = sandbox.window.ReelsOverlay;
+
+    const visibleIntros = Object.values(RO.INTRO_COUNTDOWN_PRESETS).filter(p => p && !p.hiddenFromIntroPicker);
+    assert.equal(visibleIntros.length, 113, 'Expected 113 visible intro presets');
+
+    // Pure audio-only impact SFX presets render ZERO canvas visuals while delaying voice/subtitles cleanly
+    for (const [sfxId, expectedTrack, expectedDelay] of [
+        ['sfx_cinema_boom', 'impact_cinema_boom', 1.2],
+        ['sfx_riser_slam', 'impact_riser_slam', 1.1],
+        ['sfx_whip_whoosh', 'impact_whip_whoosh', 0.75],
+        ['sfx_sacred_bell', 'impact_sacred_cathedral_bell', 1.4],
+        ['sfx_heartbeat_drop', 'impact_heartbeat_double', 1.0],
+        ['sfx_thunder_crack', 'impact_thunder_crack', 1.3],
+        ['sfx_shutter_freeze', 'impact_camera_flash_shutter', 0.75],
+        ['sfx_piano_deep_drop', 'impact_piano_deep_chord', 1.3],
+        ['sfx_sword_ring', 'impact_sword_metallic_ring', 0.95],
+        ['sfx_news_breaking_hit', 'impact_news_breaking_hit', 0.9],
+        ['sfx_boom_zero_sync', 'impact_cinema_boom', 0],
+    ]) {
+        assert.ok(panelSrc.includes('sfx_only') && panelSrc.includes('audio_only'), 'Panel must support pure audio-only impact openers');
+        const ov = RO.createIntroCountdownOverlay({ intro_style: sfxId });
+        assert.equal(ov.intro_layout, 'audio_only');
+        assert.equal(ov.intro_audio_preset, expectedTrack);
+        assert.equal(RO.getIntroDelaySec([ov]), expectedDelay);
+        let drawCalls = 0;
+        let zSaves = 0;
+        let zRestores = 0;
+        const zeroCtx = {
+            globalAlpha: 1,
+            save() { zSaves++; },
+            restore() { zRestores++; },
+            translate() {}, rotate() {}, scale() {},
+            beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, rect() {}, clip() {}, arc() {},
+            fill() { drawCalls++; }, stroke() { drawCalls++; },
+            fillRect() { drawCalls++; }, strokeRect() { drawCalls++; }, fillText() { drawCalls++; },
+        };
+        RO.drawOverlay(zeroCtx, { ...ov, _previewPlaying: true }, 0.1, 1080, 1920);
+        assert.equal(zSaves, zRestores, `Audio-only preset ${sfxId} must balance save/restore`);
+        assert.equal(drawCalls, 0, `Audio-only preset ${sfxId} must draw zero pixels on canvas`);
+    }
+
+    const novelIntroIds = [
+        ['glitch_crt_power_on', 'glitch_reveal', 'crt_glitch_powerup'],
+        ['glitch_vhs_tracking', 'glitch_reveal', 'crt_glitch_powerup'],
+        ['glitch_cyber_rgb_slice', 'glitch_reveal', 'viral_hook_punch'],
+        ['film_burn_amber_flash', 'film_burn_reveal', 'film_burn_whoosh'],
+        ['film_burn_dreamy_rose', 'film_burn_reveal', 'film_burn_whoosh'],
+        ['polaroid_snap_toss', 'polaroid_reveal', 'polaroid_shutter_snap'],
+        ['magazine_cutout_peel', 'polaroid_reveal', 'polaroid_shutter_snap'],
+        ['polaroid_zero_memory', 'polaroid_reveal', 'polaroid_shutter_snap'],
+        ['prism_triple_panel', 'prism_reveal', 'prism_glass_shimmer'],
+        ['prism_diagonal_slice', 'prism_reveal', 'prism_glass_shimmer'],
+        ['cloud_part_white_iris', 'cloud_reveal', 'cloud_part_heavenly_breeze'],
+        ['cloud_part_golden_dawn', 'cloud_reveal', 'cloud_dawn_angelic_swoosh'],
+        ['cloud_part_rose_heaven', 'cloud_reveal', 'cloud_dawn_angelic_swoosh'],
+        ['cloud_part_blue_storm_clear', 'cloud_reveal', 'cloud_part_heavenly_breeze'],
+    ];
+
+    for (const [id, layout, expectedAudio] of novelIntroIds) {
+        assert.ok(panelSrc.includes(id) || panelSrc.includes(layout), `Panel must register ${id} / ${layout}`);
+        const ov = RO.createIntroCountdownOverlay({ intro_style: id });
+        assert.equal(ov.intro_layout, layout);
+        assert.equal(ov.intro_audio_preset, expectedAudio);
+
+        for (const [t, paused] of [[0, false], [0, true], [ov.end * 0.45, true]]) {
+            let saves = 0;
+            let restores = 0;
+            let draws = 0;
+            const grad = { addColorStop() {} };
+            const ctx = {
+                globalAlpha: 1, font: '', fillStyle: '#000', strokeStyle: '#fff', lineWidth: 1,
+                textAlign: 'center', textBaseline: 'middle', shadowColor: 'transparent', shadowBlur: 0,
+                shadowOffsetX: 0, shadowOffsetY: 0,
+                save() { saves++; },
+                restore() { restores++; },
+                translate() {}, rotate() {}, scale() {}, setLineDash() {},
+                beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+                arc() {}, ellipse() {}, rect() {}, clip() {},
+                fill() { draws++; }, stroke() { draws++; },
+                fillRect() { draws++; }, strokeRect() { draws++; }, fillText() { draws++; },
+                createLinearGradient() { return grad; },
+                createRadialGradient() { return grad; },
+            };
+            RO.drawOverlay(ctx, { ...ov, _previewPlaying: !paused }, t, 1080, 1920);
+            assert.equal(saves, restores, `Canvas save/restore balanced for ${id} at t=${t}, paused=${paused}`);
+            assert.ok(draws > 0, `Expected non-empty draw calls for ${id} at t=${t}`);
+        }
+    }
+
+    for (const decorId of [
+        'golden_petal_sanctuary', 'anamorphic_cinema_streak', 'rec_camcorder_viewfinder',
+        'a24_warm_halation', 'prismatic_glass_refraction', 'editorial_dual_matte_frame',
+        'cloud_part_transition', 'cloud_part_gold_transition', 'cloud_mist_ambient_drift', 'cloud_heavenly_top_wisps',
+    ]) {
+        assert.ok(RO.DECOR_OVERLAY_STYLES[decorId], `Missing novel decor FX ${decorId}`);
+        assert.ok(panelSrc.includes(decorId), `Overlay panel UI missing ${decorId}`);
+        let saves = 0;
+        let restores = 0;
+        let draws = 0;
+        const grad = { addColorStop() {} };
+        const ctx = {
+            globalAlpha: 1, font: '', fillStyle: '#000', strokeStyle: '#fff', lineWidth: 1,
+            textAlign: 'center', textBaseline: 'middle', shadowColor: 'transparent', shadowBlur: 0,
+            save() { saves++; }, restore() { restores++; },
+            translate() {}, rotate() {}, scale() {}, setLineDash() {},
+            beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+            arc() {}, ellipse() {}, rect() {}, clip() {},
+            fill() { draws++; }, stroke() { draws++; }, fillRect() { draws++; },
+            strokeRect() { draws++; }, fillText() { draws++; },
+            createLinearGradient() { return grad; }, createRadialGradient() { return grad; },
+        };
+        const ov = RO.createDecorOverlay({ decor_style: decorId, start: 0, end: 2.2 });
+        RO.drawOverlay(ctx, ov, 0.8, 1080, 1920);
+        assert.equal(saves, restores, `Decor ${decorId} must balance canvas save/restore`);
+        assert.ok(draws > 0, `Decor ${decorId} must emit draw commands`);
+    }
+
+    // Verify procedural 2D FBM cloud noise physics: full cloud bank at start -> center parting -> upper corners lingering -> 0 at end
+    const sStartCenter = RO.evaluateCloudFbmSample(0.5, 0.44, { mode: 'iris_clear', progress: 0.05, timeSec: 0 });
+    const sMidCenter = RO.evaluateCloudFbmSample(0.5, 0.44, { mode: 'iris_clear', progress: 0.56, timeSec: 1.1 });
+    const sMidCorner = RO.evaluateCloudFbmSample(0.05, 0.06, { mode: 'iris_clear', progress: 0.56, timeSec: 1.1 });
+    const sEndCorner = RO.evaluateCloudFbmSample(0.05, 0.06, { mode: 'iris_clear', progress: 1.0, timeSec: 2.1 });
+    assert.ok(sStartCenter.alpha >= 0.70, `Cloud iris start center must be thick cloud, got ${sStartCenter.alpha}`);
+    assert.ok(sMidCenter.alpha <= 0.05, `Cloud iris mid-animation center must clear open, got ${sMidCenter.alpha}`);
+    assert.ok(sMidCorner.alpha >= 0.45, `Cloud iris mid-animation upper corner must still have clouds, got ${sMidCorner.alpha}`);
+    assert.equal(sEndCorner.alpha, 0, 'Cloud iris end must clear completely to zero alpha');
+
+    // Verify mid-video cloud transition gather (0->0.24) and radial parting (0.24->1.0)
+    const midPeakCenter = RO.evaluateCloudFbmSample(0.5, 0.44, { mode: 'mid_transition', progress: 0.24, timeSec: 0.5 });
+    const midOpenCenter = RO.evaluateCloudFbmSample(0.5, 0.44, { mode: 'mid_transition', progress: 0.65, timeSec: 1.4 });
+    const midOpenCorner = RO.evaluateCloudFbmSample(0.06, 0.07, { mode: 'mid_transition', progress: 0.65, timeSec: 1.4 });
+    assert.ok(midPeakCenter.alpha >= 0.70, `Mid transition peak at p=0.24 must cover center, got ${midPeakCenter.alpha}`);
+    assert.ok(midOpenCenter.alpha <= 0.05, `Mid transition parting at p=0.65 must open center, got ${midOpenCenter.alpha}`);
+    assert.ok(midOpenCorner.alpha >= 0.35, `Mid transition parting at p=0.65 must retain corner wisps, got ${midOpenCorner.alpha}`);
+
+    // Exercise the actual Canvas ImageData pixel-shader path (document.createElement + putImageData + drawImage)
+    let capturedImgData = null;
+    let drawImageCalls = 0;
+    const pixelSandbox = loadBrowserScript('src/reels-intro-audio.js', { window: { addEventListener() {} } });
+    pixelSandbox.document = {
+        createElement(tag) {
+            if (tag !== 'canvas') return {};
+            const c = {
+                width: 160,
+                height: 284,
+                getContext() {
+                    return {
+                        createImageData(w, h) {
+                            return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+                        },
+                        putImageData(img) {
+                            capturedImgData = img;
+                        },
+                    };
+                },
+            };
+            return c;
+        },
+    };
+    loadBrowserScript('src/reels-overlay.js', pixelSandbox);
+    const pxRO = pixelSandbox.window.ReelsOverlay;
+    const pxOv = pxRO.createIntroCountdownOverlay({ intro_style: 'cloud_part_white_iris' });
+    const mkPixelCtx = () => ({
+        globalAlpha: 1, font: '', fillStyle: '#000', strokeStyle: '#fff', lineWidth: 1,
+        textAlign: 'center', textBaseline: 'middle',
+        save() {}, restore() {}, translate() {}, rotate() {}, scale() {}, setLineDash() {},
+        beginPath() {}, closePath() {}, moveTo() {}, lineTo() {}, quadraticCurveTo() {}, bezierCurveTo() {},
+        arc() {}, ellipse() {}, rect() {}, clip() {}, fill() {}, stroke() {}, fillRect() {}, strokeRect() {}, fillText() {},
+        createLinearGradient() { return { addColorStop() {} }; },
+        createRadialGradient() { return { addColorStop() {} }; },
+        drawImage() { drawImageCalls++; },
+    });
+    pxRO.drawOverlay(mkPixelCtx(), { ...pxOv, _previewPlaying: true }, 0.02, 1080, 1920);
+    assert.ok(drawImageCalls >= 1 && capturedImgData, 'Pixel shader path must render cloud canvas via putImageData + drawImage');
+    const cIdx = (Math.floor(284 * 0.44) * 160 + 80) * 4;
+    assert.ok(capturedImgData.data[cIdx + 3] >= 180, `t=0.02s center pixel alpha must be opaque cloud, got ${capturedImgData.data[cIdx + 3]}`);
+    pxRO.drawOverlay(mkPixelCtx(), { ...pxOv, _previewPlaying: true }, 1.15, 1080, 1920);
+    const tlIdx = (8 * 160 + 8) * 4;
+    assert.ok(capturedImgData.data[cIdx + 3] <= 12, `t=1.15s center pixel alpha must clear open, got ${capturedImgData.data[cIdx + 3]}`);
+    assert.ok(capturedImgData.data[tlIdx + 3] >= 100, `t=1.15s top-left corner pixel must retain cloud bank, got ${capturedImgData.data[tlIdx + 3]}`);
+    pxRO.clearRuntimeCaches();
+    RO.clearRuntimeCaches();
+
+    const { resolveFontFamily } = require('../bin/videokit-cli.cjs');
+    for (let i = 256; i <= 264; i++) {
+        const res = PresetsInit.resolveBuiltinPreset(`sub-${i}`);
+        assert.ok(res && res.kind === 'subtitle', `Expected sub-${i} to resolve cleanly`);
+        const fInfo = resolveFontFamily(res.preset.font_family);
+        assert.ok(fInfo && fInfo.fontFiles.length > 0, `Subtitle font ${res.preset.font_family} in sub-${i} must resolve locally`);
+    }
+    const sub264 = PresetsInit.resolveBuiltinPreset('sub-264');
+    assert.equal(sub264.preset.dynamic_box, true);
+    assert.equal(sub264.preset.color_high_bg, '#166534');
+    assert.equal(sub264.preset.opacity_high_bg, 242);
+    assert.equal(sub264.preset.italic, true);
+    assert.equal(sub264.preset.uppercase, true);
+    assert.equal(sub264.preset.color_high, '#FACC15');
+    for (let i = 215; i <= 222; i++) {
+        const resSc = PresetsInit.resolveBuiltinPreset(`sc-${i}`);
+        const resScroll = PresetsInit.resolveBuiltinPreset(`scroll-${i}`);
+        assert.ok(resSc && resSc.kind === 'scroll_style', `Expected sc-${i} to resolve cleanly`);
+        assert.ok(resScroll && resScroll.kind === 'scroll_style', `Expected scroll-${i} to resolve cleanly`);
+    }
+    for (let i = 37; i <= 40; i++) {
+        const resOv = PresetsInit.resolveBuiltinPreset(`ov-${i}`);
+        assert.ok(resOv && resOv.kind === 'overlay' && resOv.overlays.length >= 2, `Expected ov-${i} combo preset`);
+    }
+});
+
+test('CRF quality restoration, GPU->CPU export fallback, precise quick-cut respect, and Electron-safe template naming dialogs', async () => {
+    // 1) ffmpeg-rawvideo rate control: CRF/CQ for preset tiers, VBV ABR only for explicit custom bitrate
+    const rawvideo = require(path.join(ROOT, 'electron/services/ffmpeg-rawvideo.js'));
+    const { h264RateControlArgs, cpuH264EncoderArgs, gpuH264EncoderCandidates } = rawvideo._test;
+
+    assert.deepEqual(h264RateControlArgs(15), ['-crf', '15'], 'Reels高质量 must use true CRF 15 instead of 12M ABR cap');
+    assert.deepEqual(h264RateControlArgs(18), ['-crf', '18'], '口播高质量 must use true CRF 18 instead of 8M ABR cap');
+    assert.deepEqual(h264RateControlArgs(23), ['-crf', '23'], '口播低质量 must use CRF 23 instead of 2M mush');
+    assert.deepEqual(h264RateControlArgs(18, 6, 9), ['-b:v', '6M', '-maxrate', '9M', '-bufsize', '12M'], 'Custom bitrate must remain bounded');
+
+    const cpuHigh = cpuH264EncoderArgs('medium', 15, 'win32');
+    assert.ok(cpuHigh.includes('-crf') && cpuHigh[cpuHigh.indexOf('-crf') + 1] === '15');
+    assert.ok(!cpuHigh.includes('-b:v') && !cpuHigh.includes('-maxrate'), 'CPU preset mode must not cap complex frames');
+
+    const winGpuHigh = gpuH264EncoderCandidates('win32', 15);
+    const nvencHigh = winGpuHigh.find(c => c.codec === 'h264_nvenc');
+    const amfHigh = winGpuHigh.find(c => c.codec === 'h264_amf');
+    const qsvHigh = winGpuHigh.find(c => c.codec === 'h264_qsv');
+    assert.ok(nvencHigh.args.includes('-cq') && nvencHigh.args.includes('15') && nvencHigh.args.includes('0') && !nvencHigh.args.includes('-maxrate'));
+    assert.ok(amfHigh.args.includes('cqp') && amfHigh.args.includes('-qp_i') && amfHigh.args.includes('-qp_p'));
+    assert.ok(qsvHigh.args.includes('-global_quality') && qsvHigh.args.includes('15'));
+
+    const winGpuCustom = gpuH264EncoderCandidates('win32', 18, 8, 12);
+    assert.ok(winGpuCustom.find(c => c.codec === 'h264_nvenc').args.includes('8M'));
+    const macVtHigh = gpuH264EncoderCandidates('darwin', 15);
+    assert.ok(macVtHigh[0].args.includes('20M') && macVtHigh[0].args.includes('30M'));
+
+    // 2) reelsWysiwygExport: respect precise mode on talking-head duration match AND auto-fallback GPU -> CPU
+    const mockTmpBase = os.tmpdir();
+    const mockBgFramesDir = path.join(mockTmpBase, 'vk_bg_frames');
+    const mockTalkingPath = path.join(mockTmpBase, 'talking_head.mp4');
+    const mockOutPath = path.join(mockTmpBase, 'out.mp4');
+    const startPayloads = [];
+    const mockCanvas = {
+        width: 1080,
+        height: 1920,
+        getContext() {
+            return {
+                fillStyle: '#000',
+                save() {}, restore() {}, clearRect() {}, fillRect() {}, translate() {}, scale() {}, rotate() {}, drawImage() {},
+                getImageData() { return { data: new Uint8ClampedArray(1080 * 1920 * 4) }; },
+            };
+        },
+    };
+    const exportSandbox = {
+        getWritingVisualStyle: s => ({ ...(s || {}) }),
+        document: {
+            getElementById(id) {
+                // Simulate isolated-wysiwyg-renderer.html keeping reels-fast-alpha-mode checked in DOM
+                if (id === 'reels-fast-alpha-mode') return { checked: true };
+                return null;
+            },
+            createElement() { return mockCanvas; },
+        },
+        navigator: { hardwareConcurrency: 4 },
+        Image: class { set src(v) { setImmediate(() => this.onload?.()); } },
+        ReelsCanvasRenderer: class {
+            async prepareWritingCursorImage() {}
+            setContextSegments() {}
+            renderAmbientLightingBase() {}
+            renderSubtitle() {}
+            dispose() {}
+        },
+        ReelsOverlay: {
+            clearRuntimeCaches() {},
+            isFullDurationAutoOverlay() { return false; },
+            drawOverlay() {},
+        },
+        ReelsFramePipeline: {
+            create() {
+                return {
+                    async open() {},
+                    async send() {},
+                    async drain() {},
+                    abort() {},
+                };
+            },
+        },
+        electronAPI: {
+            toFileUrl: p => p,
+            checkFilesExist: async (paths) => Object.fromEntries((paths || []).map(p => [p, true])),
+            getMediaDuration: async () => 5.0,
+            reelsComposeWysiwyg: async (action, data) => {
+                if (action === 'prepare-bg') return { framesDir: mockBgFramesDir, frameCount: 3, bgAudioPath: null };
+                if (action === 'start') {
+                    startPayloads.push({ useGPU: data.useGPU, alphaOverlayBgPath: data.alphaOverlayBgPath });
+                    if (data.useGPU) throw new Error('h264_nvenc OpenEncodeSessionEx failed: incompatible client key');
+                    return 'sess-ok';
+                }
+                if (action === 'frame') return { ok: true };
+                if (action === 'finish') return { output_path: data.outputPath || mockOutPath };
+                return { ok: true };
+            },
+        },
+    };
+    exportSandbox.window = exportSandbox;
+    loadBrowserScript('src/reels-wysiwyg-export.js', exportSandbox);
+
+    const out = await exportSandbox.reelsWysiwygExport({
+        canvas: mockCanvas,
+        style: {},
+        segments: [{ start: 0, end: 0.1, text: 'Hello' }],
+        overlays: [],
+        backgroundPath: mockTalkingPath,
+        voicePath: mockTalkingPath,
+        outputPath: mockOutPath,
+        customDuration: 0.1,
+        fps: 30,
+        targetWidth: 1080,
+        targetHeight: 1920,
+        exportEngine: 'precise',
+        fastAlphaEnabled: false,
+        useGPU: true,
+        alphaOverlayBgPath: null,
+        useMemoryDecoder: false,
+    });
+    assert.equal(out.output_path, mockOutPath);
+    assert.equal(startPayloads.length, 2, 'GPU start failure should automatically retry once with CPU');
+    assert.equal(startPayloads[0].useGPU, true);
+    assert.equal(startPayloads[1].useGPU, false);
+    assert.equal(startPayloads[0].alphaOverlayBgPath, null, 'precise engine must not hijack into Fast Alpha even when DOM checkbox defaults to checked');
+    assert.equal(startPayloads[1].alphaOverlayBgPath, null);
+
+    // 3) Electron-safe template/preset naming (zero broken prompt(), works without blocking confirm focus loss)
+    const uiFilesToCheck = [
+        'src/reels-templates.js',
+        'src/reels-preset-library.js',
+        'src/reels-overlay-panel.js',
+        'src/reels-bulk-create.js',
+        'src/batch-reels.js',
+        'src/reels-batch-table.js',
+        'src/app.js',
+        'src/sort-upload.js',
+    ];
+    for (const rel of uiFilesToCheck) {
+        const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+        const badLines = src.split(/\r?\n/).filter((line) => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('//') || trimmed.startsWith('*')) return false;
+            return /\bprompt\s*\(/.test(line);
+        });
+        assert.deepEqual(badLines, [], `${rel} must not call browser prompt() which fails in Electron`);
+    }
+
+    // 3a) ReelsOverlayPanel._saveCustomScrollStylePreset uses Electron-safe async dialog
+    const ropStore = {};
+    const panelSandbox = {
+        localStorage: {
+            getItem: k => ropStore[k] || null,
+            setItem: (k, v) => { ropStore[k] = String(v); },
+        },
+        prompt: () => { throw new Error('window.prompt must never be called'); },
+        reelsShowInputDialog: async () => '自定义祷告滚动卡_v2',
+    };
+    panelSandbox.window = panelSandbox;
+    loadBrowserScript('src/reels-overlay-panel.js', panelSandbox);
+    const mockPanel = Object.create(panelSandbox.ReelsOverlayPanel.prototype);
+    mockPanel._selectedOv = { type: 'scroll', name: '滚动字幕', bg_color: '#222', font_size: 40 };
+    mockPanel.container = null;
+    mockPanel._syncFromOverlay = () => {};
+    mockPanel._refreshScrollStylePresetSelect = () => {};
+    mockPanel._syncOverlayStyleToScopeTasks = () => {};
+    mockPanel._requestRender = () => {};
+    await mockPanel._saveCustomScrollStylePreset();
+    const savedScroll = JSON.parse(ropStore.reels_scroll_style_presets || '{}');
+    assert.ok(savedScroll['自定义祷告滚动卡_v2'], 'Custom scroll style must save under entered name without window.prompt()');
+
+    // 3b) reels-templates.js: saveCurrentAsTemplate + single-item _sealSelectedLiveProjectsToTemplates allow typing name safely
+    const savedApiCalls = [];
+    const tplSandbox = {
+        API_BASE: 'http://127.0.0.1:0/api',
+        location: { hash: '' },
+        _reelsState: {
+            tasks: [{ id: 't1', fileName: 'Demo', overlays: [] }],
+            style: {},
+            watermarks: [],
+        },
+        ReelsProject: {
+            collectProjectData: ({ tasks }) => ({ tasks }),
+        },
+        localStorage: { getItem: () => null, setItem() {} },
+        document: {
+            getElementById: () => ({ _selectedItemIds: new Set(['proj-1']) }),
+            createElement: () => ({ style: {}, addEventListener() {}, appendChild() {}, querySelector() { return null; } }),
+            head: { appendChild() {} },
+            body: null,
+        },
+        prompt: () => { throw new Error('window.prompt must never be called'); },
+        confirm: () => { throw new Error('native confirm() must not steal focus during single template naming'); },
+        showToast() {},
+        apiFetch: async (url, opts) => {
+            const body = JSON.parse(opts?.body || '{}');
+            if (url.endsWith('/templates/save')) savedApiCalls.push(body);
+            if (url.includes('/get-many')) return { json: async () => ({ data: [{ id: 'proj-1', name: '旧实时工程名', projectData: { tasks: [] } }] }) };
+            return { json: async () => ({ success: true, id: 'tpl-123' }) };
+        },
+        reelsShowInputDialog: async () => '我的新起名模板',
+    };
+    tplSandbox.window = tplSandbox;
+    tplSandbox.addEventListener = () => {};
+    const loadedTpl = loadBrowserScript('src/reels-templates.js', tplSandbox);
+
+    await loadedTpl._sealSelectedLiveProjectsToTemplates({
+        mode: 'liveProject',
+        cfg: { modalId: 'project-library-modal', apiBase: 'live-projects', itemNoun: '工程项目' },
+        folderId: '',
+        folderData: { folders: [], assignments: {} },
+    });
+    assert.equal(savedApiCalls[0]?.name, '我的新起名模板', 'Single live-project seal must accept custom template name instead of blocking naming');
+
+    await loadedTpl.saveCurrentAsTemplate();
+    assert.ok(
+        savedApiCalls[1]?.name && savedApiCalls[1].name.startsWith('模板_'),
+        'saveCurrentAsTemplate must save cleanly without blocking confirm/prompt'
+    );
+});
+
+test('scroll overlay title can be independently edited and rendered even when body content is empty', () => {
+    const mockGrad = { addColorStop() {} };
+    const offscreenDrawn = [];
+    const offscreenCanvasFactory = () => {
+        let w = 1080, h = 1920;
+        return {
+            get width() { return w; },
+            set width(v) { w = Number(v) || 0; },
+            get height() { return h; },
+            set height(v) { h = Number(v) || 0; },
+            getContext() {
+                return createScrollTitleCtx(offscreenDrawn);
+            },
+        };
+    };
+    const createScrollTitleCtx = (drawnTexts, drawnImages = []) => {
+        let saveDepth = 0;
+        return {
+            font: '56px Arial',
+            fillStyle: '#ffffff',
+            strokeStyle: '#000000',
+            textBaseline: 'alphabetic',
+            textAlign: 'left',
+            direction: 'ltr',
+            globalAlpha: 1,
+            lineWidth: 1,
+            canvas: { width: 1080, height: 1920 },
+            get saveDepth() { return saveDepth; },
+            save() { saveDepth++; },
+            restore() { saveDepth--; },
+            translate() {},
+            rotate() {},
+            scale() {},
+            beginPath() {},
+            closePath() {},
+            moveTo() {},
+            lineTo() {},
+            quadraticCurveTo() {},
+            rect() {},
+            clip() {},
+            fill() {},
+            stroke() {},
+            clearRect() {},
+            fillRect() {},
+            strokeRect() {},
+            arc() {},
+            bezierCurveTo() {},
+            setLineDash() {},
+            drawImage(img, x, y) { drawnImages.push({ img, x, y }); },
+            measureText(str) {
+                return {
+                    width: String(str || '').length * 24,
+                    actualBoundingBoxAscent: 42,
+                    actualBoundingBoxDescent: 10,
+                };
+            },
+            fillText(str, x, y) {
+                drawnTexts.push({ str: String(str), x, y });
+            },
+            strokeText() {},
+            createPattern() { return {}; },
+            createLinearGradient() { return mockGrad; },
+            createRadialGradient() { return mockGrad; },
+        };
+    };
+
+    const sandbox = {
+        console,
+        Math,
+        document: {
+            createElement(tag) {
+                return tag === 'canvas' ? offscreenCanvasFactory() : {};
+            },
+        },
+        navigator: { hardwareConcurrency: 4 },
+        localStorage: { getItem: () => null, setItem() {} },
+        window: null,
+    };
+    sandbox.window = sandbox;
+    loadBrowserScript('src/reels-overlay.js', sandbox);
+
+    // 1) Fixed title-only scroll overlay renders cleanly without body text
+    const fixedDrawn = [];
+    const fixedCtx = createScrollTitleCtx(fixedDrawn);
+    const fixedTitleOnlyOv = sandbox.window.ReelsOverlay.createScrollOverlay({
+        x: 70, y: 400, w: 940, h: 600,
+        scroll_title: 'STANDALONE TITLE\nSECOND LINE',
+        scroll_title_fixed: true,
+        scroll_title_uppercase: true,
+        scroll_title_bg_enabled: true,
+        scroll_title_deco_enabled: true,
+        content: '',
+        bg_enabled: true,
+        bg_body_only: true,
+        start: 0,
+        end: 10,
+    });
+    assert.equal(fixedTitleOnlyOv.content, '', 'createScrollOverlay must preserve explicit empty body content');
+    sandbox.window.ReelsOverlay.drawOverlay(fixedCtx, fixedTitleOnlyOv, 2.0, 1080, 1920);
+    assert.equal(fixedCtx.saveDepth, 0, 'Fixed title-only scroll draw must keep canvas save/restore balanced');
+    assert.ok(
+        fixedDrawn.some(d => d.str.includes('STANDALONE TITLE')) && fixedDrawn.some(d => d.str.includes('SECOND LINE')),
+        `Expected fixed standalone multi-line scroll_title to draw even when content is empty; got: ${JSON.stringify(fixedDrawn)}`
+    );
+    assert.ok(
+        fixedDrawn.every(d => Number.isFinite(d.x) && Number.isFinite(d.y)),
+        'All drawn coordinates for fixed title-only scroll must be finite numbers'
+    );
+
+    // 2) Scrolling (non-fixed) title-only scroll overlay renders (both feathered & unfeathered) and measures cleanly without body text
+    offscreenDrawn.length = 0;
+    const scrollImgs = [];
+    const scrollDrawn = [];
+    const scrollCtx = createScrollTitleCtx(scrollDrawn, scrollImgs);
+    const movingTitleOnlyOv = sandbox.window.ReelsOverlay.createScrollOverlay({
+        x: 70, y: 400, w: 940, h: 600,
+        scroll_title: 'MOVING STANDALONE TITLE',
+        scroll_title_fixed: false,
+        scroll_title_uppercase: true,
+        scroll_from_y: 900,
+        scroll_end_y_auto: true,
+        content: '',
+        start: 0,
+        end: 10,
+    });
+    assert.equal(movingTitleOnlyOv.content, '', 'createScrollOverlay must preserve explicit empty body content for moving title');
+    sandbox.window.ReelsOverlay.drawOverlay(scrollCtx, movingTitleOnlyOv, 3.0, 1080, 1920);
+    assert.equal(scrollCtx.saveDepth, 0, 'Scrolling title-only draw must keep canvas save/restore balanced');
+    assert.ok(
+        offscreenDrawn.some(d => d.str.includes('MOVING STANDALONE TITLE')) && scrollImgs.length >= 1,
+        `Expected feathered non-fixed standalone scroll_title to draw & composite; offscreen=${JSON.stringify(offscreenDrawn)}, imgs=${scrollImgs.length}`
+    );
+    const noFeatherDrawn = [];
+    const noFeatherCtx = createScrollTitleCtx(noFeatherDrawn);
+    sandbox.window.ReelsOverlay.drawOverlay(noFeatherCtx, { ...movingTitleOnlyOv, feather_top: 0, feather_bottom: 0 }, 3.0, 1080, 1920);
+    assert.ok(
+        noFeatherDrawn.some(d => d.str.includes('MOVING STANDALONE TITLE')),
+        `Expected unfeathered non-fixed standalone scroll_title to draw directly; got=${JSON.stringify(noFeatherDrawn)}`
+    );
+    const motion = sandbox.window.ReelsOverlay.measureScrollMotion(movingTitleOnlyOv);
+    assert.ok(motion && Number.isFinite(motion.endY), 'measureScrollMotion must compute valid endY for title-only scroll overlay');
+
+    // 3) Empty content + empty title still skips rendering cleanly
+    const emptyDrawn = [];
+    sandbox.window.ReelsOverlay.drawOverlay(
+        createScrollTitleCtx(emptyDrawn),
+        sandbox.window.ReelsOverlay.createScrollOverlay({ scroll_title: '', content: '', start: 0, end: 10 }),
+        1.0, 1080, 1920
+    );
+    assert.equal(emptyDrawn.length, 0, 'Completely empty scroll overlay should not draw phantom text');
+
+    // 4) Panel UI exposes independent multi-line #rop-scroll-title, Electron focus guard, list label fallback, and library title editor
+    const panelSrc = fs.readFileSync(path.join(ROOT, 'src/reels-overlay-panel.js'), 'utf8');
+    assert.ok(
+        /<textarea[^>]*id="rop-scroll-title"/.test(panelSrc),
+        '#rop-scroll-title must be a multi-line <textarea> just like #rop-title-text and #rop-scroll-content'
+    );
+    assert.ok(
+        panelSrc.includes("'rop-scroll-title', 'rop-scroll-content'"),
+        'Windows Electron focus guard must protect #rop-scroll-title and #rop-scroll-content'
+    );
+    assert.ok(
+        panelSrc.includes("(ov.content || ov.scroll_title || '')"),
+        'Layer list label must fall back to ov.scroll_title when ov.content is empty'
+    );
+    assert.ok(
+        panelSrc.includes('rsl-title-input') && panelSrc.includes('rsl-title-only-chk'),
+        'Scroll preset library preview must support editing scroll_title independently and previewing title-only'
+    );
+});
+
+
+
+
 
 
 

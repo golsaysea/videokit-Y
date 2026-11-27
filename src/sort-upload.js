@@ -8029,7 +8029,7 @@
   }
 
   async function batchAddMulti() {
-    const countStr = await prompt('要添加几行？', '5');
+    const countStr = await showPrompt('要添加几行？', '5');
     if (!countStr) return;
     const count = parseInt(countStr);
     if (!count || count < 1 || count > 100) { alert('请输入 1-100 的数字'); return; }

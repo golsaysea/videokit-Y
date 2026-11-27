@@ -53,6 +53,20 @@ function copyStaticFiles() {
         console.log(`Copied ${outName} to dist/ (v=${pkgVersion}-${hash})`)
       })
 
+      // 同步复制开场效果配乐 assets/intro-audio/*.mp3 到 dist/assets/intro-audio/（Web / Vite 预览 & file:// 兜底）
+      const introAudioSrcDir = resolve(__dirname, 'assets', 'intro-audio')
+      const introAudioDestDir = resolve(distDir, 'assets', 'intro-audio')
+      if (existsSync(introAudioSrcDir)) {
+        const audioFiles = readdirSync(introAudioSrcDir).filter(f => /\.(mp3|wav|m4a|ogg)$/i.test(f))
+        if (audioFiles.length > 0) {
+          mkdirSync(introAudioDestDir, { recursive: true })
+          audioFiles.forEach(file => {
+            copyFileSync(resolve(introAudioSrcDir, file), resolve(introAudioDestDir, file))
+          })
+          console.log(`Copied ${audioFiles.length} intro audio tracks to dist/assets/intro-audio/`)
+        }
+      }
+
       // 将 dist/index.html 中的静态脚本引用附加 ?v=<version>-<hash>，确保更新后 V8 Code Cache 自动失效重建
       const distHtmlPath = resolve(distDir, 'index.html')
       if (existsSync(distHtmlPath)) {
@@ -91,6 +105,23 @@ function copyStaticFiles() {
         writeFileSync(distHtmlPath, html, 'utf8')
       }
       console.log(`✅ Copied ${jsFiles.length} JS files to dist/ with V8 Code Cache busting`)
+    },
+    configureServer(server) {
+      server.middlewares.use('/assets', (req, res, next) => {
+        try {
+          const urlPath = (req.url || '').split('?')[0].replace(/^\/+/, '')
+          if (!urlPath || urlPath.includes('..')) return next()
+          const target = resolve(__dirname, 'assets', urlPath)
+          if (!existsSync(target)) return next()
+          if (target.endsWith('.mp3')) res.setHeader('Content-Type', 'audio/mpeg')
+          else if (target.endsWith('.wav')) res.setHeader('Content-Type', 'audio/wav')
+          else if (target.endsWith('.m4a')) res.setHeader('Content-Type', 'audio/mp4')
+          res.setHeader('Accept-Ranges', 'bytes')
+          res.end(readFileSync(target))
+        } catch (_) {
+          next()
+        }
+      })
     }
   }
 }
